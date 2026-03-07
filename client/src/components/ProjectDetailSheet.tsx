@@ -158,12 +158,12 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Retainer Hours</span>
                 <span className="text-xl font-bold text-primary tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                  {totalHrs.toFixed(2)} hrs
+                  {Number(totalHrs ?? 0).toFixed(2)} hrs
                 </span>
               </div>
               <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                <span>Filming: {totalCrewHrs.toFixed(2)} hrs</span>
-                <span>Post: {totalPostHrs.toFixed(2)} hrs</span>
+                <span>Filming: {Number(totalCrewHrs ?? 0).toFixed(2)} hrs</span>
+                <span>Post: {Number(totalPostHrs ?? 0).toFixed(2)} hrs</span>
               </div>
             </div>
 
@@ -181,7 +181,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         <div className="text-xs text-muted-foreground">{entry.role}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums">{entry.hoursDeducted.toFixed(2)} hrs</div>
+                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursDeducted ?? 0).toFixed(2)} hrs</div>
                         <div className="text-xs text-muted-foreground">billed</div>
                       </div>
                     </div>
@@ -204,7 +204,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         <div className="text-xs text-muted-foreground">{entry.role}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums">{entry.hoursDeducted.toFixed(2)} hrs</div>
+                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursDeducted ?? 0).toFixed(2)} hrs</div>
                         <div className="text-xs text-muted-foreground">billed</div>
                       </div>
                     </div>
