@@ -109,7 +109,7 @@ export default function CalendarPage() {
             Production Calendar
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {monthProjects.length} projects · {totalHoursThisMonth.toFixed(1)} retainer hrs this month
+            {monthProjects.length} projects · {Number(totalHoursThisMonth ?? 0).toFixed(1)} retainer hrs this month
           </p>
         </div>
         <Button
@@ -195,7 +195,7 @@ export default function CalendarPage() {
                         "text-[10px] font-medium tabular-nums px-1 py-0.5 rounded",
                         balance < 0 ? "text-red-400 bg-red-500/10" : "text-green-400 bg-green-500/10"
                       )}>
-                        {balance >= 0 ? "+" : ""}{balance.toFixed(1)}h
+                        {balance >= 0 ? "+" : ""}{Number(balance ?? 0).toFixed(1)}h
                       </span>
                     )}
                   </div>
@@ -265,8 +265,8 @@ export default function CalendarPage() {
                 const location = getLocation(project.locationId);
                 const pType = getProjectType(project.projectTypeId);
                 const totalHrs = [
-                  ...project.crew.map((c) => c.hoursDeducted),
-                  ...project.postProduction.map((c) => c.hoursDeducted),
+                  ...project.crew.map((c) => Number(c.hoursDeducted ?? 0)),
+                  ...project.postProduction.map((c) => Number(c.hoursDeducted ?? 0)),
                 ].reduce((s, h) => s + h, 0);
 
                 return (
@@ -327,7 +327,7 @@ export default function CalendarPage() {
                       <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end mt-0.5">
                         <Clock className="w-3 h-3" />
-                        {totalHrs.toFixed(1)} hrs
+                        {Number(totalHrs ?? 0).toFixed(1)} hrs
                       </div>
                     </div>
                   </div>
