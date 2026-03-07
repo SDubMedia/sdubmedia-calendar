@@ -184,12 +184,12 @@ export default function InvoicePage() {
           {monthlySummary && (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard label="Starting Balance" value={`${monthlySummary.startingBalance.toFixed(2)} hrs`} icon={<DollarSign className="w-4 h-4" />} />
-                <StatCard label="Paid This Month" value={`+${monthlySummary.paidThisMonth.toFixed(2)} hrs`} icon={<TrendingUp className="w-4 h-4" />} positive />
-                <StatCard label="Used This Month" value={`-${monthlySummary.usedThisMonth.toFixed(2)} hrs`} icon={<TrendingDown className="w-4 h-4" />} negative />
+                <StatCard label="Starting Balance" value={`${Number(monthlySummary.startingBalance ?? 0).toFixed(2)} hrs`} icon={<DollarSign className="w-4 h-4" />} />
+                <StatCard label="Paid This Month" value={`+${Number(monthlySummary.paidThisMonth ?? 0).toFixed(2)} hrs`} icon={<TrendingUp className="w-4 h-4" />} positive />
+                <StatCard label="Used This Month" value={`-${Number(monthlySummary.usedThisMonth ?? 0).toFixed(2)} hrs`} icon={<TrendingDown className="w-4 h-4" />} negative />
                 <StatCard
                   label="Ending Balance"
-                  value={`${monthlySummary.endingBalance.toFixed(2)} hrs`}
+                  value={`${Number(monthlySummary.endingBalance ?? 0).toFixed(2)} hrs`}
                   icon={monthlySummary.isOverused ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   negative={monthlySummary.isOverused}
                   positive={!monthlySummary.isOverused && !monthlySummary.isLow}
@@ -204,7 +204,7 @@ export default function InvoicePage() {
                   <div>
                     <div className="text-sm font-medium text-red-300">Retainer Overused</div>
                     <div className="text-xs text-muted-foreground">
-                      Client owes {Math.abs(monthlySummary.endingBalance).toFixed(2)} additional hours. Bill immediately.
+                      Client owes {Math.abs(Number(monthlySummary.endingBalance ?? 0)).toFixed(2)} additional hours. Bill immediately.
                     </div>
                   </div>
                 </div>
@@ -215,7 +215,7 @@ export default function InvoicePage() {
                   <div>
                     <div className="text-sm font-medium text-amber-300">Refill Needed for Next Month</div>
                     <div className="text-xs text-muted-foreground">
-                      Invoice {monthlySummary.refillNeeded.toFixed(2)} hrs to start next month at {client.monthlyHours} hrs.
+                      Invoice {Number(monthlySummary.refillNeeded ?? 0).toFixed(2)} hrs to start next month at {client.monthlyHours} hrs.
                     </div>
                   </div>
                 </div>
@@ -245,11 +245,11 @@ export default function InvoicePage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums text-foreground">-{total.toFixed(2)} hrs</div>
+                        <div className="text-sm font-medium tabular-nums text-foreground">-{Number(total ?? 0).toFixed(2)} hrs</div>
                         <div className="text-xs text-muted-foreground">
-                          {crewHrs > 0 && `${crewHrs.toFixed(2)} filming`}
+                          {crewHrs > 0 && `${Number(crewHrs ?? 0).toFixed(2)} filming`}
                           {crewHrs > 0 && postHrs > 0 && " + "}
-                          {postHrs > 0 && `${postHrs.toFixed(2)} post`}
+                          {postHrs > 0 && `${Number(postHrs ?? 0).toFixed(2)} post`}
                         </div>
                       </div>
                     </div>
@@ -268,22 +268,22 @@ export default function InvoicePage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-muted-foreground">Total Paid YTD</div>
-                  <div className="text-lg font-bold text-foreground tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{ytdSummary.totalPaid.toFixed(2)} hrs</div>
+                  <div className="text-lg font-bold text-foreground tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{Number(ytdSummary.totalPaid ?? 0).toFixed(2)} hrs</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Total Used YTD</div>
-                  <div className="text-lg font-bold text-foreground tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{ytdSummary.totalUsed.toFixed(2)} hrs</div>
+                  <div className="text-lg font-bold text-foreground tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{Number(ytdSummary.totalUsed ?? 0).toFixed(2)} hrs</div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Current Balance</div>
-                  <div className={cn("text-lg font-bold tabular-nums", ytdSummary.currentBalance < 0 ? "text-red-400" : "text-green-400")} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {ytdSummary.currentBalance.toFixed(2)} hrs
+                  <div className={cn("text-lg font-bold tabular-nums", (ytdSummary.currentBalance ?? 0) < 0 ? "text-red-400" : "text-green-400")} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    {Number(ytdSummary.currentBalance ?? 0).toFixed(2)} hrs
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Hrs to Invoice Now</div>
                   <div className="text-lg font-bold text-primary tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {ytdSummary.additionalHoursNeeded.toFixed(2)} hrs
+                    {Number(ytdSummary.additionalHoursNeeded ?? 0).toFixed(2)} hrs
                   </div>
                 </div>
               </div>
@@ -308,7 +308,7 @@ export default function InvoicePage() {
                       {p.notes && <div className="text-xs text-muted-foreground">{p.notes}</div>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="text-sm font-medium text-green-400 tabular-nums">+{p.hours.toFixed(2)} hrs</div>
+                      <div className="text-sm font-medium text-green-400 tabular-nums">+{Number(p.hours ?? 0).toFixed(2)} hrs</div>
                       <button onClick={() => { deletePayment(p.id); toast.success("Payment removed"); }} className="text-muted-foreground hover:text-destructive transition-colors text-xs">
                         ×
                       </button>
