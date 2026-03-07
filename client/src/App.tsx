@@ -11,6 +11,7 @@ import InvoicePage from "./pages/InvoicePage";
 import ClientsPage from "./pages/ClientsPage";
 import LocationsPage from "./pages/LocationsPage";
 import ManagePage from "./pages/ManagePage";
+import ReportsPage from "./pages/ReportsPage";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
         <Route path="/clients" component={ClientsPage} />
         <Route path="/locations" component={LocationsPage} />
         <Route path="/manage" component={ManagePage} />
+        <Route path="/reports" component={ReportsPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
