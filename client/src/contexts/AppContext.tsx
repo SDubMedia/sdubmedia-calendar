@@ -66,6 +66,15 @@ function rowToProjectType(r: any): ProjectType {
   return { id: r.id, name: r.name };
 }
 
+function normalizeCrewEntry(c: any) {
+  return {
+    crewMemberId: c.crewMemberId || c.crew_member_id || "",
+    role: c.role || "",
+    hoursWorked: Number(c.hoursWorked ?? c.hours_worked ?? 0),
+    hoursDeducted: Number(c.hoursDeducted ?? c.hours_deducted ?? 0),
+  };
+}
+
 function rowToProject(r: any): Project {
   return {
     id: r.id,
@@ -76,16 +85,16 @@ function rowToProject(r: any): Project {
     startTime: r.start_time,
     endTime: r.end_time,
     status: r.status,
-    crew: r.crew || [],
-    postProduction: r.post_production || [],
+    crew: (r.crew || []).map(normalizeCrewEntry),
+    postProduction: (r.post_production || []).map(normalizeCrewEntry),
     editTypes: r.edit_types || [],
-    notes: r.notes,
+    notes: r.notes || "",
     createdAt: r.created_at,
   };
 }
 
 function rowToPayment(r: any): RetainerPayment {
-  return { id: r.id, clientId: r.client_id, date: r.date, hours: r.hours, notes: r.notes };
+  return { id: r.id, clientId: r.client_id, date: r.date, hours: Number(r.hours ?? 0), notes: r.notes || "" };
 }
 
 const emptyData: AppData = {
