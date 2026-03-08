@@ -38,13 +38,19 @@ export interface Client {
   createdAt: string;
 }
 
+// A role assigned to a crew member with its own pay rate
+export interface RoleRate {
+  role: CrewRole;
+  payRatePerHour: number;
+}
+
 export interface CrewMember {
   id: string;
   name: string;
-  roles: CrewRole[];
+  roleRates: RoleRate[];           // each role has its own pay rate
   phone: string;
   email: string;
-  defaultPayRatePerHour: number; // default $ per hour pay rate for this crew member
+  defaultPayRatePerHour: number;   // fallback rate if role-specific rate not found
 }
 
 export interface Location {

@@ -1,13 +1,15 @@
 // ============================================================
-// Staff Page — Manage crew members and their default pay rates
+// Staff Page — Manage crew members with per-role pay rates
 // Design: Dark Cinematic Studio | Amber accent on charcoal
+// Each crew member can have multiple roles, each with its own hourly rate.
+// When added to a project, selecting a role auto-fills the correct rate.
 // ============================================================
 
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { CrewMember, CrewRole } from "@/lib/types";
+import type { CrewMember, CrewRole, RoleRate } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -18,24 +20,33 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { UserPlus, Pencil, Trash2, DollarSign, User } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X } from "lucide-react";
 import { toast } from "sonner";
-import { nanoid } from "nanoid";
 
-const ALL_ROLES = [
+const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
   "Secondary Videographer",
+  "Videographer",
   "Photographer",
   "Video Editor",
   "Photo Editor",
+  "Editor",
   "Audio Engineer",
   "Director",
   "Producer",
+  "Crew",
 ];
 
 interface StaffFormData {
   name: string;
-  roles: string[];
+  roleRates: RoleRate[];
   phone: string;
   email: string;
   defaultPayRatePerHour: number;
@@ -43,7 +54,7 @@ interface StaffFormData {
 
 const emptyForm = (): StaffFormData => ({
   name: "",
-  roles: [],
+  roleRates: [],
   phone: "",
   email: "",
   defaultPayRatePerHour: 0,
@@ -56,9 +67,15 @@ export default function StaffPage() {
   const [form, setForm] = useState<StaffFormData>(emptyForm());
   const [saving, setSaving] = useState(false);
 
+  // For adding a new role row in the form
+  const [newRole, setNewRole] = useState<CrewRole | "">("");
+  const [newRate, setNewRate] = useState<number>(0);
+
   function openAdd() {
     setEditingId(null);
     setForm(emptyForm());
+    setNewRole("");
+    setNewRate(0);
     setDialogOpen(true);
   }
 
@@ -66,20 +83,38 @@ export default function StaffPage() {
     setEditingId(member.id);
     setForm({
       name: member.name,
-      roles: member.roles,
+      roleRates: member.roleRates ?? [],
       phone: member.phone,
       email: member.email,
       defaultPayRatePerHour: Number(member.defaultPayRatePerHour ?? 0),
     });
+    setNewRole("");
+    setNewRate(0);
     setDialogOpen(true);
   }
 
-  function toggleRole(role: string) {
+  function addRoleRate() {
+    if (!newRole) { toast.error("Select a role first"); return; }
+    if (form.roleRates.some(rr => rr.role === newRole)) {
+      toast.error("That role is already added");
+      return;
+    }
     setForm(f => ({
       ...f,
-      roles: (f.roles.includes(role)
-        ? f.roles.filter(r => r !== role)
-        : [...f.roles, role]) as CrewRole[],
+      roleRates: [...f.roleRates, { role: newRole as CrewRole, payRatePerHour: newRate }],
+    }));
+    setNewRole("");
+    setNewRate(0);
+  }
+
+  function removeRoleRate(role: CrewRole) {
+    setForm(f => ({ ...f, roleRates: f.roleRates.filter(rr => rr.role !== role) }));
+  }
+
+  function updateRoleRate(role: CrewRole, rate: number) {
+    setForm(f => ({
+      ...f,
+      roleRates: f.roleRates.map(rr => rr.role === role ? { ...rr, payRatePerHour: rate } : rr),
     }));
   }
 
@@ -87,23 +122,18 @@ export default function StaffPage() {
     if (!form.name.trim()) { toast.error("Name is required"); return; }
     setSaving(true);
     try {
+      const payload = {
+        name: form.name.trim(),
+        roleRates: form.roleRates,
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        defaultPayRatePerHour: form.defaultPayRatePerHour,
+      };
       if (editingId) {
-        await updateCrewMember(editingId, {
-          name: form.name.trim(),
-          roles: form.roles as CrewRole[],
-          phone: form.phone.trim(),
-          email: form.email.trim(),
-          defaultPayRatePerHour: form.defaultPayRatePerHour,
-        });
+        await updateCrewMember(editingId, payload);
         toast.success("Staff member updated");
       } else {
-        await addCrewMember({
-          name: form.name.trim(),
-          roles: form.roles as CrewRole[],
-          phone: form.phone.trim(),
-          email: form.email.trim(),
-          defaultPayRatePerHour: form.defaultPayRatePerHour,
-        });
+        await addCrewMember(payload);
         toast.success("Staff member added");
       }
       setDialogOpen(false);
@@ -133,7 +163,7 @@ export default function StaffPage() {
             Staff
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Set each crew member's default hourly pay rate — it will auto-fill when you add them to a project.
+            Assign roles and hourly pay rates to each crew member. Rates auto-fill when you add them to a project.
           </p>
         </div>
         <Button onClick={openAdd} className="gap-2">
@@ -157,7 +187,7 @@ export default function StaffPage() {
               <CardContent className="py-4 px-5">
                 <div className="flex items-start gap-4">
                   {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-primary font-bold text-sm">
                       {member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
                     </span>
@@ -165,26 +195,29 @@ export default function StaffPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {member.name}
-                      </p>
-                      <div className="flex items-center gap-1 bg-amber-500/15 text-amber-400 rounded-md px-2 py-0.5">
-                        <DollarSign className="w-3 h-3" />
-                        <span className="text-xs font-bold">{Number(member.defaultPayRatePerHour ?? 0).toFixed(0)}/hr</span>
-                      </div>
-                    </div>
-                    {member.roles.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {member.roles.map(role => (
-                          <Badge key={role} variant="secondary" className="text-[10px] px-2 py-0">
-                            {role}
-                          </Badge>
+                    <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      {member.name}
+                    </p>
+
+                    {/* Role + Rate table */}
+                    {(member.roleRates ?? []).length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        {(member.roleRates ?? []).map(rr => (
+                          <div key={rr.role} className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-[10px] px-2 py-0 shrink-0">{rr.role}</Badge>
+                            <div className="flex items-center gap-0.5 text-amber-400 text-xs font-bold">
+                              <DollarSign className="w-3 h-3" />
+                              {Number(rr.payRatePerHour).toFixed(0)}/hr
+                            </div>
+                          </div>
                         ))}
                       </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">No roles assigned yet</p>
                     )}
+
                     {(member.phone || member.email) && (
-                      <p className="text-xs text-muted-foreground mt-1.5">
+                      <p className="text-xs text-muted-foreground mt-2">
                         {[member.phone, member.email].filter(Boolean).join(" · ")}
                       </p>
                     )}
@@ -220,7 +253,8 @@ export default function StaffPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
+            {/* Name */}
             <div className="space-y-1.5">
               <Label>Name *</Label>
               <Input
@@ -230,11 +264,77 @@ export default function StaffPage() {
               />
             </div>
 
-            {/* Pay rate — most prominent field */}
+            {/* Roles + Rates */}
+            <div className="space-y-2">
+              <Label>Roles & Pay Rates</Label>
+              <p className="text-xs text-muted-foreground">Add each role this person performs and their hourly rate for that role.</p>
+
+              {/* Existing role-rate rows */}
+              {form.roleRates.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {form.roleRates.map(rr => (
+                    <div key={rr.role} className="flex items-center gap-2 bg-secondary/50 rounded-md px-3 py-2">
+                      <Badge variant="secondary" className="text-[10px] shrink-0">{rr.role}</Badge>
+                      <div className="flex items-center flex-1 gap-1">
+                        <span className="text-muted-foreground text-sm">$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="5"
+                          className="h-7 text-sm bg-transparent border-border w-20"
+                          value={rr.payRatePerHour || ""}
+                          onChange={e => updateRoleRate(rr.role, Number(e.target.value))}
+                        />
+                        <span className="text-xs text-muted-foreground">/hr</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeRoleRate(rr.role)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new role row */}
+              <div className="flex items-center gap-2">
+                <Select value={newRole} onValueChange={v => setNewRole(v as CrewRole)}>
+                  <SelectTrigger className="flex-1 h-9 bg-secondary border-border text-sm">
+                    <SelectValue placeholder="Select role..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {ALL_ROLES.filter(r => !form.roleRates.some(rr => rr.role === r)).map(role => (
+                      <SelectItem key={role} value={role}>{role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground text-sm">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="5"
+                    placeholder="0"
+                    className="h-9 w-20 bg-secondary border-border text-sm"
+                    value={newRate || ""}
+                    onChange={e => setNewRate(Number(e.target.value))}
+                  />
+                </div>
+                <Button size="sm" variant="outline" className="h-9 px-3" onClick={addRoleRate}>
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Default/fallback rate */}
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-                Default Hourly Pay Rate
+                Default Rate (fallback)
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
@@ -248,29 +348,10 @@ export default function StaffPage() {
                   onChange={e => setForm(f => ({ ...f, defaultPayRatePerHour: Number(e.target.value) }))}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">This rate will auto-fill when you add this person to a project.</p>
+              <p className="text-xs text-muted-foreground">Used if no role-specific rate is found.</p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Roles</Label>
-              <div className="flex flex-wrap gap-2">
-                {ALL_ROLES.map(role => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => toggleRole(role)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-                      form.roles.includes(role)
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
-                    }`}
-                  >
-                    {role}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+            {/* Contact */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Phone</Label>

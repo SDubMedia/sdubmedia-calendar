@@ -66,22 +66,19 @@ function CrewTab() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [roles, setRoles] = useState<CrewRole[]>([]);
   const [defaultPayRate, setDefaultPayRate] = useState<number>(0);
 
-  const openAdd = () => { setEditing(null); setName(""); setPhone(""); setEmail(""); setRoles([]); setDefaultPayRate(0); setDialogOpen(true); };
-  const openEdit = (m: CrewMember) => { setEditing(m); setName(m.name); setPhone(m.phone); setEmail(m.email); setRoles(m.roles); setDefaultPayRate(m.defaultPayRatePerHour ?? 0); setDialogOpen(true); };
-
-  const toggleRole = (r: CrewRole) => setRoles((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]);
+  const openAdd = () => { setEditing(null); setName(""); setPhone(""); setEmail(""); setDefaultPayRate(0); setDialogOpen(true); };
+  const openEdit = (m: CrewMember) => { setEditing(m); setName(m.name); setPhone(m.phone); setEmail(m.email); setDefaultPayRate(m.defaultPayRatePerHour ?? 0); setDialogOpen(true); };
 
   const handleSave = () => {
     if (!name) { toast.error("Name is required"); return; }
     if (editing) {
-      updateCrewMember(editing.id, { name, phone, email, roles, defaultPayRatePerHour: defaultPayRate });
+      updateCrewMember(editing.id, { name, phone, email, roleRates: editing.roleRates ?? [], defaultPayRatePerHour: defaultPayRate });
       toast.success("Crew member updated");
     } else {
-      addCrewMember({ name, phone, email, roles, defaultPayRatePerHour: defaultPayRate });
-      toast.success("Crew member added");
+      addCrewMember({ name, phone, email, roleRates: [], defaultPayRatePerHour: defaultPayRate });
+      toast.success("Crew member added — set roles on the Staff page");
     }
     setDialogOpen(false);
   };
@@ -104,9 +101,9 @@ function CrewTab() {
             <div className="flex-1 min-w-0">
               <div className="font-medium text-foreground">{member.name}</div>
               <div className="flex flex-wrap gap-1 mt-1">
-                {member.roles.map((r) => (
-                  <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
-                    {ROLE_LABELS[r]}
+                {(member.roleRates ?? []).map((rr) => (
+                  <span key={rr.role} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
+                    {rr.role} · ${Number(rr.payRatePerHour).toFixed(0)}/hr
                   </span>
                 ))}
               </div>
@@ -150,25 +147,7 @@ function CrewTab() {
               <Label className="text-xs text-muted-foreground">Default Pay Rate ($/hr)</Label>
               <Input type="number" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Roles</Label>
-              <div className="flex flex-wrap gap-2">
-                {ALL_ROLES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => toggleRole(r)}
-                    className={cn(
-                      "px-2.5 py-1 rounded text-xs border transition-colors",
-                      roles.includes(r)
-                        ? "bg-primary/20 border-primary/50 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/30"
-                    )}
-                  >
-                    {ROLE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">To assign roles and per-role pay rates, go to the <strong>Staff</strong> page after saving.</p>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>

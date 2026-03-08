@@ -22,11 +22,11 @@ export const seedData: AppData = {
     },
   ],
   crewMembers: [
-    { id: "crew_zach", name: "Zach Harrison", roles: ["Photographer"], phone: "6617337513", email: "", defaultPayRatePerHour: 0 },
-    { id: "crew_ken", name: "Ken Robinson", roles: ["Photographer"], phone: "615-849-2477", email: "", defaultPayRatePerHour: 0 },
-    { id: "crew_melissa", name: "Melissa Mann", roles: ["Editor", "Photographer", "Photo Editor"], phone: "661-917-8526", email: "", defaultPayRatePerHour: 0 },
-    { id: "crew_antonio", name: "Antonio Brum", roles: ["Videographer", "Crew", "Editor", "Video Editor"], phone: "629-401-7226", email: "", defaultPayRatePerHour: 0 },
-    { id: "crew_geoff", name: "Geoff Southworth", roles: ["Videographer", "Editor", "Photographer", "Video Editor", "Photo Editor", "Crew"], phone: "661-916-9468", email: "Geoff@SDubMedia.com", defaultPayRatePerHour: 0 },
+    { id: "crew_zach", name: "Zach Harrison", roleRates: [{ role: "Photographer", payRatePerHour: 0 }], phone: "6617337513", email: "", defaultPayRatePerHour: 0 },
+    { id: "crew_ken", name: "Ken Robinson", roleRates: [{ role: "Photographer", payRatePerHour: 0 }], phone: "615-849-2477", email: "", defaultPayRatePerHour: 0 },
+    { id: "crew_melissa", name: "Melissa Mann", roleRates: [{ role: "Photographer", payRatePerHour: 0 }, { role: "Photo Editor", payRatePerHour: 0 }], phone: "661-917-8526", email: "", defaultPayRatePerHour: 0 },
+    { id: "crew_antonio", name: "Antonio Brum", roleRates: [{ role: "Videographer", payRatePerHour: 0 }, { role: "Video Editor", payRatePerHour: 0 }], phone: "629-401-7226", email: "", defaultPayRatePerHour: 0 },
+    { id: "crew_geoff", name: "Geoff Southworth", roleRates: [{ role: "Main Videographer", payRatePerHour: 0 }, { role: "Video Editor", payRatePerHour: 0 }, { role: "Photographer", payRatePerHour: 0 }, { role: "Photo Editor", payRatePerHour: 0 }], phone: "661-916-9468", email: "Geoff@SDubMedia.com", defaultPayRatePerHour: 0 },
   ],
   locations: [
     { id: "loc_cbsr_mboro", name: "Coldwell Banker Southern Realty", address: "1980 Old Fort Pkwy", city: "Murfreesboro", state: "TN", zip: "37129" },

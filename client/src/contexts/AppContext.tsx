@@ -54,7 +54,7 @@ function rowToCrew(r: any): CrewMember {
   return {
     id: r.id,
     name: r.name,
-    roles: r.roles || [],
+    roleRates: r.role_rates || [],
     phone: r.phone,
     email: r.email,
     defaultPayRatePerHour: Number(r.default_pay_rate_per_hour ?? 0),
@@ -177,7 +177,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCrewMember = useCallback(async (c: Omit<CrewMember, "id">): Promise<CrewMember> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("crew_members").insert({
-      id, name: c.name, roles: c.roles, phone: c.phone, email: c.email,
+      id, name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -189,7 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateCrewMember = useCallback(async (id: string, c: Partial<CrewMember>) => {
     const patch: any = {};
     if (c.name !== undefined) patch.name = c.name;
-    if (c.roles !== undefined) patch.roles = c.roles;
+    if (c.roleRates !== undefined) patch.role_rates = c.roleRates;
     if (c.phone !== undefined) patch.phone = c.phone;
     if (c.email !== undefined) patch.email = c.email;
     if (c.defaultPayRatePerHour !== undefined) patch.default_pay_rate_per_hour = c.defaultPayRatePerHour;
