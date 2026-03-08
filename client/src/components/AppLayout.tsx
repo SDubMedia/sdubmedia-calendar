@@ -8,6 +8,7 @@ import {
   CalendarDays,
   FileText,
   Users,
+  Users2,
   MapPin,
   Settings,
   Film,
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { label: "Billing", href: "/billing", icon: FileText },
   { label: "Reports", href: "/reports", icon: BarChart2 },
   { label: "Clients", href: "/clients", icon: Users },
+  { label: "Staff", href: "/staff", icon: Users2 },
   { label: "Locations", href: "/locations", icon: MapPin },
   { label: "Manage", href: "/manage", icon: Settings },
 ];

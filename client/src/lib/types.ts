@@ -8,10 +8,15 @@ export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "comple
 
 export type CrewRole =
   | "Videographer"
+  | "Main Videographer"
+  | "Secondary Videographer"
   | "Photographer"
   | "Editor"
   | "Video Editor"
   | "Photo Editor"
+  | "Audio Engineer"
+  | "Director"
+  | "Producer"
   | "Crew";
 
 export type EditType =
