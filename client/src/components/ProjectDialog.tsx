@@ -1,6 +1,7 @@
 // ============================================================
 // ProjectDialog — Create / Edit project modal
 // Design: Dark Cinematic Studio
+// Billing Model: Hourly — crew entries track hours worked + pay rate per hour
 // ============================================================
 
 import { useState, useEffect } from "react";
@@ -23,7 +24,7 @@ const EDIT_TYPES: EditType[] = [
 interface Props {
   open: boolean;
   onClose: () => void;
-  project?: Project; // if provided, edit mode
+  project?: Project;
   defaultDate?: string;
 }
 
@@ -31,14 +32,14 @@ const emptyCrewEntry = (): ProjectCrewEntry => ({
   crewMemberId: "",
   role: "",
   hoursWorked: 0,
-  hoursDeducted: 0,
+  payRatePerHour: 0,
 });
 
 const emptyPostEntry = (): ProjectPostEntry => ({
   crewMemberId: "",
   role: "",
   hoursWorked: 0,
-  hoursDeducted: 0,
+  payRatePerHour: 0,
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate }: Props) {
@@ -57,7 +58,6 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
   const [editTypes, setEditTypes] = useState<EditType[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? "");
 
-  // Reset when dialog opens
   useEffect(() => {
     if (open) {
       setClientId(project?.clientId ?? data.clients[0]?.id ?? "");
@@ -75,17 +75,37 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
   }, [open, project, defaultDate, data.clients]);
 
   const toggleEditType = (et: EditType) => {
-    setEditTypes((prev) =>
-      prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]
-    );
+    setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
   };
 
+  // When a crew member is selected, auto-populate their default pay rate
   const updateCrewEntry = (idx: number, field: keyof ProjectCrewEntry, value: string | number) => {
-    setCrew((prev) => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+    setCrew((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const updated = { ...e, [field]: value };
+      // Auto-fill pay rate when crew member is selected
+      if (field === "crewMemberId") {
+        const member = data.crewMembers.find(c => c.id === value);
+        if (member && !e.payRatePerHour) {
+          updated.payRatePerHour = member.defaultPayRatePerHour;
+        }
+      }
+      return updated;
+    }));
   };
 
   const updatePostEntry = (idx: number, field: keyof ProjectPostEntry, value: string | number) => {
-    setPostProduction((prev) => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+    setPostProduction((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const updated = { ...e, [field]: value };
+      if (field === "crewMemberId") {
+        const member = data.crewMembers.find(c => c.id === value);
+        if (member && !e.payRatePerHour) {
+          updated.payRatePerHour = member.defaultPayRatePerHour;
+        }
+      }
+      return updated;
+    }));
   };
 
   const handleSave = () => {
@@ -94,17 +114,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
       return;
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId,
-      projectTypeId,
-      locationId,
-      date,
-      startTime,
-      endTime,
-      status,
+      clientId, projectTypeId, locationId, date, startTime, endTime, status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
-      editTypes,
-      notes,
+      editTypes, notes,
     };
     if (isEdit && project) {
       updateProject(project.id, payload);
@@ -203,16 +216,19 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
             </div>
           </div>
 
-          {/* Crew */}
+          {/* Crew (Filming) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Crew</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Crew — Filming</Label>
               <Button variant="ghost" size="sm" onClick={() => setCrew((p) => [...p, emptyCrewEntry()])} className="h-7 text-xs gap-1 text-primary hover:text-primary">
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
+            <div className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+              <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
+            </div>
             {crew.map((entry, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_80px_80px_32px] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 items-center">
                 <Select value={entry.crewMemberId} onValueChange={(v) => updateCrewEntry(idx, "crewMemberId", v)}>
                   <SelectTrigger className="bg-secondary border-border h-8 text-xs">
                     <SelectValue placeholder="Person" />
@@ -224,16 +240,21 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                   </SelectContent>
                 </Select>
                 <Input placeholder="Role" value={entry.role} onChange={(e) => updateCrewEntry(idx, "role", e.target.value)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="Hrs worked" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="Hrs billed" value={entry.hoursDeducted || ""} onChange={(e) => updateCrewEntry(idx, "hoursDeducted", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updateCrewEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             ))}
-            <div className="grid grid-cols-[1fr_1fr_80px_80px_32px] gap-2 text-[10px] text-muted-foreground px-0.5">
-              <span>Person</span><span>Role</span><span>Hrs worked</span><span>Hrs billed</span><span />
-            </div>
+            {/* Running total for crew */}
+            {crew.some(e => e.crewMemberId) && (
+              <div className="text-xs text-right text-muted-foreground pr-8">
+                Crew total: <span className="text-purple-300 font-medium">
+                  ${crew.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Post Production */}
@@ -244,8 +265,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
+            <div className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+              <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
+            </div>
             {postProduction.map((entry, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_80px_80px_32px] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 items-center">
                 <Select value={entry.crewMemberId} onValueChange={(v) => updatePostEntry(idx, "crewMemberId", v)}>
                   <SelectTrigger className="bg-secondary border-border h-8 text-xs">
                     <SelectValue placeholder="Person" />
@@ -257,13 +281,20 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                   </SelectContent>
                 </Select>
                 <Input placeholder="Role" value={entry.role} onChange={(e) => updatePostEntry(idx, "role", e.target.value)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="Hrs worked" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="Hrs billed" value={entry.hoursDeducted || ""} onChange={(e) => updatePostEntry(idx, "hoursDeducted", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updatePostEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             ))}
+            {postProduction.some(e => e.crewMemberId) && (
+              <div className="text-xs text-right text-muted-foreground pr-8">
+                Post total: <span className="text-purple-300 font-medium">
+                  ${postProduction.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Edit Types */}

@@ -24,7 +24,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Calendar", href: "/", icon: CalendarDays },
-  { label: "Retainer", href: "/invoice", icon: FileText },
+  { label: "Billing", href: "/billing", icon: FileText },
   { label: "Reports", href: "/reports", icon: BarChart2 },
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Locations", href: "/locations", icon: MapPin },

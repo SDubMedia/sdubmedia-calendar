@@ -62,8 +62,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
   const getCrewName = (id: string) => data.crewMembers.find((c) => c.id === id)?.name ?? "Unknown";
 
-  const totalCrewHrs = project.crew.reduce((s, c) => s + (c.hoursDeducted || 0), 0);
-  const totalPostHrs = project.postProduction.reduce((s, c) => s + (c.hoursDeducted || 0), 0);
+  const totalCrewHrs = project.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
+  const totalPostHrs = project.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
   const totalHrs = totalCrewHrs + totalPostHrs;
 
   const advanceStatus = () => {
@@ -181,8 +181,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         <div className="text-xs text-muted-foreground">{entry.role}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursDeducted ?? 0).toFixed(2)} hrs</div>
-                        <div className="text-xs text-muted-foreground">billed</div>
+                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
+                        <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
                       </div>
                     </div>
                   ))}
@@ -204,8 +204,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         <div className="text-xs text-muted-foreground">{entry.role}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursDeducted ?? 0).toFixed(2)} hrs</div>
-                        <div className="text-xs text-muted-foreground">billed</div>
+                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
+                        <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
                       </div>
                     </div>
                   ))}

@@ -7,7 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
 import CalendarPage from "./pages/CalendarPage";
-import InvoicePage from "./pages/InvoicePage";
+import BillingPage from "./pages/BillingPage";
 import ClientsPage from "./pages/ClientsPage";
 import LocationsPage from "./pages/LocationsPage";
 import ManagePage from "./pages/ManagePage";
@@ -43,7 +43,7 @@ function Router() {
     <AppLayout>
       <Switch>
         <Route path="/" component={CalendarPage} />
-        <Route path="/invoice" component={InvoicePage} />
+        <Route path="/billing" component={BillingPage} />
         <Route path="/clients" component={ClientsPage} />
         <Route path="/locations" component={LocationsPage} />
         <Route path="/manage" component={ManagePage} />

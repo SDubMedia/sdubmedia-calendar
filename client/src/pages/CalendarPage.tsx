@@ -1,5 +1,5 @@
 // ============================================================
-// CalendarPage — Monthly production calendar with retainer overlay
+// CalendarPage — Monthly production calendar
 // Design: Dark Cinematic Studio | Amber accent on charcoal
 // ============================================================
 
@@ -8,7 +8,6 @@ import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/contexts/AppContext";
-import { calcDailyBalances } from "@/lib/data";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import ProjectDialog from "@/components/ProjectDialog";
@@ -38,14 +37,18 @@ export default function CalendarPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  // Primary client for retainer overlay (first client)
-  const primaryClient = data.clients[0] ?? null;
-
-  // Daily retainer balances
-  const dailyBalances = useMemo(() => {
-    if (!primaryClient) return {};
-    return calcDailyBalances(primaryClient, data.projects, data.retainerPayments, year, month);
-  }, [primaryClient, data.projects, data.retainerPayments, year, month]);
+  // Total hours per day for calendar overlay
+  const dailyHours = useMemo(() => {
+    const map: Record<string, number> = {};
+    data.projects.forEach(p => {
+      const d = new Date(p.date + "T00:00:00");
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        const hrs = [...p.crew, ...p.postProduction].reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+        map[p.date] = (map[p.date] ?? 0) + hrs;
+      }
+    });
+    return map;
+  }, [data.projects, year, month]);
 
   // Calendar grid
   const firstDay = new Date(year, month, 1).getDay();
@@ -88,8 +91,8 @@ export default function CalendarPage() {
 
   const totalHoursThisMonth = useMemo(() => {
     return monthProjects.reduce((sum, p) => {
-      const crew = p.crew.reduce((s, c) => s + (c.hoursDeducted || 0), 0);
-      const post = p.postProduction.reduce((s, c) => s + (c.hoursDeducted || 0), 0);
+      const crew = p.crew.reduce((s, c) => s + (Number(c.hoursWorked) || 0), 0);
+      const post = p.postProduction.reduce((s, c) => s + (Number(c.hoursWorked) || 0), 0);
       return sum + crew + post;
     }, 0);
   }, [monthProjects]);
@@ -161,10 +164,10 @@ export default function CalendarPage() {
               const isCurrentMonth = day >= 1 && day <= daysInMonth;
               const isToday = isCurrentMonth && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
               const dayProjects = isCurrentMonth ? getProjectsForDay(day) : [];
-              const balance = isCurrentMonth ? dailyBalances[day] : null;
               const dateStr = isCurrentMonth
                 ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                 : null;
+              const dayHours = dateStr ? (dailyHours[dateStr] ?? null) : null;
 
               return (
                 <div
@@ -182,7 +185,7 @@ export default function CalendarPage() {
                     }
                   }}
                 >
-                  {/* Day number + retainer balance */}
+                  {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
                       "text-xs font-medium w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full",
@@ -190,12 +193,9 @@ export default function CalendarPage() {
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
-                    {balance !== null && isCurrentMonth && (
-                      <span className={cn(
-                        "text-[9px] sm:text-[10px] font-medium tabular-nums px-0.5 sm:px-1 py-0.5 rounded hidden xs:inline-block sm:inline-block",
-                        balance < 0 ? "text-red-400 bg-red-500/10" : "text-green-400 bg-green-500/10"
-                      )}>
-                        {balance >= 0 ? "+" : ""}{Number(balance ?? 0).toFixed(1)}h
+                    {dayHours !== null && dayHours > 0 && (
+                      <span className="text-[9px] sm:text-[10px] font-medium tabular-nums px-0.5 sm:px-1 py-0.5 rounded hidden xs:inline-block sm:inline-block text-amber-400 bg-amber-500/10">
+                        {Number(dayHours).toFixed(1)}h
                       </span>
                     )}
                   </div>
@@ -280,8 +280,8 @@ export default function CalendarPage() {
                 const location = getLocation(project.locationId);
                 const pType = getProjectType(project.projectTypeId);
                 const totalHrs = [
-                  ...project.crew.map((c) => Number(c.hoursDeducted ?? 0)),
-                  ...project.postProduction.map((c) => Number(c.hoursDeducted ?? 0)),
+                  ...project.crew.map((c) => Number(c.hoursWorked ?? 0)),
+                  ...project.postProduction.map((c) => Number(c.hoursWorked ?? 0)),
                 ].reduce((s, h) => s + h, 0);
 
                 return (

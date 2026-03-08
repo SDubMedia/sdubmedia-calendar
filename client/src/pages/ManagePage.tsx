@@ -16,14 +16,14 @@ import type { CrewMember, ProjectType, CrewRole } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const ALL_ROLES: CrewRole[] = ["Videographer", "Photographer", "Editor", "Video_editor", "Photo_editor", "Crew"];
+const ALL_ROLES: CrewRole[] = ["Videographer", "Photographer", "Editor", "Video Editor", "Photo Editor", "Crew"];
 
 const ROLE_LABELS: Record<CrewRole, string> = {
   Videographer: "Videographer",
   Photographer: "Photographer",
   Editor: "Editor",
-  Video_editor: "Video Editor",
-  Photo_editor: "Photo Editor",
+  "Video Editor": "Video Editor",
+  "Photo Editor": "Photo Editor",
   Crew: "Crew",
 };
 
@@ -62,19 +62,20 @@ function CrewTab() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [roles, setRoles] = useState<CrewRole[]>([]);
+  const [defaultPayRate, setDefaultPayRate] = useState<number>(0);
 
-  const openAdd = () => { setEditing(null); setName(""); setPhone(""); setEmail(""); setRoles([]); setDialogOpen(true); };
-  const openEdit = (m: CrewMember) => { setEditing(m); setName(m.name); setPhone(m.phone); setEmail(m.email); setRoles(m.roles); setDialogOpen(true); };
+  const openAdd = () => { setEditing(null); setName(""); setPhone(""); setEmail(""); setRoles([]); setDefaultPayRate(0); setDialogOpen(true); };
+  const openEdit = (m: CrewMember) => { setEditing(m); setName(m.name); setPhone(m.phone); setEmail(m.email); setRoles(m.roles); setDefaultPayRate(m.defaultPayRatePerHour ?? 0); setDialogOpen(true); };
 
   const toggleRole = (r: CrewRole) => setRoles((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]);
 
   const handleSave = () => {
     if (!name) { toast.error("Name is required"); return; }
     if (editing) {
-      updateCrewMember(editing.id, { name, phone, email, roles });
+      updateCrewMember(editing.id, { name, phone, email, roles, defaultPayRatePerHour: defaultPayRate });
       toast.success("Crew member updated");
     } else {
-      addCrewMember({ name, phone, email, roles });
+      addCrewMember({ name, phone, email, roles, defaultPayRatePerHour: defaultPayRate });
       toast.success("Crew member added");
     }
     setDialogOpen(false);
@@ -139,6 +140,10 @@ function CrewTab() {
                 <Label className="text-xs text-muted-foreground">Email</Label>
                 <Input value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary border-border" placeholder="email@example.com" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Default Pay Rate ($/hr)</Label>
+              <Input type="number" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Roles</Label>

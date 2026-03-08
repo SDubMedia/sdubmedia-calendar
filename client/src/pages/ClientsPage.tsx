@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { Plus, Building2, Phone, Mail, Edit3, Trash2, Calendar } from "lucide-react";
+import { Plus, Building2, Phone, Mail, Edit3, Trash2, Calendar, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -19,8 +19,7 @@ interface ClientFormData {
   contactName: string;
   phone: string;
   email: string;
-  retainerStartDate: string;
-  monthlyHours: number;
+  billingRatePerHour: number;
 }
 
 const emptyForm = (): ClientFormData => ({
@@ -28,8 +27,7 @@ const emptyForm = (): ClientFormData => ({
   contactName: "",
   phone: "",
   email: "",
-  retainerStartDate: new Date().toISOString().split("T")[0],
-  monthlyHours: 25,
+  billingRatePerHour: 200,
 });
 
 export default function ClientsPage() {
@@ -52,8 +50,7 @@ export default function ClientsPage() {
       contactName: client.contactName,
       phone: client.phone,
       email: client.email,
-      retainerStartDate: client.retainerStartDate,
-      monthlyHours: client.monthlyHours,
+      billingRatePerHour: client.billingRatePerHour,
     });
     setDialogOpen(true);
   };
@@ -125,7 +122,10 @@ export default function ClientsPage() {
                     <Calendar className="w-3 h-3" />
                     {getProjectCount(client.id)} projects
                   </div>
-                  <div className="text-xs text-primary">{client.monthlyHours} hrs/month retainer</div>
+                  <div className="text-xs text-primary flex items-center gap-1 justify-end">
+                    <DollarSign className="w-3 h-3" />
+                    ${Number(client.billingRatePerHour).toFixed(0)}/hr billing rate
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(client)}>
@@ -168,15 +168,15 @@ export default function ClientsPage() {
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-secondary border-border" placeholder="email@example.com" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Retainer Start Date</Label>
-                <Input type="date" value={form.retainerStartDate} onChange={(e) => setForm({ ...form, retainerStartDate: e.target.value })} className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Monthly Hours</Label>
-                <Input type="number" value={form.monthlyHours} onChange={(e) => setForm({ ...form, monthlyHours: parseFloat(e.target.value) || 0 })} className="bg-secondary border-border" />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Billing Rate ($/hr)</Label>
+              <Input
+                type="number"
+                value={form.billingRatePerHour}
+                onChange={(e) => setForm({ ...form, billingRatePerHour: parseFloat(e.target.value) || 0 })}
+                className="bg-secondary border-border"
+                placeholder="200"
+              />
             </div>
           </div>
           <DialogFooter>

@@ -1,6 +1,7 @@
 // ============================================================
 // SDub Media FilmProject Pro — Core Data Types
 // Design: Dark Cinematic Studio | Amber accent on charcoal
+// Billing Model: Hourly — client billed at flat rate, crew paid individually
 // ============================================================
 
 export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed";
@@ -9,8 +10,8 @@ export type CrewRole =
   | "Videographer"
   | "Photographer"
   | "Editor"
-  | "Video_editor"
-  | "Photo_editor"
+  | "Video Editor"
+  | "Photo Editor"
   | "Crew";
 
 export type EditType =
@@ -27,9 +28,8 @@ export interface Client {
   contactName: string;
   phone: string;
   email: string;
-  // Retainer settings
-  retainerStartDate: string; // ISO date
-  monthlyHours: number; // default hours per month
+  // Billing settings
+  billingRatePerHour: number; // $ per hour billed to this client
   createdAt: string;
 }
 
@@ -39,6 +39,7 @@ export interface CrewMember {
   roles: CrewRole[];
   phone: string;
   email: string;
+  defaultPayRatePerHour: number; // default $ per hour pay rate for this crew member
 }
 
 export interface Location {
@@ -55,18 +56,20 @@ export interface ProjectType {
   name: string;
 }
 
+// A crew member assigned to a project (filming/shoot)
 export interface ProjectCrewEntry {
   crewMemberId: string;
   role: string;
   hoursWorked: number;
-  hoursDeducted: number; // hours billed against retainer
+  payRatePerHour: number; // $ per hour — set per-entry so it can be overridden
 }
 
+// A post-production person assigned to a project (editing)
 export interface ProjectPostEntry {
   crewMemberId: string;
   role: string;
   hoursWorked: number;
-  hoursDeducted: number;
+  payRatePerHour: number; // $ per hour
 }
 
 export interface Project {
@@ -85,24 +88,21 @@ export interface Project {
   createdAt: string;
 }
 
-export interface RetainerPayment {
-  id: string;
-  clientId: string;
-  date: string; // ISO date
-  hours: number;
-  notes: string;
-}
-
-// Computed retainer summary for a given month
-export interface MonthlyRetainerSummary {
+// Monthly billing summary for a client
+export interface MonthlyBillingSummary {
   year: number;
   month: number; // 0-indexed
-  startingBalance: number;
-  paidThisMonth: number;
-  usedThisMonth: number;
-  endingBalance: number;
-  refillNeeded: number;
-  status: "ok" | "overused" | "low";
+  clientId: string;
+  totalHoursBilled: number;       // sum of all crew hours across projects
+  clientInvoiceAmount: number;    // totalHoursBilled × client billing rate
+  crewPayBreakdown: {
+    crewMemberId: string;
+    name: string;
+    totalHours: number;
+    totalPay: number;
+  }[];
+  totalCrewCost: number;          // sum of all crew pay
+  grossMargin: number;            // clientInvoiceAmount - totalCrewCost
 }
 
 export interface AppData {
@@ -111,5 +111,4 @@ export interface AppData {
   locations: Location[];
   projectTypes: ProjectType[];
   projects: Project[];
-  retainerPayments: RetainerPayment[];
 }
