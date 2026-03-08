@@ -103,7 +103,7 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Production Calendar
@@ -121,7 +121,7 @@ export default function CalendarPage() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Calendar */}
         <div className="bg-card rounded-lg border border-border overflow-hidden">
           {/* Month nav */}
@@ -170,7 +170,7 @@ export default function CalendarPage() {
                 <div
                   key={i}
                   className={cn(
-                    "min-h-[100px] p-1.5 border-b border-r border-border relative",
+                    "min-h-[60px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative",
                     !isCurrentMonth && "opacity-30",
                     isToday && "bg-primary/5",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
@@ -185,14 +185,14 @@ export default function CalendarPage() {
                   {/* Day number + retainer balance */}
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
-                      "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full",
+                      "text-xs font-medium w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full",
                       isToday ? "bg-primary text-primary-foreground" : "text-foreground"
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
                     {balance !== null && isCurrentMonth && (
                       <span className={cn(
-                        "text-[10px] font-medium tabular-nums px-1 py-0.5 rounded",
+                        "text-[9px] sm:text-[10px] font-medium tabular-nums px-0.5 sm:px-1 py-0.5 rounded hidden xs:inline-block sm:inline-block",
                         balance < 0 ? "text-red-400 bg-red-500/10" : "text-green-400 bg-green-500/10"
                       )}>
                         {balance >= 0 ? "+" : ""}{Number(balance ?? 0).toFixed(1)}h
@@ -200,8 +200,23 @@ export default function CalendarPage() {
                     )}
                   </div>
 
-                  {/* Project chips */}
-                  <div className="space-y-0.5">
+                  {/* Mobile dot indicator for days with projects */}
+                  {dayProjects.length > 0 && (
+                    <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
+                      {dayProjects.slice(0, 3).map((p) => (
+                        <div key={p.id} className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          p.status === "upcoming" && "bg-blue-400",
+                          p.status === "filming_done" && "bg-purple-400",
+                          p.status === "in_editing" && "bg-amber-400",
+                          p.status === "completed" && "bg-green-400",
+                        )} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Project chips — hidden on very small screens */}
+                  <div className="space-y-0.5 hidden sm:block">
                     {dayProjects.slice(0, 3).map((p) => (
                       <div
                         key={p.id}
