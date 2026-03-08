@@ -78,17 +78,21 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
     setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
   };
 
-  // When a crew member is selected, auto-populate their default pay rate
+  // When a crew member is selected, reset role and rate; when role is selected, auto-fill rate from staff profile
   const updateCrewEntry = (idx: number, field: keyof ProjectCrewEntry, value: string | number) => {
     setCrew((prev) => prev.map((e, i) => {
       if (i !== idx) return e;
       const updated = { ...e, [field]: value };
-      // Auto-fill pay rate when crew member is selected
       if (field === "crewMemberId") {
-        const member = data.crewMembers.find(c => c.id === value);
-        if (member && !e.payRatePerHour) {
-          updated.payRatePerHour = member.defaultPayRatePerHour;
-        }
+        // Reset role and rate when person changes
+        updated.role = "";
+        updated.payRatePerHour = 0;
+      }
+      if (field === "role") {
+        // Auto-fill pay rate from staff profile for the selected role
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const rr = member?.roleRates?.find(r => r.role === value);
+        if (rr) updated.payRatePerHour = rr.payRatePerHour;
       }
       return updated;
     }));
@@ -99,10 +103,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
       if (i !== idx) return e;
       const updated = { ...e, [field]: value };
       if (field === "crewMemberId") {
-        const member = data.crewMembers.find(c => c.id === value);
-        if (member && !e.payRatePerHour) {
-          updated.payRatePerHour = member.defaultPayRatePerHour;
-        }
+        updated.role = "";
+        updated.payRatePerHour = 0;
+      }
+      if (field === "role") {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const rr = member?.roleRates?.find(r => r.role === value);
+        if (rr) updated.payRatePerHour = rr.payRatePerHour;
       }
       return updated;
     }));
@@ -239,7 +246,20 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                     ))}
                   </SelectContent>
                 </Select>
-                <Input placeholder="Role" value={entry.role} onChange={(e) => updateCrewEntry(idx, "role", e.target.value)} className="bg-secondary border-border h-8 text-xs" />
+                <Select
+                  value={entry.role}
+                  onValueChange={(v) => updateCrewEntry(idx, "role", v)}
+                  disabled={!entry.crewMemberId}
+                >
+                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectValue placeholder="Role" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
+                      <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updateCrewEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
@@ -280,7 +300,20 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                     ))}
                   </SelectContent>
                 </Select>
-                <Input placeholder="Role" value={entry.role} onChange={(e) => updatePostEntry(idx, "role", e.target.value)} className="bg-secondary border-border h-8 text-xs" />
+                <Select
+                  value={entry.role}
+                  onValueChange={(v) => updatePostEntry(idx, "role", v)}
+                  disabled={!entry.crewMemberId}
+                >
+                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectValue placeholder="Role" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
+                      <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updatePostEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
                 <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
