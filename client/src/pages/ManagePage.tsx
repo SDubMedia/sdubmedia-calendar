@@ -16,13 +16,14 @@ import type { CrewMember, ProjectType, CrewRole } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const ALL_ROLES: CrewRole[] = ["Videographer", "Main Videographer", "Secondary Videographer", "Photographer", "Editor", "Video Editor", "Photo Editor", "Audio Engineer", "Director", "Producer", "Crew"];
+const ALL_ROLES: CrewRole[] = ["Main Videographer", "Secondary Videographer", "Videographer", "Main Photographer", "Second Photographer", "Video Editor", "Photo Editor", "Editor", "Audio Engineer", "Director", "Producer", "Crew"];
 
 const ROLE_LABELS: Record<CrewRole, string> = {
-  Videographer: "Videographer",
   "Main Videographer": "Main Videographer",
   "Secondary Videographer": "Secondary Videographer",
-  Photographer: "Photographer",
+  Videographer: "Videographer",
+  "Main Photographer": "Main Photographer",
+  "Second Photographer": "Second Photographer",
   Editor: "Editor",
   "Video Editor": "Video Editor",
   "Photo Editor": "Photo Editor",
