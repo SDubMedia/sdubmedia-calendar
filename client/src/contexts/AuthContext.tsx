@@ -97,7 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createUser = useCallback(async (email: string, password: string, name: string, role: UserRole, clientIds: string[]) => {
-    // Sign up the user via Supabase Auth
+    // Save current session so we can restore it after signup
+    const { data: currentSession } = await supabase.auth.getSession();
+    const savedRefreshToken = currentSession.session?.refresh_token;
+
+    // Sign up the new user via Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -106,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authError) throw new Error(authError.message);
     if (!authData.user) throw new Error("Failed to create user");
 
-    // Create profile
+    // Create profile for the new user
     const { error: profileError } = await supabase.from("user_profiles").insert({
       id: authData.user.id,
       email,
@@ -115,6 +119,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       client_ids: clientIds,
     });
     if (profileError) throw new Error(profileError.message);
+
+    // Restore the owner's session so we don't get logged out
+    if (savedRefreshToken) {
+      await supabase.auth.refreshSession({ refresh_token: savedRefreshToken });
+    }
 
     await refreshProfiles();
   }, [refreshProfiles]);
