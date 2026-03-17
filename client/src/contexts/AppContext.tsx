@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 
@@ -33,6 +33,9 @@ interface AppContextValue {
   addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<Project>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
+  // Marketing Expenses
+  addMarketingExpense: (e: Omit<MarketingExpense, "id" | "createdAt">) => Promise<MarketingExpense>;
+  deleteMarketingExpense: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -96,8 +99,20 @@ function rowToProject(r: any): Project {
   };
 }
 
+function rowToExpense(r: any): MarketingExpense {
+  return {
+    id: r.id,
+    date: r.date,
+    category: r.category,
+    description: r.description,
+    notes: r.notes || "",
+    amount: Number(r.amount ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [],
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [],
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -115,15 +130,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: locs, error: e3 },
         { data: types, error: e4 },
         { data: projects, error: e5 },
+        { data: expenses, error: e6 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
         supabase.from("locations").select("*").order("name"),
         supabase.from("project_types").select("*").order("name"),
         supabase.from("projects").select("*").order("date"),
+        supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6;
       if (firstError) throw new Error(firstError.message);
 
       setData({
@@ -132,6 +149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         locations: (locs || []).map(rowToLocation),
         projectTypes: (types || []).map(rowToProjectType),
         projects: (projects || []).map(rowToProject),
+        marketingExpenses: (expenses || []).map(rowToExpense),
       });
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -297,6 +315,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setData(d => ({ ...d, projects: d.projects.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Marketing Expenses ----
+  const addMarketingExpense = useCallback(async (e: Omit<MarketingExpense, "id" | "createdAt">): Promise<MarketingExpense> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("marketing_expenses").insert({
+      id, date: e.date, category: e.category, description: e.description,
+      notes: e.notes, amount: e.amount,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const expense = rowToExpense(row);
+    setData(d => ({ ...d, marketingExpenses: [expense, ...d.marketingExpenses].sort((a, b) => b.date.localeCompare(a.date)) }));
+    return expense;
+  }, []);
+
+  const deleteMarketingExpense = useCallback(async (id: string) => {
+    const { error } = await supabase.from("marketing_expenses").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, marketingExpenses: d.marketingExpenses.filter(x => x.id !== id) }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       data, loading, error, refresh: fetchAll,
@@ -305,6 +342,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addLocation, updateLocation, deleteLocation,
       addProjectType, updateProjectType, deleteProjectType,
       addProject, updateProject, deleteProject,
+      addMarketingExpense, deleteMarketingExpense,
     }}>
       {children}
     </AppContext.Provider>

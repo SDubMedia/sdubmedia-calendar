@@ -14,6 +14,7 @@ import {
   Film,
   ChevronRight,
   BarChart2,
+  PiggyBank,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { label: "Reports", href: "/reports", icon: BarChart2 },
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Staff", href: "/staff", icon: Users2 },
+  { label: "Budget", href: "/marketing-budget", icon: PiggyBank },
   { label: "Locations", href: "/locations", icon: MapPin },
   { label: "Manage", href: "/manage", icon: Settings },
 ];
@@ -109,7 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* ---- Mobile Bottom Tab Bar ---- */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar border-t border-border z-50 safe-area-bottom">
-          <div className="grid grid-cols-6 h-14">
+          <div className="grid grid-cols-8 h-14">
             {navItems.map((item) => {
               const active = isActive(item.href);
               const Icon = item.icon;

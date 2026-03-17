@@ -100,6 +100,19 @@ export interface Project {
   createdAt: string;
 }
 
+// Marketing budget expense
+export type ExpenseCategory = "Equipment" | "Software" | "Advertising" | "Travel" | "Other";
+
+export interface MarketingExpense {
+  id: string;
+  date: string; // ISO date YYYY-MM-DD
+  category: ExpenseCategory;
+  description: string;
+  notes: string;
+  amount: number;
+  createdAt: string;
+}
+
 // Monthly billing summary for a client
 export interface MonthlyBillingSummary {
   year: number;
@@ -123,4 +136,5 @@ export interface AppData {
   locations: Location[];
   projectTypes: ProjectType[];
   projects: Project[];
+  marketingExpenses: MarketingExpense[];
 }

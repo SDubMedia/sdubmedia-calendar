@@ -134,6 +134,7 @@ export const seedData: AppData = {
       createdAt: new Date().toISOString(),
     },
   ],
+  marketingExpenses: [],
 };
 
 // ---- Billing math helpers ----

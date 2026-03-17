@@ -69,6 +69,17 @@ create table if not exists retainer_payments (
   notes text not null default ''
 );
 
+-- ---- Marketing Expenses ----
+create table if not exists marketing_expenses (
+  id text primary key,
+  date text not null,
+  category text not null default 'Other',
+  description text not null default '',
+  notes text not null default '',
+  amount numeric not null default 0,
+  created_at timestamptz not null default now()
+);
+
 -- ---- Disable RLS for now (single-user app, public access) ----
 alter table clients disable row level security;
 alter table crew_members disable row level security;
@@ -76,6 +87,7 @@ alter table locations disable row level security;
 alter table project_types disable row level security;
 alter table projects disable row level security;
 alter table retainer_payments disable row level security;
+alter table marketing_expenses disable row level security;
 
 -- ============================================================
 -- Seed Data

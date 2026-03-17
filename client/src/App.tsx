@@ -13,6 +13,7 @@ import LocationsPage from "./pages/LocationsPage";
 import ManagePage from "./pages/ManagePage";
 import ReportsPage from "./pages/ReportsPage";
 import StaffPage from "./pages/StaffPage";
+import MarketingBudgetPage from "./pages/MarketingBudgetPage";
 import { Film } from "lucide-react";
 
 function LoadingScreen() {
@@ -50,6 +51,7 @@ function Router() {
         <Route path="/manage" component={ManagePage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/staff" component={StaffPage} />
+        <Route path="/marketing-budget" component={MarketingBudgetPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
