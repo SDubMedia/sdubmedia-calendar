@@ -13,6 +13,7 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   clientIds: string[];  // which clients this user can access (empty = all for owner)
+  mustChangePassword: boolean; // force password change on first login
   createdAt: string;
 }
 

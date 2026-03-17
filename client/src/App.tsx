@@ -17,6 +17,7 @@ import StaffPage from "./pages/StaffPage";
 import MarketingBudgetPage from "./pages/MarketingBudgetPage";
 import UsersPage from "./pages/UsersPage";
 import LoginPage from "./pages/LoginPage";
+import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
 
 function LoadingScreen() {
@@ -70,9 +71,10 @@ function Router() {
 }
 
 function AuthGate() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <LoginPage />;
+  if (profile?.mustChangePassword) return <ChangePasswordPage />;
   return (
     <AppProvider>
       <Router />

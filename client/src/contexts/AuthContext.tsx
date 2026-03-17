@@ -18,6 +18,7 @@ interface AuthContextValue {
   createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[]) => Promise<void>;
   updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
 }
@@ -31,6 +32,7 @@ function rowToProfile(r: any): UserProfile {
     name: r.name,
     role: r.role as UserRole,
     clientIds: r.client_ids || [],
+    mustChangePassword: r.must_change_password ?? true,
     createdAt: r.created_at,
   };
 }
@@ -117,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name,
       role,
       client_ids: clientIds,
+      must_change_password: true,
     });
     if (profileError) throw new Error(profileError.message);
 
@@ -145,10 +148,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshProfiles();
   }, [refreshProfiles]);
 
+  const changePassword = useCallback(async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+    // Clear the must_change_password flag
+    if (user) {
+      await supabase.from("user_profiles").update({ must_change_password: false }).eq("id", user.id);
+      setProfile(p => p ? { ...p, mustChangePassword: false } : p);
+    }
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
-      signIn, signOut,
+      signIn, signOut, changePassword,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
     }}>
