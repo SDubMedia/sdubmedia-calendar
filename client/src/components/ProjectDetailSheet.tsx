@@ -105,7 +105,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   </Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 mr-8">
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setEditOpen(true)}>
                   <Edit3 className="w-4 h-4" />
                 </Button>
