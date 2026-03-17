@@ -11,6 +11,10 @@ import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December"
+];
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
@@ -55,6 +59,30 @@ export default function MarketingBudgetPage() {
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
   const remaining = totalBudget - totalExpenses;
+
+  // Monthly breakdown: billing earned and expenses per month
+  const monthlyBreakdown = useMemo(() => {
+    return MONTHS.map((name, idx) => {
+      const monthNum = idx + 1;
+      const monthStr = `${selectedYear}-${String(monthNum).padStart(2, "0")}`;
+
+      const monthBilling = data.projects
+        .filter(p => p.date.startsWith(monthStr))
+        .reduce((sum, p) => {
+          const client = data.clients.find(c => c.id === p.clientId);
+          const totalHours = [...(p.crew || []), ...(p.postProduction || [])]
+            .reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+          return sum + totalHours * Number(client?.billingRatePerHour ?? 0);
+        }, 0);
+
+      const budgetAdded = monthBilling * 0.10;
+      const monthExpenses = yearExpenses
+        .filter(e => e.date.startsWith(monthStr))
+        .reduce((s, e) => s + e.amount, 0);
+
+      return { name, budgetAdded, monthExpenses, net: budgetAdded - monthExpenses };
+    });
+  }, [data.projects, data.clients, yearExpenses, selectedYear]);
 
   const handleSubmit = async () => {
     if (!formData.description.trim()) { toast.error("Description is required"); return; }
@@ -161,6 +189,47 @@ export default function MarketingBudgetPage() {
               {formatCurrency(remaining)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">Available</p>
+          </div>
+        </div>
+
+        {/* Monthly Breakdown */}
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Monthly Breakdown
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Month</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Budget Added</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Expenses</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyBreakdown.map(m => (
+                  <tr key={m.name} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-2 text-foreground">{m.name}</td>
+                    <td className="px-4 py-2 text-right text-blue-400 tabular-nums">{m.budgetAdded > 0 ? formatCurrency(m.budgetAdded) : "—"}</td>
+                    <td className="px-4 py-2 text-right text-red-400 tabular-nums">{m.monthExpenses > 0 ? formatCurrency(m.monthExpenses) : "—"}</td>
+                    <td className={cn("px-4 py-2 text-right font-medium tabular-nums", m.net >= 0 ? "text-green-400" : "text-red-400")}>
+                      {(m.budgetAdded > 0 || m.monthExpenses > 0) ? formatCurrency(m.net) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border">
+                  <td className="px-4 py-2 font-bold text-foreground">Total</td>
+                  <td className="px-4 py-2 text-right font-bold text-blue-400 tabular-nums">{formatCurrency(totalBudget)}</td>
+                  <td className="px-4 py-2 text-right font-bold text-red-400 tabular-nums">{formatCurrency(totalExpenses)}</td>
+                  <td className={cn("px-4 py-2 text-right font-bold tabular-nums", remaining >= 0 ? "text-green-400" : "text-red-400")}>{formatCurrency(remaining)}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
 
