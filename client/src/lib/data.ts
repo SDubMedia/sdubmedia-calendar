@@ -20,6 +20,7 @@ export const seedData: AppData = {
       billingModel: "hourly",
       billingRatePerHour: 200,
       perProjectRate: 0,
+      projectTypeRates: [],
       roleBillingMultipliers: [],
       createdAt: new Date().toISOString(),
     },
@@ -181,7 +182,9 @@ export function getProjectBillableHours(project: Project, client: Client): {
  */
 export function getProjectInvoiceAmount(project: Project, client: Client): number {
   if (client.billingModel === "per_project") {
-    return Number(client.perProjectRate ?? 0);
+    // Check for project-type-specific rate first, fall back to default per-project rate
+    const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
+    return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
   const { totalBillable } = getProjectBillableHours(project, client);
   return totalBillable * Number(client.billingRatePerHour ?? 0);

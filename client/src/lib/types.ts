@@ -58,7 +58,8 @@ export interface Client {
   // Billing settings
   billingModel: BillingModel; // "hourly" or "per_project"
   billingRatePerHour: number; // $ per hour (for hourly model)
-  perProjectRate: number; // $ per project (for per_project model)
+  perProjectRate: number; // default $ per project (for per_project model)
+  projectTypeRates: { projectTypeId: string; rate: number }[]; // per-type rates (for per_project model)
   roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
   createdAt: string;
 }

@@ -22,6 +22,7 @@ interface ClientFormData {
   billingModel: BillingModel;
   billingRatePerHour: number;
   perProjectRate: number;
+  projectTypeRates: { projectTypeId: string; rate: number }[];
   roleBillingMultipliers: RoleBillingMultiplier[];
 }
 
@@ -33,6 +34,7 @@ const emptyForm = (): ClientFormData => ({
   billingModel: "hourly",
   billingRatePerHour: 200,
   perProjectRate: 0,
+  projectTypeRates: [],
   roleBillingMultipliers: [],
 });
 
@@ -59,6 +61,7 @@ export default function ClientsPage() {
       billingModel: client.billingModel || "hourly",
       billingRatePerHour: client.billingRatePerHour,
       perProjectRate: client.perProjectRate || 0,
+      projectTypeRates: client.projectTypeRates || [],
       roleBillingMultipliers: client.roleBillingMultipliers || [],
     });
     setDialogOpen(true);
@@ -203,8 +206,9 @@ export default function ClientsPage() {
                 />
               </div>
             ) : (
+              <>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Rate Per Project ($)</Label>
+                <Label className="text-xs text-muted-foreground">Default Rate Per Project ($)</Label>
                 <Input
                   type="number"
                   value={form.perProjectRate}
@@ -213,6 +217,62 @@ export default function ClientsPage() {
                   placeholder="300"
                 />
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Per-Type Rates (overrides default)</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs gap-1 text-primary hover:text-primary"
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      projectTypeRates: [...f.projectTypeRates, { projectTypeId: "", rate: 0 }],
+                    }))}
+                  >
+                    <Plus className="w-3 h-3" /> Add
+                  </Button>
+                </div>
+                {form.projectTypeRates.map((ptr, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_80px_28px] gap-2 items-center">
+                    <select
+                      value={ptr.projectTypeId}
+                      onChange={e => {
+                        const updated = [...form.projectTypeRates];
+                        updated[idx] = { ...updated[idx], projectTypeId: e.target.value };
+                        setForm(f => ({ ...f, projectTypeRates: updated }));
+                      }}
+                      className="bg-secondary border border-border rounded-md px-2 py-1.5 text-xs text-foreground h-8"
+                    >
+                      <option value="">Select type</option>
+                      {data.projectTypes.map(pt => (
+                        <option key={pt.id} value={pt.id}>{pt.name}</option>
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={ptr.rate || ""}
+                      onChange={e => {
+                        const updated = [...form.projectTypeRates];
+                        updated[idx] = { ...updated[idx], rate: parseFloat(e.target.value) || 0 };
+                        setForm(f => ({ ...f, projectTypeRates: updated }));
+                      }}
+                      className="bg-secondary border-border h-8 text-xs"
+                      placeholder="$"
+                    />
+                    <button
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        projectTypeRates: f.projectTypeRates.filter((_, i) => i !== idx),
+                      }))}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              </>
             )}
             {/* Role Billing Multipliers */}
             <div className="space-y-2">
