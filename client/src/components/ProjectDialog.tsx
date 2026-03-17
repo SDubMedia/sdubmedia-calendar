@@ -4,7 +4,7 @@
 // Billing Model: Hourly — crew entries track hours worked + pay rate per hour
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
 
   const toggleEditType = (et: EditType) => {
     setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
+  };
+
+  // Get the selected client and filter project types based on client settings
+  const selectedClient = useMemo(() => data.clients.find(c => c.id === clientId), [data.clients, clientId]);
+
+  const availableProjectTypes = useMemo(() => {
+    if (selectedClient?.allowedProjectTypeIds?.length) {
+      return data.projectTypes.filter(pt => selectedClient.allowedProjectTypeIds.includes(pt.id));
+    }
+    return data.projectTypes;
+  }, [data.projectTypes, selectedClient]);
+
+  // When client changes, auto-select default project type
+  const handleClientChange = (newClientId: string) => {
+    setClientId(newClientId);
+    const client = data.clients.find(c => c.id === newClientId);
+    if (client?.defaultProjectTypeId) {
+      setProjectTypeId(client.defaultProjectTypeId);
+    } else {
+      setProjectTypeId("");
+    }
   };
 
   // When a crew member is selected, reset role and rate; when role is selected, auto-fill rate from staff profile
@@ -154,7 +175,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
+              <Select value={clientId} onValueChange={handleClientChange}>
                 <SelectTrigger className="bg-secondary border-border">
                   <SelectValue placeholder="Select client" />
                 </SelectTrigger>
@@ -172,7 +193,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
-                  {data.projectTypes.map((pt) => (
+                  {availableProjectTypes.map((pt) => (
                     <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
                   ))}
                 </SelectContent>

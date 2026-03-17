@@ -21,6 +21,8 @@ export const seedData: AppData = {
       billingRatePerHour: 200,
       perProjectRate: 0,
       projectTypeRates: [],
+      allowedProjectTypeIds: [],
+      defaultProjectTypeId: "",
       roleBillingMultipliers: [],
       createdAt: new Date().toISOString(),
     },

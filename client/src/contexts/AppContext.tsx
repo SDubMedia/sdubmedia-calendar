@@ -52,6 +52,8 @@ function rowToClient(r: any): Client {
     billingRatePerHour: Number(r.billing_rate_per_hour ?? 0),
     perProjectRate: Number(r.per_project_rate ?? 0),
     projectTypeRates: r.project_type_rates || [],
+    allowedProjectTypeIds: r.allowed_project_type_ids || [],
+    defaultProjectTypeId: r.default_project_type_id || "",
     roleBillingMultipliers: r.role_billing_multipliers || [],
     createdAt: r.created_at,
   };
@@ -172,6 +174,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: c.email, billing_model: c.billingModel ?? "hourly",
       billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       project_type_rates: c.projectTypeRates ?? [],
+      allowed_project_type_ids: c.allowedProjectTypeIds ?? [],
+      default_project_type_id: c.defaultProjectTypeId ?? "",
       role_billing_multipliers: c.roleBillingMultipliers ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
@@ -190,6 +194,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.billingRatePerHour !== undefined) patch.billing_rate_per_hour = c.billingRatePerHour;
     if (c.perProjectRate !== undefined) patch.per_project_rate = c.perProjectRate;
     if (c.projectTypeRates !== undefined) patch.project_type_rates = c.projectTypeRates;
+    if (c.allowedProjectTypeIds !== undefined) patch.allowed_project_type_ids = c.allowedProjectTypeIds;
+    if (c.defaultProjectTypeId !== undefined) patch.default_project_type_id = c.defaultProjectTypeId;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);

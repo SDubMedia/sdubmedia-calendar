@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useApp } from "@/contexts/AppContext";
 import type { Client, RoleBillingMultiplier, BillingModel } from "@/lib/types";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface ClientFormData {
   company: string;
@@ -23,6 +24,8 @@ interface ClientFormData {
   billingRatePerHour: number;
   perProjectRate: number;
   projectTypeRates: { projectTypeId: string; rate: number }[];
+  allowedProjectTypeIds: string[];
+  defaultProjectTypeId: string;
   roleBillingMultipliers: RoleBillingMultiplier[];
 }
 
@@ -35,6 +38,8 @@ const emptyForm = (): ClientFormData => ({
   billingRatePerHour: 200,
   perProjectRate: 0,
   projectTypeRates: [],
+  allowedProjectTypeIds: [],
+  defaultProjectTypeId: "",
   roleBillingMultipliers: [],
 });
 
@@ -62,6 +67,8 @@ export default function ClientsPage() {
       billingRatePerHour: client.billingRatePerHour,
       perProjectRate: client.perProjectRate || 0,
       projectTypeRates: client.projectTypeRates || [],
+      allowedProjectTypeIds: client.allowedProjectTypeIds || [],
+      defaultProjectTypeId: client.defaultProjectTypeId || "",
       roleBillingMultipliers: client.roleBillingMultipliers || [],
     });
     setDialogOpen(true);
@@ -274,6 +281,54 @@ export default function ClientsPage() {
               </div>
               </>
             )}
+            {/* Allowed Project Types */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Allowed Project Types</Label>
+              <p className="text-[10px] text-muted-foreground">
+                Select which project types are available for this client. Leave empty to allow all.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {data.projectTypes.map(pt => (
+                  <button
+                    key={pt.id}
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      allowedProjectTypeIds: f.allowedProjectTypeIds.includes(pt.id)
+                        ? f.allowedProjectTypeIds.filter(id => id !== pt.id)
+                        : [...f.allowedProjectTypeIds, pt.id],
+                    }))}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-xs border transition-colors",
+                      form.allowedProjectTypeIds.includes(pt.id)
+                        ? "bg-primary/20 border-primary/50 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/30"
+                    )}
+                  >
+                    {pt.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Default Project Type */}
+            {form.allowedProjectTypeIds.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Default Project Type</Label>
+                <select
+                  value={form.defaultProjectTypeId}
+                  onChange={e => setForm(f => ({ ...f, defaultProjectTypeId: e.target.value }))}
+                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">None</option>
+                  {data.projectTypes
+                    .filter(pt => form.allowedProjectTypeIds.includes(pt.id))
+                    .map(pt => (
+                      <option key={pt.id} value={pt.id}>{pt.name}</option>
+                    ))}
+                </select>
+              </div>
+            )}
+
             {/* Role Billing Multipliers */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
