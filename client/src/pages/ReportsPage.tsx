@@ -13,8 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { FileDown, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
-import { toast } from "sonner";
+import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
+import ReportPreview from "@/components/ReportPreview";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -43,45 +43,10 @@ function getProjectCrewCost(project: Project) {
   );
 }
 
-// ---- Simple print-based PDF generation ----
-function printReport(title: string, html: string) {
-  const win = window.open("", "_blank");
-  if (!win) { toast.error("Please allow pop-ups to generate reports"); return; }
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${title}</title>
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; padding: 40px; font-size: 13px; }
-        h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: #111; }
-        h2 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; color: #333; border-bottom: 1px solid #e5e5e5; padding-bottom: 4px; }
-        .subtitle { color: #666; font-size: 12px; margin-bottom: 24px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        th { background: #f5f5f5; text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #555; border-bottom: 2px solid #e0e0e0; }
-        td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
-        tr:last-child td { border-bottom: none; }
-        .total-row td { font-weight: 700; background: #f9f9f9; border-top: 2px solid #e0e0e0; }
-        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-        .stat-box { border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px; }
-        .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-        .stat-value { font-size: 20px; font-weight: 700; color: #111; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        .badge-green { background: #d1fae5; color: #065f46; }
-        .badge-blue { background: #dbeafe; color: #1e40af; }
-        .badge-amber { background: #fef3c7; color: #92400e; }
-        .badge-gray { background: #f3f4f6; color: #374151; }
-        @media print { body { padding: 20px; } }
-      </style>
-    </head>
-    <body>
-      ${html}
-      <script>window.onload = () => { window.print(); }<\/script>
-    </body>
-    </html>
-  `);
-  win.document.close();
+// Preview state type
+interface ReportPreviewState {
+  title: string;
+  html: string;
 }
 
 interface ClientBillingStat {
@@ -98,6 +63,7 @@ export default function ReportsPage() {
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
+  const [preview, setPreview] = useState<ReportPreviewState | null>(null);
 
   // ---- Derived data ----
   const filteredProjects = useMemo(() => {
@@ -168,7 +134,7 @@ export default function ReportsPage() {
       </tr>
     `).join("");
 
-    printReport(`Earnings Report ${selectedYear}`, `
+    setPreview({ title: `Earnings Report ${selectedYear}`, html: `
       <h1>Earnings Report — ${selectedYear}</h1>
       <p class="subtitle">Generated ${new Date().toLocaleDateString()} · SDub Media</p>
       <div class="stat-grid">
@@ -187,7 +153,7 @@ export default function ReportsPage() {
         <thead><tr><th>Client</th><th>Projects</th><th>Hours</th><th>Invoice</th><th>Crew Cost</th><th>Margin</th></tr></thead>
         <tbody>${clientRows}</tbody>
       </table>
-    `);
+    ` });
   }
 
   function generateClientReport(clientId: string) {
@@ -221,7 +187,7 @@ export default function ReportsPage() {
       `;
     }).join("");
 
-    printReport(`Client Report — ${client.company} ${selectedYear}`, `
+    setPreview({ title: `Client Report — ${client.company} ${selectedYear}`, html: `
       <h1>${client.company}</h1>
       <p class="subtitle">${client.contactName} · ${client.phone} · ${client.email} · $${client.billingRatePerHour}/hr</p>
       <div class="stat-grid">
@@ -235,7 +201,7 @@ export default function ReportsPage() {
         <tbody>${projectRows || "<tr><td colspan='8'>No projects found</td></tr>"}</tbody>
         <tfoot><tr class="total-row"><td colspan="4">Total</td><td>${formatHours(totalHours)}</td><td>${formatCurrency(totalInvoice)}</td><td>${formatCurrency(totalCrewCost)}</td><td></td></tr></tfoot>
       </table>
-    `);
+    ` });
   }
 
   function generateMonthlyReport() {
@@ -274,7 +240,7 @@ export default function ReportsPage() {
     }, 0);
     const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
 
-    printReport(`Monthly Report — ${monthName} ${selectedYear}`, `
+    setPreview({ title: `Monthly Report — ${monthName} ${selectedYear}`, html: `
       <h1>Monthly Production Report</h1>
       <p class="subtitle">${monthName} ${selectedYear} · SDub Media</p>
       <div class="stat-grid">
@@ -288,7 +254,7 @@ export default function ReportsPage() {
         <tbody>${projectRows || "<tr><td colspan='10'>No projects this month</td></tr>"}</tbody>
         <tfoot><tr class="total-row"><td colspan="6">Total</td><td>${formatHours(totalHours)}</td><td>${formatCurrency(totalInvoice)}</td><td>${formatCurrency(totalCrewCost)}</td><td></td></tr></tfoot>
       </table>
-    `);
+    ` });
   }
 
   if (loading) {
@@ -306,13 +272,21 @@ export default function ReportsPage() {
   const ytdInvoice = clientBillingStats.reduce((s, r) => s + r.invoiceAmount, 0);
 
   return (
+    <>
+    {preview && (
+      <ReportPreview
+        title={preview.title}
+        html={preview.html}
+        onClose={() => setPreview(null)}
+      />
+    )}
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
           Reports
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">Generate and download production reports as PDFs</p>
+        <p className="text-muted-foreground text-sm mt-1">Preview and export production reports as PDFs</p>
       </div>
 
       {/* Filters */}
@@ -413,8 +387,8 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Annual Earnings Summary — {selectedYear}</CardTitle>
                 <Button size="sm" onClick={generateEarningsReport} className="gap-2">
-                  <FileDown className="w-4 h-4" />
-                  Download PDF
+                  <Eye className="w-4 h-4" />
+                  Preview Report
                 </Button>
               </div>
             </CardHeader>
@@ -462,8 +436,8 @@ export default function ReportsPage() {
                   {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear} — {monthlyProjects.length} projects
                 </CardTitle>
                 <Button size="sm" onClick={generateMonthlyReport} className="gap-2">
-                  <FileDown className="w-4 h-4" />
-                  Download PDF
+                  <Eye className="w-4 h-4" />
+                  Preview Report
                 </Button>
               </div>
             </CardHeader>
@@ -528,8 +502,8 @@ export default function ReportsPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">{client.contactName} · {client.email} · ${client.billingRatePerHour}/hr</p>
                     </div>
                     <Button size="sm" onClick={() => generateClientReport(client.id)} className="gap-2">
-                      <FileDown className="w-4 h-4" />
-                      Download PDF
+                      <Eye className="w-4 h-4" />
+                      Preview Report
                     </Button>
                   </div>
                 </CardHeader>
@@ -558,5 +532,6 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </>
   );
 }

@@ -7,8 +7,9 @@
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, Client, AppData } from "@/lib/types";
-import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ReportPreview from "@/components/ReportPreview";
 
 interface ClientSummary {
   client: Client;
@@ -116,11 +117,77 @@ export default function BillingPage() {
     margin: clientSummaries.reduce((s: number, c: ClientSummary) => s + c.grossMargin, 0),
   }), [clientSummaries]);
 
-  const printSummary = () => {
-    window.print();
+  const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
+
+  function formatCurrencyReport(n: number) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
+  }
+
+  const previewSummary = () => {
+    const title = `Billing Summary — ${MONTH_NAMES[month]} ${year}`;
+
+    const clientSections = clientSummaries.map(s => {
+      const crewRows = s.crewPayBreakdown.map(c => `
+        <tr><td>${c.name}</td><td>${Number(c.totalHours).toFixed(1)} hrs</td><td>${formatCurrencyReport(c.totalPay)}</td></tr>
+      `).join("");
+
+      const marginPct = s.clientInvoiceAmount > 0 ? ((s.grossMargin / s.clientInvoiceAmount) * 100).toFixed(0) : "0";
+
+      return `
+        <h2>${s.client.company} — ${formatCurrencyReport(s.client.billingRatePerHour)}/hr</h2>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">Hours Billed</div><div class="stat-value">${Number(s.totalBillableHours).toFixed(1)}</div></div>
+          <div class="stat-box"><div class="stat-label">Client Invoice</div><div class="stat-value">${formatCurrencyReport(s.clientInvoiceAmount)}</div></div>
+          <div class="stat-box"><div class="stat-label">Gross Margin</div><div class="stat-value">${formatCurrencyReport(s.grossMargin)} (${marginPct}%)</div></div>
+        </div>
+        ${crewRows ? `
+          <table>
+            <thead><tr><th>Crew Member</th><th>Hours</th><th>Pay</th></tr></thead>
+            <tbody>${crewRows}</tbody>
+            <tfoot><tr class="total-row"><td>Total Crew Cost</td><td></td><td>${formatCurrencyReport(s.totalCrewCost)}</td></tr></tfoot>
+          </table>
+        ` : ""}
+      `;
+    }).join("");
+
+    const projectRows = filteredProjects.map(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      const pType = data.projectTypes.find(pt => pt.id === p.projectTypeId);
+      const allEntries = [...p.crew, ...p.postProduction];
+      const totalHrs = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+      const crewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+      const invoice = totalHrs * Number(client?.billingRatePerHour ?? 0);
+      return `<tr><td>${p.date}</td><td>${pType?.name ?? "—"}</td><td>${client?.company ?? "—"}</td><td>${totalHrs.toFixed(1)}</td><td>${formatCurrencyReport(crewCost)}</td><td>${formatCurrencyReport(invoice)}</td></tr>`;
+    }).join("");
+
+    setPreview({ title, html: `
+      <h1>Billing Summary</h1>
+      <p class="subtitle">${MONTH_NAMES[month]} ${year} · SDub Media</p>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">Total Hours</div><div class="stat-value">${grandTotals.hours.toFixed(1)}</div></div>
+        <div class="stat-box"><div class="stat-label">Total Invoice</div><div class="stat-value">${formatCurrencyReport(grandTotals.invoice)}</div></div>
+        <div class="stat-box"><div class="stat-label">Gross Margin</div><div class="stat-value">${formatCurrencyReport(grandTotals.margin)}</div></div>
+      </div>
+      ${clientSections}
+      ${filteredProjects.length > 0 ? `
+        <h2>Project Breakdown</h2>
+        <table>
+          <thead><tr><th>Date</th><th>Project</th><th>Client</th><th>Hours</th><th>Crew Cost</th><th>Invoice</th></tr></thead>
+          <tbody>${projectRows}</tbody>
+        </table>
+      ` : ""}
+    ` });
   };
 
   return (
+    <>
+    {preview && (
+      <ReportPreview
+        title={preview.title}
+        html={preview.html}
+        onClose={() => setPreview(null)}
+      />
+    )}
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
@@ -133,11 +200,11 @@ export default function BillingPage() {
           </p>
         </div>
         <button
-          onClick={printSummary}
+          onClick={previewSummary}
           className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-sm font-medium"
         >
-          <FileText className="w-4 h-4" />
-          <span className="hidden sm:inline">Print / Export</span>
+          <Eye className="w-4 h-4" />
+          <span className="hidden sm:inline">Preview Report</span>
         </button>
       </div>
 
@@ -246,6 +313,7 @@ export default function BillingPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
 
