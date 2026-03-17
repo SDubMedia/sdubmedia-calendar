@@ -87,7 +87,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
   return (
     <>
       <Sheet open={true} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent className="w-full sm:w-[480px] sm:max-w-[480px] bg-card border-border text-foreground overflow-y-auto max-h-[100dvh]">
+        <SheetContent className="w-full sm:w-[720px] sm:max-w-[720px] bg-card border-border text-foreground overflow-y-auto overflow-x-hidden max-h-[100dvh]">
           <SheetHeader className="pb-4">
             <div className="flex items-start justify-between">
               <div>
