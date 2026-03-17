@@ -9,6 +9,7 @@ import { useApp } from "@/contexts/AppContext";
 import type { ExpenseCategory } from "@/lib/types";
 import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank } from "lucide-react";
 import { toast } from "sonner";
+import { getBillableHours } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 const MONTHS = [
@@ -43,9 +44,10 @@ export default function MarketingBudgetPage() {
       .filter(p => p.date.startsWith(String(selectedYear)))
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
-        const totalHours = [...(p.crew || []), ...(p.postProduction || [])]
-          .reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-        return sum + totalHours * Number(client?.billingRatePerHour ?? 0);
+        if (!client) return sum;
+        const billableHours = [...(p.crew || []), ...(p.postProduction || [])]
+          .reduce((s, e) => s + getBillableHours(e, client), 0);
+        return sum + billableHours * Number(client.billingRatePerHour ?? 0);
       }, 0);
   }, [data.projects, data.clients, selectedYear]);
 
@@ -70,9 +72,10 @@ export default function MarketingBudgetPage() {
         .filter(p => p.date.startsWith(monthStr))
         .reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
-          const totalHours = [...(p.crew || []), ...(p.postProduction || [])]
-            .reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-          return sum + totalHours * Number(client?.billingRatePerHour ?? 0);
+          if (!client) return sum;
+          const billableHrs = [...(p.crew || []), ...(p.postProduction || [])]
+            .reduce((s, e) => s + getBillableHours(e, client), 0);
+          return sum + billableHrs * Number(client.billingRatePerHour ?? 0);
         }, 0);
 
       const budgetAdded = monthBilling * 0.10;

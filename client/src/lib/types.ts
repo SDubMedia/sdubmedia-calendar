@@ -40,6 +40,13 @@ export type EditType =
   | "Highlight Reel"
   | "Raw Footage";
 
+// Per-role billing multiplier for a client
+// e.g. { role: "2nd Videographer", multiplier: 0.5 } means 1hr worked = 0.5hr billed
+export interface RoleBillingMultiplier {
+  role: string;
+  multiplier: number;
+}
+
 export interface Client {
   id: string;
   company: string;
@@ -48,6 +55,7 @@ export interface Client {
   email: string;
   // Billing settings
   billingRatePerHour: number; // $ per hour billed to this client
+  roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments
   createdAt: string;
 }
 

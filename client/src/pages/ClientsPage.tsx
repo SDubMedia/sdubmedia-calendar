@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useApp } from "@/contexts/AppContext";
-import type { Client } from "@/lib/types";
+import type { Client, RoleBillingMultiplier } from "@/lib/types";
 import { toast } from "sonner";
 
 interface ClientFormData {
@@ -20,6 +20,7 @@ interface ClientFormData {
   phone: string;
   email: string;
   billingRatePerHour: number;
+  roleBillingMultipliers: RoleBillingMultiplier[];
 }
 
 const emptyForm = (): ClientFormData => ({
@@ -28,6 +29,7 @@ const emptyForm = (): ClientFormData => ({
   phone: "",
   email: "",
   billingRatePerHour: 200,
+  roleBillingMultipliers: [],
 });
 
 export default function ClientsPage() {
@@ -51,6 +53,7 @@ export default function ClientsPage() {
       phone: client.phone,
       email: client.email,
       billingRatePerHour: client.billingRatePerHour,
+      roleBillingMultipliers: client.roleBillingMultipliers || [],
     });
     setDialogOpen(true);
   };
@@ -177,6 +180,62 @@ export default function ClientsPage() {
                 className="bg-secondary border-border"
                 placeholder="200"
               />
+            </div>
+            {/* Role Billing Multipliers */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">Role Billing Multipliers</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1 text-primary hover:text-primary"
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    roleBillingMultipliers: [...f.roleBillingMultipliers, { role: "", multiplier: 0.5 }],
+                  }))}
+                >
+                  <Plus className="w-3 h-3" /> Add
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Set how many hours are billed per hour worked for specific roles. Default is 1.0 (1hr worked = 1hr billed).
+              </p>
+              {form.roleBillingMultipliers.map((m, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_80px_28px] gap-2 items-center">
+                  <Input
+                    value={m.role}
+                    onChange={e => {
+                      const updated = [...form.roleBillingMultipliers];
+                      updated[idx] = { ...updated[idx], role: e.target.value };
+                      setForm(f => ({ ...f, roleBillingMultipliers: updated }));
+                    }}
+                    className="bg-secondary border-border h-8 text-xs"
+                    placeholder="e.g. 2nd Videographer"
+                  />
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={m.multiplier}
+                    onChange={e => {
+                      const updated = [...form.roleBillingMultipliers];
+                      updated[idx] = { ...updated[idx], multiplier: parseFloat(e.target.value) || 0 };
+                      setForm(f => ({ ...f, roleBillingMultipliers: updated }));
+                    }}
+                    className="bg-secondary border-border h-8 text-xs"
+                    placeholder="0.5"
+                  />
+                  <button
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      roleBillingMultipliers: f.roleBillingMultipliers.filter((_, i) => i !== idx),
+                    }))}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
           <DialogFooter>

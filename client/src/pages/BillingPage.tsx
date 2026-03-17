@@ -9,6 +9,7 @@ import { useApp } from "@/contexts/AppContext";
 import type { Project, Client, AppData } from "@/lib/types";
 import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getBillableHours } from "@/lib/data";
 import ReportPreview from "@/components/ReportPreview";
 
 interface ClientSummary {
@@ -72,7 +73,7 @@ export default function BillingPage() {
 
       const projects = monthProjects.filter(p => p.clientId === clientId);
 
-      // Total billable hours = sum of all crew + post hours across projects
+      // Total billable hours = sum of all crew + post hours, with role multipliers applied
       let totalBillableHours = 0;
       const crewMap: Record<string, { name: string; totalHours: number; totalPay: number }> = {};
 
@@ -80,7 +81,8 @@ export default function BillingPage() {
         [...p.crew, ...p.postProduction].forEach(entry => {
           const hrs = Number(entry.hoursWorked ?? 0);
           const rate = Number(entry.payRatePerHour ?? 0);
-          totalBillableHours += hrs;
+          const billable = getBillableHours(entry, client);
+          totalBillableHours += billable;
 
           const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
           const name = member?.name ?? "Unknown";
@@ -154,10 +156,10 @@ export default function BillingPage() {
       const client = data.clients.find(c => c.id === p.clientId);
       const pType = data.projectTypes.find(pt => pt.id === p.projectTypeId);
       const allEntries = [...p.crew, ...p.postProduction];
-      const totalHrs = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+      const totalBillableHrs = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
       const crewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
-      const invoice = totalHrs * Number(client?.billingRatePerHour ?? 0);
-      return `<tr><td>${p.date}</td><td>${pType?.name ?? "—"}</td><td>${client?.company ?? "—"}</td><td>${totalHrs.toFixed(1)}</td><td>${formatCurrencyReport(crewCost)}</td><td>${formatCurrencyReport(invoice)}</td></tr>`;
+      const invoice = totalBillableHrs * Number(client?.billingRatePerHour ?? 0);
+      return `<tr><td>${p.date}</td><td>${pType?.name ?? "—"}</td><td>${client?.company ?? "—"}</td><td>${totalBillableHrs.toFixed(1)}</td><td>${formatCurrencyReport(crewCost)}</td><td>${formatCurrencyReport(invoice)}</td></tr>`;
     }).join("");
 
     setPreview({ title, html: `
@@ -406,9 +408,9 @@ function ProjectRow({ project, data }: { project: Project; data: AppData }) {
   const pType = data.projectTypes.find(pt => pt.id === project.projectTypeId);
 
   const allEntries = [...project.crew, ...project.postProduction];
-  const totalHours = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+  const totalBillableHours = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
   const totalCrewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
-  const invoiceAmount = totalHours * Number(client?.billingRatePerHour ?? 0);
+  const invoiceAmount = totalBillableHours * Number(client?.billingRatePerHour ?? 0);
 
   const dateStr = new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
@@ -417,7 +419,7 @@ function ProjectRow({ project, data }: { project: Project; data: AppData }) {
       <td className="px-4 py-3 text-muted-foreground text-xs">{dateStr}</td>
       <td className="px-4 py-3 text-foreground">{pType?.name ?? "—"}</td>
       <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{client?.company ?? "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(totalHours).toFixed(1)}</td>
+      <td className="px-4 py-3 text-right tabular-nums text-foreground">{Number(totalBillableHours).toFixed(1)}</td>
       <td className="px-4 py-3 text-right tabular-nums text-purple-300 hidden sm:table-cell">{formatCurrency(totalCrewCost)}</td>
       <td className="px-4 py-3 text-right tabular-nums text-amber-300 font-medium">{formatCurrency(invoiceAmount)}</td>
     </tr>

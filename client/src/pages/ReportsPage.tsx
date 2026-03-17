@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
+import { getBillableHours, getProjectBillableHours } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -84,7 +85,7 @@ export default function ReportsPage() {
   const clientBillingStats = useMemo((): ClientBillingStat[] => {
     return data.clients.map(client => {
       const clientProjects = filteredProjects.filter(p => p.clientId === client.id);
-      const totalHours = clientProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
+      const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
       const crewCost = clientProjects.reduce((s, p) => s + getProjectCrewCost(p), 0);
       const invoiceAmount = totalHours * Number(client.billingRatePerHour ?? 0);
       const margin = invoiceAmount - crewCost;
@@ -113,7 +114,8 @@ export default function ReportsPage() {
 
     const totalBilling = projects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
-      return s + getProjectHours(p).totalHours * Number(client?.billingRatePerHour ?? 0);
+      if (!client) return s;
+      return s + getProjectBillableHours(p, client).totalBillable * Number(client.billingRatePerHour ?? 0);
     }, 0);
     const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
 
@@ -366,11 +368,11 @@ export default function ReportsPage() {
       .filter(p => p.clientId === clientId && parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => b.date.localeCompare(a.date));
 
-    // Calculate hours
+    // Calculate billable hours (with role multipliers)
     const totalProductionHours = clientProjects.reduce((s, p) =>
-      s + (p.crew || []).reduce((cs, c) => cs + Number(c.hoursWorked ?? 0), 0), 0);
+      s + (p.crew || []).reduce((cs, c) => cs + getBillableHours(c, client), 0), 0);
     const totalEditorHours = clientProjects.reduce((s, p) =>
-      s + (p.postProduction || []).reduce((ps, e) => ps + Number(e.hoursWorked ?? 0), 0), 0);
+      s + (p.postProduction || []).reduce((ps, e) => ps + getBillableHours(e, client), 0), 0);
     const totalHours = totalProductionHours + totalEditorHours;
     const totalInvoice = totalHours * Number(client.billingRatePerHour ?? 0);
 
@@ -407,8 +409,8 @@ export default function ReportsPage() {
     const projectCards = clientProjects.map(p => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
       const loc = data.locations.find(l => l.id === p.locationId);
-      const crewHours = (p.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
-      const postHours = (p.postProduction || []).reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+      const crewHours = (p.crew || []).reduce((s, c) => s + getBillableHours(c, client), 0);
+      const postHours = (p.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
       const projTotal = crewHours + postHours;
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
@@ -428,7 +430,7 @@ export default function ReportsPage() {
         return `
           <div class="crew-entry">
             <div><div class="crew-role">Filming</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
+            <div class="crew-hours">${getBillableHours(e, client).toFixed(2)} hrs</div>
           </div>
         `;
       }).join("");
@@ -438,7 +440,7 @@ export default function ReportsPage() {
         return `
           <div class="crew-entry">
             <div><div class="crew-role">Editing</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
+            <div class="crew-hours">${getBillableHours(e, client).toFixed(2)} hrs</div>
           </div>
         `;
       }).join("");

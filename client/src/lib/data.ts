@@ -4,7 +4,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry } from "./types";
 
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
@@ -18,6 +18,7 @@ export const seedData: AppData = {
       phone: "864-494-6909",
       email: "sam.cbsouthernrealty@gmail.com",
       billingRatePerHour: 200,
+      roleBillingMultipliers: [],
       createdAt: new Date().toISOString(),
     },
   ],
@@ -138,6 +139,39 @@ export const seedData: AppData = {
 };
 
 // ---- Billing math helpers ----
+
+/**
+ * Get the billing multiplier for a role on a specific client.
+ * Default is 1.0 (1 hour worked = 1 hour billed).
+ * e.g. "2nd Videographer" on CBSR might be 0.5 (6hrs worked = 3hrs billed)
+ */
+export function getRoleBillingMultiplier(client: Client, role: string): number {
+  const m = client.roleBillingMultipliers?.find(r => r.role === role);
+  return m?.multiplier ?? 1.0;
+}
+
+/**
+ * Get billable hours for a single crew/post entry, applying the client's role multiplier.
+ * hoursWorked = what crew gets paid for
+ * billableHours = what client gets billed for
+ */
+export function getBillableHours(entry: ProjectCrewEntry | ProjectPostEntry, client: Client): number {
+  const multiplier = getRoleBillingMultiplier(client, entry.role);
+  return Number(entry.hoursWorked ?? 0) * multiplier;
+}
+
+/**
+ * Get total billable hours for a project (applying client role multipliers).
+ */
+export function getProjectBillableHours(project: Project, client: Client): {
+  crewBillable: number;
+  postBillable: number;
+  totalBillable: number;
+} {
+  const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  const postBillable = (project.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  return { crewBillable, postBillable, totalBillable: crewBillable + postBillable };
+}
 
 /**
  * Calculates total hours worked for a client in a given month.

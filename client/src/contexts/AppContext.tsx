@@ -49,6 +49,7 @@ function rowToClient(r: any): Client {
     phone: r.phone,
     email: r.email,
     billingRatePerHour: Number(r.billing_rate_per_hour ?? 0),
+    roleBillingMultipliers: r.role_billing_multipliers || [],
     createdAt: r.created_at,
   };
 }
@@ -166,6 +167,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("clients").insert({
       id, company: c.company, contact_name: c.contactName, phone: c.phone,
       email: c.email, billing_rate_per_hour: c.billingRatePerHour,
+      role_billing_multipliers: c.roleBillingMultipliers ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const client = rowToClient(row);
@@ -180,6 +182,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.phone !== undefined) patch.phone = c.phone;
     if (c.email !== undefined) patch.email = c.email;
     if (c.billingRatePerHour !== undefined) patch.billing_rate_per_hour = c.billingRatePerHour;
+    if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));
