@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/contexts/AppContext";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getBillableHours } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 
@@ -37,18 +38,22 @@ export default function CalendarPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  // Total hours per day for calendar overlay
+  // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { worked: number; billed: number }> = {};
     data.projects.forEach(p => {
       const d = new Date(p.date + "T00:00:00");
       if (d.getFullYear() === year && d.getMonth() === month) {
-        const hrs = [...p.crew, ...p.postProduction].reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-        map[p.date] = (map[p.date] ?? 0) + hrs;
+        const client = data.clients.find(c => c.id === p.clientId);
+        const worked = [...p.crew, ...p.postProduction].reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+        const billed = client ? [...p.crew, ...p.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0) : worked;
+        if (!map[p.date]) map[p.date] = { worked: 0, billed: 0 };
+        map[p.date].worked += worked;
+        map[p.date].billed += billed;
       }
     });
     return map;
-  }, [data.projects, year, month]);
+  }, [data.projects, data.clients, year, month]);
 
   // Calendar grid
   const firstDay = new Date(year, month, 1).getDay();
@@ -89,13 +94,17 @@ export default function CalendarPage() {
   const getProjectType = (id: string) => data.projectTypes.find((pt) => pt.id === id);
   const getCrewMember = (id: string) => data.crewMembers.find((c) => c.id === id);
 
-  const totalHoursThisMonth = useMemo(() => {
-    return monthProjects.reduce((sum, p) => {
-      const crew = p.crew.reduce((s, c) => s + (Number(c.hoursWorked) || 0), 0);
-      const post = p.postProduction.reduce((s, c) => s + (Number(c.hoursWorked) || 0), 0);
-      return sum + crew + post;
-    }, 0);
-  }, [monthProjects]);
+  const monthlyHoursTotals = useMemo(() => {
+    let worked = 0, billed = 0;
+    monthProjects.forEach(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      const w = [...p.crew, ...p.postProduction].reduce((s, e) => s + (Number(e.hoursWorked) || 0), 0);
+      const b = client ? [...p.crew, ...p.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0) : w;
+      worked += w;
+      billed += b;
+    });
+    return { worked, billed };
+  }, [monthProjects, data.clients]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: data.projects.length, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
@@ -112,7 +121,7 @@ export default function CalendarPage() {
             Production Calendar
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {monthProjects.length} projects · {Number(totalHoursThisMonth ?? 0).toFixed(1)} retainer hrs this month
+            {monthProjects.length} projects · {monthlyHoursTotals.worked.toFixed(1)} worked · {monthlyHoursTotals.billed.toFixed(1)} billed
           </p>
         </div>
         <Button
@@ -193,10 +202,17 @@ export default function CalendarPage() {
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
-                    {dayHours !== null && dayHours > 0 && (
-                      <span className="text-[9px] sm:text-[10px] font-medium tabular-nums px-0.5 sm:px-1 py-0.5 rounded hidden xs:inline-block sm:inline-block text-amber-400 bg-amber-500/10">
-                        {Number(dayHours).toFixed(1)}h
-                      </span>
+                    {dayHours !== null && dayHours.billed > 0 && (
+                      <div className="hidden sm:flex flex-col items-end gap-0.5">
+                        <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-400 bg-amber-500/10">
+                          {dayHours.billed.toFixed(1)}h billed
+                        </span>
+                        {dayHours.worked !== dayHours.billed && (
+                          <span className="text-[8px] tabular-nums text-muted-foreground">
+                            {dayHours.worked.toFixed(1)}h worked
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -279,10 +295,13 @@ export default function CalendarPage() {
                 const client = getClient(project.clientId);
                 const location = getLocation(project.locationId);
                 const pType = getProjectType(project.projectTypeId);
-                const totalHrs = [
+                const totalWorked = [
                   ...project.crew.map((c) => Number(c.hoursWorked ?? 0)),
                   ...project.postProduction.map((c) => Number(c.hoursWorked ?? 0)),
                 ].reduce((s, h) => s + h, 0);
+                const totalBilled = client
+                  ? [...project.crew, ...project.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0)
+                  : totalWorked;
 
                 return (
                   <div
@@ -340,10 +359,15 @@ export default function CalendarPage() {
                     {/* Time + hours */}
                     <div className="text-right flex-shrink-0">
                       <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end mt-0.5">
+                      <div className="text-xs text-amber-400 flex items-center gap-1 justify-end mt-0.5">
                         <Clock className="w-3 h-3" />
-                        {Number(totalHrs ?? 0).toFixed(1)} hrs
+                        {totalBilled.toFixed(1)} billed
                       </div>
+                      {totalWorked !== totalBilled && (
+                        <div className="text-[10px] text-muted-foreground text-right">
+                          {totalWorked.toFixed(1)} worked
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
