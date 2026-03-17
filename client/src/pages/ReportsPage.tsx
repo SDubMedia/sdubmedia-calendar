@@ -356,34 +356,17 @@ export default function ReportsPage() {
   }
 
   function generateMonthlyReport() {
-    const projects = monthlyProjects;
-    const totalHours = projects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
-    const monthName = MONTHS[parseInt(selectedMonth) - 1];
+    const projects = monthlyProjects.sort((a, b) => b.date.localeCompare(a.date));
+    const monthNum = parseInt(selectedMonth);
+    const monthName = MONTHS[monthNum - 1];
+    const yr = parseInt(selectedYear);
 
-    const projectRows = projects.map(p => {
-      const client = data.clients.find(c => c.id === p.clientId);
-      const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
-      const loc = data.locations.find(l => l.id === p.locationId)?.name || "";
-      const { crewHours, postHours, totalHours: th } = getProjectHours(p);
-      const crewCost = getProjectCrewCost(p);
-      const invoiceAmt = th * Number(client?.billingRatePerHour ?? 0);
-      const statusMap: Record<string,string> = { upcoming: "badge-blue", in_editing: "badge-amber", completed: "badge-green", filming_done: "badge-gray" };
-      const statusBadge = statusMap[p.status] || "badge-gray";
-      return `
-        <tr>
-          <td>${p.date}</td>
-          <td>${client?.company || ""}</td>
-          <td>${type}</td>
-          <td>${loc}</td>
-          <td>${formatHours(crewHours)}</td>
-          <td>${formatHours(postHours)}</td>
-          <td>${formatHours(th)}</td>
-          <td>${formatCurrency(invoiceAmt)}</td>
-          <td>${formatCurrency(crewCost)}</td>
-          <td><span class="badge ${statusBadge}">${p.status.replace(/_/g," ")}</span></td>
-        </tr>
-      `;
-    }).join("");
+    // Hours breakdown
+    const totalProductionHours = projects.reduce((s, p) =>
+      s + (p.crew || []).reduce((cs, c) => cs + Number(c.hoursWorked ?? 0), 0), 0);
+    const totalEditorHours = projects.reduce((s, p) =>
+      s + (p.postProduction || []).reduce((ps, e) => ps + Number(e.hoursWorked ?? 0), 0), 0);
+    const totalHours = totalProductionHours + totalEditorHours;
 
     const totalInvoice = projects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
@@ -391,20 +374,169 @@ export default function ReportsPage() {
     }, 0);
     const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
 
-    setPreview({ title: `Monthly Report — ${monthName} ${selectedYear}`, html: `
-      <h1>Monthly Production Report</h1>
-      <p class="subtitle">${monthName} ${selectedYear} · SDub Media</p>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">Total Projects</div><div class="stat-value">${projects.length}</div></div>
-        <div class="stat-box"><div class="stat-label">Total Hours</div><div class="stat-value">${formatHours(totalHours)}</div></div>
-        <div class="stat-box"><div class="stat-label">Invoice Amount</div><div class="stat-value">${formatCurrency(totalInvoice)}</div></div>
+    // Report metadata
+    const lastDay = new Date(yr, monthNum, 0).getDate();
+    const periodStart = `${monthName.slice(0, 3)} 1, ${yr}`;
+    const periodEnd = `${monthName.slice(0, 3)} ${lastDay}, ${yr}`;
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    // Collect all filming dates, locations, crew, deliverables
+    const filmingDates = projects.map(p =>
+      new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    );
+    const locationSet = new Map<string, string>();
+    projects.forEach(p => {
+      const loc = data.locations.find(l => l.id === p.locationId);
+      if (loc) locationSet.set(loc.id, `${loc.name} ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}`);
+    });
+    const crewSet = new Map<string, string[]>();
+    projects.forEach(p => {
+      [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        if (member && !crewSet.has(member.id)) crewSet.set(member.id, [member.name, e.role]);
+      });
+    });
+    const allDeliverables = new Set<string>();
+    projects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
+
+    // Unique clients
+    const clientNames = Array.from(new Set(projects.map(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      return client?.company || "";
+    }))).filter(Boolean).join(", ");
+
+    // Build project cards
+    const projectCards = projects.map(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
+      const loc = data.locations.find(l => l.id === p.locationId);
+      const crewHours = (p.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
+      const postHours = (p.postProduction || []).reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+      const projTotal = crewHours + postHours;
+      const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+      const locationHtml = loc ? `
+        <div class="project-meta-label">Filming Location</div>
+        <div class="project-meta-value">${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>
+      ` : "";
+
+      const deliverables = (p.editTypes || []).map(et => `<li>${et}</li>`).join("");
+      const deliverablesHtml = deliverables ? `
+        <div class="project-meta-label">Deliverables</div>
+        <ul class="deliverables-list">${deliverables}</ul>
+      ` : "";
+
+      const crewEntries = (p.crew || []).map(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        return `
+          <div class="crew-entry">
+            <div><div class="crew-role">Filming</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
+            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
+          </div>
+        `;
+      }).join("");
+
+      const postEntries = (p.postProduction || []).map(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        return `
+          <div class="crew-entry">
+            <div><div class="crew-role">Editing</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
+            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="project-card">
+          <div class="project-card-header">
+            <div>
+              <div class="project-name">${type}</div>
+              <div class="project-date">${dateStr}${client ? ` · ${client.company}` : ""}</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="hours-badge">${projTotal.toFixed(2)} hrs</div>
+              <div class="hours-detail">Production: ${crewHours.toFixed(2)}</div>
+              <div class="hours-detail">Editing: ${postHours.toFixed(2)}</div>
+            </div>
+          </div>
+          <hr class="project-card-divider" />
+          <div class="project-card-body">
+            ${locationHtml}
+            ${deliverablesHtml}
+            <div style="margin-top: 16px;">
+              ${crewEntries}
+              ${postEntries}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
+    const locationsList = Array.from(locationSet.values()).join("; ");
+    const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
+
+    setPreview({ title: `Monthly Report — ${monthName} ${yr}`, html: `
+      <!-- Header Banner -->
+      <div class="invoice-header">
+        <h1>Monthly Production Report</h1>
+        <div class="meta-grid">
+          <div><div class="meta-label">Report Period</div><div class="meta-value">${periodStart} - ${periodEnd}</div></div>
+          <div><div class="meta-label">Issue Date</div><div class="meta-value">${issueDate}</div></div>
+          <div><div class="meta-label">Client(s)</div><div class="meta-value">${clientNames || "—"}</div></div>
+        </div>
       </div>
-      <h2>Projects</h2>
-      <table>
-        <thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Location</th><th>Crew Hrs</th><th>Post Hrs</th><th>Total</th><th>Invoice</th><th>Crew Cost</th><th>Status</th></tr></thead>
-        <tbody>${projectRows || "<tr><td colspan='10'>No projects this month</td></tr>"}</tbody>
-        <tfoot><tr class="total-row"><td colspan="6">Total</td><td>${formatHours(totalHours)}</td><td>${formatCurrency(totalInvoice)}</td><td>${formatCurrency(totalCrewCost)}</td><td></td></tr></tfoot>
-      </table>
+
+      <!-- Hours Summary -->
+      <div class="section">
+        <div class="section-header">Hours Summary</div>
+        <div class="section-body">
+          <div class="hours-row"><span>Production Hours</span><span>${totalProductionHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row"><span>Editor Hours</span><span>${totalEditorHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row total"><span>Total Hours</span><span>${totalHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row highlight"><span>Total Invoice Value</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+        </div>
+      </div>
+
+      <!-- Financial Summary -->
+      <div class="section">
+        <div class="section-header">Financial Summary</div>
+        <div class="section-body">
+          <div class="hours-row"><span>Total Invoice</span><span>${formatCurrency(totalInvoice)}</span></div>
+          <div class="hours-row"><span>Total Crew Cost</span><span>${formatCurrency(totalCrewCost)}</span></div>
+          <div class="hours-row highlight"><span>Gross Margin</span><span class="hours-value">${formatCurrency(totalInvoice - totalCrewCost)}</span></div>
+        </div>
+      </div>
+
+      <!-- Project Snapshot -->
+      <div class="section">
+        <div class="section-header">Project Snapshot</div>
+        <div class="section-body">
+          <div class="snapshot-grid">
+            <div><div class="snapshot-label">Filming Date(s)</div><div class="snapshot-value">${filmingDates.join(", ") || "—"}</div></div>
+            <div><div class="snapshot-label">Location(s)</div><div class="snapshot-value">${locationsList || "—"}</div></div>
+          </div>
+          <div><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
+        </div>
+      </div>
+
+      <!-- Scope of Work & Deliverables -->
+      <div class="section">
+        <div class="section-header">Scope of Work & Deliverables</div>
+        <div class="section-body">
+          <ul class="deliverables-list">${deliverablesList || "<li>No deliverables listed</li>"}</ul>
+        </div>
+      </div>
+
+      <!-- Projects & Activity -->
+      <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 16px; border: none;">Projects & Activity</h2>
+      ${projectCards || "<p>No projects this period</p>"}
+
+      <!-- Footer -->
+      <div class="report-footer">
+        <p><strong>Total Projects:</strong> ${projects.length}</p>
+        <p><strong>Report Generated:</strong> ${issueDate} · SDub Media</p>
+      </div>
     ` });
   }
 
