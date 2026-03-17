@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
 
@@ -94,65 +92,264 @@ export default function ReportsPage() {
     });
   }, [data.clients, filteredProjects]);
 
-  // ---- Monthly stats ----
-  const monthlyStats = useMemo(() => {
-    return MONTHS.map((month, idx) => {
-      const monthNum = idx + 1;
-      const projects = filteredProjects.filter(p => parseInt(p.date.split("-")[1]) === monthNum);
-      const totalHours = projects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
-      const invoiceAmount = projects.reduce((s, p) => {
-        const client = data.clients.find(c => c.id === p.clientId);
-        return s + getProjectHours(p).totalHours * Number(client?.billingRatePerHour ?? 0);
-      }, 0);
-      return { month, monthNum, projects: projects.length, totalHours, invoiceAmount };
-    });
-  }, [filteredProjects, data.clients]);
-
   // ---- Report generators ----
-  function generateEarningsReport() {
-    const totalProjects = filteredProjects.length;
-    const totalHoursUsed = filteredProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
-    const totalInvoice = clientBillingStats.reduce((s, r) => s + r.invoiceAmount, 0);
+  function generateInternalReport() {
+    const monthNum = parseInt(selectedMonth);
+    const monthName = MONTHS[monthNum - 1];
+    const yr = parseInt(selectedYear);
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    const monthlyRows = monthlyStats.map(m => `
-      <tr>
-        <td>${m.month}</td>
-        <td>${m.projects}</td>
-        <td>${formatHours(m.totalHours)}</td>
-        <td>${formatCurrency(m.invoiceAmount)}</td>
-      </tr>
-    `).join("");
+    // Filter projects for this month
+    const projects = filteredProjects
+      .filter(p => parseInt(p.date.split("-")[1]) === monthNum)
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    const clientRows = clientBillingStats.map(s => `
-      <tr>
-        <td>${s.client.company}</td>
-        <td>${s.projectCount}</td>
-        <td>${formatHours(s.totalHours)}</td>
-        <td>${formatCurrency(s.invoiceAmount)}</td>
-        <td>${formatCurrency(s.crewCost)}</td>
-        <td>${formatCurrency(s.margin)}</td>
-      </tr>
-    `).join("");
+    // Calculate totals
+    const totalProductionHours = projects.reduce((s, p) =>
+      s + (p.crew || []).reduce((cs, c) => cs + Number(c.hoursWorked ?? 0), 0), 0);
+    const totalEditorHours = projects.reduce((s, p) =>
+      s + (p.postProduction || []).reduce((ps, e) => ps + Number(e.hoursWorked ?? 0), 0), 0);
+    const totalHours = totalProductionHours + totalEditorHours;
 
-    setPreview({ title: `Earnings Report ${selectedYear}`, html: `
-      <h1>Earnings Report — ${selectedYear}</h1>
-      <p class="subtitle">Generated ${new Date().toLocaleDateString()} · SDub Media</p>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">Total Projects</div><div class="stat-value">${totalProjects}</div></div>
-        <div class="stat-box"><div class="stat-label">Total Hours</div><div class="stat-value">${formatHours(totalHoursUsed)}</div></div>
-        <div class="stat-box"><div class="stat-label">Total Invoice</div><div class="stat-value">${formatCurrency(totalInvoice)}</div></div>
+    const totalBilling = projects.reduce((s, p) => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      return s + getProjectHours(p).totalHours * Number(client?.billingRatePerHour ?? 0);
+    }, 0);
+    const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
+
+    // Earnings splits
+    const ownerCut = totalBilling * 0.20;
+    const adminCut = totalBilling * 0.20;
+    const marketingBudget = totalBilling - totalCrewCost - ownerCut - adminCut;
+
+    // Per-person pay breakdown
+    const personPay: Record<string, { name: string; prodHours: number; editHours: number; totalPay: number }> = {};
+    projects.forEach(p => {
+      (p.crew || []).forEach(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const name = member?.name ?? "Unknown";
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
+        personPay[e.crewMemberId].prodHours += Number(e.hoursWorked ?? 0);
+        personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+      });
+      (p.postProduction || []).forEach(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const name = member?.name ?? "Unknown";
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
+        personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
+        personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+      });
+    });
+    const personList = Object.values(personPay).sort((a, b) => b.totalPay - a.totalPay);
+
+    // Crew pay cards
+    const crewPayCards = personList.map(p => `
+      <div class="crew-pay-card">
+        <div class="crew-pay-name">${p.name}</div>
+        <div class="crew-pay-amount">${formatCurrency(p.totalPay)}</div>
       </div>
-      <h2>Monthly Breakdown</h2>
-      <table>
-        <thead><tr><th>Month</th><th>Projects</th><th>Hours</th><th>Invoice Amount</th></tr></thead>
-        <tbody>${monthlyRows}</tbody>
-        <tfoot><tr class="total-row"><td>Total</td><td>${totalProjects}</td><td>${formatHours(totalHoursUsed)}</td><td>${formatCurrency(totalInvoice)}</td></tr></tfoot>
+    `).join("");
+
+    // Pay table rows
+    const payTableRows = personList.map(p => `
+      <tr><td>${p.name}</td><td style="text-align:right">${formatCurrency(p.totalPay)}</td></tr>
+    `).join("");
+
+    // Hours by person table
+    const hoursTableRows = personList.map(p => `
+      <tr>
+        <td>${p.name}</td>
+        <td style="text-align:right">${p.prodHours.toFixed(2)}</td>
+        <td style="text-align:right">${p.editHours.toFixed(2)}</td>
+        <td style="text-align:right; font-weight:700">${(p.prodHours + p.editHours).toFixed(2)}</td>
+      </tr>
+    `).join("");
+
+    // Group projects by date
+    const dateGroups = new Map<string, typeof projects>();
+    projects.forEach(p => {
+      const existing = dateGroups.get(p.date) || [];
+      existing.push(p);
+      dateGroups.set(p.date, existing);
+    });
+
+    // Build day sections
+    const daySections = Array.from(dateGroups.entries()).map(([date, dayProjects]) => {
+      const dayDate = new Date(date + "T00:00:00");
+      const dayName = dayDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      const dayTotalHours = dayProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
+
+      const projectCards = dayProjects.map(p => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
+        const loc = data.locations.find(l => l.id === p.locationId);
+        const crewHours = (p.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
+        const postHours = (p.postProduction || []).reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
+        const projTotal = crewHours + postHours;
+
+        const locationHtml = loc ? `
+          <div class="project-meta-label">Filming Location</div>
+          <div class="project-meta-value"><strong>${loc.name}</strong><br/>${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>
+        ` : "";
+
+        const filmingTime = (p.startTime && p.endTime) ? `
+          <div class="project-meta-label">Filming Time</div>
+          <div class="project-meta-value">${p.startTime} - ${p.endTime}</div>
+        ` : "";
+
+        const deliverables = (p.editTypes || []).map(et => `<li>${et}</li>`).join("");
+        const deliverablesHtml = deliverables ? `
+          <div class="project-meta-label">Deliverables</div>
+          <ul class="deliverables-list">${deliverables}</ul>
+        ` : "";
+
+        // Internal pay allocation table
+        const allEntries = [
+          ...(p.crew || []).map(e => ({ ...e, type: "Filming" })),
+          ...(p.postProduction || []).map(e => ({ ...e, type: "Editing" })),
+        ];
+        const payRows = allEntries.map(e => {
+          const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+          const hrs = Number(e.hoursWorked ?? 0);
+          const rate = Number(e.payRatePerHour ?? 0);
+          return `
+            <tr>
+              <td>${member?.name ?? "Unknown"}</td>
+              <td>${e.role}</td>
+              <td style="text-align:right">${hrs.toFixed(2)}</td>
+              <td style="text-align:right">${formatCurrency(rate)}</td>
+              <td style="text-align:right">${formatCurrency(hrs * rate)}</td>
+            </tr>
+          `;
+        }).join("");
+        const projectLabor = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+
+        return `
+          <div class="project-card" style="margin-bottom: 16px;">
+            <div class="project-card-header">
+              <div>
+                <div class="project-name">${loc?.name || client?.company || ""}</div>
+                <div class="project-type-badge">${type}</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="hours-badge">${projTotal.toFixed(2)} hrs</div>
+                <div class="hours-detail">Total Hours Billed</div>
+                <div class="hours-detail">Production: ${crewHours.toFixed(2)} hrs</div>
+                <div class="hours-detail">Editing: ${postHours.toFixed(2)} hrs</div>
+              </div>
+            </div>
+            <hr class="project-card-divider" />
+            <div class="project-card-body">
+              ${filmingTime}
+              ${locationHtml}
+              ${deliverablesHtml}
+              <div class="internal-pay-box">
+                <div class="ipb-header">Internal Pay Allocation</div>
+                <div class="ipb-note">Crew Pay = Hours × Rate (gross labor only). Owner/Admin/Marketing splits are separate.</div>
+                <table class="internal-pay-table">
+                  <thead><tr><th>Person</th><th>Role</th><th style="text-align:right">Hours</th><th style="text-align:right">Rate</th><th style="text-align:right">Allocated Pay</th></tr></thead>
+                  <tbody>${payRows}</tbody>
+                  <tfoot><tr class="ipt-total"><td colspan="4"><strong>Project Labor Cost</strong></td><td>${formatCurrency(projectLabor)}</td></tr></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="day-header">
+          <div>
+            <div class="day-title">${dayName}</div>
+            <div class="day-subtitle">${dayProjects.length} Project${dayProjects.length !== 1 ? "s" : ""}</div>
+          </div>
+          <div>
+            <div class="day-hours-label">Total Hours Billed</div>
+            <div class="day-hours-value">${dayTotalHours.toFixed(2)}</div>
+          </div>
+        </div>
+        <div class="day-projects">
+          ${projectCards}
+        </div>
+      `;
+    }).join("");
+
+    setPreview({ title: `Earnings Breakdown — ${monthName} ${yr}`, html: `
+      <!-- Header Banner -->
+      <div class="invoice-header">
+        <h1>Earnings Breakdown Report</h1>
+        <div class="meta-grid">
+          <div><div class="meta-label">Report Period</div><div class="meta-value">${monthName} ${yr}</div></div>
+          <div><div class="meta-label">Generated</div><div class="meta-value">${issueDate}</div></div>
+        </div>
+      </div>
+
+      <!-- Earnings Summary -->
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">Earnings Summary</h2>
+
+      <div class="earnings-card marketing">
+        <div class="card-label" style="color: #8b5cf6; font-weight: 600;">Marketing Budget</div>
+        <div class="card-value">${formatCurrency(Math.max(0, marketingBudget))}</div>
+        <div class="card-note">10% of billing (after crew costs)</div>
+      </div>
+
+      <div class="earnings-grid-2">
+        <div class="earnings-card owner">
+          <div class="card-label" style="color: #22c55e; font-weight: 600;">Showcase (Owner)</div>
+          <div class="card-value">${formatCurrency(ownerCut)}</div>
+          <div class="card-note">20% of billing value</div>
+        </div>
+        <div class="earnings-card admin">
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">SDub Media (Admin)</div>
+          <div class="card-value">${formatCurrency(adminCut)}</div>
+          <div class="card-note">20% of billing value</div>
+        </div>
+      </div>
+
+      <!-- Crew & Editors -->
+      <h2 style="font-size: 16px; font-weight: 700; margin: 20px 0 4px; border: none;">Crew & Editors</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">Payroll totals aggregated from project Internal Pay Allocation rows (worked hours × pay rate).</p>
+      <div class="earnings-grid-2">
+        ${crewPayCards}
+      </div>
+
+      <!-- Pay This Week -->
+      <div class="section">
+        <div class="section-header">Pay This Period (Internal)</div>
+        <div class="section-body">
+          <table class="pay-table">
+            <thead><tr><th>Person</th><th style="text-align:right">Amount to Pay</th></tr></thead>
+            <tbody>${payTableRows}</tbody>
+            <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalCrewCost)}</td></tr></tfoot>
+          </table>
+          <p style="font-size: 11px; color: #888;">Reference: Earnings Breakdown Report for ${monthName} ${yr}</p>
+        </div>
+      </div>
+
+      <!-- Hours Billed to Client Summary -->
+      <div class="section">
+        <div class="section-header">Hours Billed to Client — Summary</div>
+        <div class="section-body" style="padding: 0;">
+          <div class="hours-billed-grid">
+            <div class="hours-billed-cell"><div class="hb-label">Production</div><div class="hb-value">${totalProductionHours.toFixed(2)}</div></div>
+            <div class="hours-billed-cell"><div class="hb-label">Editor</div><div class="hb-value">${totalEditorHours.toFixed(2)}</div></div>
+            <div class="hours-billed-cell"><div class="hb-label">Total Billed</div><div class="hb-value highlight">${totalHours.toFixed(2)}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hours by Person -->
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 4px; border: none;">Hours Billed to Client (by Person)</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">Billed hours reflect billable time entries for this period.</p>
+      <table class="pay-table">
+        <thead><tr><th>Person</th><th style="text-align:right">Production Hours</th><th style="text-align:right">Editor Hours</th><th style="text-align:right">Total Billed Hours</th></tr></thead>
+        <tbody>${hoursTableRows}</tbody>
+        <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totalProductionHours.toFixed(2)}</td><td style="text-align:right">${totalEditorHours.toFixed(2)}</td><td style="text-align:right">${totalHours.toFixed(2)}</td></tr></tfoot>
       </table>
-      <h2>Client Summary</h2>
-      <table>
-        <thead><tr><th>Client</th><th>Projects</th><th>Hours</th><th>Invoice</th><th>Crew Cost</th><th>Margin</th></tr></thead>
-        <tbody>${clientRows}</tbody>
-      </table>
+
+      <!-- Weekly Activity & Pay Breakdown -->
+      <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 4px; border: none; text-transform: uppercase; letter-spacing: 0.05em;">Weekly Activity & Pay Breakdown (Internal)</h2>
+      ${daySections || "<p>No projects this period</p>"}
     ` });
   }
 
@@ -355,191 +552,6 @@ export default function ReportsPage() {
     ` });
   }
 
-  function generateMonthlyReport() {
-    const projects = monthlyProjects.sort((a, b) => b.date.localeCompare(a.date));
-    const monthNum = parseInt(selectedMonth);
-    const monthName = MONTHS[monthNum - 1];
-    const yr = parseInt(selectedYear);
-
-    // Hours breakdown
-    const totalProductionHours = projects.reduce((s, p) =>
-      s + (p.crew || []).reduce((cs, c) => cs + Number(c.hoursWorked ?? 0), 0), 0);
-    const totalEditorHours = projects.reduce((s, p) =>
-      s + (p.postProduction || []).reduce((ps, e) => ps + Number(e.hoursWorked ?? 0), 0), 0);
-    const totalHours = totalProductionHours + totalEditorHours;
-
-    const totalInvoice = projects.reduce((s, p) => {
-      const client = data.clients.find(c => c.id === p.clientId);
-      return s + getProjectHours(p).totalHours * Number(client?.billingRatePerHour ?? 0);
-    }, 0);
-    const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
-
-    // Report metadata
-    const lastDay = new Date(yr, monthNum, 0).getDate();
-    const periodStart = `${monthName.slice(0, 3)} 1, ${yr}`;
-    const periodEnd = `${monthName.slice(0, 3)} ${lastDay}, ${yr}`;
-    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-    // Collect all filming dates, locations, crew, deliverables
-    const filmingDates = projects.map(p =>
-      new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    );
-    const locationSet = new Map<string, string>();
-    projects.forEach(p => {
-      const loc = data.locations.find(l => l.id === p.locationId);
-      if (loc) locationSet.set(loc.id, `${loc.name} ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}`);
-    });
-    const crewSet = new Map<string, string[]>();
-    projects.forEach(p => {
-      [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
-        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
-        if (member && !crewSet.has(member.id)) crewSet.set(member.id, [member.name, e.role]);
-      });
-    });
-    const allDeliverables = new Set<string>();
-    projects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
-
-    // Unique clients
-    const clientNames = Array.from(new Set(projects.map(p => {
-      const client = data.clients.find(c => c.id === p.clientId);
-      return client?.company || "";
-    }))).filter(Boolean).join(", ");
-
-    // Build project cards
-    const projectCards = projects.map(p => {
-      const client = data.clients.find(c => c.id === p.clientId);
-      const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
-      const loc = data.locations.find(l => l.id === p.locationId);
-      const crewHours = (p.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
-      const postHours = (p.postProduction || []).reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-      const projTotal = crewHours + postHours;
-      const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-      const locationHtml = loc ? `
-        <div class="project-meta-label">Filming Location</div>
-        <div class="project-meta-value">${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>
-      ` : "";
-
-      const deliverables = (p.editTypes || []).map(et => `<li>${et}</li>`).join("");
-      const deliverablesHtml = deliverables ? `
-        <div class="project-meta-label">Deliverables</div>
-        <ul class="deliverables-list">${deliverables}</ul>
-      ` : "";
-
-      const crewEntries = (p.crew || []).map(e => {
-        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
-        return `
-          <div class="crew-entry">
-            <div><div class="crew-role">Filming</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
-          </div>
-        `;
-      }).join("");
-
-      const postEntries = (p.postProduction || []).map(e => {
-        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
-        return `
-          <div class="crew-entry">
-            <div><div class="crew-role">Editing</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${Number(e.hoursWorked).toFixed(2)} hrs</div>
-          </div>
-        `;
-      }).join("");
-
-      return `
-        <div class="project-card">
-          <div class="project-card-header">
-            <div>
-              <div class="project-name">${type}</div>
-              <div class="project-date">${dateStr}${client ? ` · ${client.company}` : ""}</div>
-            </div>
-            <div style="text-align: right;">
-              <div class="hours-badge">${projTotal.toFixed(2)} hrs</div>
-              <div class="hours-detail">Production: ${crewHours.toFixed(2)}</div>
-              <div class="hours-detail">Editing: ${postHours.toFixed(2)}</div>
-            </div>
-          </div>
-          <hr class="project-card-divider" />
-          <div class="project-card-body">
-            ${locationHtml}
-            ${deliverablesHtml}
-            <div style="margin-top: 16px;">
-              ${crewEntries}
-              ${postEntries}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
-    const locationsList = Array.from(locationSet.values()).join("; ");
-    const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
-
-    setPreview({ title: `Monthly Report — ${monthName} ${yr}`, html: `
-      <!-- Header Banner -->
-      <div class="invoice-header">
-        <h1>Monthly Production Report</h1>
-        <div class="meta-grid">
-          <div><div class="meta-label">Report Period</div><div class="meta-value">${periodStart} - ${periodEnd}</div></div>
-          <div><div class="meta-label">Issue Date</div><div class="meta-value">${issueDate}</div></div>
-          <div><div class="meta-label">Client(s)</div><div class="meta-value">${clientNames || "—"}</div></div>
-        </div>
-      </div>
-
-      <!-- Hours Summary -->
-      <div class="section">
-        <div class="section-header">Hours Summary</div>
-        <div class="section-body">
-          <div class="hours-row"><span>Production Hours</span><span>${totalProductionHours.toFixed(1)} hrs</span></div>
-          <div class="hours-row"><span>Editor Hours</span><span>${totalEditorHours.toFixed(1)} hrs</span></div>
-          <div class="hours-row total"><span>Total Hours</span><span>${totalHours.toFixed(1)} hrs</span></div>
-          <div class="hours-row highlight"><span>Total Invoice Value</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
-        </div>
-      </div>
-
-      <!-- Financial Summary -->
-      <div class="section">
-        <div class="section-header">Financial Summary</div>
-        <div class="section-body">
-          <div class="hours-row"><span>Total Invoice</span><span>${formatCurrency(totalInvoice)}</span></div>
-          <div class="hours-row"><span>Total Crew Cost</span><span>${formatCurrency(totalCrewCost)}</span></div>
-          <div class="hours-row highlight"><span>Gross Margin</span><span class="hours-value">${formatCurrency(totalInvoice - totalCrewCost)}</span></div>
-        </div>
-      </div>
-
-      <!-- Project Snapshot -->
-      <div class="section">
-        <div class="section-header">Project Snapshot</div>
-        <div class="section-body">
-          <div class="snapshot-grid">
-            <div><div class="snapshot-label">Filming Date(s)</div><div class="snapshot-value">${filmingDates.join(", ") || "—"}</div></div>
-            <div><div class="snapshot-label">Location(s)</div><div class="snapshot-value">${locationsList || "—"}</div></div>
-          </div>
-          <div><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
-        </div>
-      </div>
-
-      <!-- Scope of Work & Deliverables -->
-      <div class="section">
-        <div class="section-header">Scope of Work & Deliverables</div>
-        <div class="section-body">
-          <ul class="deliverables-list">${deliverablesList || "<li>No deliverables listed</li>"}</ul>
-        </div>
-      </div>
-
-      <!-- Projects & Activity -->
-      <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 16px; border: none;">Projects & Activity</h2>
-      ${projectCards || "<p>No projects this period</p>"}
-
-      <!-- Footer -->
-      <div class="report-footer">
-        <p><strong>Total Projects:</strong> ${projects.length}</p>
-        <p><strong>Report Generated:</strong> ${issueDate} · SDub Media</p>
-      </div>
-    ` });
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -656,120 +668,11 @@ export default function ReportsPage() {
       </div>
 
       {/* Report tabs */}
-      <Tabs defaultValue="earnings">
+      <Tabs defaultValue="client">
         <TabsList className="bg-muted">
-          <TabsTrigger value="earnings">Earnings Report</TabsTrigger>
-          <TabsTrigger value="monthly">Monthly Report</TabsTrigger>
           <TabsTrigger value="client">Client Reports</TabsTrigger>
+          <TabsTrigger value="internal">Internal Report</TabsTrigger>
         </TabsList>
-
-        {/* ---- Earnings Report ---- */}
-        <TabsContent value="earnings" className="mt-4 space-y-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Annual Earnings Summary — {selectedYear}</CardTitle>
-                <Button size="sm" onClick={generateEarningsReport} className="gap-2">
-                  <Eye className="w-4 h-4" />
-                  Preview Report
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium text-xs uppercase tracking-wide">Month</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs uppercase tracking-wide">Projects</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs uppercase tracking-wide">Hours</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium text-xs uppercase tracking-wide">Invoice</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {monthlyStats.map(m => (
-                      <tr key={m.monthNum} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                        <td className="py-2 px-3 text-foreground">{m.month}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">{m.projects}</td>
-                        <td className="py-2 px-3 text-right text-foreground">{formatHours(m.totalHours)}</td>
-                        <td className="py-2 px-3 text-right text-amber-400 font-medium">{formatCurrency(m.invoiceAmount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-border">
-                      <td className="py-2 px-3 font-bold text-foreground">Total</td>
-                      <td className="py-2 px-3 text-right font-bold text-foreground">{filteredProjects.length}</td>
-                      <td className="py-2 px-3 text-right font-bold text-foreground">{formatHours(ytdHours)}</td>
-                      <td className="py-2 px-3 text-right font-bold text-amber-400">{formatCurrency(ytdInvoice)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ---- Monthly Report ---- */}
-        <TabsContent value="monthly" className="mt-4 space-y-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
-                  {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear} — {monthlyProjects.length} projects
-                </CardTitle>
-                <Button size="sm" onClick={generateMonthlyReport} className="gap-2">
-                  <Eye className="w-4 h-4" />
-                  Preview Report
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {monthlyProjects.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-8">No projects this month</p>
-              ) : (
-                <div className="space-y-3">
-                  {monthlyProjects.map(p => {
-                    const client = data.clients.find(c => c.id === p.clientId);
-                    const type = data.projectTypes.find(t => t.id === p.projectTypeId);
-                    const loc = data.locations.find(l => l.id === p.locationId);
-                    const { crewHours, postHours, totalHours } = getProjectHours(p);
-                    const invoiceAmt = totalHours * Number(client?.billingRatePerHour ?? 0);
-                    return (
-                      <div key={p.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
-                        <div className="text-center min-w-[40px]">
-                          <p className="text-xs text-muted-foreground">{p.date.split("-")[1]}/{p.date.split("-")[2]}</p>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-foreground">{type?.name}</p>
-                          <p className="text-xs text-muted-foreground">{client?.company} · {loc?.name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{p.startTime}–{p.endTime}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-semibold text-amber-400">{formatCurrency(invoiceAmt)}</p>
-                          <p className="text-xs text-muted-foreground">{formatHours(crewHours)} crew + {formatHours(postHours)} post</p>
-                          <Badge variant="outline" className="text-[10px] mt-1">
-                            {p.status.replace(/_/g, " ")}
-                          </Badge>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <Separator />
-                  <div className="flex justify-between items-center px-1">
-                    <span className="text-sm text-muted-foreground">Total invoice this month</span>
-                    <span className="text-base font-bold text-amber-400">
-                      {formatCurrency(monthlyProjects.reduce((s, p) => {
-                        const client = data.clients.find(c => c.id === p.clientId);
-                        return s + getProjectHours(p).totalHours * Number(client?.billingRatePerHour ?? 0);
-                      }, 0))}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* ---- Client Reports ---- */}
         <TabsContent value="client" className="mt-4 space-y-4">
@@ -812,6 +715,31 @@ export default function ReportsPage() {
           {data.clients.length === 0 && (
             <p className="text-muted-foreground text-sm text-center py-8">No clients found</p>
           )}
+        </TabsContent>
+
+        {/* ---- Internal Report ---- */}
+        <TabsContent value="internal" className="mt-4 space-y-4">
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">
+                  Earnings Breakdown — {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}
+                </CardTitle>
+                <Button size="sm" onClick={generateInternalReport} className="gap-2">
+                  <Eye className="w-4 h-4" />
+                  Preview Report
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Internal earnings breakdown with crew pay allocation, owner/admin splits, marketing budget, and per-project labor costs for {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}.
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {monthlyProjects.length} project{monthlyProjects.length !== 1 ? "s" : ""} this month
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

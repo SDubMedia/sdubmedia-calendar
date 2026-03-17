@@ -89,7 +89,58 @@ const REPORT_STYLES = `
   .report-footer p { margin-bottom: 4px; }
   .report-footer .contact { text-align: center; margin-top: 12px; color: #888; }
 
-  @media print { body { padding: 20px; } .project-card { page-break-inside: avoid; } }
+  /* Internal Earnings Report Styles */
+  .earnings-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .earnings-card .card-label { font-size: 13px; color: #555; margin-bottom: 4px; }
+  .earnings-card .card-value { font-size: 24px; font-weight: 700; color: #111; }
+  .earnings-card .card-note { font-size: 11px; color: #888; margin-top: 4px; }
+
+  .earnings-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .earnings-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+
+  .earnings-card.marketing { border-top: 3px solid #8b5cf6; }
+  .earnings-card.marketing .card-value { color: #111; }
+  .earnings-card.owner { border-top: 3px solid #22c55e; }
+  .earnings-card.admin { border-top: 3px solid #3b82f6; }
+
+  .crew-pay-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px; }
+  .crew-pay-card .crew-pay-name { font-size: 13px; color: #555; margin-bottom: 2px; }
+  .crew-pay-card .crew-pay-amount { font-size: 20px; font-weight: 700; color: #111; }
+
+  .pay-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  .pay-table th { text-align: left; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #555; border-bottom: 1px solid #e5e5e5; }
+  .pay-table th:last-child { text-align: right; }
+  .pay-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+  .pay-table td:last-child { text-align: right; font-weight: 600; }
+  .pay-table .pay-total td { font-weight: 700; border-top: 2px solid #1e293b; background: #f8fafc; }
+
+  .hours-billed-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border: 1px solid #e5e5e5; border-radius: 8px; overflow: hidden; }
+  .hours-billed-cell { text-align: center; padding: 16px; border-right: 1px solid #e5e5e5; }
+  .hours-billed-cell:last-child { border-right: none; }
+  .hours-billed-cell .hb-label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .hours-billed-cell .hb-value { font-size: 22px; font-weight: 700; color: #1e293b; }
+  .hours-billed-cell .hb-value.highlight { color: #d97706; }
+
+  .day-header { background: #1e293b; color: #fff; border-radius: 8px 8px 0 0; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+  .day-header .day-title { font-size: 16px; font-weight: 700; }
+  .day-header .day-subtitle { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .day-header .day-hours-label { font-size: 11px; color: #94a3b8; text-align: right; }
+  .day-header .day-hours-value { font-size: 22px; font-weight: 700; color: #22c55e; text-align: right; }
+  .day-projects { border: 1px solid #e5e5e5; border-top: none; border-radius: 0 0 8px 8px; padding: 20px; margin-bottom: 24px; }
+
+  .internal-pay-box { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-top: 16px; }
+  .internal-pay-box .ipb-header { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #92400e; margin-bottom: 4px; }
+  .internal-pay-box .ipb-note { font-size: 11px; color: #92400e; margin-bottom: 12px; }
+  .internal-pay-table { width: 100%; border-collapse: collapse; }
+  .internal-pay-table th { text-align: left; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #92400e; border-bottom: 1px solid #f59e0b; }
+  .internal-pay-table th:last-child { text-align: right; }
+  .internal-pay-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid #fde68a; }
+  .internal-pay-table td:last-child { text-align: right; font-weight: 700; }
+  .internal-pay-table .ipt-total td { font-weight: 700; border-top: 2px solid #f59e0b; background: #fef3c7; }
+
+  .project-type-badge { display: inline-block; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 4px; margin-top: 4px; }
+
+  @media print { body { padding: 20px; } .project-card { page-break-inside: avoid; } .day-header { page-break-inside: avoid; } }
 `;
 
 export default function ReportPreview({ title, html, onClose }: ReportPreviewProps) {
