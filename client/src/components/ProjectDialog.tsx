@@ -115,25 +115,29 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!clientId || !date) {
       toast.error("Please fill in client and date");
       return;
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId, projectTypeId, locationId, date, startTime, endTime, status,
+      clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime, status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
       editTypes, notes,
     };
-    if (isEdit && project) {
-      updateProject(project.id, payload);
-      toast.success("Project updated");
-    } else {
-      addProject(payload);
-      toast.success("Project created");
+    try {
+      if (isEdit && project) {
+        await updateProject(project.id, payload);
+        toast.success("Project updated");
+      } else {
+        await addProject(payload);
+        toast.success("Project created");
+      }
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save project");
     }
-    onClose();
   };
 
   return (

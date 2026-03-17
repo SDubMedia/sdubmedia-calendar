@@ -275,7 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id,
       client_id: p.clientId,
       project_type_id: p.projectTypeId,
-      location_id: p.locationId,
+      location_id: p.locationId || null,
       date: p.date,
       start_time: p.startTime,
       end_time: p.endTime,
@@ -295,7 +295,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = {};
     if (p.clientId !== undefined) patch.client_id = p.clientId;
     if (p.projectTypeId !== undefined) patch.project_type_id = p.projectTypeId;
-    if (p.locationId !== undefined) patch.location_id = p.locationId;
+    if (p.locationId !== undefined) patch.location_id = p.locationId || null;
     if (p.date !== undefined) patch.date = p.date;
     if (p.startTime !== undefined) patch.start_time = p.startTime;
     if (p.endTime !== undefined) patch.end_time = p.endTime;
