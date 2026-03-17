@@ -30,6 +30,9 @@ export default function UsersPage() {
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[] });
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editClientIds, setEditClientIds] = useState<string[]>([]);
+  const [editRole, setEditRole] = useState<UserRole>("client");
 
   useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
@@ -76,6 +79,29 @@ export default function UsersPage() {
         ? f.clientIds.filter(id => id !== clientId)
         : [...f.clientIds, clientId],
     }));
+  };
+
+  const openEdit = (u: typeof allProfiles[0]) => {
+    setEditingUser(u.id);
+    setEditClientIds(u.clientIds);
+    setEditRole(u.role);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    try {
+      await updateUserProfile(editingUser, { role: editRole, clientIds: editClientIds });
+      toast.success("User updated");
+      setEditingUser(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update user");
+    }
+  };
+
+  const toggleEditClient = (clientId: string) => {
+    setEditClientIds(prev =>
+      prev.includes(clientId) ? prev.filter(id => id !== clientId) : [...prev, clientId]
+    );
   };
 
   return (
@@ -209,20 +235,76 @@ export default function UsersPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold text-foreground">{u.name}</span>
+                      <button
+                        onClick={() => !isMe && openEdit(u)}
+                        className={cn("text-sm font-semibold", isMe ? "text-foreground cursor-default" : "text-foreground hover:text-primary cursor-pointer")}
+                      >
+                        {u.name}
+                      </button>
                       {isMe && <span className="text-[10px] text-muted-foreground">(you)</span>}
                       <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", ROLE_COLORS[u.role])}>
                         {ROLE_LABELS[u.role]}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
-                    {attachedClients.length > 0 && (
+                    {attachedClients.length > 0 && editingUser !== u.id && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {attachedClients.map(c => (
                           <span key={c.id} className="text-[10px] px-2 py-0.5 rounded bg-secondary text-muted-foreground">
                             {c.company}
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {editingUser === u.id && (
+                      <div className="mt-3 p-3 bg-secondary/50 rounded-lg space-y-3 border border-border">
+                        <div>
+                          <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Role</label>
+                          <select
+                            value={editRole}
+                            onChange={e => setEditRole(e.target.value as UserRole)}
+                            className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground"
+                          >
+                            <option value="owner">Owner</option>
+                            <option value="partner">Partner</option>
+                            <option value="client">Client</option>
+                          </select>
+                        </div>
+                        {(editRole === "client" || editRole === "partner") && (
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Attached Clients</label>
+                            <div className="flex flex-wrap gap-2">
+                              {data.clients.map(c => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => toggleEditClient(c.id)}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded text-xs border transition-colors",
+                                    editClientIds.includes(c.id)
+                                      ? "bg-primary/20 border-primary/50 text-primary"
+                                      : "border-border text-muted-foreground hover:border-primary/30"
+                                  )}
+                                >
+                                  {c.company}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => setEditingUser(null)}
+                            className="text-xs px-3 py-1.5 rounded bg-secondary text-muted-foreground hover:text-foreground"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                          >
+                            Save
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
