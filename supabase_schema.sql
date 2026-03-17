@@ -80,7 +80,17 @@ create table if not exists marketing_expenses (
   created_at timestamptz not null default now()
 );
 
--- ---- Disable RLS for now (single-user app, public access) ----
+-- ---- User Profiles (auth) ----
+create table if not exists user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  name text not null default '',
+  role text not null default 'client',
+  client_ids text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+-- ---- Disable RLS for now ----
 alter table clients disable row level security;
 alter table crew_members disable row level security;
 alter table locations disable row level security;
@@ -88,6 +98,7 @@ alter table project_types disable row level security;
 alter table projects disable row level security;
 alter table retainer_payments disable row level security;
 alter table marketing_expenses disable row level security;
+alter table user_profiles disable row level security;
 
 -- ============================================================
 -- Seed Data

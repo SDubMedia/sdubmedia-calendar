@@ -4,6 +4,18 @@
 // Billing Model: Hourly — client billed at flat rate, crew paid individually
 // ============================================================
 
+// ---- Auth & Roles ----
+export type UserRole = "owner" | "client" | "partner";
+
+export interface UserProfile {
+  id: string;           // matches Supabase Auth user ID
+  email: string;
+  name: string;
+  role: UserRole;
+  clientIds: string[];  // which clients this user can access (empty = all for owner)
+  createdAt: string;
+}
+
 export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed";
 
 export type CrewRole =

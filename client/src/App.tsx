@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
 import CalendarPage from "./pages/CalendarPage";
@@ -14,6 +15,8 @@ import ManagePage from "./pages/ManagePage";
 import ReportsPage from "./pages/ReportsPage";
 import StaffPage from "./pages/StaffPage";
 import MarketingBudgetPage from "./pages/MarketingBudgetPage";
+import UsersPage from "./pages/UsersPage";
+import LoginPage from "./pages/LoginPage";
 import { Film } from "lucide-react";
 
 function LoadingScreen() {
@@ -38,20 +41,27 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function Router() {
+  const { profile } = useAuth();
   const { loading, error } = useApp();
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
+
+  const role = profile?.role ?? "client";
+  const isOwner = role === "owner";
+  const isPartner = role === "partner";
+
   return (
     <AppLayout>
       <Switch>
         <Route path="/" component={CalendarPage} />
         <Route path="/billing" component={BillingPage} />
-        <Route path="/clients" component={ClientsPage} />
-        <Route path="/locations" component={LocationsPage} />
-        <Route path="/manage" component={ManagePage} />
         <Route path="/reports" component={ReportsPage} />
-        <Route path="/staff" component={StaffPage} />
-        <Route path="/marketing-budget" component={MarketingBudgetPage} />
+        {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
+        {isOwner && <Route path="/staff" component={StaffPage} />}
+        {isOwner && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
+        {isOwner && <Route path="/locations" component={LocationsPage} />}
+        {isOwner && <Route path="/manage" component={ManagePage} />}
+        {isOwner && <Route path="/users" component={UsersPage} />}
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
@@ -59,16 +69,27 @@ function Router() {
   );
 }
 
+function AuthGate() {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <LoginPage />;
+  return (
+    <AppProvider>
+      <Router />
+    </AppProvider>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
-        <AppProvider>
+        <AuthProvider>
           <TooltipProvider>
             <Toaster theme="dark" />
-            <Router />
+            <AuthGate />
           </TooltipProvider>
-        </AppProvider>
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

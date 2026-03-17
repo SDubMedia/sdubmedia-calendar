@@ -1,0 +1,264 @@
+// ============================================================
+// UsersPage — Owner-only user management
+// Create accounts, assign roles, attach clients
+// ============================================================
+
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useApp } from "@/contexts/AppContext";
+import type { UserRole } from "@/lib/types";
+import { Plus, Trash2, X, Shield, Users, Eye } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  owner: "Owner",
+  client: "Client",
+  partner: "Partner",
+};
+
+const ROLE_COLORS: Record<UserRole, string> = {
+  owner: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  client: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  partner: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+};
+
+export default function UsersPage() {
+  const { allProfiles, refreshProfiles, createUser, updateUserProfile, deleteUser, profile: myProfile } = useAuth();
+  const { data } = useApp();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[] });
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
+
+  const handleCreate = async () => {
+    if (!form.email || !form.password || !form.name) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    if (form.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    if ((form.role === "client" || form.role === "partner") && form.clientIds.length === 0) {
+      toast.error("Please attach at least one client");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await createUser(form.email, form.password, form.name, form.role, form.clientIds);
+      toast.success(`User "${form.name}" created`);
+      setForm({ email: "", password: "", name: "", role: "client", clientIds: [] });
+      setShowForm(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create user");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteUser(id);
+      toast.success("User removed");
+      setConfirmDelete(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete user");
+    }
+  };
+
+  const toggleClient = (clientId: string) => {
+    setForm(f => ({
+      ...f,
+      clientIds: f.clientIds.includes(clientId)
+        ? f.clientIds.filter(id => id !== clientId)
+        : [...f.clientIds, clientId],
+    }));
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Manage Users
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Create accounts and assign roles</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">Create User</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+        {/* Create User Form */}
+        {showForm && (
+          <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Create New User
+              </h3>
+              <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Name</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Full name"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="user@example.com"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Password</label>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="Min 6 characters"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Role</label>
+                <select
+                  value={form.role}
+                  onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="owner">Owner — Full access</option>
+                  <option value="partner">Partner — Financial view for attached clients</option>
+                  <option value="client">Client — View-only for their own data</option>
+                </select>
+              </div>
+            </div>
+
+            {(form.role === "client" || form.role === "partner") && (
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Attach to Client(s)</label>
+                <div className="flex flex-wrap gap-2">
+                  {data.clients.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => toggleClient(c.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-xs border transition-colors",
+                        form.clientIds.includes(c.id)
+                          ? "bg-primary/20 border-primary/50 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/30"
+                      )}
+                    >
+                      {c.company}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleCreate}
+                disabled={submitting}
+                className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {submitting ? "Creating..." : "Create User"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* User List */}
+        <div className="space-y-3">
+          {allProfiles.length === 0 ? (
+            <div className="bg-card border border-border rounded-lg p-8 text-center">
+              <Users className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground">No users yet</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">Create the first user account to get started.</p>
+            </div>
+          ) : (
+            allProfiles.map(u => {
+              const attachedClients = data.clients.filter(c => u.clientIds.includes(c.id));
+              const isMe = u.id === myProfile?.id;
+              return (
+                <div key={u.id} className="bg-card border border-border rounded-lg p-4 flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+                    {u.role === "owner" ? <Shield className="w-5 h-5 text-amber-400" /> :
+                     u.role === "partner" ? <Eye className="w-5 h-5 text-purple-400" /> :
+                     <Users className="w-5 h-5 text-blue-400" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-semibold text-foreground">{u.name}</span>
+                      {isMe && <span className="text-[10px] text-muted-foreground">(you)</span>}
+                      <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", ROLE_COLORS[u.role])}>
+                        {ROLE_LABELS[u.role]}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{u.email}</p>
+                    {attachedClients.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {attachedClients.map(c => (
+                          <span key={c.id} className="text-[10px] px-2 py-0.5 rounded bg-secondary text-muted-foreground">
+                            {c.company}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {!isMe && (
+                    <div className="shrink-0">
+                      {confirmDelete === u.id ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleDelete(u.id)}
+                            className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="text-xs px-2 py-1 rounded bg-secondary text-muted-foreground"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(u.id)}
+                          className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
