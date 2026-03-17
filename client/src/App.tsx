@@ -58,8 +58,8 @@ function Router() {
         <Route path="/billing" component={BillingPage} />
         <Route path="/reports" component={ReportsPage} />
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
-        {isOwner && <Route path="/staff" component={StaffPage} />}
-        {isOwner && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
+        {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
+        {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
         {isOwner && <Route path="/locations" component={LocationsPage} />}
         {isOwner && <Route path="/manage" component={ManagePage} />}
         {isOwner && <Route path="/users" component={UsersPage} />}
