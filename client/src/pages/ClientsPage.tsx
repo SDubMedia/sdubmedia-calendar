@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useApp } from "@/contexts/AppContext";
-import type { Client, RoleBillingMultiplier } from "@/lib/types";
+import type { Client, RoleBillingMultiplier, BillingModel } from "@/lib/types";
 import { toast } from "sonner";
 
 interface ClientFormData {
@@ -19,7 +19,9 @@ interface ClientFormData {
   contactName: string;
   phone: string;
   email: string;
+  billingModel: BillingModel;
   billingRatePerHour: number;
+  perProjectRate: number;
   roleBillingMultipliers: RoleBillingMultiplier[];
 }
 
@@ -28,7 +30,9 @@ const emptyForm = (): ClientFormData => ({
   contactName: "",
   phone: "",
   email: "",
+  billingModel: "hourly",
   billingRatePerHour: 200,
+  perProjectRate: 0,
   roleBillingMultipliers: [],
 });
 
@@ -52,7 +56,9 @@ export default function ClientsPage() {
       contactName: client.contactName,
       phone: client.phone,
       email: client.email,
+      billingModel: client.billingModel || "hourly",
       billingRatePerHour: client.billingRatePerHour,
+      perProjectRate: client.perProjectRate || 0,
       roleBillingMultipliers: client.roleBillingMultipliers || [],
     });
     setDialogOpen(true);
@@ -127,7 +133,10 @@ export default function ClientsPage() {
                   </div>
                   <div className="text-xs text-primary flex items-center gap-1 justify-end">
                     <DollarSign className="w-3 h-3" />
-                    ${Number(client.billingRatePerHour).toFixed(0)}/hr billing rate
+                    {client.billingModel === "per_project"
+                      ? `$${Number(client.perProjectRate).toFixed(0)}/project`
+                      : `$${Number(client.billingRatePerHour).toFixed(0)}/hr`
+                    }
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -172,15 +181,39 @@ export default function ClientsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Billing Rate ($/hr)</Label>
-              <Input
-                type="number"
-                value={form.billingRatePerHour}
-                onChange={(e) => setForm({ ...form, billingRatePerHour: parseFloat(e.target.value) || 0 })}
-                className="bg-secondary border-border"
-                placeholder="200"
-              />
+              <Label className="text-xs text-muted-foreground">Billing Model</Label>
+              <select
+                value={form.billingModel}
+                onChange={e => setForm({ ...form, billingModel: e.target.value as BillingModel })}
+                className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="hourly">Hourly Rate</option>
+                <option value="per_project">Per Project (Flat Rate)</option>
+              </select>
             </div>
+            {form.billingModel === "hourly" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Billing Rate ($/hr)</Label>
+                <Input
+                  type="number"
+                  value={form.billingRatePerHour}
+                  onChange={(e) => setForm({ ...form, billingRatePerHour: parseFloat(e.target.value) || 0 })}
+                  className="bg-secondary border-border"
+                  placeholder="200"
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Rate Per Project ($)</Label>
+                <Input
+                  type="number"
+                  value={form.perProjectRate}
+                  onChange={(e) => setForm({ ...form, perProjectRate: parseFloat(e.target.value) || 0 })}
+                  className="bg-secondary border-border"
+                  placeholder="300"
+                />
+              </div>
+            )}
             {/* Role Billing Multipliers */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">

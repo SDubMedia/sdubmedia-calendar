@@ -48,7 +48,9 @@ function rowToClient(r: any): Client {
     contactName: r.contact_name,
     phone: r.phone,
     email: r.email,
+    billingModel: r.billing_model || "hourly",
     billingRatePerHour: Number(r.billing_rate_per_hour ?? 0),
+    perProjectRate: Number(r.per_project_rate ?? 0),
     roleBillingMultipliers: r.role_billing_multipliers || [],
     createdAt: r.created_at,
   };
@@ -166,7 +168,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("clients").insert({
       id, company: c.company, contact_name: c.contactName, phone: c.phone,
-      email: c.email, billing_rate_per_hour: c.billingRatePerHour,
+      email: c.email, billing_model: c.billingModel ?? "hourly",
+      billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       role_billing_multipliers: c.roleBillingMultipliers ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
@@ -181,7 +184,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.contactName !== undefined) patch.contact_name = c.contactName;
     if (c.phone !== undefined) patch.phone = c.phone;
     if (c.email !== undefined) patch.email = c.email;
+    if (c.billingModel !== undefined) patch.billing_model = c.billingModel;
     if (c.billingRatePerHour !== undefined) patch.billing_rate_per_hour = c.billingRatePerHour;
+    if (c.perProjectRate !== undefined) patch.per_project_rate = c.perProjectRate;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);

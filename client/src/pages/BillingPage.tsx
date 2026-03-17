@@ -9,7 +9,7 @@ import { useApp } from "@/contexts/AppContext";
 import type { Project, Client, AppData } from "@/lib/types";
 import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getBillableHours } from "@/lib/data";
+import { getBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ReportPreview from "@/components/ReportPreview";
 
 interface ClientSummary {
@@ -94,7 +94,9 @@ export default function BillingPage() {
         });
       });
 
-      const clientInvoiceAmount = totalBillableHours * client.billingRatePerHour;
+      const clientInvoiceAmount = client.billingModel === "per_project"
+        ? projects.length * Number(client.perProjectRate ?? 0)
+        : totalBillableHours * client.billingRatePerHour;
       const crewPayBreakdown = Object.entries(crewMap).map(([id, v]) => ({ crewMemberId: id, ...v }));
       const totalCrewCost = crewPayBreakdown.reduce((s, c) => s + c.totalPay, 0);
       const grossMargin = clientInvoiceAmount - totalCrewCost;
@@ -158,7 +160,7 @@ export default function BillingPage() {
       const allEntries = [...p.crew, ...p.postProduction];
       const totalBillableHrs = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
       const crewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
-      const invoice = totalBillableHrs * Number(client?.billingRatePerHour ?? 0);
+      const invoice = client ? getProjectInvoiceAmount(p, client) : 0;
       return `<tr><td>${p.date}</td><td>${pType?.name ?? "—"}</td><td>${client?.company ?? "—"}</td><td>${totalBillableHrs.toFixed(1)}</td><td>${formatCurrencyReport(crewCost)}</td><td>${formatCurrencyReport(invoice)}</td></tr>`;
     }).join("");
 
@@ -410,7 +412,7 @@ function ProjectRow({ project, data }: { project: Project; data: AppData }) {
   const allEntries = [...project.crew, ...project.postProduction];
   const totalBillableHours = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
   const totalCrewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
-  const invoiceAmount = totalBillableHours * Number(client?.billingRatePerHour ?? 0);
+  const invoiceAmount = client ? getProjectInvoiceAmount(project, client) : 0;
 
   const dateStr = new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 

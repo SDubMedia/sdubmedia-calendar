@@ -17,7 +17,9 @@ export const seedData: AppData = {
       contactName: "Sam Sizemore",
       phone: "864-494-6909",
       email: "sam.cbsouthernrealty@gmail.com",
+      billingModel: "hourly",
       billingRatePerHour: 200,
+      perProjectRate: 0,
       roleBillingMultipliers: [],
       createdAt: new Date().toISOString(),
     },
@@ -171,6 +173,18 @@ export function getProjectBillableHours(project: Project, client: Client): {
   const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
   const postBillable = (project.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
   return { crewBillable, postBillable, totalBillable: crewBillable + postBillable };
+}
+
+/**
+ * Get the invoice amount for a single project based on the client's billing model.
+ * Hourly: billable hours × rate. Per-project: flat rate per project.
+ */
+export function getProjectInvoiceAmount(project: Project, client: Client): number {
+  if (client.billingModel === "per_project") {
+    return Number(client.perProjectRate ?? 0);
+  }
+  const { totalBillable } = getProjectBillableHours(project, client);
+  return totalBillable * Number(client.billingRatePerHour ?? 0);
 }
 
 /**

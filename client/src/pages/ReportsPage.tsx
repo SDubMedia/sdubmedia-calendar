@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
-import { getBillableHours, getProjectBillableHours } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -87,7 +87,7 @@ export default function ReportsPage() {
       const clientProjects = filteredProjects.filter(p => p.clientId === client.id);
       const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
       const crewCost = clientProjects.reduce((s, p) => s + getProjectCrewCost(p), 0);
-      const invoiceAmount = totalHours * Number(client.billingRatePerHour ?? 0);
+      const invoiceAmount = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
       const margin = invoiceAmount - crewCost;
       return { client, projectCount: clientProjects.length, totalHours, invoiceAmount, crewCost, margin };
     });
@@ -115,7 +115,7 @@ export default function ReportsPage() {
     const totalBilling = projects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
       if (!client) return s;
-      return s + getProjectBillableHours(p, client).totalBillable * Number(client.billingRatePerHour ?? 0);
+      return s + getProjectInvoiceAmount(p, client);
     }, 0);
     const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
 
@@ -374,7 +374,7 @@ export default function ReportsPage() {
     const totalEditorHours = clientProjects.reduce((s, p) =>
       s + (p.postProduction || []).reduce((ps, e) => ps + getBillableHours(e, client), 0), 0);
     const totalHours = totalProductionHours + totalEditorHours;
-    const totalInvoice = totalHours * Number(client.billingRatePerHour ?? 0);
+    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
 
     // Report number
     const clientPrefix = client.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);

@@ -40,6 +40,8 @@ export type EditType =
   | "Highlight Reel"
   | "Raw Footage";
 
+export type BillingModel = "hourly" | "per_project";
+
 // Per-role billing multiplier for a client
 // e.g. { role: "2nd Videographer", multiplier: 0.5 } means 1hr worked = 0.5hr billed
 export interface RoleBillingMultiplier {
@@ -54,8 +56,10 @@ export interface Client {
   phone: string;
   email: string;
   // Billing settings
-  billingRatePerHour: number; // $ per hour billed to this client
-  roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments
+  billingModel: BillingModel; // "hourly" or "per_project"
+  billingRatePerHour: number; // $ per hour (for hourly model)
+  perProjectRate: number; // $ per project (for per_project model)
+  roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
   createdAt: string;
 }
 
