@@ -105,6 +105,9 @@ temp/
 *.sqlite
 *.sqlite3
 
+# Backups (contain sensitive data)
+backups/
+
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 .vercel
