@@ -22,6 +22,7 @@ import {
   LogOut,
   Menu,
   X,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,7 +37,9 @@ interface NavItem {
 }
 
 const allNavItems: NavItem[] = [
-  { label: "Calendar", href: "/", icon: CalendarDays, roles: ["owner", "partner", "client", "staff"] },
+  { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner"] },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner"] },
+  { label: "Calendar", href: "/", icon: CalendarDays, roles: ["client"] },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"] },
   { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"] },
   { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"] },

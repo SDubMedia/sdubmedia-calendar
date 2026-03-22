@@ -18,6 +18,7 @@ import MarketingBudgetPage from "./pages/MarketingBudgetPage";
 import UsersPage from "./pages/UsersPage";
 import MySchedulePage from "./pages/MySchedulePage";
 import InvoicesPage from "./pages/InvoicesPage";
+import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
@@ -59,10 +60,13 @@ function Router() {
       <Switch>
         {isStaff ? (
           <Route path="/" component={MySchedulePage} />
+        ) : (isOwner || isPartner) ? (
+          <Route path="/" component={DashboardPage} />
         ) : (
           <Route path="/" component={CalendarPage} />
         )}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
+        {!isStaff && <Route path="/calendar" component={CalendarPage} />}
         {!isStaff && <Route path="/billing" component={BillingPage} />}
         {!isStaff && <Route path="/reports" component={ReportsPage} />}
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
