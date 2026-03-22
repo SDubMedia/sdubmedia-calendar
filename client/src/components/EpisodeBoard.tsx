@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SeriesEpisode, EpisodeStatus } from "@/lib/types";
@@ -106,110 +106,12 @@ export default function EpisodeBoard({
 
             {/* Expanded detail */}
             {isExpanded && (
-              <div className="border-t border-border px-4 py-4 flex flex-col gap-4">
-                {/* Title */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={ep.title}
-                    onChange={(e) =>
-                      onUpdateEpisode(ep.id, { title: e.target.value })
-                    }
-                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="Episode title"
-                  />
-                </div>
-
-                {/* Concept */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Concept
-                  </label>
-                  <textarea
-                    value={ep.concept}
-                    onChange={(e) =>
-                      onUpdateEpisode(ep.id, { concept: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
-                    placeholder="Episode concept..."
-                  />
-                </div>
-
-                {/* Talking Points */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Talking Points
-                  </label>
-                  <textarea
-                    value={ep.talkingPoints}
-                    onChange={(e) =>
-                      onUpdateEpisode(ep.id, {
-                        talkingPoints: e.target.value,
-                      })
-                    }
-                    rows={4}
-                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
-                    placeholder="Talking points..."
-                  />
-                </div>
-
-                {/* Status + Actions row */}
-                <div className="flex items-end justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Status
-                    </label>
-                    <select
-                      value={ep.status}
-                      onChange={(e) =>
-                        onUpdateEpisode(ep.id, {
-                          status: e.target.value as EpisodeStatus,
-                        })
-                      }
-                      className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {!ep.projectId && onScheduleEpisode && ep.status !== "idea" && (
-                      <button
-                        type="button"
-                        onClick={() => onScheduleEpisode(ep)}
-                        className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-cyan-400 hover:bg-cyan-950/40 transition-colors"
-                      >
-                        <CalendarPlus className="h-4 w-4" />
-                        Schedule Shoot
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onDeleteEpisode(ep.id)}
-                      className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                {/* Linked project indicator */}
-                {ep.projectId && (
-                  <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 rounded-md px-3 py-2">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Linked to calendar project — status syncs automatically
-                  </div>
-                )}
-              </div>
+              <EpisodeDetail
+                ep={ep}
+                onUpdateEpisode={onUpdateEpisode}
+                onDeleteEpisode={onDeleteEpisode}
+                onScheduleEpisode={onScheduleEpisode}
+              />
             )}
           </div>
         );
@@ -224,6 +126,97 @@ export default function EpisodeBoard({
         <Plus className="h-4 w-4" />
         Add Episode
       </button>
+    </div>
+  );
+}
+
+/** Episode detail with local state — saves on blur to avoid per-keystroke API calls */
+function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode }: {
+  ep: SeriesEpisode;
+  onUpdateEpisode: (id: string, updates: Partial<SeriesEpisode>) => void;
+  onDeleteEpisode: (id: string) => void;
+  onScheduleEpisode?: (episode: SeriesEpisode) => void;
+}) {
+  const [title, setTitle] = useState(ep.title);
+  const [concept, setConcept] = useState(ep.concept);
+  const [talkingPoints, setTalkingPoints] = useState(ep.talkingPoints);
+
+  const saveField = useCallback((field: string, value: string) => {
+    const current = field === "title" ? ep.title : field === "concept" ? ep.concept : ep.talkingPoints;
+    if (value !== current) {
+      onUpdateEpisode(ep.id, { [field]: value } as Partial<SeriesEpisode>);
+    }
+  }, [ep, onUpdateEpisode]);
+
+  return (
+    <div className="border-t border-border px-4 py-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-muted-foreground">Title</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => saveField("title", title)}
+          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="Episode title"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-muted-foreground">Concept</label>
+        <textarea
+          value={concept}
+          onChange={(e) => setConcept(e.target.value)}
+          onBlur={() => saveField("concept", concept)}
+          rows={3}
+          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+          placeholder="Episode concept..."
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-muted-foreground">Talking Points</label>
+        <textarea
+          value={talkingPoints}
+          onChange={(e) => setTalkingPoints(e.target.value)}
+          onBlur={() => saveField("talkingPoints", talkingPoints)}
+          rows={4}
+          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+          placeholder="Talking points..."
+        />
+      </div>
+
+      <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted-foreground">Status</label>
+          <select
+            value={ep.status}
+            onChange={(e) => onUpdateEpisode(ep.id, { status: e.target.value as EpisodeStatus })}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          {!ep.projectId && onScheduleEpisode && ep.status !== "idea" && (
+            <button type="button" onClick={() => onScheduleEpisode(ep)}
+              className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-cyan-400 hover:bg-cyan-950/40 transition-colors">
+              <CalendarPlus className="h-4 w-4" /> Schedule Shoot
+            </button>
+          )}
+          <button type="button" onClick={() => onDeleteEpisode(ep.id)}
+            className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 transition-colors">
+            <Trash2 className="h-4 w-4" /> Delete
+          </button>
+        </div>
+      </div>
+
+      {ep.projectId && (
+        <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 rounded-md px-3 py-2">
+          <ExternalLink className="h-3.5 w-3.5" />
+          Linked to calendar project — status syncs automatically
+        </div>
+      )}
     </div>
   );
 }

@@ -216,9 +216,16 @@ create policy "owner_all_user_profiles" on user_profiles
   for all using (public.user_role() = 'owner');
 create policy "users_read_own_profile" on user_profiles
   for select using (id = auth.uid());
-create policy "users_update_own_password_flag" on user_profiles
+-- Users can only update their own password flag and onboarding status (not role/clientIds)
+create policy "users_update_own_flags" on user_profiles
   for update using (id = auth.uid())
-  with check (id = auth.uid());
+  with check (
+    id = auth.uid()
+    -- Ensure role and client_ids haven't changed (prevent privilege escalation)
+    and role = (select role from user_profiles where id = auth.uid())
+    and client_ids = (select client_ids from user_profiles where id = auth.uid())
+    and crew_member_id = (select crew_member_id from user_profiles where id = auth.uid())
+  );
 
 -- ---- clients policies ----
 create policy "owner_all_clients" on clients

@@ -4,6 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
+import { verifyAuth, escapeHtml } from "./_auth";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -11,6 +12,12 @@ const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Verify authentication
+  const user = await verifyAuth(req);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
@@ -101,11 +108,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <p style="margin: 4px 0 0; font-size: 12px; color: #64748b;">Video When It Matters Most</p>
         </div>
         <div style="padding: 24px 0;">
-          <p>Hi${clientName ? ` ${clientName}` : ""},</p>
-          <p>Please find attached invoice <strong>${invoiceNumber}</strong> for services rendered.</p>
+          <p>Hi${clientName ? ` ${escapeHtml(clientName)}` : ""},</p>
+          <p>Please find attached invoice <strong>${escapeHtml(invoiceNumber)}</strong> for services rendered.</p>
           <p style="font-size: 18px; font-weight: bold; color: #1e293b;">Amount due: ${totalFormatted}</p>
           <p><strong>Payment terms:</strong> Due on receipt</p>
-          ${message ? `<div style="margin: 16px 0; padding: 12px; background: #f1f5f9; border-radius: 6px;"><p style="margin: 0; color: #475569;">${message}</p></div>` : ""}
+          ${message ? `<div style="margin: 16px 0; padding: 12px; background: #f1f5f9; border-radius: 6px;"><p style="margin: 0; color: #475569;">${escapeHtml(message)}</p></div>` : ""}
           <p>Thank you for your business!</p>
           <p style="color: #64748b;">— SDub Media</p>
         </div>

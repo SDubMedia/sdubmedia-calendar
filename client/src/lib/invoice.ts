@@ -41,10 +41,26 @@ export function buildLineItems(
   locations: Location[],
   periodStart: string,
   periodEnd: string,
+  existingInvoices?: { lineItems: { projectId: string }[] }[],
 ): InvoiceLineItem[] {
+  // Collect already-invoiced project IDs to prevent double-billing
+  const invoicedProjectIds = new Set<string>();
+  if (existingInvoices) {
+    for (const inv of existingInvoices) {
+      for (const li of inv.lineItems) {
+        if (li.projectId) invoicedProjectIds.add(li.projectId);
+      }
+    }
+  }
+
   const filtered = projects.filter(p => {
     if (p.clientId !== client.id) return false;
-    return p.date >= periodStart && p.date <= periodEnd;
+    if (p.date < periodStart || p.date > periodEnd) return false;
+    // Don't invoice upcoming projects (no work done yet)
+    if (p.status === "upcoming") return false;
+    // Don't double-bill projects already on another invoice
+    if (invoicedProjectIds.has(p.id)) return false;
+    return true;
   });
 
   return filtered.map(p => {
@@ -87,7 +103,7 @@ export function buildInvoice(
   periodStart: string,
   periodEnd: string,
 ): Omit<Invoice, "id" | "createdAt" | "updatedAt"> {
-  const lineItems = buildLineItems(projects, client, projectTypes, locations, periodStart, periodEnd);
+  const lineItems = buildLineItems(projects, client, projectTypes, locations, periodStart, periodEnd, existingInvoices as any);
   const subtotal = lineItems.reduce((s, li) => s + li.amount, 0);
   const taxRate = 0;
   const taxAmount = subtotal * taxRate;

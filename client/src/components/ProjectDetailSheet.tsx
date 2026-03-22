@@ -101,10 +101,14 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
     }
   };
 
-  const handleDelete = () => {
-    deleteProject(project.id);
-    toast.success("Project deleted");
-    onClose();
+  const handleDelete = async () => {
+    try {
+      await deleteProject(project.id);
+      toast.success("Project deleted");
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete project");
+    }
   };
 
   const mapsUrl = location

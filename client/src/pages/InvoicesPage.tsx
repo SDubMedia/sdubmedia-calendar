@@ -10,6 +10,7 @@ import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
 import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
@@ -183,7 +184,8 @@ export default function InvoicesPage() {
       formData.append("total", String(invoice.total));
       formData.append("clientName", invoice.clientInfo.contactName || invoice.clientInfo.company || "");
 
-      const res = await fetch("/api/send-invoice", { method: "POST", body: formData });
+      const token = await getAuthToken();
+      const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { "Authorization": `Bearer ${token}` } });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed to send" }));
         throw new Error(err.error || "Failed to send");

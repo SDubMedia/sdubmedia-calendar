@@ -5,6 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Anthropic from "@anthropic-ai/sdk";
+import { verifyAuth } from "./_auth";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
 
@@ -65,6 +66,12 @@ const tools: Anthropic.Tool[] = [
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Verify authentication
+  const user = await verifyAuth(req);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {

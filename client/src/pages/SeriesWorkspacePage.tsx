@@ -11,6 +11,7 @@ import SeriesChat from "@/components/SeriesChat";
 import EpisodeBoard from "@/components/EpisodeBoard";
 import { ArrowLeft, MessageSquare, ListOrdered } from "lucide-react";
 import ProjectDialog from "@/components/ProjectDialog";
+import { getAuthToken } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -64,10 +65,13 @@ export default function SeriesWorkspacePage() {
 
   const handleProjectCreated = useCallback(async (project: any) => {
     if (scheduleEpisode) {
-      // Link episode to the new project and update status
-      await updateEpisode(scheduleEpisode.id, { projectId: project.id, status: "scheduled" });
-      setEpisodes(prev => prev.map(e => e.id === scheduleEpisode.id ? { ...e, projectId: project.id, status: "scheduled" } : e));
-      toast.success(`Episode ${scheduleEpisode.episodeNumber} linked to calendar`);
+      try {
+        await updateEpisode(scheduleEpisode.id, { projectId: project.id, status: "scheduled" });
+        setEpisodes(prev => prev.map(e => e.id === scheduleEpisode.id ? { ...e, projectId: project.id, status: "scheduled" } : e));
+        toast.success(`Episode ${scheduleEpisode.episodeNumber} linked to calendar`);
+      } catch (err: any) {
+        toast.error("Project created but failed to link episode — link it manually");
+      }
       setScheduleEpisode(null);
     }
   }, [scheduleEpisode, updateEpisode]);
@@ -102,9 +106,10 @@ export default function SeriesWorkspacePage() {
 
     // Call AI
     try {
+      const token = await getAuthToken();
       const res = await fetch("/api/series-chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
           seriesId,
           message: content,
