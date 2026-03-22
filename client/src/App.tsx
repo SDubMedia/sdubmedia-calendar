@@ -49,12 +49,12 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function Router() {
-  const { profile } = useAuth();
+  const { effectiveProfile } = useAuth();
   const { loading, error } = useApp();
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
 
-  const role = profile?.role ?? "client";
+  const role = effectiveProfile?.role ?? "client";
   const isOwner = role === "owner";
   const isPartner = role === "partner";
   const isStaff = role === "staff";

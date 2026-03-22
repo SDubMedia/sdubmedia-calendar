@@ -55,9 +55,10 @@ const allNavItems: NavItem[] = [
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { profile, signOut } = useAuth();
+  const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const role = profile?.role ?? "client";
+  const role = effectiveProfile?.role ?? "client";
+  const isRealOwner = profile?.role === "owner";
 
   const navItems = useMemo(() =>
     allNavItems.filter(item => item.roles.includes(role)),
@@ -108,8 +109,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer with sign out */}
-        <div className="px-4 py-3 border-t border-border">
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-border space-y-2">
+          {isRealOwner && (
+            <div>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
+              <select
+                value={viewAsRole || ""}
+                onChange={e => setViewAsRole(e.target.value ? e.target.value as any : null)}
+                className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
+              >
+                <option value="">Owner (default)</option>
+                <option value="partner">Partner</option>
+                <option value="client">Client</option>
+                <option value="staff">Staff</option>
+              </select>
+            </div>
+          )}
           <button
             onClick={() => signOut()}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
@@ -168,6 +184,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
+              {isRealOwner && (
+                <div className="px-3 py-2">
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
+                  <select
+                    value={viewAsRole || ""}
+                    onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); }}
+                    className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
+                  >
+                    <option value="">Owner (default)</option>
+                    <option value="partner">Partner</option>
+                    <option value="client">Client</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </div>
+              )}
               <button
                 onClick={() => { setMobileMenuOpen(false); signOut(); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"

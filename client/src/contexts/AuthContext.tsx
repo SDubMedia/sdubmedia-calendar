@@ -21,6 +21,11 @@ interface AuthContextValue {
   changePassword: (newPassword: string) => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
+  // View As (owner only) — preview the app as another role
+  viewAsRole: UserRole | null;
+  setViewAsRole: (role: UserRole | null) => void;
+  /** The effective profile — uses viewAs override if set */
+  effectiveProfile: UserProfile | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
+
+  // Build effective profile with role override
+  const effectiveProfile = profile && viewAsRole && profile.role === "owner"
+    ? { ...profile, role: viewAsRole }
+    : profile;
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -167,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn, signOut, changePassword,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
+      viewAsRole, setViewAsRole, effectiveProfile,
     }}>
       {children}
     </AuthContext.Provider>
