@@ -8,19 +8,11 @@ import { useAuth } from "@/contexts/AuthContext";
 // Film icon removed — using logo image instead
 import { toast } from "sonner";
 
-const FONT_OPTIONS = [
-  { name: "Bebas Neue", family: "'Bebas Neue', sans-serif", transform: "uppercase" as const, spacing: "0.15em", size: "3rem" },
-  { name: "Syne", family: "'Syne', sans-serif", transform: "none" as const, spacing: "0.02em", size: "2.5rem" },
-  { name: "Outfit", family: "'Outfit', sans-serif", transform: "uppercase" as const, spacing: "0.2em", size: "2.25rem" },
-];
-
 export default function LoginPage() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fontIndex, setFontIndex] = useState(0);
-  const font = FONT_OPTIONS[fontIndex];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,30 +35,16 @@ export default function LoginPage() {
       <div className="w-full max-w-sm mx-4">
         <div className="text-center mb-8">
           <img src="/pwa-192x192.png" alt="SDub Media" className="w-20 h-20 mx-auto mb-4" />
-          <h1 className="text-foreground font-bold" style={{
-            fontFamily: font.family,
-            textTransform: font.transform,
-            letterSpacing: font.spacing,
-            fontSize: font.size,
+          <h1 className="font-bold bg-clip-text text-transparent" style={{
+            fontFamily: "'Outfit', sans-serif",
+            textTransform: "uppercase",
+            letterSpacing: "0.2em",
+            fontSize: "2.25rem",
+            backgroundImage: "linear-gradient(135deg, #00d4ff, #0066ff)",
           }}>
             Slate
           </h1>
           <p className="text-sm text-muted-foreground mt-1">by SDub Media</p>
-
-          {/* Font preview switcher — remove after choosing */}
-          <div className="flex gap-2 mt-4 justify-center">
-            {FONT_OPTIONS.map((f, i) => (
-              <button
-                key={f.name}
-                onClick={() => setFontIndex(i)}
-                className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                  i === fontIndex ? "bg-primary/20 border-primary/50 text-primary" : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f.name}
-              </button>
-            ))}
-          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-lg p-6 space-y-4">
