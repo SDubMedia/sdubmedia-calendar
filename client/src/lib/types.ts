@@ -159,6 +159,40 @@ export interface MonthlyBillingSummary {
   grossMargin: number;            // clientInvoiceAmount - totalCrewCost
 }
 
+// ---- Invoices ----
+export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
+
+export interface InvoiceLineItem {
+  projectId: string;
+  date: string;
+  description: string;
+  quantity: number;    // hours or 1 (for per-project)
+  unitPrice: number;   // rate per hour or flat rate
+  amount: number;      // quantity × unitPrice
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  clientId: string;
+  periodStart: string;
+  periodEnd: string;
+  subtotal: number;
+  taxRate: number;
+  taxAmount: number;
+  total: number;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  paidDate: string | null;
+  lineItems: InvoiceLineItem[];
+  companyInfo: Record<string, string>;
+  clientInfo: Record<string, string>;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -166,4 +200,5 @@ export interface AppData {
   projectTypes: ProjectType[];
   projects: Project[];
   marketingExpenses: MarketingExpense[];
+  invoices: Invoice[];
 }

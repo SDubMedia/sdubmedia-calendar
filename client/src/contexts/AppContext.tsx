@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 
@@ -36,6 +36,10 @@ interface AppContextValue {
   // Marketing Expenses
   addMarketingExpense: (e: Omit<MarketingExpense, "id" | "createdAt">) => Promise<MarketingExpense>;
   deleteMarketingExpense: (id: string) => Promise<void>;
+  // Invoices
+  addInvoice: (inv: Omit<Invoice, "id" | "createdAt" | "updatedAt">) => Promise<Invoice>;
+  updateInvoice: (id: string, inv: Partial<Invoice>) => Promise<void>;
+  deleteInvoice: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -117,8 +121,32 @@ function rowToExpense(r: any): MarketingExpense {
   };
 }
 
+function rowToInvoice(r: any): Invoice {
+  return {
+    id: r.id,
+    invoiceNumber: r.invoice_number,
+    clientId: r.client_id,
+    periodStart: r.period_start,
+    periodEnd: r.period_end,
+    subtotal: Number(r.subtotal ?? 0),
+    taxRate: Number(r.tax_rate ?? 0),
+    taxAmount: Number(r.tax_amount ?? 0),
+    total: Number(r.total ?? 0),
+    status: r.status,
+    issueDate: r.issue_date,
+    dueDate: r.due_date,
+    paidDate: r.paid_date || null,
+    lineItems: r.line_items || [],
+    companyInfo: r.company_info || {},
+    clientInfo: r.client_info || {},
+    notes: r.notes || "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [],
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [],
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -137,6 +165,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: types, error: e4 },
         { data: projects, error: e5 },
         { data: expenses, error: e6 },
+        { data: invoices, error: e7 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -144,9 +173,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("project_types").select("*").order("name"),
         supabase.from("projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
+        supabase.from("invoices").select("*").order("created_at", { ascending: false }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7;
       if (firstError) throw new Error(firstError.message);
 
       setData({
@@ -156,6 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         projectTypes: (types || []).map(rowToProjectType),
         projects: (projects || []).map(rowToProject),
         marketingExpenses: (expenses || []).map(rowToExpense),
+        invoices: (invoices || []).map(rowToInvoice),
       });
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -351,6 +382,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setData(d => ({ ...d, marketingExpenses: d.marketingExpenses.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Invoices ----
+  const addInvoice = useCallback(async (inv: Omit<Invoice, "id" | "createdAt" | "updatedAt">): Promise<Invoice> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("invoices").insert({
+      id,
+      invoice_number: inv.invoiceNumber,
+      client_id: inv.clientId,
+      period_start: inv.periodStart,
+      period_end: inv.periodEnd,
+      subtotal: inv.subtotal,
+      tax_rate: inv.taxRate,
+      tax_amount: inv.taxAmount,
+      total: inv.total,
+      status: inv.status,
+      issue_date: inv.issueDate,
+      due_date: inv.dueDate,
+      paid_date: inv.paidDate,
+      line_items: inv.lineItems,
+      company_info: inv.companyInfo,
+      client_info: inv.clientInfo,
+      notes: inv.notes,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const invoice = rowToInvoice(row);
+    setData(d => ({ ...d, invoices: [invoice, ...d.invoices] }));
+    return invoice;
+  }, []);
+
+  const updateInvoice = useCallback(async (id: string, inv: Partial<Invoice>) => {
+    const patch: any = {};
+    if (inv.invoiceNumber !== undefined) patch.invoice_number = inv.invoiceNumber;
+    if (inv.clientId !== undefined) patch.client_id = inv.clientId;
+    if (inv.periodStart !== undefined) patch.period_start = inv.periodStart;
+    if (inv.periodEnd !== undefined) patch.period_end = inv.periodEnd;
+    if (inv.subtotal !== undefined) patch.subtotal = inv.subtotal;
+    if (inv.taxRate !== undefined) patch.tax_rate = inv.taxRate;
+    if (inv.taxAmount !== undefined) patch.tax_amount = inv.taxAmount;
+    if (inv.total !== undefined) patch.total = inv.total;
+    if (inv.status !== undefined) patch.status = inv.status;
+    if (inv.issueDate !== undefined) patch.issue_date = inv.issueDate;
+    if (inv.dueDate !== undefined) patch.due_date = inv.dueDate;
+    if (inv.paidDate !== undefined) patch.paid_date = inv.paidDate;
+    if (inv.lineItems !== undefined) patch.line_items = inv.lineItems;
+    if (inv.companyInfo !== undefined) patch.company_info = inv.companyInfo;
+    if (inv.clientInfo !== undefined) patch.client_info = inv.clientInfo;
+    if (inv.notes !== undefined) patch.notes = inv.notes;
+    patch.updated_at = new Date().toISOString();
+    const { error } = await supabase.from("invoices").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteInvoice = useCallback(async (id: string) => {
+    const { error } = await supabase.from("invoices").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       data, loading, error, refresh: fetchAll,
@@ -360,6 +449,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProjectType, updateProjectType, deleteProjectType,
       addProject, updateProject, deleteProject,
       addMarketingExpense, deleteMarketingExpense,
+      addInvoice, updateInvoice, deleteInvoice,
     }}>
       {children}
     </AppContext.Provider>

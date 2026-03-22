@@ -91,15 +91,192 @@ create table if not exists user_profiles (
   created_at timestamptz not null default now()
 );
 
--- ---- Disable RLS for now ----
-alter table clients disable row level security;
-alter table crew_members disable row level security;
-alter table locations disable row level security;
-alter table project_types disable row level security;
-alter table projects disable row level security;
-alter table retainer_payments disable row level security;
-alter table marketing_expenses disable row level security;
-alter table user_profiles disable row level security;
+-- ---- Invoices ----
+create table if not exists invoices (
+  id text primary key,
+  invoice_number text not null unique,
+  client_id text not null references clients(id) on delete cascade,
+  period_start text not null,
+  period_end text not null,
+  subtotal numeric not null default 0,
+  tax_rate numeric not null default 0,
+  tax_amount numeric not null default 0,
+  total numeric not null default 0,
+  status text not null default 'draft',
+  issue_date text not null,
+  due_date text not null,
+  paid_date text,
+  line_items jsonb not null default '[]',
+  company_info jsonb not null default '{}',
+  client_info jsonb not null default '{}',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ============================================================
+-- Row Level Security
+-- ============================================================
+
+-- Helper functions to look up the current user's role, client_ids, and crew_member_id
+create or replace function auth.user_role()
+returns text as $$
+  select role from public.user_profiles where id = auth.uid()
+$$ language sql security definer stable;
+
+create or replace function auth.user_client_ids()
+returns text[] as $$
+  select client_ids from public.user_profiles where id = auth.uid()
+$$ language sql security definer stable;
+
+create or replace function auth.user_crew_member_id()
+returns text as $$
+  select crew_member_id from public.user_profiles where id = auth.uid()
+$$ language sql security definer stable;
+
+-- Auto-create a default user_profiles row when a new auth user signs up
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.user_profiles (id, email, name, role, client_ids, crew_member_id, must_change_password)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'name', ''),
+    'client',
+    '{}',
+    '',
+    true
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Drop trigger if it exists, then create
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ---- Enable RLS on all tables ----
+alter table user_profiles enable row level security;
+alter table clients enable row level security;
+alter table projects enable row level security;
+alter table crew_members enable row level security;
+alter table locations enable row level security;
+alter table project_types enable row level security;
+alter table retainer_payments enable row level security;
+alter table marketing_expenses enable row level security;
+alter table invoices enable row level security;
+
+-- ---- user_profiles policies ----
+create policy "owner_all_user_profiles" on user_profiles
+  for all using (auth.user_role() = 'owner');
+create policy "users_read_own_profile" on user_profiles
+  for select using (id = auth.uid());
+create policy "users_update_own_password_flag" on user_profiles
+  for update using (id = auth.uid())
+  with check (id = auth.uid());
+
+-- ---- clients policies ----
+create policy "owner_all_clients" on clients
+  for all using (auth.user_role() = 'owner');
+create policy "partner_read_clients" on clients
+  for select using (
+    auth.user_role() = 'partner'
+    and id = any(auth.user_client_ids())
+  );
+create policy "client_read_clients" on clients
+  for select using (
+    auth.user_role() = 'client'
+    and id = any(auth.user_client_ids())
+  );
+
+-- ---- projects policies ----
+create policy "owner_all_projects" on projects
+  for all using (auth.user_role() = 'owner');
+create policy "partner_read_projects" on projects
+  for select using (
+    auth.user_role() = 'partner'
+    and client_id = any(auth.user_client_ids())
+  );
+create policy "client_read_projects" on projects
+  for select using (
+    auth.user_role() = 'client'
+    and client_id = any(auth.user_client_ids())
+  );
+create policy "staff_read_projects" on projects
+  for select using (
+    auth.user_role() = 'staff'
+    and (
+      exists (
+        select 1 from jsonb_array_elements(crew) as c
+        where c->>'crewMemberId' = auth.user_crew_member_id()
+      )
+      or exists (
+        select 1 from jsonb_array_elements(post_production) as p
+        where p->>'crewMemberId' = auth.user_crew_member_id()
+      )
+    )
+  );
+
+-- ---- crew_members policies ----
+create policy "owner_all_crew_members" on crew_members
+  for all using (auth.user_role() = 'owner');
+create policy "partner_read_crew_members" on crew_members
+  for select using (auth.user_role() = 'partner');
+create policy "staff_read_own_crew_member" on crew_members
+  for select using (
+    auth.user_role() = 'staff'
+    and id = auth.user_crew_member_id()
+  );
+
+-- ---- locations policies ----
+create policy "owner_all_locations" on locations
+  for all using (auth.user_role() = 'owner');
+create policy "authenticated_read_locations" on locations
+  for select using (auth.uid() is not null);
+
+-- ---- project_types policies ----
+create policy "owner_all_project_types" on project_types
+  for all using (auth.user_role() = 'owner');
+create policy "authenticated_read_project_types" on project_types
+  for select using (auth.uid() is not null);
+
+-- ---- retainer_payments policies ----
+create policy "owner_all_retainer_payments" on retainer_payments
+  for all using (auth.user_role() = 'owner');
+create policy "partner_read_retainer_payments" on retainer_payments
+  for select using (
+    auth.user_role() = 'partner'
+    and client_id = any(auth.user_client_ids())
+  );
+create policy "client_read_retainer_payments" on retainer_payments
+  for select using (
+    auth.user_role() = 'client'
+    and client_id = any(auth.user_client_ids())
+  );
+
+-- ---- marketing_expenses policies ----
+create policy "owner_all_marketing_expenses" on marketing_expenses
+  for all using (auth.user_role() = 'owner');
+create policy "partner_all_marketing_expenses" on marketing_expenses
+  for all using (auth.user_role() = 'partner');
+
+-- ---- invoices policies ----
+create policy "owner_all_invoices" on invoices
+  for all using (auth.user_role() = 'owner');
+create policy "partner_read_invoices" on invoices
+  for select using (
+    auth.user_role() = 'partner'
+    and client_id = any(auth.user_client_ids())
+  );
+create policy "client_read_invoices" on invoices
+  for select using (
+    auth.user_role() = 'client'
+    and client_id = any(auth.user_client_ids())
+  );
 
 -- ============================================================
 -- Seed Data

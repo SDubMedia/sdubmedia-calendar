@@ -105,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedRefreshToken = currentSession.session?.refresh_token;
 
     // Sign up the new user via Supabase Auth
+    // A database trigger auto-creates a default user_profiles row
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -113,22 +114,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authError) throw new Error(authError.message);
     if (!authData.user) throw new Error("Failed to create user");
 
-    // Create profile for the new user
-    const { error: profileError } = await supabase.from("user_profiles").insert({
-      id: authData.user.id,
-      email,
+    // Restore the owner's session so we don't get logged out
+    if (savedRefreshToken) {
+      await supabase.auth.refreshSession({ refresh_token: savedRefreshToken });
+    }
+
+    // Now update the auto-created profile with the correct role/clients/crew
+    // (done as the restored owner session, which has RLS permission)
+    const { error: profileError } = await supabase.from("user_profiles").update({
       name,
       role,
       client_ids: clientIds,
       crew_member_id: crewMemberId || "",
       must_change_password: true,
-    });
+    }).eq("id", authData.user.id);
     if (profileError) throw new Error(profileError.message);
-
-    // Restore the owner's session so we don't get logged out
-    if (savedRefreshToken) {
-      await supabase.auth.refreshSession({ refresh_token: savedRefreshToken });
-    }
 
     await refreshProfiles();
   }, [refreshProfiles]);

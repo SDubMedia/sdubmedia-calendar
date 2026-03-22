@@ -17,6 +17,7 @@ import StaffPage from "./pages/StaffPage";
 import MarketingBudgetPage from "./pages/MarketingBudgetPage";
 import UsersPage from "./pages/UsersPage";
 import MySchedulePage from "./pages/MySchedulePage";
+import InvoicesPage from "./pages/InvoicesPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
@@ -66,6 +67,7 @@ function Router() {
         {!isStaff && <Route path="/reports" component={ReportsPage} />}
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
         {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
+        {(isOwner || isPartner) && <Route path="/invoices" component={InvoicesPage} />}
         {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
         {isOwner && <Route path="/locations" component={LocationsPage} />}
         {isOwner && <Route path="/manage" component={ManagePage} />}
