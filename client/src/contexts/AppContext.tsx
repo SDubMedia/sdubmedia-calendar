@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 
@@ -40,6 +40,19 @@ interface AppContextValue {
   addInvoice: (inv: Omit<Invoice, "id" | "createdAt" | "updatedAt">) => Promise<Invoice>;
   updateInvoice: (id: string, inv: Partial<Invoice>) => Promise<void>;
   deleteInvoice: (id: string) => Promise<void>;
+  // Series
+  addSeries: (s: Omit<Series, "id" | "createdAt">) => Promise<Series>;
+  updateSeries: (id: string, s: Partial<Series>) => Promise<void>;
+  deleteSeries: (id: string) => Promise<void>;
+  // Episodes
+  addEpisode: (e: Omit<SeriesEpisode, "id" | "createdAt">) => Promise<SeriesEpisode>;
+  updateEpisode: (id: string, e: Partial<SeriesEpisode>) => Promise<void>;
+  deleteEpisode: (id: string) => Promise<void>;
+  // Series Messages
+  fetchMessages: (seriesId: string) => Promise<SeriesMessage[]>;
+  addMessage: (m: Omit<SeriesMessage, "id" | "createdAt">) => Promise<SeriesMessage>;
+  // Episodes by series
+  fetchEpisodes: (seriesId: string) => Promise<SeriesEpisode[]>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -145,8 +158,48 @@ function rowToInvoice(r: any): Invoice {
   };
 }
 
+function rowToSeries(r: any): Series {
+  return {
+    id: r.id,
+    name: r.name,
+    clientId: r.client_id,
+    goal: r.goal || "",
+    status: r.status,
+    monthlyTokenLimit: Number(r.monthly_token_limit ?? 500000),
+    tokensUsedThisMonth: Number(r.tokens_used_this_month ?? 0),
+    tokenResetDate: r.token_reset_date || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToEpisode(r: any): SeriesEpisode {
+  return {
+    id: r.id,
+    seriesId: r.series_id,
+    episodeNumber: r.episode_number,
+    title: r.title || "",
+    concept: r.concept || "",
+    talkingPoints: r.talking_points || "",
+    status: r.status,
+    projectId: r.project_id || null,
+    createdAt: r.created_at,
+  };
+}
+
+function rowToMessage(r: any): SeriesMessage {
+  return {
+    id: r.id,
+    seriesId: r.series_id,
+    role: r.role,
+    senderName: r.sender_name || "",
+    content: r.content || "",
+    tokensUsed: Number(r.tokens_used ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [],
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], series: [],
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -166,6 +219,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: projects, error: e5 },
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
+        { data: seriesData, error: e8 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -174,9 +228,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+        supabase.from("series").select("*").order("created_at", { ascending: false }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8;
       if (firstError) throw new Error(firstError.message);
 
       setData({
@@ -187,6 +242,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         projects: (projects || []).map(rowToProject),
         marketingExpenses: (expenses || []).map(rowToExpense),
         invoices: (invoices || []).map(rowToInvoice),
+        series: (seriesData || []).map(rowToSeries),
       });
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -440,6 +496,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Series ----
+  const addSeries = useCallback(async (s: Omit<Series, "id" | "createdAt">): Promise<Series> => {
+    const id = nanoid(10);
+    const today = new Date();
+    const resetDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+    const { data: row, error } = await supabase.from("series").insert({
+      id, name: s.name, client_id: s.clientId, goal: s.goal, status: s.status,
+      monthly_token_limit: s.monthlyTokenLimit, tokens_used_this_month: 0, token_reset_date: resetDate,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const series = rowToSeries(row);
+    setData(d => ({ ...d, series: [series, ...d.series] }));
+    return series;
+  }, []);
+
+  const updateSeries = useCallback(async (id: string, s: Partial<Series>) => {
+    const patch: any = {};
+    if (s.name !== undefined) patch.name = s.name;
+    if (s.clientId !== undefined) patch.client_id = s.clientId;
+    if (s.goal !== undefined) patch.goal = s.goal;
+    if (s.status !== undefined) patch.status = s.status;
+    if (s.monthlyTokenLimit !== undefined) patch.monthly_token_limit = s.monthlyTokenLimit;
+    if (s.tokensUsedThisMonth !== undefined) patch.tokens_used_this_month = s.tokensUsedThisMonth;
+    if (s.tokenResetDate !== undefined) patch.token_reset_date = s.tokenResetDate;
+    const { error } = await supabase.from("series").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, series: d.series.map(x => x.id === id ? { ...x, ...s } : x) }));
+  }, []);
+
+  const deleteSeries = useCallback(async (id: string) => {
+    const { error } = await supabase.from("series").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, series: d.series.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Episodes ----
+  const fetchEpisodes = useCallback(async (seriesId: string): Promise<SeriesEpisode[]> => {
+    const { data: rows, error } = await supabase.from("series_episodes").select("*").eq("series_id", seriesId).order("episode_number");
+    if (error) throw new Error(error.message);
+    return (rows || []).map(rowToEpisode);
+  }, []);
+
+  const addEpisode = useCallback(async (e: Omit<SeriesEpisode, "id" | "createdAt">): Promise<SeriesEpisode> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("series_episodes").insert({
+      id, series_id: e.seriesId, episode_number: e.episodeNumber, title: e.title,
+      concept: e.concept, talking_points: e.talkingPoints, status: e.status, project_id: e.projectId,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    return rowToEpisode(row);
+  }, []);
+
+  const updateEpisode = useCallback(async (id: string, e: Partial<SeriesEpisode>) => {
+    const patch: any = {};
+    if (e.episodeNumber !== undefined) patch.episode_number = e.episodeNumber;
+    if (e.title !== undefined) patch.title = e.title;
+    if (e.concept !== undefined) patch.concept = e.concept;
+    if (e.talkingPoints !== undefined) patch.talking_points = e.talkingPoints;
+    if (e.status !== undefined) patch.status = e.status;
+    if (e.projectId !== undefined) patch.project_id = e.projectId;
+    const { error } = await supabase.from("series_episodes").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const deleteEpisode = useCallback(async (id: string) => {
+    const { error } = await supabase.from("series_episodes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  // ---- Series Messages ----
+  const fetchMessages = useCallback(async (seriesId: string): Promise<SeriesMessage[]> => {
+    const { data: rows, error } = await supabase.from("series_messages").select("*").eq("series_id", seriesId).order("created_at");
+    if (error) throw new Error(error.message);
+    return (rows || []).map(rowToMessage);
+  }, []);
+
+  const addMessage = useCallback(async (m: Omit<SeriesMessage, "id" | "createdAt">): Promise<SeriesMessage> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("series_messages").insert({
+      id, series_id: m.seriesId, role: m.role, sender_name: m.senderName,
+      content: m.content, tokens_used: m.tokensUsed,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    return rowToMessage(row);
+  }, []);
+
   return (
     <AppContext.Provider value={{
       data, loading, error, refresh: fetchAll,
@@ -450,6 +592,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProject, updateProject, deleteProject,
       addMarketingExpense, deleteMarketingExpense,
       addInvoice, updateInvoice, deleteInvoice,
+      addSeries, updateSeries, deleteSeries,
+      addEpisode, updateEpisode, deleteEpisode,
+      fetchMessages, addMessage, fetchEpisodes,
     }}>
       {children}
     </AppContext.Provider>

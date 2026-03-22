@@ -193,6 +193,44 @@ export interface Invoice {
   updatedAt: string;
 }
 
+// ---- Content Series ----
+export type SeriesStatus = "draft" | "active" | "completed";
+export type EpisodeStatus = "idea" | "concept" | "script" | "client_review" | "scheduled" | "filming" | "editing" | "review" | "delivered";
+
+export interface Series {
+  id: string;
+  name: string;
+  clientId: string;
+  goal: string;
+  status: SeriesStatus;
+  monthlyTokenLimit: number;
+  tokensUsedThisMonth: number;
+  tokenResetDate: string;
+  createdAt: string;
+}
+
+export interface SeriesEpisode {
+  id: string;
+  seriesId: string;
+  episodeNumber: number;
+  title: string;
+  concept: string;
+  talkingPoints: string;
+  status: EpisodeStatus;
+  projectId: string | null;
+  createdAt: string;
+}
+
+export interface SeriesMessage {
+  id: string;
+  seriesId: string;
+  role: "user" | "assistant" | "system";
+  senderName: string;
+  content: string;
+  tokensUsed: number;
+  createdAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -201,4 +239,5 @@ export interface AppData {
   projects: Project[];
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];
+  series: Series[];
 }

@@ -142,6 +142,7 @@ export const seedData: AppData = {
   ],
   marketingExpenses: [],
   invoices: [],
+  series: [],
 };
 
 // ---- Billing math helpers ----

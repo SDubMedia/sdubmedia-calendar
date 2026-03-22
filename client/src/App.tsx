@@ -19,6 +19,8 @@ import UsersPage from "./pages/UsersPage";
 import MySchedulePage from "./pages/MySchedulePage";
 import InvoicesPage from "./pages/InvoicesPage";
 import DashboardPage from "./pages/DashboardPage";
+import SeriesPage from "./pages/SeriesPage";
+import SeriesWorkspacePage from "./pages/SeriesWorkspacePage";
 import ClientDashboardPage from "./pages/ClientDashboardPage";
 import StaffDashboardPage from "./pages/StaffDashboardPage";
 import LoginPage from "./pages/LoginPage";
@@ -74,6 +76,8 @@ function Router() {
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
         {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
         {(isOwner || isPartner) && <Route path="/invoices" component={InvoicesPage} />}
+        {!isStaff && <Route path="/series" component={SeriesPage} />}
+        {!isStaff && <Route path="/series/:id" component={SeriesWorkspacePage} />}
         {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
         {isOwner && <Route path="/locations" component={LocationsPage} />}
         {isOwner && <Route path="/manage" component={ManagePage} />}

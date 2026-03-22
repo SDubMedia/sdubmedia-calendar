@@ -114,6 +114,41 @@ create table if not exists invoices (
   updated_at timestamptz not null default now()
 );
 
+-- ---- Content Series ----
+create table if not exists series (
+  id text primary key,
+  name text not null,
+  client_id text not null references clients(id) on delete cascade,
+  goal text not null default '',
+  status text not null default 'draft',
+  monthly_token_limit integer not null default 500000,
+  tokens_used_this_month integer not null default 0,
+  token_reset_date text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists series_episodes (
+  id text primary key,
+  series_id text not null references series(id) on delete cascade,
+  episode_number integer not null default 1,
+  title text not null default '',
+  concept text not null default '',
+  talking_points text not null default '',
+  status text not null default 'idea',
+  project_id text references projects(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists series_messages (
+  id text primary key,
+  series_id text not null references series(id) on delete cascade,
+  role text not null default 'user',
+  sender_name text not null default '',
+  content text not null default '',
+  tokens_used integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
 -- ============================================================
 -- Row Level Security
 -- ============================================================
@@ -169,6 +204,9 @@ alter table project_types enable row level security;
 alter table retainer_payments enable row level security;
 alter table marketing_expenses enable row level security;
 alter table invoices enable row level security;
+alter table series enable row level security;
+alter table series_episodes enable row level security;
+alter table series_messages enable row level security;
 
 -- ---- user_profiles policies ----
 create policy "owner_all_user_profiles" on user_profiles
@@ -276,6 +314,48 @@ create policy "client_read_invoices" on invoices
   for select using (
     public.user_role() = 'client'
     and client_id = any(public.user_client_ids())
+  );
+
+-- ---- series policies ----
+create policy "owner_all_series" on series
+  for all using (public.user_role() = 'owner');
+create policy "partner_series" on series
+  for all using (
+    public.user_role() = 'partner'
+    and client_id = any(public.user_client_ids())
+  );
+create policy "client_series" on series
+  for all using (
+    public.user_role() = 'client'
+    and client_id = any(public.user_client_ids())
+  );
+
+-- ---- series_episodes policies ----
+create policy "owner_all_series_episodes" on series_episodes
+  for all using (public.user_role() = 'owner');
+create policy "partner_series_episodes" on series_episodes
+  for all using (
+    public.user_role() = 'partner'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
+  );
+create policy "client_series_episodes" on series_episodes
+  for all using (
+    public.user_role() = 'client'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
+  );
+
+-- ---- series_messages policies ----
+create policy "owner_all_series_messages" on series_messages
+  for all using (public.user_role() = 'owner');
+create policy "partner_series_messages" on series_messages
+  for all using (
+    public.user_role() = 'partner'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
+  );
+create policy "client_series_messages" on series_messages
+  for all using (
+    public.user_role() = 'client'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
   );
 
 -- ============================================================
