@@ -109,6 +109,58 @@ export default function SeriesWorkspacePage() {
 
       const result = await res.json();
 
+      // Execute any actions Claude requested
+      if (result.actions && result.actions.length > 0) {
+        for (const action of result.actions) {
+          try {
+            if (action.tool === "create_episodes") {
+              const newEpisodes = action.input.episodes || [];
+              const startNum = episodes.length > 0 ? Math.max(...episodes.map((e: SeriesEpisode) => e.episodeNumber)) + 1 : 1;
+              for (let i = 0; i < newEpisodes.length; i++) {
+                const ep = await addEpisode({
+                  seriesId,
+                  episodeNumber: startNum + i,
+                  title: newEpisodes[i].title || `Episode ${startNum + i}`,
+                  concept: newEpisodes[i].concept || "",
+                  talkingPoints: newEpisodes[i].talking_points || "",
+                  status: "idea",
+                  projectId: null,
+                });
+                setEpisodes(prev => [...prev, ep].sort((a, b) => a.episodeNumber - b.episodeNumber));
+              }
+              toast.success(`${newEpisodes.length} episode${newEpisodes.length > 1 ? "s" : ""} added to the board`);
+            } else if (action.tool === "update_episode") {
+              const epNum = action.input.episode_number;
+              const targetEp = episodes.find((e: SeriesEpisode) => e.episodeNumber === epNum);
+              if (targetEp) {
+                const updates: Partial<SeriesEpisode> = {};
+                if (action.input.title) updates.title = action.input.title;
+                if (action.input.concept) updates.concept = action.input.concept;
+                if (action.input.talking_points) updates.talkingPoints = action.input.talking_points;
+                await updateEpisode(targetEp.id, updates);
+                setEpisodes(prev => prev.map(e => e.id === targetEp.id ? { ...e, ...updates } : e));
+                toast.success(`Episode ${epNum} updated`);
+              }
+            } else if (action.tool === "develop_episode") {
+              const epNum = action.input.episode_number;
+              const targetEp = episodes.find((e: SeriesEpisode) => e.episodeNumber === epNum);
+              if (targetEp) {
+                const concept = action.input.detailed_concept || "";
+                const talkingPoints = [
+                  action.input.talking_points || "",
+                  action.input.visual_notes ? `\n--- Visual Notes ---\n${action.input.visual_notes}` : "",
+                ].join("");
+                await updateEpisode(targetEp.id, { concept, talkingPoints, status: "concept" });
+                setEpisodes(prev => prev.map(e => e.id === targetEp.id ? { ...e, concept, talkingPoints, status: "concept" } : e));
+                toast.success(`Episode ${epNum} developed — moved to Concept stage`);
+              }
+            }
+          } catch (err: any) {
+            console.error("Action failed:", action.tool, err);
+          }
+        }
+      }
+
       // Save assistant message
       const assistantMsg = await addMessage({
         seriesId, role: "assistant", senderName: "Claude", content: result.content, tokensUsed: result.tokensUsed || 0,
