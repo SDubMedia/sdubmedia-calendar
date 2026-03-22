@@ -19,6 +19,8 @@ import UsersPage from "./pages/UsersPage";
 import MySchedulePage from "./pages/MySchedulePage";
 import InvoicesPage from "./pages/InvoicesPage";
 import DashboardPage from "./pages/DashboardPage";
+import ClientDashboardPage from "./pages/ClientDashboardPage";
+import StaffDashboardPage from "./pages/StaffDashboardPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
@@ -59,11 +61,11 @@ function Router() {
     <AppLayout>
       <Switch>
         {isStaff ? (
-          <Route path="/" component={MySchedulePage} />
+          <Route path="/" component={StaffDashboardPage} />
         ) : (isOwner || isPartner) ? (
           <Route path="/" component={DashboardPage} />
         ) : (
-          <Route path="/" component={CalendarPage} />
+          <Route path="/" component={ClientDashboardPage} />
         )}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
         {!isStaff && <Route path="/calendar" component={CalendarPage} />}
