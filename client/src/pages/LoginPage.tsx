@@ -38,9 +38,9 @@ export default function LoginPage() {
             <Film className="w-7 h-7 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            FilmProject Pro
+            Slate
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">SDub Media</p>
+          <p className="text-sm text-muted-foreground mt-1">by SDub Media</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-lg p-6 space-y-4">

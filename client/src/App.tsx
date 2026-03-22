@@ -35,7 +35,7 @@ function LoadingScreen() {
       <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
         <Film className="w-6 h-6 text-primary-foreground" />
       </div>
-      <div className="text-sm text-muted-foreground">Loading FilmProject Pro...</div>
+      <div className="text-sm text-muted-foreground">Loading Slate...</div>
     </div>
   );
 }

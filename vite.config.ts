@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["pwa-192x192.png", "pwa-512x512.png"],
       manifest: {
-        name: "FilmProject Pro — SDub Media",
-        short_name: "FilmProject",
-        description: "Video production management for SDub Media",
+        name: "Slate — SDub Media",
+        short_name: "Slate",
+        description: "Production management platform by SDub Media",
         theme_color: "#d97706",
         background_color: "#0f172a",
         display: "standalone",

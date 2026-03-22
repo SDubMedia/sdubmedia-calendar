@@ -82,7 +82,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              FilmProject Pro
+              Slate
             </p>
             <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
           </div>
@@ -154,7 +154,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                FilmProject Pro
+                Slate
               </p>
               <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
             </div>

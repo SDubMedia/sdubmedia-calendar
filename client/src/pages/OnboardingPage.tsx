@@ -123,7 +123,7 @@ function getRoleWelcome(role: UserRole, name: string): { title: string; subtitle
   switch (role) {
     case "partner":
       return {
-        title: `Welcome to FilmProject Pro, ${firstName}!`,
+        title: `Welcome to Slate, ${firstName}!`,
         subtitle: "Your partner dashboard for managing clients, billing, and content strategy.",
       };
     case "client":
