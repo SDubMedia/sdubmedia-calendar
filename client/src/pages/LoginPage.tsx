@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Film } from "lucide-react";
+// Film icon removed — using logo image instead
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -34,9 +34,7 @@ export default function LoginPage() {
     <div className="flex h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm mx-4">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
-            <Film className="w-7 h-7 text-primary-foreground" />
-          </div>
+          <img src="/pwa-192x192.png" alt="SDub Media" className="w-20 h-20 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Slate
           </h1>
