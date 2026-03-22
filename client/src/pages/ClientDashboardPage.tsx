@@ -122,7 +122,7 @@ export default function ClientDashboardPage() {
             label="In Editing" value={String(statusCounts.in_editing)} sub="Being edited now" />
           <MetricCard icon={CheckCircle} iconColor="text-green-400" iconBg="bg-green-500/20"
             label="Completed" value={String(completedThisMonth)} sub="This month" />
-          <MetricCard icon={FileText} iconColor="text-amber-400" iconBg="bg-amber-500/20"
+          <MetricCard icon={FileText} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
             label="Outstanding" value={formatCurrency(outstandingAmount)} sub="Unpaid invoices" />
         </div>
 

@@ -46,7 +46,7 @@ const REPORT_STYLES = `
 
   .hours-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
   .hours-row.total { font-weight: 700; border-top: 1px solid #e5e5e5; padding-top: 10px; margin-top: 6px; }
-  .hours-row.highlight { font-weight: 700; color: #1e293b; border-top: 2px solid #d97706; padding-top: 10px; margin-top: 6px; }
+  .hours-row.highlight { font-weight: 700; color: #1e293b; border-top: 2px solid #0088ff; padding-top: 10px; margin-top: 6px; }
   .hours-row.highlight .hours-value { color: #1e293b; font-size: 15px; }
 
   .payment-box { border: 1px solid #e5e5e5; border-top: none; border-radius: 0 0 4px 4px; padding: 20px; }
@@ -72,12 +72,12 @@ const REPORT_STYLES = `
   .project-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px 20px; }
   .project-card-header .project-name { font-size: 18px; font-weight: 700; color: #111; }
   .project-card-header .project-date { font-size: 13px; color: #666; margin-top: 2px; }
-  .project-card-header .hours-badge { background: #d97706; color: #fff; font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 6px; }
+  .project-card-header .hours-badge { background: #0088ff; color: #fff; font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 6px; }
   .project-card-header .hours-detail { font-size: 12px; color: #888; text-align: right; margin-top: 4px; }
   .project-card-body { padding: 0 20px 20px; }
-  .project-card-divider { border: none; border-top: 2px solid #d97706; margin: 0 20px 16px; }
+  .project-card-divider { border: none; border-top: 2px solid #0088ff; margin: 0 20px 16px; }
 
-  .project-meta-label { font-size: 11px; font-weight: 600; color: #d97706; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; margin-top: 12px; }
+  .project-meta-label { font-size: 11px; font-weight: 600; color: #0088ff; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; margin-top: 12px; }
   .project-meta-value { font-size: 13px; color: #111; margin-bottom: 8px; }
 
   .crew-entry { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border: 1px solid #e5e5e5; border-radius: 6px; margin-bottom: 8px; }
@@ -119,7 +119,7 @@ const REPORT_STYLES = `
   .hours-billed-cell:last-child { border-right: none; }
   .hours-billed-cell .hb-label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
   .hours-billed-cell .hb-value { font-size: 22px; font-weight: 700; color: #1e293b; }
-  .hours-billed-cell .hb-value.highlight { color: #d97706; }
+  .hours-billed-cell .hb-value.highlight { color: #0088ff; }
 
   .day-header { background: #1e293b; color: #fff; border-radius: 8px 8px 0 0; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
   .day-header .day-title { font-size: 16px; font-weight: 700; }

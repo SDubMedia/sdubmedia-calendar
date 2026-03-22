@@ -24,7 +24,7 @@ interface OnboardingStep {
 
 const PARTNER_STEPS: OnboardingStep[] = [
   {
-    icon: LayoutDashboard, iconColor: "text-amber-400", iconBg: "bg-amber-500/20",
+    icon: LayoutDashboard, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
     title: "Your Dashboard",
     description: "Business overview at a glance",
     detail: "See revenue metrics, upcoming shoots, recent invoices, and a 6-month revenue chart — all filtered to your clients.",
@@ -57,7 +57,7 @@ const PARTNER_STEPS: OnboardingStep[] = [
 
 const CLIENT_STEPS: OnboardingStep[] = [
   {
-    icon: LayoutDashboard, iconColor: "text-amber-400", iconBg: "bg-amber-500/20",
+    icon: LayoutDashboard, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
     title: "Your Dashboard",
     description: "Everything in one place",
     detail: "See your upcoming shoots, projects in progress, completed deliverables, and invoices — all from your personalized dashboard.",
@@ -84,7 +84,7 @@ const CLIENT_STEPS: OnboardingStep[] = [
 
 const STAFF_STEPS: OnboardingStep[] = [
   {
-    icon: LayoutDashboard, iconColor: "text-amber-400", iconBg: "bg-amber-500/20",
+    icon: LayoutDashboard, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
     title: "Your Dashboard",
     description: "Your day at a glance",
     detail: "See your next shoot, how many projects you have this month, hours worked, and estimated earnings — all on your personalized dashboard.",

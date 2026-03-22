@@ -138,8 +138,8 @@ export default function DashboardPage() {
           />
           <MetricCard
             icon={DollarSign}
-            iconColor="text-amber-400"
-            iconBg="bg-amber-500/20"
+            iconColor="text-cyan-400"
+            iconBg="bg-cyan-500/20"
             label="This Month"
             value={formatCurrency(thisMonthRevenue)}
             sub={`${MONTH_SHORT[currentMonth]} revenue`}
@@ -261,7 +261,7 @@ export default function DashboardPage() {
                 />
                 <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
                   {chartData.map((_, i) => (
-                    <Cell key={i} fill={i === chartData.length - 1 ? "#d97706" : "#d9770644"} />
+                    <Cell key={i} fill={i === chartData.length - 1 ? "#0088ff" : "#0088ff44"} />
                   ))}
                 </Bar>
                 <Bar dataKey="cost" radius={[4, 4, 0, 0]} fill="#64748b44" />

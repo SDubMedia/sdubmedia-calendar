@@ -132,7 +132,7 @@ export default function StaffDashboardPage() {
             value={String(thisMonthProjects.length)}
             sub={`Shoots in ${MONTH_NAMES[currentMonth]}`}
           />
-          <MetricCard icon={Clock} iconColor="text-amber-400" iconBg="bg-amber-500/20"
+          <MetricCard icon={Clock} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
             label="Hours"
             value={totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1)}
             sub="Worked this month"

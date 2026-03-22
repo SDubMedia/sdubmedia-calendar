@@ -133,7 +133,7 @@ export default function ClientHealthPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <MetricCard icon={DollarSign} iconColor="text-amber-400" iconBg="bg-amber-500/20"
+          <MetricCard icon={DollarSign} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
             label="Total Revenue" value={formatCurrency(totals.revenue)} sub="All time" />
           <MetricCard icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-500/20"
             label="Gross Margin" value={`${totalMarginPercent.toFixed(0)}%`} sub={formatCurrency(totals.margin)} />
@@ -179,7 +179,7 @@ export default function ClientHealthPage() {
                   <p className="text-[10px] text-muted-foreground">Active</p>
                 </div>
                 <div className="text-center p-2 rounded bg-secondary/30">
-                  <p className={cn("text-sm font-semibold", client.outstandingInvoices > 0 ? "text-amber-400" : "text-foreground")}>
+                  <p className={cn("text-sm font-semibold", client.outstandingInvoices > 0 ? "text-cyan-400" : "text-foreground")}>
                     {formatCurrency(client.outstandingInvoices)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">Outstanding</p>
@@ -197,7 +197,7 @@ export default function ClientHealthPage() {
                     />
                     <Bar dataKey="revenue" radius={[3, 3, 0, 0]}>
                       {client.monthlyRevenue.map((_, i) => (
-                        <Cell key={i} fill={i === client.monthlyRevenue.length - 1 ? "#d97706" : "#d9770633"} />
+                        <Cell key={i} fill={i === client.monthlyRevenue.length - 1 ? "#0088ff" : "#0088ff33"} />
                       ))}
                     </Bar>
                   </BarChart>

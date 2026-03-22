@@ -15,7 +15,7 @@ export default defineConfig({
         name: "Slate — SDub Media",
         short_name: "Slate",
         description: "Production management platform by SDub Media",
-        theme_color: "#d97706",
+        theme_color: "#0088ff",
         background_color: "#0f172a",
         display: "standalone",
         orientation: "any",

@@ -5,7 +5,7 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { Invoice } from "@/lib/types";
 
-const amber = "#d97706";
+const amber = "#0088ff";
 const charcoal = "#1e293b";
 const gray = "#64748b";
 const lightGray = "#f1f5f9";
