@@ -5,7 +5,7 @@
 // ============================================================
 
 // ---- Auth & Roles ----
-export type UserRole = "owner" | "client" | "partner";
+export type UserRole = "owner" | "client" | "partner" | "staff";
 
 export interface UserProfile {
   id: string;           // matches Supabase Auth user ID
@@ -13,6 +13,7 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   clientIds: string[];  // which clients this user can access (empty = all for owner)
+  crewMemberId: string; // links staff user to a crew member (staff role only)
   mustChangePassword: boolean; // force password change on first login
   createdAt: string;
 }

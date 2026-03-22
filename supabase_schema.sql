@@ -87,6 +87,7 @@ create table if not exists user_profiles (
   name text not null default '',
   role text not null default 'client',
   client_ids text[] not null default '{}',
+  crew_member_id text not null default '',
   created_at timestamptz not null default now()
 );
 

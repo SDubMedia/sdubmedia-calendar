@@ -35,7 +35,8 @@ interface NavItem {
 }
 
 const allNavItems: NavItem[] = [
-  { label: "Calendar", href: "/", icon: CalendarDays, roles: ["owner", "partner", "client"] },
+  { label: "Calendar", href: "/", icon: CalendarDays, roles: ["owner", "partner", "client", "staff"] },
+  { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"] },
   { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"] },
   { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner", "client"] },
   { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },

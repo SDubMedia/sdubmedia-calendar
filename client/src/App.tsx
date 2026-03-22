@@ -16,6 +16,7 @@ import ReportsPage from "./pages/ReportsPage";
 import StaffPage from "./pages/StaffPage";
 import MarketingBudgetPage from "./pages/MarketingBudgetPage";
 import UsersPage from "./pages/UsersPage";
+import MySchedulePage from "./pages/MySchedulePage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
@@ -50,13 +51,19 @@ function Router() {
   const role = profile?.role ?? "client";
   const isOwner = role === "owner";
   const isPartner = role === "partner";
+  const isStaff = role === "staff";
 
   return (
     <AppLayout>
       <Switch>
-        <Route path="/" component={CalendarPage} />
-        <Route path="/billing" component={BillingPage} />
-        <Route path="/reports" component={ReportsPage} />
+        {isStaff ? (
+          <Route path="/" component={MySchedulePage} />
+        ) : (
+          <Route path="/" component={CalendarPage} />
+        )}
+        {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
+        {!isStaff && <Route path="/billing" component={BillingPage} />}
+        {!isStaff && <Route path="/reports" component={ReportsPage} />}
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
         {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
         {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}

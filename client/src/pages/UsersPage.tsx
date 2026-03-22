@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApp } from "@/contexts/AppContext";
 import type { UserRole } from "@/lib/types";
-import { Plus, Trash2, X, Shield, Users, Eye } from "lucide-react";
+import { Plus, Trash2, X, Shield, Users, Eye, Users2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -15,24 +15,27 @@ const ROLE_LABELS: Record<UserRole, string> = {
   owner: "Owner",
   client: "Client",
   partner: "Partner",
+  staff: "Staff",
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
   owner: "bg-amber-500/20 text-amber-300 border-amber-500/30",
   client: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   partner: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  staff: "bg-green-500/20 text-green-300 border-green-500/30",
 };
 
 export default function UsersPage() {
   const { allProfiles, refreshProfiles, createUser, updateUserProfile, deleteUser, profile: myProfile } = useAuth();
   const { data } = useApp();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[] });
+  const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[], crewMemberId: "" });
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editClientIds, setEditClientIds] = useState<string[]>([]);
   const [editRole, setEditRole] = useState<UserRole>("client");
+  const [editCrewMemberId, setEditCrewMemberId] = useState<string>("");
 
   useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
@@ -49,11 +52,15 @@ export default function UsersPage() {
       toast.error("Please attach at least one client");
       return;
     }
+    if (form.role === "staff" && !form.crewMemberId) {
+      toast.error("Please select a crew member for this staff user");
+      return;
+    }
     setSubmitting(true);
     try {
-      await createUser(form.email, form.password, form.name, form.role, form.clientIds);
+      await createUser(form.email, form.password, form.name, form.role, form.clientIds, form.crewMemberId);
       toast.success(`User "${form.name}" created`);
-      setForm({ email: "", password: "", name: "", role: "client", clientIds: [] });
+      setForm({ email: "", password: "", name: "", role: "client", clientIds: [], crewMemberId: "" });
       setShowForm(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to create user");
@@ -85,12 +92,13 @@ export default function UsersPage() {
     setEditingUser(u.id);
     setEditClientIds(u.clientIds);
     setEditRole(u.role);
+    setEditCrewMemberId(u.crewMemberId || "");
   };
 
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     try {
-      await updateUserProfile(editingUser, { role: editRole, clientIds: editClientIds });
+      await updateUserProfile(editingUser, { role: editRole, clientIds: editClientIds, crewMemberId: editCrewMemberId });
       toast.success("User updated");
       setEditingUser(null);
     } catch (err: any) {
@@ -176,9 +184,26 @@ export default function UsersPage() {
                   <option value="owner">Owner — Full access</option>
                   <option value="partner">Partner — Financial view for attached clients</option>
                   <option value="client">Client — View-only for their own data</option>
+                  <option value="staff">Staff — View own schedule & pay</option>
                 </select>
               </div>
             </div>
+
+            {form.role === "staff" && (
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Assign to Crew Member</label>
+                <select
+                  value={form.crewMemberId}
+                  onChange={e => setForm(f => ({ ...f, crewMemberId: e.target.value }))}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Select crew member...</option>
+                  {data.crewMembers.map(cm => (
+                    <option key={cm.id} value={cm.id}>{cm.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {(form.role === "client" || form.role === "partner") && (
               <div>
@@ -231,6 +256,7 @@ export default function UsersPage() {
                   <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
                     {u.role === "owner" ? <Shield className="w-5 h-5 text-amber-400" /> :
                      u.role === "partner" ? <Eye className="w-5 h-5 text-purple-400" /> :
+                     u.role === "staff" ? <Users2 className="w-5 h-5 text-green-400" /> :
                      <Users className="w-5 h-5 text-blue-400" />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -247,6 +273,13 @@ export default function UsersPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
+                    {u.role === "staff" && u.crewMemberId && editingUser !== u.id && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-300">
+                          {data.crewMembers.find(cm => cm.id === u.crewMemberId)?.name ?? "Unknown crew member"}
+                        </span>
+                      </div>
+                    )}
                     {attachedClients.length > 0 && editingUser !== u.id && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {attachedClients.map(c => (
@@ -268,8 +301,24 @@ export default function UsersPage() {
                             <option value="owner">Owner</option>
                             <option value="partner">Partner</option>
                             <option value="client">Client</option>
+                            <option value="staff">Staff</option>
                           </select>
                         </div>
+                        {editRole === "staff" && (
+                          <div>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Assigned Crew Member</label>
+                            <select
+                              value={editCrewMemberId}
+                              onChange={e => setEditCrewMemberId(e.target.value)}
+                              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground"
+                            >
+                              <option value="">Select crew member...</option>
+                              {data.crewMembers.map(cm => (
+                                <option key={cm.id} value={cm.id}>{cm.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {(editRole === "client" || editRole === "partner") && (
                           <div>
                             <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Attached Clients</label>

@@ -15,8 +15,8 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   // User management (owner only)
-  createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[]) => Promise<void>;
-  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds">>) => Promise<void>;
+  createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<void>;
+  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   allProfiles: UserProfile[];
@@ -32,6 +32,7 @@ function rowToProfile(r: any): UserProfile {
     name: r.name,
     role: r.role as UserRole,
     clientIds: r.client_ids || [],
+    crewMemberId: r.crew_member_id || "",
     mustChangePassword: r.must_change_password ?? true,
     createdAt: r.created_at,
   };
@@ -98,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAllProfiles([]);
   }, []);
 
-  const createUser = useCallback(async (email: string, password: string, name: string, role: UserRole, clientIds: string[]) => {
+  const createUser = useCallback(async (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => {
     // Save current session so we can restore it after signup
     const { data: currentSession } = await supabase.auth.getSession();
     const savedRefreshToken = currentSession.session?.refresh_token;
@@ -119,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name,
       role,
       client_ids: clientIds,
+      crew_member_id: crewMemberId || "",
       must_change_password: true,
     });
     if (profileError) throw new Error(profileError.message);
@@ -131,11 +133,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshProfiles();
   }, [refreshProfiles]);
 
-  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds">>) => {
+  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => {
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.role !== undefined) patch.role = updates.role;
     if (updates.clientIds !== undefined) patch.client_ids = updates.clientIds;
+    if (updates.crewMemberId !== undefined) patch.crew_member_id = updates.crewMemberId;
     const { error } = await supabase.from("user_profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     await refreshProfiles();
