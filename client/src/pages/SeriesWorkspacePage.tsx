@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 export default function SeriesWorkspacePage() {
   const params = useParams<{ id: string }>();
   const seriesId = params.id || "";
-  const { data, fetchEpisodes, addEpisode, updateEpisode, deleteEpisode, fetchMessages, addMessage, updateSeries } = useApp();
+  const { data, fetchEpisodes, addEpisode, updateEpisode, deleteEpisode, fetchMessages, addMessage, updateSeries, fetchComments, addComment } = useApp();
   const { profile } = useAuth();
   const [episodes, setEpisodes] = useState<SeriesEpisode[]>([]);
   const [messages, setMessages] = useState<SeriesMessage[]>([]);
@@ -278,6 +278,11 @@ export default function SeriesWorkspacePage() {
               onAddEpisode={handleAddEpisode}
               onDeleteEpisode={handleDeleteEpisode}
               onScheduleEpisode={handleScheduleEpisode}
+              seriesId={seriesId}
+              userName={profile?.name || "User"}
+              userRole={profile?.role || "client"}
+              onFetchComments={fetchComments}
+              onAddComment={addComment}
             />
           </div>
         </div>

@@ -233,6 +233,16 @@ export interface SeriesMessage {
   createdAt: string;
 }
 
+export interface EpisodeComment {
+  id: string;
+  episodeId: string;
+  seriesId: string;
+  userName: string;
+  userRole: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];

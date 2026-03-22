@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 
@@ -53,6 +53,9 @@ interface AppContextValue {
   addMessage: (m: Omit<SeriesMessage, "id" | "createdAt">) => Promise<SeriesMessage>;
   // Episodes by series
   fetchEpisodes: (seriesId: string) => Promise<SeriesEpisode[]>;
+  // Episode Comments
+  fetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
+  addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -195,6 +198,18 @@ function rowToMessage(r: any): SeriesMessage {
     senderName: r.sender_name || "",
     content: r.content || "",
     tokensUsed: Number(r.tokens_used ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToComment(r: any): EpisodeComment {
+  return {
+    id: r.id,
+    episodeId: r.episode_id,
+    seriesId: r.series_id,
+    userName: r.user_name || "",
+    userRole: r.user_role || "",
+    content: r.content || "",
     createdAt: r.created_at,
   };
 }
@@ -585,6 +600,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return rowToMessage(row);
   }, []);
 
+  // ---- Episode Comments ----
+  const fetchComments = useCallback(async (episodeId: string): Promise<EpisodeComment[]> => {
+    const { data: rows, error } = await supabase.from("episode_comments").select("*").eq("episode_id", episodeId).order("created_at");
+    if (error) throw new Error(error.message);
+    return (rows || []).map(rowToComment);
+  }, []);
+
+  const addComment = useCallback(async (c: Omit<EpisodeComment, "id" | "createdAt">): Promise<EpisodeComment> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("episode_comments").insert({
+      id, episode_id: c.episodeId, series_id: c.seriesId,
+      user_name: c.userName, user_role: c.userRole, content: c.content,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    return rowToComment(row);
+  }, []);
+
   return (
     <AppContext.Provider value={{
       data, loading, error, refresh: fetchAll,
@@ -598,6 +630,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addSeries, updateSeries, deleteSeries,
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,
+      fetchComments, addComment,
     }}>
       {children}
     </AppContext.Provider>

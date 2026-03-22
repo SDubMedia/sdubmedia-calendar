@@ -151,6 +151,17 @@ create table if not exists series_messages (
   created_at timestamptz not null default now()
 );
 
+-- ---- Episode Comments ----
+create table if not exists episode_comments (
+  id text primary key,
+  episode_id text not null references series_episodes(id) on delete cascade,
+  series_id text not null references series(id) on delete cascade,
+  user_name text not null default '',
+  user_role text not null default '',
+  content text not null default '',
+  created_at timestamptz not null default now()
+);
+
 -- ============================================================
 -- Row Level Security
 -- ============================================================
@@ -210,6 +221,7 @@ alter table invoices enable row level security;
 alter table series enable row level security;
 alter table series_episodes enable row level security;
 alter table series_messages enable row level security;
+alter table episode_comments enable row level security;
 
 -- ---- user_profiles policies ----
 create policy "owner_all_user_profiles" on user_profiles
@@ -363,6 +375,20 @@ create policy "partner_series_messages" on series_messages
     and series_id in (select id from series where client_id = any(public.user_client_ids()))
   );
 create policy "client_series_messages" on series_messages
+  for all using (
+    public.user_role() = 'client'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
+  );
+
+-- ---- episode_comments policies ----
+create policy "owner_all_episode_comments" on episode_comments
+  for all using (public.user_role() = 'owner');
+create policy "partner_episode_comments" on episode_comments
+  for all using (
+    public.user_role() = 'partner'
+    and series_id in (select id from series where client_id = any(public.user_client_ids()))
+  );
+create policy "client_episode_comments" on episode_comments
   for all using (
     public.user_role() = 'client'
     and series_id in (select id from series where client_id = any(public.user_client_ids()))
