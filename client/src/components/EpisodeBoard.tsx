@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SeriesEpisode, EpisodeStatus } from "@/lib/types";
 
@@ -8,6 +8,7 @@ interface EpisodeBoardProps {
   onUpdateEpisode: (id: string, updates: Partial<SeriesEpisode>) => void;
   onAddEpisode: () => void;
   onDeleteEpisode: (id: string) => void;
+  onScheduleEpisode?: (episode: SeriesEpisode) => void;
 }
 
 const STATUS_OPTIONS: { value: EpisodeStatus; label: string }[] = [
@@ -43,6 +44,7 @@ export default function EpisodeBoard({
   onUpdateEpisode,
   onAddEpisode,
   onDeleteEpisode,
+  onScheduleEpisode,
 }: EpisodeBoardProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -155,7 +157,7 @@ export default function EpisodeBoard({
                   />
                 </div>
 
-                {/* Status + Delete row */}
+                {/* Status + Actions row */}
                 <div className="flex items-end justify-between gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-muted-foreground">
@@ -178,15 +180,35 @@ export default function EpisodeBoard({
                     </select>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onDeleteEpisode(ep.id)}
-                    className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!ep.projectId && onScheduleEpisode && ep.status !== "idea" && (
+                      <button
+                        type="button"
+                        onClick={() => onScheduleEpisode(ep)}
+                        className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-cyan-400 hover:bg-cyan-950/40 transition-colors"
+                      >
+                        <CalendarPlus className="h-4 w-4" />
+                        Schedule Shoot
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onDeleteEpisode(ep.id)}
+                      className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-red-400 hover:bg-red-950/40 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </button>
+                  </div>
                 </div>
+
+                {/* Linked project indicator */}
+                {ep.projectId && (
+                  <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 rounded-md px-3 py-2">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Linked to calendar project — status syncs automatically
+                  </div>
+                )}
               </div>
             )}
           </div>

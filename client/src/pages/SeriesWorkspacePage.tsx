@@ -10,6 +10,7 @@ import type { SeriesEpisode, SeriesMessage } from "@/lib/types";
 import SeriesChat from "@/components/SeriesChat";
 import EpisodeBoard from "@/components/EpisodeBoard";
 import { ArrowLeft, MessageSquare, ListOrdered } from "lucide-react";
+import ProjectDialog from "@/components/ProjectDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export default function SeriesWorkspacePage() {
   const [messages, setMessages] = useState<SeriesMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "episodes">("chat");
+  const [scheduleEpisode, setScheduleEpisode] = useState<SeriesEpisode | null>(null);
 
   const series = data.series.find(s => s.id === seriesId);
   const client = series ? data.clients.find(c => c.id === series.clientId) : null;
@@ -55,6 +57,20 @@ export default function SeriesWorkspacePage() {
       toast.error(err.message || "Failed to update episode");
     }
   }, [updateEpisode]);
+
+  const handleScheduleEpisode = useCallback((episode: SeriesEpisode) => {
+    setScheduleEpisode(episode);
+  }, []);
+
+  const handleProjectCreated = useCallback(async (project: any) => {
+    if (scheduleEpisode) {
+      // Link episode to the new project and update status
+      await updateEpisode(scheduleEpisode.id, { projectId: project.id, status: "scheduled" });
+      setEpisodes(prev => prev.map(e => e.id === scheduleEpisode.id ? { ...e, projectId: project.id, status: "scheduled" } : e));
+      toast.success(`Episode ${scheduleEpisode.episodeNumber} linked to calendar`);
+      setScheduleEpisode(null);
+    }
+  }, [scheduleEpisode, updateEpisode]);
 
   const handleDeleteEpisode = useCallback(async (id: string) => {
     try {
@@ -256,10 +272,22 @@ export default function SeriesWorkspacePage() {
               onUpdateEpisode={handleUpdateEpisode}
               onAddEpisode={handleAddEpisode}
               onDeleteEpisode={handleDeleteEpisode}
+              onScheduleEpisode={handleScheduleEpisode}
             />
           </div>
         </div>
       </div>
+
+      {/* Schedule Episode as Project */}
+      {scheduleEpisode && (
+        <ProjectDialog
+          open={true}
+          onClose={() => setScheduleEpisode(null)}
+          defaultClientId={series.clientId}
+          defaultNotes={`[Series: ${series.name}] Episode ${scheduleEpisode.episodeNumber}: ${scheduleEpisode.title}\n\n${scheduleEpisode.concept}\n\nTalking Points:\n${scheduleEpisode.talkingPoints}`}
+          onCreated={handleProjectCreated}
+        />
+      )}
     </div>
   );
 }

@@ -26,6 +26,9 @@ interface Props {
   onClose: () => void;
   project?: Project;
   defaultDate?: string;
+  defaultClientId?: string;
+  defaultNotes?: string;
+  onCreated?: (project: Project) => void;
 }
 
 const emptyCrewEntry = (): ProjectCrewEntry => ({
@@ -42,11 +45,11 @@ const emptyPostEntry = (): ProjectPostEntry => ({
   payRatePerHour: 0,
 });
 
-export default function ProjectDialog({ open, onClose, project, defaultDate }: Props) {
+export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
   const { data, addProject, updateProject } = useApp();
   const isEdit = !!project;
 
-  const [clientId, setClientId] = useState(project?.clientId ?? data.clients[0]?.id ?? "");
+  const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
   const [projectTypeId, setProjectTypeId] = useState(project?.projectTypeId ?? "");
   const [locationId, setLocationId] = useState(project?.locationId ?? "");
   const [date, setDate] = useState(project?.date ?? defaultDate ?? "");
@@ -56,7 +59,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
   const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew ?? [emptyCrewEntry()]);
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
   const [editTypes, setEditTypes] = useState<EditType[]>(project?.editTypes ?? []);
-  const [notes, setNotes] = useState(project?.notes ?? "");
+  const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
 
   useEffect(() => {
@@ -154,8 +157,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
         await updateProject(project.id, payload);
         toast.success("Project updated");
       } else {
-        await addProject(payload);
+        const newProject = await addProject(payload);
         toast.success("Project created");
+        if (onCreated) onCreated(newProject);
       }
       onClose();
     } catch (err: any) {

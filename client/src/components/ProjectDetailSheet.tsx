@@ -12,7 +12,7 @@ import {
   Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectStatus } from "@/lib/types";
+import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
@@ -46,13 +46,21 @@ const STATUS_NEXT_LABEL: Partial<Record<ProjectStatus, string>> = {
   in_editing: "Mark Completed",
 };
 
+// Map project status → episode status for sync
+const PROJECT_TO_EPISODE_STATUS: Partial<Record<ProjectStatus, EpisodeStatus>> = {
+  upcoming: "scheduled",
+  filming_done: "filming",
+  in_editing: "editing",
+  completed: "delivered",
+};
+
 interface Props {
   project: Project;
   onClose: () => void;
 }
 
 export default function ProjectDetailSheet({ project, onClose }: Props) {
-  const { data, updateProject, deleteProject } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -66,11 +74,30 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
   const totalPostHrs = project.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
   const totalHrs = totalCrewHrs + totalPostHrs;
 
-  const advanceStatus = () => {
+  const advanceStatus = async () => {
     const next = STATUS_NEXT[project.status];
     if (next) {
-      updateProject(project.id, { status: next });
+      await updateProject(project.id, { status: next });
       toast.success(`Status updated to ${STATUS_LABELS[next]}`);
+
+      // Sync linked episode status
+      const episodeStatus = PROJECT_TO_EPISODE_STATUS[next];
+      if (episodeStatus) {
+        try {
+          // Find all series and check for linked episodes
+          for (const s of data.series) {
+            const episodes = await fetchEpisodes(s.id);
+            const linked = episodes.find(e => e.projectId === project.id);
+            if (linked) {
+              await updateEpisode(linked.id, { status: episodeStatus });
+              toast.success(`Episode "${linked.title}" → ${episodeStatus}`);
+              break;
+            }
+          }
+        } catch {
+          // Episode sync is best-effort
+        }
+      }
     }
   };
 
