@@ -15,6 +15,7 @@ export interface UserProfile {
   clientIds: string[];  // which clients this user can access (empty = all for owner)
   crewMemberId: string; // links staff user to a crew member (staff role only)
   mustChangePassword: boolean; // force password change on first login
+  hasCompletedOnboarding: boolean;
   createdAt: string;
 }
 

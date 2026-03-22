@@ -89,6 +89,7 @@ create table if not exists user_profiles (
   role text not null default 'client',
   client_ids text[] not null default '{}',
   crew_member_id text not null default '',
+  has_completed_onboarding boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -174,7 +175,7 @@ $$ language sql security definer stable;
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.user_profiles (id, email, name, role, client_ids, crew_member_id, must_change_password)
+  insert into public.user_profiles (id, email, name, role, client_ids, crew_member_id, must_change_password, has_completed_onboarding)
   values (
     new.id,
     new.email,
@@ -182,7 +183,8 @@ begin
     'client',
     '{}',
     '',
-    true
+    true,
+    false
   )
   on conflict (id) do nothing;
   return new;

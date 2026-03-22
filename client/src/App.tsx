@@ -27,6 +27,7 @@ import StaffDashboardPage from "./pages/StaffDashboardPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
+import OnboardingPage from "./pages/OnboardingPage";
 
 function LoadingScreen() {
   return (
@@ -96,6 +97,7 @@ function AuthGate() {
   if (loading) return <LoadingScreen />;
   if (!user) return <LoginPage />;
   if (profile?.mustChangePassword) return <ChangePasswordPage />;
+  if (!profile?.hasCompletedOnboarding && profile?.role !== "owner") return <OnboardingPage />;
   return (
     <AppProvider>
       <Router />

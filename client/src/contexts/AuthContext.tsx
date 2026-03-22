@@ -19,6 +19,7 @@ interface AuthContextValue {
   updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
+  completeOnboarding: () => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
   // View As (owner only) — preview the app as another role
@@ -39,6 +40,7 @@ function rowToProfile(r: any): UserProfile {
     clientIds: r.client_ids || [],
     crewMemberId: r.crew_member_id || "",
     mustChangePassword: r.must_change_password ?? true,
+    hasCompletedOnboarding: r.has_completed_onboarding ?? false,
     createdAt: r.created_at,
   };
 }
@@ -172,10 +174,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  const completeOnboarding = useCallback(async () => {
+    if (user) {
+      await supabase.from("user_profiles").update({ has_completed_onboarding: true }).eq("id", user.id);
+      setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
+    }
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
-      signIn, signOut, changePassword,
+      signIn, signOut, changePassword, completeOnboarding,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
       viewAsRole, setViewAsRole, effectiveProfile,
