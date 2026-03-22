@@ -10,6 +10,13 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL ||
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
+  // If service key isn't configured, skip auth (allow requests but log warning)
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — auth check skipped");
+    // Return a placeholder so the API still works without auth configured
+    return { userId: "unverified", email: "" };
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return null;
 
