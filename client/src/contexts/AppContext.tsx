@@ -118,6 +118,7 @@ function rowToProject(r: any): Project {
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
     editTypes: r.edit_types || [],
     notes: r.notes || "",
+    deliverableUrl: r.deliverable_url || "",
     createdAt: r.created_at,
   };
 }
@@ -388,6 +389,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       post_production: p.postProduction,
       edit_types: p.editTypes,
       notes: p.notes,
+      deliverable_url: p.deliverableUrl || "",
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -408,6 +410,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
+    if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     const { error } = await supabase.from("projects").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? { ...x, ...p } : x) }));

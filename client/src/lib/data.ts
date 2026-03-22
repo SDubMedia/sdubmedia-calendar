@@ -74,6 +74,7 @@ export const seedData: AppData = {
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1, payRatePerHour: 0 }],
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
+      deliverableUrl: "",
       createdAt: new Date().toISOString(),
     },
     {
@@ -92,6 +93,7 @@ export const seedData: AppData = {
       postProduction: [{ crewMemberId: "crew_antonio", role: "Video Editor", hoursWorked: 2, payRatePerHour: 0 }],
       editTypes: ["Podcast Edit"],
       notes: "",
+      deliverableUrl: "",
       createdAt: new Date().toISOString(),
     },
     {
@@ -107,6 +109,7 @@ export const seedData: AppData = {
       postProduction: [{ crewMemberId: "crew_melissa", role: "Photo Editor", hoursWorked: 2, payRatePerHour: 0 }],
       editTypes: [],
       notes: "",
+      deliverableUrl: "",
       createdAt: new Date().toISOString(),
     },
     {
@@ -122,6 +125,7 @@ export const seedData: AppData = {
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1.5, payRatePerHour: 0 }],
       editTypes: ["Social Vertical"],
       notes: "",
+      deliverableUrl: "",
       createdAt: new Date().toISOString(),
     },
     {
@@ -137,6 +141,7 @@ export const seedData: AppData = {
       postProduction: [{ crewMemberId: "crew_antonio", role: "Video Editor", hoursWorked: 1, payRatePerHour: 0 }],
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
+      deliverableUrl: "",
       createdAt: new Date().toISOString(),
     },
   ],

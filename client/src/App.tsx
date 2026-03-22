@@ -20,6 +20,7 @@ import MySchedulePage from "./pages/MySchedulePage";
 import InvoicesPage from "./pages/InvoicesPage";
 import DashboardPage from "./pages/DashboardPage";
 import SeriesPage from "./pages/SeriesPage";
+import ClientHealthPage from "./pages/ClientHealthPage";
 import SeriesWorkspacePage from "./pages/SeriesWorkspacePage";
 import ClientDashboardPage from "./pages/ClientDashboardPage";
 import StaffDashboardPage from "./pages/StaffDashboardPage";
@@ -79,6 +80,7 @@ function Router() {
         {!isStaff && <Route path="/series" component={SeriesPage} />}
         {!isStaff && <Route path="/series/:id" component={SeriesWorkspacePage} />}
         {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
+        {(isOwner || isPartner) && <Route path="/client-health" component={ClientHealthPage} />}
         {isOwner && <Route path="/locations" component={LocationsPage} />}
         {isOwner && <Route path="/manage" component={ManagePage} />}
         {isOwner && <Route path="/users" component={UsersPage} />}

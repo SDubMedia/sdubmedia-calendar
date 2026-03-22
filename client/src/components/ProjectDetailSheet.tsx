@@ -235,6 +235,22 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
               </div>
             )}
 
+            {/* Deliverables */}
+            {project.deliverableUrl && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Deliverables</div>
+                <a
+                  href={project.deliverableUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  View Deliverables
+                </a>
+              </div>
+            )}
+
             <Separator className="bg-border" />
 
             {/* Actions */}

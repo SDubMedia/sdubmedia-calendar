@@ -24,11 +24,13 @@ import {
   Menu,
   X,
   LayoutDashboard,
+  HeartPulse,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import type { UserRole } from "@/lib/types";
 import { useMemo } from "react";
+import GlobalSearch from "./GlobalSearch";
 
 interface NavItem {
   label: string;
@@ -46,6 +48,7 @@ const allNavItems: NavItem[] = [
   { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"] },
   { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner", "client"] },
   { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
+  { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
   { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"] },
   { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"] },
   { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
@@ -83,6 +86,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </p>
             <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
           </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-3 pt-3">
+          <GlobalSearch />
         </div>
 
         {/* Navigation */}

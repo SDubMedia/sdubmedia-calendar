@@ -57,6 +57,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
   const [editTypes, setEditTypes] = useState<EditType[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? "");
+  const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
 
   useEffect(() => {
     if (open) {
@@ -71,6 +72,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
       setPostProduction(project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]);
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
+      setDeliverableUrl(project?.deliverableUrl ?? "");
     }
   }, [open, project, defaultDate, data.clients]);
 
@@ -145,7 +147,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
       clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime, status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
-      editTypes, notes,
+      editTypes, notes, deliverableUrl,
     };
     try {
       if (isEdit && project) {
@@ -379,6 +381,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate }: P
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Notes</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes about this project..." className="bg-secondary border-border resize-none" rows={3} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Deliverable Link</Label>
+            <Input value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} placeholder="Google Drive link to final deliverables..." className="bg-secondary border-border" />
           </div>
         </div>
 

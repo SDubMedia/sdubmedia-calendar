@@ -126,6 +126,7 @@ export interface Project {
   postProduction: ProjectPostEntry[];
   editTypes: EditType[];
   notes: string;
+  deliverableUrl: string; // Google Drive link to final deliverables
   createdAt: string;
 }
 
