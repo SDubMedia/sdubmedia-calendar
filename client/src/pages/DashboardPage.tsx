@@ -4,10 +4,11 @@
 
 import { useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectBillableHours } from "@/lib/data";
-import type { InvoiceStatus } from "@/lib/types";
+import type { InvoiceStatus, UserRole } from "@/lib/types";
 import { Link } from "wouter";
-import { CalendarDays, DollarSign, FileText, TrendingUp, ArrowRight, Clock, MapPin } from "lucide-react";
+import { CalendarDays, DollarSign, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -36,6 +37,8 @@ const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 export default function DashboardPage() {
   const { data } = useApp();
+  const { profile, viewAsRole, setViewAsRole } = useAuth();
+  const isRealOwner = profile?.role === "owner";
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -118,11 +121,28 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Business overview at a glance</p>
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Business overview at a glance</p>
+        </div>
+        {isRealOwner && (
+          <div className="flex items-center gap-2">
+            <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+            <select
+              value={viewAsRole || ""}
+              onChange={e => setViewAsRole(e.target.value ? e.target.value as UserRole : null)}
+              className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
+            >
+              <option value="">Owner</option>
+              <option value="partner">Partner</option>
+              <option value="client">Client</option>
+              <option value="staff">Staff</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">

@@ -186,7 +186,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile slide-down menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-sidebar border-b border-border z-40">
+          <div className="md:hidden bg-sidebar border-b border-border z-40 max-h-[80vh] overflow-auto" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
             <nav className="py-2 px-3 space-y-0.5">
               {navItems.map((item) => {
                 const active = isActive(item.href);
