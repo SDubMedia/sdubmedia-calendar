@@ -3,7 +3,7 @@
 // Shows their projects, statuses, and invoices
 // ============================================================
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { InvoiceStatus, SeriesEpisode } from "@/lib/types";
 import { Link } from "wouter";
@@ -84,6 +84,15 @@ export default function ClientDashboardPage() {
     return data.invoices.slice(0, 5);
   }, [data.invoices]);
 
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  // Projects by status
+  const projectsByStatus = useMemo(() => ({
+    upcoming: data.projects.filter(p => p.status === "upcoming").sort((a, b) => a.date.localeCompare(b.date)),
+    in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
+    completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),
+  }), [data.projects]);
+
   // Episodes needing review
   const [reviewEpisodes, setReviewEpisodes] = useState<(SeriesEpisode & { seriesName: string })[]>([]);
   useEffect(() => {
@@ -117,14 +126,96 @@ export default function ClientDashboardPage() {
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard icon={CalendarDays} iconColor="text-blue-400" iconBg="bg-blue-500/20"
-            label="Upcoming" value={String(statusCounts.upcoming)} sub="Scheduled shoots" />
+            label="Upcoming" value={String(statusCounts.upcoming)} sub="Scheduled shoots"
+            onClick={() => setExpandedSection(expandedSection === "upcoming" ? null : "upcoming")}
+            active={expandedSection === "upcoming"} />
           <MetricCard icon={Film} iconColor="text-purple-400" iconBg="bg-purple-500/20"
-            label="In Editing" value={String(statusCounts.in_editing)} sub="Being edited now" />
+            label="In Editing" value={String(statusCounts.in_editing)} sub="Being edited now"
+            onClick={() => setExpandedSection(expandedSection === "in_editing" ? null : "in_editing")}
+            active={expandedSection === "in_editing"} />
           <MetricCard icon={CheckCircle} iconColor="text-green-400" iconBg="bg-green-500/20"
-            label="Completed" value={String(completedThisMonth)} sub="This month" />
+            label="Completed" value={String(completedThisMonth)} sub="This month"
+            onClick={() => setExpandedSection(expandedSection === "completed" ? null : "completed")}
+            active={expandedSection === "completed"} />
           <MetricCard icon={FileText} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
-            label="Outstanding" value={formatCurrency(outstandingAmount)} sub="Unpaid invoices" />
+            label="Outstanding" value={formatCurrency(outstandingAmount)} sub="Unpaid invoices"
+            onClick={() => setExpandedSection(expandedSection === "outstanding" ? null : "outstanding")}
+            active={expandedSection === "outstanding"} />
         </div>
+
+        {/* Expanded Project List */}
+        {expandedSection && expandedSection !== "outstanding" && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {expandedSection === "upcoming" ? "Upcoming Shoots" : expandedSection === "in_editing" ? "In Editing" : "Completed Projects"}
+              </h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-auto">
+              {(projectsByStatus[expandedSection as keyof typeof projectsByStatus] || []).length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No projects</div>
+              ) : (
+                (projectsByStatus[expandedSection as keyof typeof projectsByStatus] || []).slice(0, 20).map(p => {
+                  const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                  const loc = data.locations.find(l => l.id === p.locationId);
+                  return (
+                    <div key={p.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-sm font-medium text-foreground">{pType?.name ?? "Project"}</span>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.startTime} — {p.endTime}</span>
+                            {loc && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{loc.name}</span>}
+                          </div>
+                          {p.deliverableUrl && (
+                            <a href={p.deliverableUrl} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 mt-1 text-xs text-primary hover:text-primary/80">
+                              View Deliverables
+                            </a>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-primary shrink-0">{formatDate(p.date)}</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Outstanding Invoices Expanded */}
+        {expandedSection === "outstanding" && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Outstanding Invoices
+              </h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-auto">
+              {data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No outstanding invoices</div>
+              ) : (
+                data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").map(inv => (
+                  <div key={inv.id} className="px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">{inv.invoiceNumber}</span>
+                        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", INVOICE_STATUS_COLORS[inv.status])}>
+                          {inv.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-foreground">{formatCurrency(inv.total)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Needs Your Review */}
         {reviewEpisodes.length > 0 && (
@@ -273,16 +364,25 @@ export default function ClientDashboardPage() {
   );
 }
 
-function MetricCard({ icon: Icon, iconColor, iconBg, label, value, sub }: {
+function MetricCard({ icon: Icon, iconColor, iconBg, label, value, sub, onClick, active }: {
   icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   iconBg: string;
   label: string;
   value: string;
   sub: string;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
+    <div
+      onClick={onClick}
+      className={cn(
+        "bg-card border rounded-lg p-4 transition-colors",
+        onClick && "cursor-pointer hover:border-primary/30",
+        active ? "border-primary/50 bg-primary/5" : "border-border",
+      )}
+    >
       <div className="flex items-center gap-3">
         <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", iconBg)}>
           <Icon className={cn("w-5 h-5", iconColor)} />
