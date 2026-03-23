@@ -198,6 +198,60 @@ export default function HelpPage() {
             );
           })}
 
+          {/* Install on Phone */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setExpandedIndex(expandedIndex === 999 ? null : 999)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors"
+            >
+              <Download className="w-5 h-5 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">Install Slate on Your Phone</p>
+                <p className="text-xs text-muted-foreground">Add Slate to your home screen for quick access</p>
+              </div>
+              {expandedIndex === 999 ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+            </button>
+            {expandedIndex === 999 && (
+              <div className="border-t border-border px-4 py-3 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">iPhone (Safari)</p>
+                  <ol className="space-y-2">
+                    {[
+                      "Open Safari and go to slate.sdubmedia.com",
+                      "Tap the Share button (square with arrow pointing up) at the bottom of the screen",
+                      "Scroll down and tap \"Add to Home Screen\"",
+                      "Tap \"Add\" in the top right corner",
+                      "Slate will appear on your home screen with the SDub Media icon",
+                    ].map((step, j) => (
+                      <li key={j} className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-medium mt-0.5">{j + 1}</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="text-[10px] text-muted-foreground/60 mt-2 italic">Note: You must use Safari — Chrome and other browsers don't support this on iPhone.</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Android (Chrome)</p>
+                  <ol className="space-y-2">
+                    {[
+                      "Open Chrome and go to slate.sdubmedia.com",
+                      "Tap the three-dot menu in the top right corner",
+                      "Tap \"Add to Home screen\" or \"Install app\"",
+                      "Tap \"Add\" to confirm",
+                      "Slate will appear on your home screen like a regular app",
+                    ].map((step, j) => (
+                      <li key={j} className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-medium mt-0.5">{j + 1}</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            )}
+          </div>
+
           <p className="text-center text-xs text-muted-foreground/50 pt-4">
             Slate by SDub Media
           </p>
