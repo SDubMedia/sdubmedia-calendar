@@ -31,6 +31,7 @@ const StaffDashboardPage = lazy(() => import("./pages/StaffDashboardPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
 const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
+const ClientReportsPage = lazy(() => import("./pages/ClientReportsPage"));
 const HelpPage = lazy(() => import("./pages/HelpPage"));
 
 function LoadingScreen() {
@@ -80,6 +81,7 @@ function Router() {
         {!isStaff && <Route path="/calendar" component={CalendarPage} />}
         {(isOwner || isPartner) && <Route path="/billing" component={BillingPage} />}
         {(isOwner || isPartner) && <Route path="/reports" component={ReportsPage} />}
+        {role === "client" && <Route path="/my-reports" component={ClientReportsPage} />}
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
         {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
         {(isOwner || isPartner) && <Route path="/invoices" component={InvoicesPage} />}
