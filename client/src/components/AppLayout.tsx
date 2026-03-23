@@ -27,6 +27,7 @@ import {
   HeartPulse,
   Sun,
   Moon,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,6 +59,7 @@ const allNavItems: NavItem[] = [
   { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
   { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
+  { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -158,8 +160,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* ---- Main content ---- */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0">
+        {/* Mobile top bar — extra top padding for status bar/notch */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
               <Film className="w-4 h-4 text-primary-foreground" />
