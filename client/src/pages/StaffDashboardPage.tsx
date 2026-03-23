@@ -3,7 +3,7 @@
 // Shows their schedule, hours, and pay
 // ============================================================
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
@@ -107,6 +107,7 @@ export default function StaffDashboardPage() {
   }, [thisMonthProjects, data.projectTypes, crewMemberId]);
 
   const crewMember = data.crewMembers.find(cm => cm.id === crewMemberId);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-full">
@@ -123,26 +124,131 @@ export default function StaffDashboardPage() {
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard icon={CalendarDays} iconColor="text-blue-400" iconBg="bg-blue-500/20"
-            label="Next Shoot"
-            value={nextShoot ? formatDate(nextShoot.date) : "None"}
-            sub={nextShoot ? `${nextShoot.startTime}` : "No upcoming shoots"}
+            label="Upcoming"
+            value={String(upcomingProjects.length)}
+            sub="Scheduled shoots"
+            onClick={() => setExpandedSection(expandedSection === "upcoming" ? null : "upcoming")}
+            active={expandedSection === "upcoming"}
           />
           <MetricCard icon={Briefcase} iconColor="text-purple-400" iconBg="bg-purple-500/20"
             label="This Month"
             value={String(thisMonthProjects.length)}
             sub={`Shoots in ${MONTH_NAMES[currentMonth]}`}
+            onClick={() => setExpandedSection(expandedSection === "month" ? null : "month")}
+            active={expandedSection === "month"}
           />
           <MetricCard icon={Clock} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
             label="Hours"
             value={totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1)}
             sub="Worked this month"
+            onClick={() => setExpandedSection(expandedSection === "hours" ? null : "hours")}
+            active={expandedSection === "hours"}
           />
           <MetricCard icon={DollarSign} iconColor="text-green-400" iconBg="bg-green-500/20"
             label="Earnings"
             value={formatCurrency(totalPay)}
             sub="This month"
+            onClick={() => setExpandedSection(expandedSection === "earnings" ? null : "earnings")}
+            active={expandedSection === "earnings"}
           />
         </div>
+
+        {/* Expanded Sections */}
+        {expandedSection === "upcoming" && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Upcoming Shoots</h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-auto">
+              {upcomingProjects.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No upcoming shoots</div>
+              ) : upcomingProjects.map(p => {
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const loc = data.locations.find(l => l.id === p.locationId);
+                const myRoles = [...p.crew.filter(c => c.crewMemberId === crewMemberId).map(c => c.role), ...p.postProduction.filter(c => c.crewMemberId === crewMemberId).map(c => c.role)];
+                return (
+                  <div key={p.id} className="px-4 py-3 flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-foreground">{pType?.name ?? "Project"}</span>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.startTime} — {p.endTime}</span>
+                        {loc && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{loc.name}</span>}
+                      </div>
+                      {myRoles.length > 0 && <p className="text-xs text-primary/70 mt-1">{myRoles.join(", ")}</p>}
+                    </div>
+                    <span className="text-xs font-medium text-primary shrink-0">{formatDate(p.date)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {expandedSection === "month" && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{MONTH_NAMES[currentMonth]} Shoots</h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-auto">
+              {thisMonthProjects.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No shoots this month</div>
+              ) : thisMonthProjects.map(p => {
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const loc = data.locations.find(l => l.id === p.locationId);
+                return (
+                  <div key={p.id} className="px-4 py-3 flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-foreground">{pType?.name ?? "Project"}</span>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>{p.startTime} — {p.endTime}</span>
+                        {loc && <span>{loc.name}</span>}
+                      </div>
+                    </div>
+                    <span className="text-xs font-medium text-primary shrink-0">{formatDate(p.date)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {(expandedSection === "hours" || expandedSection === "earnings") && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {expandedSection === "hours" ? "Hours Breakdown" : "Earnings Breakdown"}
+              </h3>
+            </div>
+            <div className="divide-y divide-border max-h-80 overflow-auto">
+              {projectBreakdown.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No work logged this month</div>
+              ) : (
+                <>
+                  {projectBreakdown.map((entry, i) => (
+                    <div key={i} className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-sm text-foreground">{entry.typeName}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground">{formatDate(entry.date)}</span>
+                          <span className="text-xs text-muted-foreground/60">{entry.role}</span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-foreground">{expandedSection === "hours" ? `${entry.hours}h` : formatCurrency(entry.pay)}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="px-4 py-3 flex items-center justify-between bg-secondary/30">
+                    <span className="text-sm font-semibold text-foreground">Total</span>
+                    <span className="text-sm font-semibold text-primary">
+                      {expandedSection === "hours" ? `${totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}h` : formatCurrency(totalPay)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Upcoming Schedule */}
@@ -238,16 +344,25 @@ export default function StaffDashboardPage() {
   );
 }
 
-function MetricCard({ icon: Icon, iconColor, iconBg, label, value, sub }: {
+function MetricCard({ icon: Icon, iconColor, iconBg, label, value, sub, onClick, active }: {
   icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   iconBg: string;
   label: string;
   value: string;
   sub: string;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
+    <div
+      onClick={onClick}
+      className={cn(
+        "bg-card border rounded-lg p-4 transition-colors",
+        onClick && "cursor-pointer hover:border-primary/30",
+        active ? "border-primary/50 bg-primary/5" : "border-border",
+      )}
+    >
       <div className="flex items-center gap-3">
         <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", iconBg)}>
           <Icon className={cn("w-5 h-5", iconColor)} />
