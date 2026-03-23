@@ -1,6 +1,5 @@
 // ============================================================
-// SDub Media FilmProject Pro — Core Data Types
-// Design: Dark Cinematic Studio | Amber accent on charcoal
+// Slate — Production Management Platform
 // Billing Model: Hourly — client billed at flat rate, crew paid individually
 // ============================================================
 

@@ -1,6 +1,5 @@
 // ============================================================
-// SDub Media FilmProject Pro — Data Layer
-// Billing Model: Hourly — client billed at flat rate, crew paid individually
+// Slate — Data Layer & Billing Math
 // ============================================================
 
 import { nanoid } from "nanoid";

@@ -1,6 +1,5 @@
 // ============================================================
-// SDub Media FilmProject Pro — App Data Context (Supabase)
-// Billing Model: Hourly — client billed at flat rate, crew paid individually
+// Slate — App Data Context (Supabase)
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";

@@ -78,6 +78,7 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+        <p className="text-center text-[10px] text-muted-foreground/40 mt-6">getslate.net</p>
       </div>
     </div>
   );

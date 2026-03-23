@@ -5,7 +5,7 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { Invoice } from "@/lib/types";
 
-const amber = "#0088ff";
+const brandBlue = "#0088ff";
 const charcoal = "#1e293b";
 const gray = "#64748b";
 const lightGray = "#f1f5f9";
@@ -14,7 +14,7 @@ const s = StyleSheet.create({
   page: { padding: 40, fontSize: 10, fontFamily: "Helvetica", color: charcoal },
   // Header
   header: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
-  brandName: { fontSize: 22, fontFamily: "Helvetica-Bold", color: amber },
+  brandName: { fontSize: 22, fontFamily: "Helvetica-Bold", color: brandBlue },
   brandTagline: { fontSize: 8, color: gray, marginTop: 2 },
   invoiceTitle: { fontSize: 18, fontFamily: "Helvetica-Bold", color: charcoal, textAlign: "right" },
   invoiceNumber: { fontSize: 10, color: gray, textAlign: "right", marginTop: 2 },
@@ -46,7 +46,7 @@ const s = StyleSheet.create({
   totalRow: { flexDirection: "row", justifyContent: "space-between", padding: 6 },
   totalLabel: { fontSize: 10, color: gray },
   totalValue: { fontSize: 10, fontFamily: "Helvetica-Bold" },
-  grandTotalRow: { flexDirection: "row", justifyContent: "space-between", padding: 8, backgroundColor: amber, borderRadius: 4, marginTop: 4 },
+  grandTotalRow: { flexDirection: "row", justifyContent: "space-between", padding: 8, backgroundColor: brandBlue, borderRadius: 4, marginTop: 4 },
   grandTotalLabel: { fontSize: 12, fontFamily: "Helvetica-Bold", color: "#ffffff" },
   grandTotalValue: { fontSize: 12, fontFamily: "Helvetica-Bold", color: "#ffffff" },
   // Footer

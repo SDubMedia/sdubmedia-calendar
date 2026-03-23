@@ -178,7 +178,7 @@ export default function InvoicesPage() {
       formData.append("pdf", blob, `${invoice.invoiceNumber}.pdf`);
       formData.append("invoiceId", invoice.id);
       formData.append("recipientEmail", sendEmail);
-      formData.append("subject", `Invoice ${invoice.invoiceNumber} from SDub Media`);
+      formData.append("subject", `Invoice ${invoice.invoiceNumber} from Slate by SDub Media`);
       formData.append("message", sendMessage);
       formData.append("invoiceNumber", invoice.invoiceNumber);
       formData.append("total", String(invoice.total));

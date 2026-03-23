@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectBillableHours } from "@/lib/data";
 import type { InvoiceStatus, UserRole } from "@/lib/types";
 import { Link } from "wouter";
-import { CalendarDays, DollarSign, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye } from "lucide-react";
+import { CalendarDays, DollarSign, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -168,9 +168,9 @@ export default function DashboardPage() {
             active={expandedSection === "upcoming"}
           />
           <MetricCard
-            icon={DollarSign}
-            iconColor="text-cyan-400"
-            iconBg="bg-cyan-500/20"
+            icon={Film}
+            iconColor="text-purple-400"
+            iconBg="bg-purple-500/20"
             label="In Editing"
             value={String(projectsByStatus.in_editing.length)}
             sub="Being edited"
