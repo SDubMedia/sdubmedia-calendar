@@ -7,9 +7,10 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApp } from "@/contexts/AppContext";
 import type { UserRole } from "@/lib/types";
-import { Plus, Trash2, X, Shield, Users, Eye, Users2 } from "lucide-react";
+import { Plus, Trash2, X, Shield, Users, Eye, Users2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getAuthToken } from "@/lib/supabase";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   owner: "Owner",
@@ -36,6 +37,9 @@ export default function UsersPage() {
   const [editClientIds, setEditClientIds] = useState<string[]>([]);
   const [editRole, setEditRole] = useState<UserRole>("client");
   const [editCrewMemberId, setEditCrewMemberId] = useState<string>("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editForceChange, setEditForceChange] = useState(true);
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
@@ -93,6 +97,34 @@ export default function UsersPage() {
     setEditClientIds(u.clientIds);
     setEditRole(u.role);
     setEditCrewMemberId(u.crewMemberId || "");
+    setEditPassword("");
+    setEditForceChange(true);
+  };
+
+  const handleResetPassword = async (userId: string) => {
+    if (!editPassword || editPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ userId, newPassword: editPassword, forceChange: editForceChange }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to reset password");
+      }
+      toast.success("Password reset successfully");
+      setEditPassword("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset password");
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -340,6 +372,38 @@ export default function UsersPage() {
                             </div>
                           </div>
                         )}
+                        {/* Password Reset */}
+                        <div className="border-t border-border pt-3">
+                          <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1 flex items-center gap-1">
+                            <KeyRound className="w-3 h-3" /> Reset Password
+                          </label>
+                          <div className="flex gap-2 items-end">
+                            <input
+                              type="password"
+                              value={editPassword}
+                              onChange={e => setEditPassword(e.target.value)}
+                              placeholder="New password (min 6 chars)"
+                              className="flex-1 bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground"
+                            />
+                            <button
+                              onClick={() => handleResetPassword(u.id)}
+                              disabled={resettingPassword || !editPassword}
+                              className="px-3 py-1.5 rounded text-xs bg-destructive/20 text-destructive hover:bg-destructive/30 disabled:opacity-50"
+                            >
+                              {resettingPassword ? "Resetting..." : "Reset"}
+                            </button>
+                          </div>
+                          <label className="flex items-center gap-2 mt-2 text-xs text-muted-foreground cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editForceChange}
+                              onChange={e => setEditForceChange(e.target.checked)}
+                              className="rounded border-border"
+                            />
+                            Force password change on next login
+                          </label>
+                        </div>
+
                         <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => setEditingUser(null)}
