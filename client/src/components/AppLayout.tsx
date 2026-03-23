@@ -83,17 +83,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ---- Desktop Sidebar ---- */}
       <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-border bg-sidebar">
         {/* Logo / Brand */}
-        <div className="flex items-center gap-2.5 px-4 py-5 border-b border-border">
-          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-            <Film className="w-4 h-4 text-primary-foreground" />
+        <Link href="/">
+          <div className="flex items-center gap-2.5 px-4 py-5 border-b border-border cursor-pointer hover:bg-white/5 transition-colors">
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
+              <Film className="w-4 h-4 text-primary-foreground" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Slate
+              </p>
+              <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Slate
-            </p>
-            <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
-          </div>
-        </div>
+        </Link>
 
         {/* Search + Notifications */}
         <div className="px-3 pt-3 flex items-center gap-2">
@@ -162,17 +164,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar — extra top padding for status bar/notch */}
         <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-              <Film className="w-4 h-4 text-primary-foreground" />
+          <Link href="/">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
+                <Film className="w-4 h-4 text-primary-foreground" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Slate
+                </p>
+                <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Slate
-              </p>
-              <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
-            </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-1">
             <NotificationBell />
             <button
