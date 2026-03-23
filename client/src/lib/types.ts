@@ -249,6 +249,17 @@ export interface EpisodeComment {
   createdAt: string;
 }
 
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: string; // "assignment" | "review" | "delivery" | "comment" | "invoice"
+  title: string;
+  message: string;
+  link: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];

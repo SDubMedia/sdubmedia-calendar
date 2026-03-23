@@ -7,7 +7,8 @@
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, Client, AppData } from "@/lib/types";
-import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
+import { downloadCSV } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ReportPreview from "@/components/ReportPreview";
@@ -209,6 +210,27 @@ export default function BillingPage() {
         >
           <Eye className="w-4 h-4" />
           <span className="hidden sm:inline">Preview Report</span>
+        </button>
+        <button
+          onClick={() => {
+            const rows = filteredProjects.map(p => {
+              const client = data.clients.find(c => c.id === p.clientId);
+              const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+              const crewHrs = p.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
+              const postHrs = p.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
+              return {
+                Date: p.date, Client: client?.company || "", Type: pType?.name || "",
+                Status: p.status, "Crew Hours": crewHrs, "Post Hours": postHrs,
+                "Total Hours": crewHrs + postHrs,
+                "Invoice Amount": client ? getProjectInvoiceAmount(p, client) : 0,
+              };
+            });
+            downloadCSV(rows, `billing-${MONTH_NAMES[month]}-${year}`);
+          }}
+          className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary text-muted-foreground hover:text-foreground transition-colors text-sm"
+        >
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">Export CSV</span>
         </button>
       </div>
 

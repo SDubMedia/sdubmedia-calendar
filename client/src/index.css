@@ -96,6 +96,36 @@
   --sidebar-ring: oklch(0.72 0.15 220);
 }
 
+/* Light mode overrides */
+:root:not(.dark) {
+  --background: oklch(0.97 0.005 240);
+  --foreground: oklch(0.15 0.01 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.01 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.01 240);
+  --primary: oklch(0.60 0.18 220);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.93 0.005 240);
+  --secondary-foreground: oklch(0.35 0.01 240);
+  --muted: oklch(0.93 0.005 240);
+  --muted-foreground: oklch(0.45 0.01 240);
+  --accent: oklch(0.93 0.005 240);
+  --accent-foreground: oklch(0.15 0.01 240);
+  --border: oklch(0 0 0 / 12%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.60 0.18 220);
+  --sidebar: oklch(0.95 0.005 240);
+  --sidebar-foreground: oklch(0.25 0.01 240);
+  --sidebar-primary: oklch(0.60 0.18 220);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.90 0.005 240);
+  --sidebar-accent-foreground: oklch(0.15 0.01 240);
+  --sidebar-border: oklch(0 0 0 / 8%);
+  --sidebar-ring: oklch(0.60 0.18 220);
+  --chart-1: oklch(0.60 0.18 220);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -102,25 +102,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const totalFormatted = `$${Number(total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const emailHtml = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b;">
-        <div style="padding: 24px 0; border-bottom: 2px solid #d97706;">
-          <h1 style="margin: 0; font-size: 24px; color: #d97706;">SDub Media</h1>
-          <p style="margin: 4px 0 0; font-size: 12px; color: #64748b;">Video When It Matters Most</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff;">
+        <div style="background: linear-gradient(135deg, #0a1628, #112240); padding: 32px 24px; border-radius: 8px 8px 0 0;">
+          <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.15em; background: linear-gradient(135deg, #00d4ff, #0066ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">SLATE</h1>
+          <p style="margin: 6px 0 0; font-size: 12px; color: #64748b;">by SDub Media</p>
         </div>
-        <div style="padding: 24px 0;">
-          <p>Hi${clientName ? ` ${escapeHtml(clientName)}` : ""},</p>
-          <p>Please find attached invoice <strong>${escapeHtml(invoiceNumber)}</strong> for services rendered.</p>
-          <p style="font-size: 18px; font-weight: bold; color: #1e293b;">Amount due: ${totalFormatted}</p>
-          <p><strong>Payment terms:</strong> Due on receipt</p>
-          ${message ? `<div style="margin: 16px 0; padding: 12px; background: #f1f5f9; border-radius: 6px;"><p style="margin: 0; color: #475569;">${escapeHtml(message)}</p></div>` : ""}
-          <p>Thank you for your business!</p>
-          <p style="color: #64748b;">— SDub Media</p>
+        <div style="padding: 32px 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="margin: 0 0 16px; color: #334155;">Hi${clientName ? ` ${escapeHtml(clientName)}` : ""},</p>
+          <p style="margin: 0 0 16px; color: #334155;">Please find attached invoice <strong>${escapeHtml(invoiceNumber)}</strong> for services rendered.</p>
+          <div style="background: linear-gradient(135deg, #00d4ff10, #0066ff10); border: 1px solid #0088ff30; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Amount Due</p>
+            <p style="margin: 4px 0 0; font-size: 28px; font-weight: 700; color: #0088ff;">${totalFormatted}</p>
+          </div>
+          <p style="margin: 0 0 16px; color: #334155;"><strong>Payment terms:</strong> Due on receipt</p>
+          ${message ? `<div style="margin: 20px 0; padding: 16px; background: #f8fafc; border-left: 3px solid #0088ff; border-radius: 0 6px 6px 0;"><p style="margin: 0; color: #475569; font-size: 14px;">${escapeHtml(message)}</p></div>` : ""}
+          <p style="margin: 24px 0 0; color: #334155;">Thank you for your business!</p>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13px;">— The SDub Media Team</p>
         </div>
+        <p style="text-align: center; margin: 16px 0 0; font-size: 11px; color: #94a3b8;">Sent via Slate by SDub Media</p>
       </div>
     `;
 
     const { error } = await resend.emails.send({
-      from: `SDub Media <${FROM_EMAIL}>`,
+      from: `Slate by SDub Media <${FROM_EMAIL}>`,
       to: recipientEmail,
       subject: subject || `Invoice ${invoiceNumber} from SDub Media`,
       html: emailHtml,

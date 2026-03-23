@@ -25,12 +25,16 @@ import {
   X,
   LayoutDashboard,
   HeartPulse,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import type { UserRole } from "@/lib/types";
 import { useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
+import NotificationBell from "./NotificationBell";
 
 interface NavItem {
   label: string;
@@ -59,6 +63,7 @@ const allNavItems: NavItem[] = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
@@ -88,9 +93,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-3 pt-3">
-          <GlobalSearch />
+        {/* Search + Notifications */}
+        <div className="px-3 pt-3 flex items-center gap-2">
+          <div className="flex-1"><GlobalSearch /></div>
+          <NotificationBell />
         </div>
 
         {/* Navigation */}
@@ -119,6 +125,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border space-y-2">
+          {toggleTheme && (
+            <button onClick={toggleTheme} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
+              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            </button>
+          )}
           {isRealOwner && (
             <div>
               <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
@@ -159,12 +171,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
             </div>
           </div>
-          <button
-            onClick={() => setMobileMenuOpen(o => !o)}
-            className="text-muted-foreground hover:text-foreground p-2"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              className="text-muted-foreground hover:text-foreground p-2"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile slide-down menu */}
@@ -192,6 +207,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
+              {toggleTheme && (
+                <button onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full">
+                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+                </button>
+              )}
               {isRealOwner && (
                 <div className="px-3 py-2">
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>

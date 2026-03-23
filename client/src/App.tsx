@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -7,27 +8,29 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
-import CalendarPage from "./pages/CalendarPage";
-import BillingPage from "./pages/BillingPage";
-import ClientsPage from "./pages/ClientsPage";
-import LocationsPage from "./pages/LocationsPage";
-import ManagePage from "./pages/ManagePage";
-import ReportsPage from "./pages/ReportsPage";
-import StaffPage from "./pages/StaffPage";
-import MarketingBudgetPage from "./pages/MarketingBudgetPage";
-import UsersPage from "./pages/UsersPage";
-import MySchedulePage from "./pages/MySchedulePage";
-import InvoicesPage from "./pages/InvoicesPage";
-import DashboardPage from "./pages/DashboardPage";
-import SeriesPage from "./pages/SeriesPage";
-import ClientHealthPage from "./pages/ClientHealthPage";
-import SeriesWorkspacePage from "./pages/SeriesWorkspacePage";
-import ClientDashboardPage from "./pages/ClientDashboardPage";
-import StaffDashboardPage from "./pages/StaffDashboardPage";
-import LoginPage from "./pages/LoginPage";
-import ChangePasswordPage from "./pages/ChangePasswordPage";
 import { Film } from "lucide-react";
-import OnboardingPage from "./pages/OnboardingPage";
+
+// Lazy-loaded pages for code splitting
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const BillingPage = lazy(() => import("./pages/BillingPage"));
+const ClientsPage = lazy(() => import("./pages/ClientsPage"));
+const LocationsPage = lazy(() => import("./pages/LocationsPage"));
+const ManagePage = lazy(() => import("./pages/ManagePage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const StaffPage = lazy(() => import("./pages/StaffPage"));
+const MarketingBudgetPage = lazy(() => import("./pages/MarketingBudgetPage"));
+const UsersPage = lazy(() => import("./pages/UsersPage"));
+const MySchedulePage = lazy(() => import("./pages/MySchedulePage"));
+const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const SeriesPage = lazy(() => import("./pages/SeriesPage"));
+const ClientHealthPage = lazy(() => import("./pages/ClientHealthPage"));
+const SeriesWorkspacePage = lazy(() => import("./pages/SeriesWorkspacePage"));
+const ClientDashboardPage = lazy(() => import("./pages/ClientDashboardPage"));
+const StaffDashboardPage = lazy(() => import("./pages/StaffDashboardPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
 
 function LoadingScreen() {
   return (
@@ -63,6 +66,7 @@ function Router() {
 
   return (
     <AppLayout>
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-sm text-muted-foreground">Loading...</div></div>}>
       <Switch>
         {isStaff ? (
           <Route path="/" component={StaffDashboardPage} />
@@ -88,6 +92,7 @@ function Router() {
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
+      </Suspense>
     </AppLayout>
   );
 }
@@ -95,9 +100,9 @@ function Router() {
 function AuthGate() {
   const { user, profile, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (!user) return <LoginPage />;
-  if (profile?.mustChangePassword) return <ChangePasswordPage />;
-  if (!profile?.hasCompletedOnboarding && profile?.role !== "owner") return <OnboardingPage />;
+  if (!user) return <Suspense fallback={<LoadingScreen />}><LoginPage /></Suspense>;
+  if (profile?.mustChangePassword) return <Suspense fallback={<LoadingScreen />}><ChangePasswordPage /></Suspense>;
+  if (!profile?.hasCompletedOnboarding && profile?.role !== "owner") return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
   return (
     <AppProvider>
       <Router />
@@ -108,7 +113,7 @@ function AuthGate() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider defaultTheme="dark" switchable>
         <AuthProvider>
           <TooltipProvider>
             <Toaster theme="dark" />

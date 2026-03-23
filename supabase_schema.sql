@@ -156,6 +156,18 @@ create table if not exists series_messages (
   created_at timestamptz not null default now()
 );
 
+-- ---- Notifications ----
+create table if not exists notifications (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null default '',
+  title text not null default '',
+  message text not null default '',
+  link text not null default '',
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- ---- Episode Comments ----
 create table if not exists episode_comments (
   id text primary key,
@@ -227,6 +239,7 @@ alter table series enable row level security;
 alter table series_episodes enable row level security;
 alter table series_messages enable row level security;
 alter table episode_comments enable row level security;
+alter table notifications enable row level security;
 
 -- ---- user_profiles policies ----
 create policy "owner_all_user_profiles" on user_profiles
@@ -384,6 +397,10 @@ create policy "client_series_messages" on series_messages
     public.user_role() = 'client'
     and series_id in (select id from series where client_id = any(public.user_client_ids()))
   );
+
+-- ---- notifications policies (users can only see/update their own) ----
+create policy "users_own_notifications" on notifications
+  for all using (user_id = auth.uid());
 
 -- ---- episode_comments policies ----
 create policy "owner_all_episode_comments" on episode_comments
