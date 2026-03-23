@@ -34,6 +34,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function rowToProfile(r: any): UserProfile {
   return {
     id: r.id,
+    orgId: r.org_id || "",
     email: r.email,
     name: r.name,
     role: r.role as UserRole,
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name } },
+      options: { data: { name, org_id: profile?.orgId || "" } },
     });
     if (authError) throw new Error(authError.message);
     if (!authData.user) throw new Error("Failed to create user");

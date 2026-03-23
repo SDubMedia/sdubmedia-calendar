@@ -3,11 +3,22 @@
 // Billing Model: Hourly — client billed at flat rate, crew paid individually
 // ============================================================
 
+// ---- Organizations ----
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string;
+  plan: string;
+  createdAt: string;
+}
+
 // ---- Auth & Roles ----
 export type UserRole = "owner" | "client" | "partner" | "staff";
 
 export interface UserProfile {
   id: string;           // matches Supabase Auth user ID
+  orgId: string;        // organization this user belongs to
   email: string;
   name: string;
   role: UserRole;
@@ -268,4 +279,5 @@ export interface AppData {
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];
   series: Series[];
+  organization: Organization | null;
 }

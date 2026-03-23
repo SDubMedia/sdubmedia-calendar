@@ -3,9 +3,10 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
+import { useAuth } from "./AuthContext";
 
 interface AppContextValue {
   data: AppData;
@@ -218,11 +219,17 @@ function rowToComment(r: any): EpisodeComment {
   };
 }
 
+function rowToOrg(r: any): Organization {
+  return { id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan, createdAt: r.created_at };
+}
+
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], series: [],
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
+  const orgId = profile?.orgId || "";
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -240,6 +247,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
         { data: seriesData, error: e8 },
+        { data: orgData, error: e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -249,6 +257,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
+        orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8;
@@ -263,6 +272,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         marketingExpenses: (expenses || []).map(rowToExpense),
         invoices: (invoices || []).map(rowToInvoice),
         series: (seriesData || []).map(rowToSeries),
+        organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -277,7 +287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addClient = useCallback(async (c: Omit<Client, "id" | "createdAt">): Promise<Client> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("clients").insert({
-      id, company: c.company, contact_name: c.contactName, phone: c.phone,
+      id, org_id: orgId, company: c.company, contact_name: c.contactName, phone: c.phone,
       email: c.email, billing_model: c.billingModel ?? "hourly",
       billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       project_type_rates: c.projectTypeRates ?? [],
@@ -319,7 +329,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCrewMember = useCallback(async (c: Omit<CrewMember, "id">): Promise<CrewMember> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("crew_members").insert({
-      id, name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
+      id, org_id: orgId, name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -350,7 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addLocation = useCallback(async (l: Omit<Location, "id">): Promise<Location> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("locations").insert({
-      id, name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip,
+      id, org_id: orgId, name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip,
     }).select().single();
     if (error) throw new Error(error.message);
     const loc = rowToLocation(row);
@@ -373,7 +383,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---- Project Types ----
   const addProjectType = useCallback(async (pt: Omit<ProjectType, "id">): Promise<ProjectType> => {
     const id = nanoid(10);
-    const { data: row, error } = await supabase.from("project_types").insert({ id, name: pt.name }).select().single();
+    const { data: row, error } = await supabase.from("project_types").insert({ id, org_id: orgId, name: pt.name }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToProjectType(row);
     setData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -397,6 +407,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("projects").insert({
       id,
+      org_id: orgId,
       client_id: p.clientId,
       project_type_id: p.projectTypeId,
       location_id: p.locationId || null,
@@ -445,7 +456,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addMarketingExpense = useCallback(async (e: Omit<MarketingExpense, "id" | "createdAt">): Promise<MarketingExpense> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("marketing_expenses").insert({
-      id, date: e.date, category: e.category, description: e.description,
+      id, org_id: orgId, date: e.date, category: e.category, description: e.description,
       notes: e.notes, amount: e.amount,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -465,6 +476,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("invoices").insert({
       id,
+      org_id: orgId,
       invoice_number: inv.invoiceNumber,
       client_id: inv.clientId,
       period_start: inv.periodStart,
@@ -524,7 +536,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const today = new Date();
     const resetDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
     const { data: row, error } = await supabase.from("series").insert({
-      id, name: s.name, client_id: s.clientId, goal: s.goal, status: s.status,
+      id, org_id: orgId, name: s.name, client_id: s.clientId, goal: s.goal, status: s.status,
       monthly_token_limit: s.monthlyTokenLimit, tokens_used_this_month: 0, token_reset_date: resetDate,
     }).select().single();
     if (error) throw new Error(error.message);

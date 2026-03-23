@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useApp } from "@/contexts/AppContext";
 import type { UserRole } from "@/lib/types";
 import { useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
@@ -67,6 +68,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { data } = useApp();
+  const orgName = data.organization?.name || "Slate";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
@@ -91,7 +94,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Slate
+                {orgName}
               </p>
               <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
             </div>
@@ -172,7 +175,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                  Slate
+                  {orgName}
                 </p>
                 <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
               </div>

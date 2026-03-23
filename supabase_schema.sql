@@ -1,14 +1,25 @@
 -- ============================================================
--- SDub Media FilmProject Pro — Supabase Schema
+-- Slate — Multi-Tenant Production Management Platform
 -- Run this in the Supabase SQL Editor
 -- ============================================================
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
+-- ---- Organizations (multi-tenant) ----
+create table if not exists organizations (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  logo_url text not null default '',
+  plan text not null default 'free',
+  created_at timestamptz not null default now()
+);
+
 -- ---- Clients ----
 create table if not exists clients (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   company text not null,
   contact_name text not null default '',
   phone text not null default '',
@@ -21,6 +32,7 @@ create table if not exists clients (
 -- ---- Crew Members ----
 create table if not exists crew_members (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   name text not null,
   roles text[] not null default '{}',
   phone text not null default '',
@@ -30,6 +42,7 @@ create table if not exists crew_members (
 -- ---- Locations ----
 create table if not exists locations (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   name text not null,
   address text not null default '',
   city text not null default '',
@@ -40,12 +53,14 @@ create table if not exists locations (
 -- ---- Project Types ----
 create table if not exists project_types (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   name text not null
 );
 
 -- ---- Projects ----
 create table if not exists projects (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   client_id text not null references clients(id) on delete cascade,
   project_type_id text not null references project_types(id) on delete restrict,
   location_id text references locations(id) on delete set null,
@@ -64,6 +79,7 @@ create table if not exists projects (
 -- ---- Retainer Payments ----
 create table if not exists retainer_payments (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   client_id text not null references clients(id) on delete cascade,
   date text not null,
   hours numeric not null default 0,
@@ -73,6 +89,7 @@ create table if not exists retainer_payments (
 -- ---- Marketing Expenses ----
 create table if not exists marketing_expenses (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   date text not null,
   category text not null default 'Other',
   description text not null default '',
@@ -84,6 +101,7 @@ create table if not exists marketing_expenses (
 -- ---- User Profiles (auth) ----
 create table if not exists user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
+  org_id text not null default '' references organizations(id) on delete cascade,
   email text not null,
   name text not null default '',
   role text not null default 'client',
@@ -96,6 +114,7 @@ create table if not exists user_profiles (
 -- ---- Invoices ----
 create table if not exists invoices (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   invoice_number text not null unique,
   client_id text not null references clients(id) on delete cascade,
   period_start text not null,
@@ -119,6 +138,7 @@ create table if not exists invoices (
 -- ---- Content Series ----
 create table if not exists series (
   id text primary key,
+  org_id text not null default '' references organizations(id) on delete cascade,
   name text not null,
   client_id text not null references clients(id) on delete cascade,
   goal text not null default '',
@@ -199,13 +219,31 @@ returns text as $$
   select crew_member_id from public.user_profiles where id = auth.uid()
 $$ language sql security definer stable;
 
+create or replace function public.user_org_id()
+returns text as $$
+  select org_id from public.user_profiles where id = auth.uid()
+$$ language sql security definer stable;
+
 -- Auto-create a default user_profiles row when a new auth user signs up
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  new_org_id text;
 begin
-  insert into public.user_profiles (id, email, name, role, client_ids, crew_member_id, must_change_password, has_completed_onboarding)
+  -- If org_id is provided in metadata (invited user), use it
+  -- Otherwise create a new organization (self-signup)
+  new_org_id := coalesce(new.raw_user_meta_data->>'org_id', '');
+  if new_org_id = '' then
+    new_org_id := 'org_' || substr(md5(random()::text), 1, 8);
+    insert into public.organizations (id, name, slug, plan)
+    values (new_org_id, coalesce(new.raw_user_meta_data->>'org_name', 'My Company'), new_org_id, 'free')
+    on conflict (id) do nothing;
+  end if;
+
+  insert into public.user_profiles (id, org_id, email, name, role, client_ids, crew_member_id, must_change_password, has_completed_onboarding)
   values (
     new.id,
+    new_org_id,
     new.email,
     coalesce(new.raw_user_meta_data->>'name', ''),
     'client',
@@ -226,6 +264,7 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---- Enable RLS on all tables ----
+alter table organizations enable row level security;
 alter table user_profiles enable row level security;
 alter table clients enable row level security;
 alter table projects enable row level security;
@@ -241,180 +280,128 @@ alter table series_messages enable row level security;
 alter table episode_comments enable row level security;
 alter table notifications enable row level security;
 
+-- ---- organizations policies ----
+create policy "users_read_own_org" on organizations
+  for select using (id = public.user_org_id());
+create policy "owner_update_own_org" on organizations
+  for update using (id = public.user_org_id() and public.user_role() = 'owner');
+
 -- ---- user_profiles policies ----
 create policy "owner_all_user_profiles" on user_profiles
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "users_read_own_profile" on user_profiles
   for select using (id = auth.uid());
--- Users can only update their own password flag and onboarding status (not role/clientIds)
 create policy "users_update_own_flags" on user_profiles
   for update using (id = auth.uid())
   with check (
     id = auth.uid()
-    -- Ensure role and client_ids haven't changed (prevent privilege escalation)
     and role = (select role from user_profiles where id = auth.uid())
     and client_ids = (select client_ids from user_profiles where id = auth.uid())
     and crew_member_id = (select crew_member_id from user_profiles where id = auth.uid())
+    and org_id = (select org_id from user_profiles where id = auth.uid())
   );
 
 -- ---- clients policies ----
 create policy "owner_all_clients" on clients
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_read_clients" on clients
-  for select using (
-    public.user_role() = 'partner'
-    and id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'partner' and org_id = public.user_org_id() and id = any(public.user_client_ids()));
 create policy "client_read_clients" on clients
-  for select using (
-    public.user_role() = 'client'
-    and id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'client' and org_id = public.user_org_id() and id = any(public.user_client_ids()));
 
 -- ---- projects policies ----
 create policy "owner_all_projects" on projects
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_read_projects" on projects
-  for select using (
-    public.user_role() = 'partner'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'partner' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 create policy "client_read_projects" on projects
-  for select using (
-    public.user_role() = 'client'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'client' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 create policy "staff_read_projects" on projects
   for select using (
-    public.user_role() = 'staff'
+    public.user_role() = 'staff' and org_id = public.user_org_id()
     and (
-      exists (
-        select 1 from jsonb_array_elements(crew) as c
-        where c->>'crewMemberId' = public.user_crew_member_id()
-      )
-      or exists (
-        select 1 from jsonb_array_elements(post_production) as p
-        where p->>'crewMemberId' = public.user_crew_member_id()
-      )
+      exists (select 1 from jsonb_array_elements(crew) as c where c->>'crewMemberId' = public.user_crew_member_id())
+      or exists (select 1 from jsonb_array_elements(post_production) as p where p->>'crewMemberId' = public.user_crew_member_id())
     )
   );
 
 -- ---- crew_members policies ----
 create policy "owner_all_crew_members" on crew_members
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_read_crew_members" on crew_members
-  for select using (public.user_role() = 'partner');
+  for select using (public.user_role() = 'partner' and org_id = public.user_org_id());
 create policy "staff_read_own_crew_member" on crew_members
-  for select using (
-    public.user_role() = 'staff'
-    and id = public.user_crew_member_id()
-  );
+  for select using (public.user_role() = 'staff' and org_id = public.user_org_id() and id = public.user_crew_member_id());
 
 -- ---- locations policies ----
 create policy "owner_all_locations" on locations
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "authenticated_read_locations" on locations
-  for select using (auth.uid() is not null);
+  for select using (org_id = public.user_org_id());
 
 -- ---- project_types policies ----
 create policy "owner_all_project_types" on project_types
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "authenticated_read_project_types" on project_types
-  for select using (auth.uid() is not null);
+  for select using (org_id = public.user_org_id());
 
 -- ---- retainer_payments policies ----
 create policy "owner_all_retainer_payments" on retainer_payments
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_read_retainer_payments" on retainer_payments
-  for select using (
-    public.user_role() = 'partner'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'partner' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 create policy "client_read_retainer_payments" on retainer_payments
-  for select using (
-    public.user_role() = 'client'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'client' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 
 -- ---- marketing_expenses policies ----
 create policy "owner_all_marketing_expenses" on marketing_expenses
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_all_marketing_expenses" on marketing_expenses
-  for all using (public.user_role() = 'partner');
+  for all using (public.user_role() = 'partner' and org_id = public.user_org_id());
 
 -- ---- invoices policies ----
 create policy "owner_all_invoices" on invoices
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_read_invoices" on invoices
-  for select using (
-    public.user_role() = 'partner'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'partner' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 create policy "client_read_invoices" on invoices
-  for select using (
-    public.user_role() = 'client'
-    and client_id = any(public.user_client_ids())
-  );
+  for select using (public.user_role() = 'client' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 
 -- ---- series policies ----
 create policy "owner_all_series" on series
-  for all using (public.user_role() = 'owner');
+  for all using (public.user_role() = 'owner' and org_id = public.user_org_id());
 create policy "partner_series" on series
-  for all using (
-    public.user_role() = 'partner'
-    and client_id = any(public.user_client_ids())
-  );
+  for all using (public.user_role() = 'partner' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 create policy "client_series" on series
-  for all using (
-    public.user_role() = 'client'
-    and client_id = any(public.user_client_ids())
-  );
+  for all using (public.user_role() = 'client' and org_id = public.user_org_id() and client_id = any(public.user_client_ids()));
 
--- ---- series_episodes policies ----
+-- ---- series_episodes policies (org scoped via series) ----
 create policy "owner_all_series_episodes" on series_episodes
-  for all using (public.user_role() = 'owner');
+  for all using (series_id in (select id from series where org_id = public.user_org_id()) and public.user_role() = 'owner');
 create policy "partner_series_episodes" on series_episodes
-  for all using (
-    public.user_role() = 'partner'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'partner');
 create policy "client_series_episodes" on series_episodes
-  for all using (
-    public.user_role() = 'client'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'client');
 
--- ---- series_messages policies ----
+-- ---- series_messages policies (org scoped via series) ----
 create policy "owner_all_series_messages" on series_messages
-  for all using (public.user_role() = 'owner');
+  for all using (series_id in (select id from series where org_id = public.user_org_id()) and public.user_role() = 'owner');
 create policy "partner_series_messages" on series_messages
-  for all using (
-    public.user_role() = 'partner'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'partner');
 create policy "client_series_messages" on series_messages
-  for all using (
-    public.user_role() = 'client'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'client');
 
--- ---- notifications policies (users can only see/update their own) ----
+-- ---- notifications policies ----
 create policy "users_own_notifications" on notifications
   for all using (user_id = auth.uid());
 
--- ---- episode_comments policies ----
+-- ---- episode_comments policies (org scoped via series) ----
 create policy "owner_all_episode_comments" on episode_comments
-  for all using (public.user_role() = 'owner');
+  for all using (series_id in (select id from series where org_id = public.user_org_id()) and public.user_role() = 'owner');
 create policy "partner_episode_comments" on episode_comments
-  for all using (
-    public.user_role() = 'partner'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'partner');
 create policy "client_episode_comments" on episode_comments
-  for all using (
-    public.user_role() = 'client'
-    and series_id in (select id from series where client_id = any(public.user_client_ids()))
-  );
+  for all using (series_id in (select id from series where org_id = public.user_org_id() and client_id = any(public.user_client_ids())) and public.user_role() = 'client');
 
 -- ============================================================
 -- Seed Data
