@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink, MessageSquare, Send, CheckCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SeriesEpisode, EpisodeStatus, EpisodeComment } from "@/lib/types";
+import type { SeriesEpisode, EpisodeStatus, EpisodeComment, Location, CrewMember, Project } from "@/lib/types";
 
 interface EpisodeBoardProps {
   episodes: SeriesEpisode[];
@@ -9,11 +9,15 @@ interface EpisodeBoardProps {
   onAddEpisode: () => void;
   onDeleteEpisode: (id: string) => void;
   onScheduleEpisode?: (episode: SeriesEpisode) => void;
+  onPublishSchedule?: () => void;
   seriesId: string;
   userName: string;
   userRole: string;
   onFetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
   onAddComment: (comment: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
+  locations: Location[];
+  crewMembers: CrewMember[];
+  existingProjects: Project[];
 }
 
 const STATUS_OPTIONS: { value: EpisodeStatus; label: string }[] = [
@@ -50,11 +54,15 @@ export default function EpisodeBoard({
   onAddEpisode,
   onDeleteEpisode,
   onScheduleEpisode,
+  onPublishSchedule,
   seriesId,
   userName,
   userRole,
   onFetchComments,
   onAddComment,
+  locations,
+  crewMembers,
+  existingProjects,
 }: EpisodeBoardProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -101,7 +109,12 @@ export default function EpisodeBoard({
                 {getStatusLabel(ep.status)}
               </span>
 
-              {ep.concept && !isExpanded && (
+              {ep.draftDate && !ep.projectId && !isExpanded && (
+                <span className="hidden sm:block shrink-0 text-xs text-cyan-400">
+                  {ep.draftDate}
+                </span>
+              )}
+              {!ep.draftDate && ep.concept && !isExpanded && (
                 <span className="hidden sm:block shrink-0 max-w-[200px] truncate text-xs text-muted-foreground">
                   {ep.concept}
                 </span>
@@ -126,11 +139,27 @@ export default function EpisodeBoard({
                 userRole={userRole}
                 onFetchComments={onFetchComments}
                 onAddComment={onAddComment}
+                locations={locations}
+                crewMembers={crewMembers}
+                existingProjects={existingProjects}
+                allEpisodes={sorted}
               />
             )}
           </div>
         );
       })}
+
+      {/* Publish Schedule */}
+      {onPublishSchedule && sorted.some(e => e.draftDate && !e.projectId && e.status !== "idea") && (
+        <button
+          type="button"
+          onClick={onPublishSchedule}
+          className="flex items-center justify-center gap-2 rounded-lg bg-primary/20 border border-primary/30 py-3 text-sm text-primary font-medium hover:bg-primary/30 transition-colors"
+        >
+          <CalendarPlus className="h-4 w-4" />
+          Publish Schedule ({sorted.filter(e => e.draftDate && !e.projectId && e.status !== "idea").length} episodes)
+        </button>
+      )}
 
       {/* Add Episode */}
       <button
@@ -145,8 +174,8 @@ export default function EpisodeBoard({
   );
 }
 
-/** Episode detail with local state, comments, and approve/request changes */
-function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, seriesId, userName, userRole, onFetchComments, onAddComment }: {
+/** Episode detail with local state, draft scheduling, comments, and approve/request changes */
+function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, seriesId, userName, userRole, onFetchComments, onAddComment, locations, crewMembers, existingProjects, allEpisodes }: {
   ep: SeriesEpisode;
   onUpdateEpisode: (id: string, updates: Partial<SeriesEpisode>) => void;
   onDeleteEpisode: (id: string) => void;
@@ -156,6 +185,10 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
   userRole: string;
   onFetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
   onAddComment: (comment: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
+  locations: Location[];
+  crewMembers: CrewMember[];
+  existingProjects: Project[];
+  allEpisodes: SeriesEpisode[];
 }) {
   const [title, setTitle] = useState(ep.title);
   const [concept, setConcept] = useState(ep.concept);
@@ -165,6 +198,56 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
   const [showComments, setShowComments] = useState(false);
   const [changesText, setChangesText] = useState("");
   const [showChangesInput, setShowChangesInput] = useState(false);
+
+  // Draft scheduling
+  const [draftDate, setDraftDate] = useState(ep.draftDate || "");
+  const [draftStartTime, setDraftStartTime] = useState(ep.draftStartTime || "09:00");
+  const [draftEndTime, setDraftEndTime] = useState(ep.draftEndTime || "12:00");
+  const [draftLocationId, setDraftLocationId] = useState(ep.draftLocationId || "");
+  const [draftCrew, setDraftCrew] = useState<string[]>(ep.draftCrew || []);
+
+  const saveDraft = useCallback(() => {
+    onUpdateEpisode(ep.id, { draftDate, draftStartTime, draftEndTime, draftLocationId, draftCrew });
+  }, [ep.id, draftDate, draftStartTime, draftEndTime, draftLocationId, draftCrew, onUpdateEpisode]);
+
+  // Conflict detection
+  const conflicts = useMemo(() => {
+    if (!draftDate) return [];
+    const issues: string[] = [];
+    // Check existing calendar projects
+    for (const p of existingProjects) {
+      if (p.date !== draftDate) continue;
+      // Check crew conflicts
+      for (const crewId of draftCrew) {
+        const inCrew = p.crew.some(c => c.crewMemberId === crewId);
+        const inPost = p.postProduction.some(c => c.crewMemberId === crewId);
+        if (inCrew || inPost) {
+          const name = crewMembers.find(cm => cm.id === crewId)?.name || "Unknown";
+          issues.push(`${name} is already booked on ${draftDate} (${p.startTime}–${p.endTime})`);
+        }
+      }
+      // Check location conflicts
+      if (draftLocationId && p.locationId === draftLocationId) {
+        const locName = locations.find(l => l.id === draftLocationId)?.name || "location";
+        issues.push(`${locName} has another shoot on ${draftDate} (${p.startTime}–${p.endTime})`);
+      }
+    }
+    // Check other draft episodes in this series
+    for (const other of allEpisodes) {
+      if (other.id === ep.id || !other.draftDate || other.draftDate !== draftDate) continue;
+      for (const crewId of draftCrew) {
+        if (other.draftCrew?.includes(crewId)) {
+          const name = crewMembers.find(cm => cm.id === crewId)?.name || "Unknown";
+          issues.push(`${name} is also drafted for Episode ${other.episodeNumber} on ${draftDate}`);
+        }
+      }
+    }
+    return issues;
+  }, [draftDate, draftCrew, draftLocationId, existingProjects, allEpisodes, ep.id, crewMembers, locations]);
+
+  const toggleCrewMember = (crewId: string) => {
+    setDraftCrew(prev => prev.includes(crewId) ? prev.filter(id => id !== crewId) : [...prev, crewId]);
+  };
 
   // Load comments when expanded
   useEffect(() => {
@@ -224,6 +307,69 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
         <textarea value={talkingPoints} onChange={(e) => setTalkingPoints(e.target.value)} onBlur={() => saveField("talkingPoints", talkingPoints)} rows={4}
           className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y" placeholder="Talking points..." />
       </div>
+
+      {/* Draft Schedule */}
+      {!ep.projectId && (
+        <div className="bg-secondary/30 rounded-lg p-3 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Draft Schedule</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground">Date</label>
+              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)} onBlur={saveDraft}
+                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground">Start</label>
+              <input type="time" value={draftStartTime} onChange={e => setDraftStartTime(e.target.value)} onBlur={saveDraft}
+                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground">End</label>
+              <input type="time" value={draftEndTime} onChange={e => setDraftEndTime(e.target.value)} onBlur={saveDraft}
+                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">Location</label>
+            <select value={draftLocationId} onChange={e => { setDraftLocationId(e.target.value); setTimeout(saveDraft, 0); }}
+              className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+              <option value="">Select location...</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground block mb-1">Crew</label>
+            <div className="flex flex-wrap gap-1.5">
+              {crewMembers.map(cm => (
+                <button key={cm.id} type="button"
+                  onClick={() => { toggleCrewMember(cm.id); setTimeout(saveDraft, 0); }}
+                  className={cn("px-2 py-1 rounded text-xs border transition-colors",
+                    draftCrew.includes(cm.id)
+                      ? "bg-primary/20 border-primary/50 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/30"
+                  )}>
+                  {cm.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conflict warnings */}
+          {conflicts.length > 0 && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-md p-2 space-y-1">
+              {conflicts.map((c: string, i: number) => (
+                <p key={i} className="text-xs text-red-400 flex items-start gap-1">
+                  <span className="shrink-0">⚠</span> {c}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {draftDate && (
+            <p className="text-[10px] text-primary/60">Draft — will be published to calendar when approved</p>
+          )}
+        </div>
+      )}
 
       {/* Approve / Request Changes — shown when in review status */}
       {isReviewStatus && (

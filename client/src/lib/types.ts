@@ -220,6 +220,12 @@ export interface SeriesEpisode {
   talkingPoints: string;
   status: EpisodeStatus;
   projectId: string | null;
+  // Draft scheduling
+  draftDate: string;
+  draftStartTime: string;
+  draftEndTime: string;
+  draftLocationId: string;
+  draftCrew: string[]; // crew member IDs
   createdAt: string;
 }
 

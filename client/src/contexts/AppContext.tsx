@@ -186,6 +186,11 @@ function rowToEpisode(r: any): SeriesEpisode {
     talkingPoints: r.talking_points || "",
     status: r.status,
     projectId: r.project_id || null,
+    draftDate: r.draft_date || "",
+    draftStartTime: r.draft_start_time || "",
+    draftEndTime: r.draft_end_time || "",
+    draftLocationId: r.draft_location_id || "",
+    draftCrew: r.draft_crew || [],
     createdAt: r.created_at,
   };
 }
@@ -561,6 +566,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("series_episodes").insert({
       id, series_id: e.seriesId, episode_number: e.episodeNumber, title: e.title,
       concept: e.concept, talking_points: e.talkingPoints, status: e.status, project_id: e.projectId,
+      draft_date: e.draftDate || "", draft_start_time: e.draftStartTime || "",
+      draft_end_time: e.draftEndTime || "", draft_location_id: e.draftLocationId || "",
+      draft_crew: e.draftCrew || [],
     }).select().single();
     if (error) throw new Error(error.message);
     return rowToEpisode(row);
@@ -574,6 +582,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (e.talkingPoints !== undefined) patch.talking_points = e.talkingPoints;
     if (e.status !== undefined) patch.status = e.status;
     if (e.projectId !== undefined) patch.project_id = e.projectId;
+    if (e.draftDate !== undefined) patch.draft_date = e.draftDate;
+    if (e.draftStartTime !== undefined) patch.draft_start_time = e.draftStartTime;
+    if (e.draftEndTime !== undefined) patch.draft_end_time = e.draftEndTime;
+    if (e.draftLocationId !== undefined) patch.draft_location_id = e.draftLocationId;
+    if (e.draftCrew !== undefined) patch.draft_crew = e.draftCrew;
     const { error } = await supabase.from("series_episodes").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
   }, []);

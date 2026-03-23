@@ -138,6 +138,11 @@ create table if not exists series_episodes (
   talking_points text not null default '',
   status text not null default 'idea',
   project_id text references projects(id) on delete set null,
+  draft_date text not null default '',
+  draft_start_time text not null default '',
+  draft_end_time text not null default '',
+  draft_location_id text not null default '',
+  draft_crew text[] not null default '{}',
   created_at timestamptz not null default now()
 );
 

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 export default function SeriesWorkspacePage() {
   const params = useParams<{ id: string }>();
   const seriesId = params.id || "";
-  const { data, fetchEpisodes, addEpisode, updateEpisode, deleteEpisode, fetchMessages, addMessage, updateSeries, fetchComments, addComment } = useApp();
+  const { data, fetchEpisodes, addEpisode, updateEpisode, deleteEpisode, fetchMessages, addMessage, updateSeries, fetchComments, addComment, addProject } = useApp();
   const { profile } = useAuth();
   const [episodes, setEpisodes] = useState<SeriesEpisode[]>([]);
   const [messages, setMessages] = useState<SeriesMessage[]>([]);
@@ -42,6 +42,7 @@ export default function SeriesWorkspacePage() {
       const ep = await addEpisode({
         seriesId, episodeNumber: nextNum, title: `Episode ${nextNum}`,
         concept: "", talkingPoints: "", status: "idea", projectId: null,
+        draftDate: "", draftStartTime: "", draftEndTime: "", draftLocationId: "", draftCrew: [],
       });
       setEpisodes(prev => [...prev, ep].sort((a, b) => a.episodeNumber - b.episodeNumber));
       toast.success(`Episode ${nextNum} added`);
@@ -75,6 +76,37 @@ export default function SeriesWorkspacePage() {
       setScheduleEpisode(null);
     }
   }, [scheduleEpisode, updateEpisode]);
+
+  const handlePublishSchedule = useCallback(async () => {
+    const draftsToPublish = episodes.filter(e => e.draftDate && !e.projectId && e.status !== "idea");
+    if (draftsToPublish.length === 0) { toast.error("No draft schedules to publish"); return; }
+
+    let published = 0;
+    for (const ep of draftsToPublish) {
+      try {
+        const newProject = await addProject({
+          clientId: series!.clientId,
+          projectTypeId: "",
+          locationId: ep.draftLocationId || "",
+          date: ep.draftDate,
+          startTime: ep.draftStartTime || "09:00",
+          endTime: ep.draftEndTime || "12:00",
+          status: "upcoming",
+          crew: ep.draftCrew.map(crewId => ({ crewMemberId: crewId, role: "", hoursWorked: 0, payRatePerHour: 0 })),
+          postProduction: [],
+          editTypes: [],
+          notes: `[Series: ${series!.name}] Episode ${ep.episodeNumber}: ${ep.title}\n\n${ep.concept}`,
+          deliverableUrl: "",
+        });
+        await updateEpisode(ep.id, { projectId: newProject.id, status: "scheduled" });
+        setEpisodes(prev => prev.map(e => e.id === ep.id ? { ...e, projectId: newProject.id, status: "scheduled" } : e));
+        published++;
+      } catch (err: any) {
+        toast.error(`Failed to publish Episode ${ep.episodeNumber}`);
+      }
+    }
+    if (published > 0) toast.success(`${published} episode${published > 1 ? "s" : ""} published to calendar`);
+  }, [episodes, series, addProject, updateEpisode]);
 
   const handleDeleteEpisode = useCallback(async (id: string) => {
     try {
@@ -146,6 +178,7 @@ export default function SeriesWorkspacePage() {
                   talkingPoints: newEpisodes[i].talking_points || "",
                   status: "idea",
                   projectId: null,
+                  draftDate: "", draftStartTime: "", draftEndTime: "", draftLocationId: "", draftCrew: [],
                 });
                 setEpisodes(prev => [...prev, ep].sort((a, b) => a.episodeNumber - b.episodeNumber));
               }
@@ -278,11 +311,15 @@ export default function SeriesWorkspacePage() {
               onAddEpisode={handleAddEpisode}
               onDeleteEpisode={handleDeleteEpisode}
               onScheduleEpisode={handleScheduleEpisode}
+              onPublishSchedule={handlePublishSchedule}
               seriesId={seriesId}
               userName={profile?.name || "User"}
               userRole={profile?.role || "client"}
               onFetchComments={fetchComments}
               onAddComment={addComment}
+              locations={data.locations}
+              crewMembers={data.crewMembers}
+              existingProjects={data.projects}
             />
           </div>
         </div>
