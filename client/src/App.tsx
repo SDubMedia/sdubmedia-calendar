@@ -77,8 +77,8 @@ function Router() {
         )}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
         {!isStaff && <Route path="/calendar" component={CalendarPage} />}
-        {!isStaff && <Route path="/billing" component={BillingPage} />}
-        {!isStaff && <Route path="/reports" component={ReportsPage} />}
+        {(isOwner || isPartner) && <Route path="/billing" component={BillingPage} />}
+        {(isOwner || isPartner) && <Route path="/reports" component={ReportsPage} />}
         {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
         {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
         {(isOwner || isPartner) && <Route path="/invoices" component={InvoicesPage} />}
