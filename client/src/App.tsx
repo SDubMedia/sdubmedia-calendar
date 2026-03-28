@@ -21,6 +21,7 @@ const StaffPage = lazy(() => import("./pages/StaffPage"));
 const MarketingBudgetPage = lazy(() => import("./pages/MarketingBudgetPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const MySchedulePage = lazy(() => import("./pages/MySchedulePage"));
+const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SeriesPage = lazy(() => import("./pages/SeriesPage"));
@@ -78,6 +79,7 @@ function Router() {
           <Route path="/" component={ClientDashboardPage} />
         )}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
+        {isStaff && <Route path="/my-invoices" component={MyInvoicesPage} />}
         {!isStaff && <Route path="/calendar" component={CalendarPage} />}
         {(isOwner || isPartner) && <Route path="/billing" component={BillingPage} />}
         {(isOwner || isPartner) && <Route path="/reports" component={ReportsPage} />}

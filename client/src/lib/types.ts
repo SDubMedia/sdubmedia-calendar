@@ -93,6 +93,12 @@ export interface CrewMember {
   phone: string;
   email: string;
   defaultPayRatePerHour: number;   // fallback rate if role-specific rate not found
+  // Business info for contractor invoicing (optional, self-managed by staff)
+  businessName?: string;
+  businessAddress?: string;
+  businessCity?: string;
+  businessState?: string;
+  businessZip?: string;
 }
 
 export interface Location {
@@ -186,6 +192,43 @@ export interface MonthlyBillingSummary {
   }[];
   totalCrewCost: number;          // sum of all crew pay
   grossMargin: number;            // clientInvoiceAmount - totalCrewCost
+}
+
+// ---- Contractor Invoices (1099 crew self-service) ----
+export type ContractorInvoiceStatus = "draft" | "sent";
+
+export interface ContractorInvoiceLineItem {
+  projectId: string;
+  date: string;
+  description: string; // project type + location
+  role: string;
+  hours: number;
+  rate: number;
+  amount: number;
+}
+
+export interface ContractorInvoice {
+  id: string;
+  crewMemberId: string;
+  invoiceNumber: string; // per-contractor sequence e.g. MM-2026-0001
+  recipientType: "sdub_media" | "partner";
+  recipientName: string;
+  periodStart: string;
+  periodEnd: string;
+  lineItems: ContractorInvoiceLineItem[];
+  businessInfo: {
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    zip: string;
+    phone: string;
+    email: string;
+  };
+  total: number;
+  status: ContractorInvoiceStatus;
+  notes: string;
+  createdAt: string;
 }
 
 // ---- Invoices ----
@@ -295,6 +338,7 @@ export interface AppData {
   projects: Project[];
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];
+  contractorInvoices: ContractorInvoice[];
   series: Series[];
   organization: Organization | null;
 }

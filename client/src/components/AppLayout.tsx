@@ -49,6 +49,7 @@ const allNavItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"] },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"] },
+  { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"] },
   { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"] },
   { label: "Reports", href: "/my-reports", icon: BarChart2, roles: ["client"] },
   { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"] },

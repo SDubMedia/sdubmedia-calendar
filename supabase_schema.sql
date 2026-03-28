@@ -37,7 +37,29 @@ create table if not exists crew_members (
   name text not null,
   roles text[] not null default '{}',
   phone text not null default '',
-  email text not null default ''
+  email text not null default '',
+  business_name text not null default '',
+  business_address text not null default '',
+  business_city text not null default '',
+  business_state text not null default '',
+  business_zip text not null default ''
+);
+
+-- ---- Contractor Invoices (1099 self-service) ----
+create table if not exists contractor_invoices (
+  id text primary key,
+  crew_member_id text not null references crew_members(id) on delete cascade,
+  invoice_number text not null,
+  recipient_type text not null default 'sdub_media',
+  recipient_name text not null default '',
+  period_start text not null,
+  period_end text not null,
+  line_items jsonb not null default '[]',
+  business_info jsonb not null default '{}',
+  total numeric not null default 0,
+  status text not null default 'draft',
+  notes text not null default '',
+  created_at timestamptz not null default now()
 );
 
 -- ---- Locations ----

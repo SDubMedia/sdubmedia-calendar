@@ -146,6 +146,7 @@ export const seedData: AppData = {
   ],
   marketingExpenses: [],
   invoices: [],
+  contractorInvoices: [],
   series: [],
   organization: null,
 };

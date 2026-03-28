@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -40,6 +40,10 @@ interface AppContextValue {
   addInvoice: (inv: Omit<Invoice, "id" | "createdAt" | "updatedAt">) => Promise<Invoice>;
   updateInvoice: (id: string, inv: Partial<Invoice>) => Promise<void>;
   deleteInvoice: (id: string) => Promise<void>;
+  // Contractor Invoices
+  addContractorInvoice: (inv: Omit<ContractorInvoice, "id" | "createdAt">) => Promise<ContractorInvoice>;
+  updateContractorInvoice: (id: string, inv: Partial<ContractorInvoice>) => Promise<void>;
+  deleteContractorInvoice: (id: string) => Promise<void>;
   // Series
   addSeries: (s: Omit<Series, "id" | "createdAt">) => Promise<Series>;
   updateSeries: (id: string, s: Partial<Series>) => Promise<void>;
@@ -88,6 +92,29 @@ function rowToCrew(r: any): CrewMember {
     phone: r.phone,
     email: r.email,
     defaultPayRatePerHour: Number(r.default_pay_rate_per_hour ?? 0),
+    businessName: r.business_name || "",
+    businessAddress: r.business_address || "",
+    businessCity: r.business_city || "",
+    businessState: r.business_state || "",
+    businessZip: r.business_zip || "",
+  };
+}
+
+function rowToContractorInvoice(r: any): ContractorInvoice {
+  return {
+    id: r.id,
+    crewMemberId: r.crew_member_id,
+    invoiceNumber: r.invoice_number,
+    recipientType: r.recipient_type,
+    recipientName: r.recipient_name || "",
+    periodStart: r.period_start,
+    periodEnd: r.period_end,
+    lineItems: r.line_items || [],
+    businessInfo: r.business_info || {},
+    total: Number(r.total ?? 0),
+    status: r.status,
+    notes: r.notes || "",
+    createdAt: r.created_at,
   };
 }
 
@@ -226,7 +253,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -248,6 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: projects, error: e5 },
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
+        { data: contractorInvs, error: e7b },
         { data: seriesData, error: e8 },
         { data: orgData, error: e9 },
       ] = await Promise.all([
@@ -258,11 +286,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+        supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e8;
       if (firstError) throw new Error(firstError.message);
 
       setData({
@@ -273,6 +302,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         projects: (projects || []).map(rowToProject),
         marketingExpenses: (expenses || []).map(rowToExpense),
         invoices: (invoices || []).map(rowToInvoice),
+        contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -348,6 +378,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.phone !== undefined) patch.phone = c.phone;
     if (c.email !== undefined) patch.email = c.email;
     if (c.defaultPayRatePerHour !== undefined) patch.default_pay_rate_per_hour = c.defaultPayRatePerHour;
+    if (c.businessName !== undefined) patch.business_name = c.businessName;
+    if (c.businessAddress !== undefined) patch.business_address = c.businessAddress;
+    if (c.businessCity !== undefined) patch.business_city = c.businessCity;
+    if (c.businessState !== undefined) patch.business_state = c.businessState;
+    if (c.businessZip !== undefined) patch.business_zip = c.businessZip;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));
@@ -535,6 +570,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Contractor Invoices ----
+  const addContractorInvoice = useCallback(async (inv: Omit<ContractorInvoice, "id" | "createdAt">): Promise<ContractorInvoice> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("contractor_invoices").insert({
+      id,
+      crew_member_id: inv.crewMemberId,
+      invoice_number: inv.invoiceNumber,
+      recipient_type: inv.recipientType,
+      recipient_name: inv.recipientName,
+      period_start: inv.periodStart,
+      period_end: inv.periodEnd,
+      line_items: inv.lineItems,
+      business_info: inv.businessInfo,
+      total: inv.total,
+      status: inv.status,
+      notes: inv.notes,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const cinv = rowToContractorInvoice(row);
+    setData(d => ({ ...d, contractorInvoices: [cinv, ...d.contractorInvoices] }));
+    return cinv;
+  }, []);
+
+  const updateContractorInvoice = useCallback(async (id: string, inv: Partial<ContractorInvoice>) => {
+    const patch: any = {};
+    if (inv.status !== undefined) patch.status = inv.status;
+    if (inv.notes !== undefined) patch.notes = inv.notes;
+    if (inv.lineItems !== undefined) patch.line_items = inv.lineItems;
+    if (inv.total !== undefined) patch.total = inv.total;
+    const { error } = await supabase.from("contractor_invoices").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contractorInvoices: d.contractorInvoices.map(x => x.id === id ? { ...x, ...inv } : x) }));
+  }, []);
+
+  const deleteContractorInvoice = useCallback(async (id: string) => {
+    const { error } = await supabase.from("contractor_invoices").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contractorInvoices: d.contractorInvoices.filter(x => x.id !== id) }));
+  }, []);
+
   // ---- Series ----
   const addSeries = useCallback(async (s: Omit<Series, "id" | "createdAt">): Promise<Series> => {
     const id = nanoid(10);
@@ -656,6 +731,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProject, updateProject, deleteProject,
       addMarketingExpense, deleteMarketingExpense,
       addInvoice, updateInvoice, deleteInvoice,
+      addContractorInvoice, updateContractorInvoice, deleteContractorInvoice,
       addSeries, updateSeries, deleteSeries,
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,

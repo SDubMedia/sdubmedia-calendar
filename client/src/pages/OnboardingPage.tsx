@@ -10,6 +10,7 @@ import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
   Clock, DollarSign, HeartPulse, BarChart2,
   Film, ChevronRight, ChevronLeft, CheckCircle,
+  Building2, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -107,6 +108,18 @@ const STAFF_STEPS: OnboardingStep[] = [
     description: "Your pay breakdown",
     detail: "View your monthly earnings with a per-project breakdown. See hours worked, pay rates, and totals for the current month.",
   },
+  {
+    icon: Building2, iconColor: "text-purple-400", iconBg: "bg-purple-500/20",
+    title: "Set Up Your Business Info",
+    description: "Add your name and address for invoices",
+    detail: "Go to My Invoices and tap 'Business Info' to enter your business name (or personal name) and address. This appears on every invoice you generate.",
+  },
+  {
+    icon: Receipt, iconColor: "text-amber-400", iconBg: "bg-amber-500/20",
+    title: "Generate Invoices",
+    description: "Create and download professional invoices",
+    detail: "From My Invoices, select a date range and who to invoice (SDub Media or a partner). The system pulls your completed projects and generates a PDF you can download, print, and send.",
+  },
 ];
 
 function getStepsForRole(role: UserRole): OnboardingStep[] {
@@ -134,7 +147,7 @@ function getRoleWelcome(role: UserRole, name: string): { title: string; subtitle
     case "staff":
       return {
         title: `Hey ${firstName}, welcome to the team!`,
-        subtitle: "This is where you'll find your schedule, assignments, and earnings.",
+        subtitle: "This is where you'll find your schedule, assignments, earnings, and invoicing.",
       };
     default:
       return { title: `Welcome, ${firstName}!`, subtitle: "Let's show you around." };
