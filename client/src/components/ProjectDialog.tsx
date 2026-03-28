@@ -179,7 +179,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
         <div className="space-y-5 py-2">
           {/* Row 1: Client + Project Type */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Client</Label>
               <Select value={clientId} onValueChange={handleClientChange}>
@@ -209,7 +209,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
 
           {/* Row 2: Date + Times */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-secondary border-border" />
@@ -225,7 +225,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
 
           {/* Row 3: Location + Status */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Location</Label>
               <Select value={locationId} onValueChange={setLocationId}>
@@ -263,40 +263,53 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+            <div className="hidden sm:grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
               <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
             </div>
             {crew.map((entry, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 items-center">
-                <Select value={entry.crewMemberId} onValueChange={(v) => updateCrewEntry(idx, "crewMemberId", v)}>
-                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
-                    <SelectValue placeholder="Person" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {data.crewMembers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={entry.role}
-                  onValueChange={(v) => updateCrewEntry(idx, "role", v)}
-                  disabled={!entry.crewMemberId}
-                >
-                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
-                    <SelectValue placeholder="Role" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
-                      <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updateCrewEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
+                <div className="flex gap-2">
+                  <Select value={entry.crewMemberId} onValueChange={(v) => updateCrewEntry(idx, "crewMemberId", v)}>
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                      <SelectValue placeholder="Person" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {data.crewMembers.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={entry.role}
+                    onValueChange={(v) => updateCrewEntry(idx, "role", v)}
+                    disabled={!entry.crewMemberId}
+                  >
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                      <SelectValue placeholder="Role" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
+                        <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors sm:order-last shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex gap-2 sm:contents">
+                  <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
+                    <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                  </div>
+                  <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
+                    <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updateCrewEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                  </div>
+                  <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
             {/* Running total for crew */}
@@ -317,40 +330,53 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+            <div className="hidden sm:grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
               <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
             </div>
             {postProduction.map((entry, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 items-center">
-                <Select value={entry.crewMemberId} onValueChange={(v) => updatePostEntry(idx, "crewMemberId", v)}>
-                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
-                    <SelectValue placeholder="Person" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {data.crewMembers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={entry.role}
-                  onValueChange={(v) => updatePostEntry(idx, "role", v)}
-                  disabled={!entry.crewMemberId}
-                >
-                  <SelectTrigger className="bg-secondary border-border h-8 text-xs">
-                    <SelectValue placeholder="Role" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
-                      <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updatePostEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
-                <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
+                <div className="flex gap-2">
+                  <Select value={entry.crewMemberId} onValueChange={(v) => updatePostEntry(idx, "crewMemberId", v)}>
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                      <SelectValue placeholder="Person" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {data.crewMembers.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={entry.role}
+                    onValueChange={(v) => updatePostEntry(idx, "role", v)}
+                    disabled={!entry.crewMemberId}
+                  >
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                      <SelectValue placeholder="Role" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {(data.crewMembers.find(c => c.id === entry.crewMemberId)?.roleRates ?? []).map((rr) => (
+                        <SelectItem key={rr.role} value={rr.role}>{rr.role}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors sm:order-last shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex gap-2 sm:contents">
+                  <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
+                    <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                  </div>
+                  <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
+                    <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updatePostEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                  </div>
+                  <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
             {postProduction.some(e => e.crewMemberId) && (
