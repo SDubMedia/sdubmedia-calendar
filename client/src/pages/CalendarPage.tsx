@@ -34,6 +34,7 @@ export default function CalendarPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [viewScope, setViewScope] = useState<"month" | "all">("month");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -68,12 +69,13 @@ export default function CalendarPage() {
     });
   }, [data.projects, year, month]);
 
-  // All projects filtered by status for the list below
+  // Projects filtered by scope (month or all) and status for the list below
   const filteredProjects = useMemo(() => {
-    const sorted = [...data.projects].sort((a, b) => a.date.localeCompare(b.date));
+    const projects = viewScope === "month" ? monthProjects : data.projects;
+    const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, filterStatus]);
+  }, [data.projects, monthProjects, filterStatus, viewScope]);
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -107,10 +109,11 @@ export default function CalendarPage() {
   }, [monthProjects, data.clients]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: data.projects.length, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
-    data.projects.forEach((p) => { counts[p.status] = (counts[p.status] || 0) + 1; });
+    const projects = viewScope === "month" ? monthProjects : data.projects;
+    const counts: Record<string, number> = { all: projects.length, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
+    projects.forEach((p) => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
-  }, [data.projects]);
+  }, [data.projects, monthProjects, viewScope]);
 
   return (
     <div className="flex flex-col h-full">
@@ -261,6 +264,32 @@ export default function CalendarPage() {
         {/* Filter tabs + project list */}
         <div className="bg-card rounded-lg border border-border overflow-hidden">
           <div className="flex items-center gap-1 px-4 py-3 border-b border-border overflow-x-auto">
+            {/* Scope toggle */}
+            <div className="flex gap-1 mr-3 pr-3 border-r border-border">
+              <button
+                onClick={() => setViewScope("month")}
+                className={cn(
+                  "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
+                  viewScope === "month"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                )}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setViewScope("all")}
+                className={cn(
+                  "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
+                  viewScope === "all"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                )}
+              >
+                All Projects
+              </button>
+            </div>
+            {/* Status filters */}
             {[
               { key: "all", label: "All" },
               { key: "upcoming", label: "Upcoming" },
