@@ -263,9 +263,9 @@ export default function CalendarPage() {
 
         {/* Filter tabs + project list */}
         <div className="bg-card rounded-lg border border-border overflow-hidden">
-          <div className="flex items-center gap-1 px-4 py-3 border-b border-border overflow-x-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
             {/* Scope toggle */}
-            <div className="flex gap-1 mr-3 pr-3 border-r border-border">
+            <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
               <button
                 onClick={() => setViewScope("month")}
                 className={cn(
@@ -290,6 +290,7 @@ export default function CalendarPage() {
               </button>
             </div>
             {/* Status filters */}
+            <div className="flex gap-1 overflow-x-auto">
             {[
               { key: "all", label: "All" },
               { key: "upcoming", label: "Upcoming" },
@@ -311,6 +312,7 @@ export default function CalendarPage() {
                 <span className="ml-1.5 opacity-70">{statusCounts[tab.key] ?? 0}</span>
               </button>
             ))}
+            </div>
           </div>
 
           {/* Project list */}
