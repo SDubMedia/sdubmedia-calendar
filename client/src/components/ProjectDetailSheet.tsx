@@ -16,6 +16,7 @@ import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
+import PhotoEditorCalculator from "./PhotoEditorCalculator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,6 +74,12 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
   const totalCrewHrs = project.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
   const totalPostHrs = project.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
   const totalHrs = totalCrewHrs + totalPostHrs;
+
+  // Detect photo editor in post-production for the billing calculator
+  const photoEditorEntry = project.postProduction.find(
+    (e) => e.role === "Photo Editor"
+  );
+  const photoEditorName = photoEditorEntry ? getCrewName(photoEditorEntry.crewMemberId) : null;
 
   const advanceStatus = async () => {
     const next = STATUS_NEXT[project.status];
@@ -242,6 +249,15 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Photo Editor Billing Calculator */}
+            {photoEditorEntry && client && (
+              <PhotoEditorCalculator
+                project={project}
+                client={client}
+                editorName={photoEditorName!}
+              />
             )}
 
             {/* Edit Types */}

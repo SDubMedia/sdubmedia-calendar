@@ -76,6 +76,7 @@ export interface Client {
   allowedProjectTypeIds: string[]; // if set, only these types show in project form (empty = all)
   defaultProjectTypeId: string; // auto-selected project type for new projects
   roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
+  partnerSplit?: PartnerSplit | null; // profit split config for partner clients
   createdAt: string;
 }
 
@@ -124,6 +125,21 @@ export interface ProjectPostEntry {
   payRatePerHour: number; // $ per hour
 }
 
+// Photo editor billing calculator data (stored per-project)
+export interface EditorBilling {
+  imageCount: number;
+  billingMode: "standard" | "event"; // standard = 2x cost, event = +1hr
+  finalHours: number; // editable — this is what goes on the client invoice
+}
+
+// Partner profit split config (stored per-client)
+export interface PartnerSplit {
+  partnerName: string;
+  partnerPercent: number; // e.g. 0.45
+  adminPercent: number;   // e.g. 0.45
+  marketingPercent: number; // e.g. 0.10
+}
+
 export interface Project {
   id: string;
   clientId: string;
@@ -135,6 +151,7 @@ export interface Project {
   status: ProjectStatus;
   crew: ProjectCrewEntry[];
   postProduction: ProjectPostEntry[];
+  editorBilling?: EditorBilling | null; // photo editor image-based billing
   editTypes: EditType[];
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables

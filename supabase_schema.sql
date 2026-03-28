@@ -26,6 +26,7 @@ create table if not exists clients (
   email text not null default '',
   retainer_start_date text not null default '',
   monthly_hours numeric not null default 0,
+  partner_split jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -70,6 +71,7 @@ create table if not exists projects (
   status text not null default 'upcoming',
   crew jsonb not null default '[]',
   post_production jsonb not null default '[]',
+  editor_billing jsonb,
   edit_types text[] not null default '{}',
   notes text not null default '',
   deliverable_url text not null default '',

@@ -75,6 +75,7 @@ function rowToClient(r: any): Client {
     allowedProjectTypeIds: r.allowed_project_type_ids || [],
     defaultProjectTypeId: r.default_project_type_id || "",
     roleBillingMultipliers: r.role_billing_multipliers || [],
+    partnerSplit: r.partner_split || null,
     createdAt: r.created_at,
   };
 }
@@ -119,6 +120,7 @@ function rowToProject(r: any): Project {
     status: r.status,
     crew: (r.crew || []).map(normalizeCrewEntry),
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
+    editorBilling: r.editor_billing || null,
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     deliverableUrl: r.deliverable_url || "",
@@ -287,7 +289,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addClient = useCallback(async (c: Omit<Client, "id" | "createdAt">): Promise<Client> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("clients").insert({
-      id, org_id: orgId, company: c.company, contact_name: c.contactName, phone: c.phone,
+      id, ...(orgId ? { org_id: orgId } : {}), company: c.company, contact_name: c.contactName, phone: c.phone,
       email: c.email, billing_model: c.billingModel ?? "hourly",
       billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       project_type_rates: c.projectTypeRates ?? [],
@@ -314,6 +316,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.allowedProjectTypeIds !== undefined) patch.allowed_project_type_ids = c.allowedProjectTypeIds;
     if (c.defaultProjectTypeId !== undefined) patch.default_project_type_id = c.defaultProjectTypeId;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
+    if (c.partnerSplit !== undefined) patch.partner_split = c.partnerSplit;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));
@@ -329,7 +332,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addCrewMember = useCallback(async (c: Omit<CrewMember, "id">): Promise<CrewMember> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("crew_members").insert({
-      id, org_id: orgId, name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
+      id, ...(orgId ? { org_id: orgId } : {}), name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -360,7 +363,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addLocation = useCallback(async (l: Omit<Location, "id">): Promise<Location> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("locations").insert({
-      id, org_id: orgId, name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip,
+      id, ...(orgId ? { org_id: orgId } : {}), name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip,
     }).select().single();
     if (error) throw new Error(error.message);
     const loc = rowToLocation(row);
@@ -383,7 +386,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---- Project Types ----
   const addProjectType = useCallback(async (pt: Omit<ProjectType, "id">): Promise<ProjectType> => {
     const id = nanoid(10);
-    const { data: row, error } = await supabase.from("project_types").insert({ id, org_id: orgId, name: pt.name }).select().single();
+    const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToProjectType(row);
     setData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -407,7 +410,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("projects").insert({
       id,
-      org_id: orgId,
+      ...(orgId ? { org_id: orgId } : {}),
       client_id: p.clientId,
       project_type_id: p.projectTypeId,
       location_id: p.locationId || null,
@@ -417,6 +420,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       status: p.status,
       crew: p.crew,
       post_production: p.postProduction,
+      editor_billing: p.editorBilling || null,
       edit_types: p.editTypes,
       notes: p.notes,
       deliverable_url: p.deliverableUrl || "",
@@ -438,6 +442,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.status !== undefined) patch.status = p.status;
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
+    if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
@@ -456,7 +461,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addMarketingExpense = useCallback(async (e: Omit<MarketingExpense, "id" | "createdAt">): Promise<MarketingExpense> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("marketing_expenses").insert({
-      id, org_id: orgId, date: e.date, category: e.category, description: e.description,
+      id, ...(orgId ? { org_id: orgId } : {}), date: e.date, category: e.category, description: e.description,
       notes: e.notes, amount: e.amount,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -476,7 +481,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("invoices").insert({
       id,
-      org_id: orgId,
+      ...(orgId ? { org_id: orgId } : {}),
       invoice_number: inv.invoiceNumber,
       client_id: inv.clientId,
       period_start: inv.periodStart,
@@ -536,7 +541,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const today = new Date();
     const resetDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
     const { data: row, error } = await supabase.from("series").insert({
-      id, org_id: orgId, name: s.name, client_id: s.clientId, goal: s.goal, status: s.status,
+      id, ...(orgId ? { org_id: orgId } : {}), name: s.name, client_id: s.clientId, goal: s.goal, status: s.status,
       monthly_token_limit: s.monthlyTokenLimit, tokens_used_this_month: 0, token_reset_date: resetDate,
     }).select().single();
     if (error) throw new Error(error.message);

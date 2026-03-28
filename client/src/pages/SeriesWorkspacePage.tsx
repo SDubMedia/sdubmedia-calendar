@@ -94,6 +94,7 @@ export default function SeriesWorkspacePage() {
           status: "upcoming",
           crew: ep.draftCrew.map(crewId => ({ crewMemberId: crewId, role: "", hoursWorked: 0, payRatePerHour: 0 })),
           postProduction: [],
+          editorBilling: null,
           editTypes: [],
           notes: `[Series: ${series!.name}] Episode ${ep.episodeNumber}: ${ep.title}\n\n${ep.concept}`,
           deliverableUrl: "",

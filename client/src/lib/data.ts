@@ -174,6 +174,7 @@ export function getBillableHours(entry: ProjectCrewEntry | ProjectPostEntry, cli
 
 /**
  * Get total billable hours for a project (applying client role multipliers).
+ * When editorBilling.finalHours is set, uses that instead of photo editor post-production hours.
  */
 export function getProjectBillableHours(project: Project, client: Client): {
   crewBillable: number;
@@ -181,6 +182,15 @@ export function getProjectBillableHours(project: Project, client: Client): {
   totalBillable: number;
 } {
   const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+
+  if (project.editorBilling?.finalHours) {
+    // Photo editor hours come from the calculator; exclude photo editor entries from normal calculation
+    const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor");
+    const postBillable = nonPhotoEditorPost.reduce((s, e) => s + getBillableHours(e, client), 0);
+    const editorBillable = project.editorBilling.finalHours;
+    return { crewBillable, postBillable: postBillable + editorBillable, totalBillable: crewBillable + postBillable + editorBillable };
+  }
+
   const postBillable = (project.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
   return { crewBillable, postBillable, totalBillable: crewBillable + postBillable };
 }

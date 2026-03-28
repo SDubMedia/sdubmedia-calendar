@@ -150,6 +150,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime, status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
+      editorBilling: project?.editorBilling ?? null,
       editTypes, notes, deliverableUrl,
     };
     try {
