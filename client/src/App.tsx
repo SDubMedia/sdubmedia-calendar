@@ -82,7 +82,6 @@ function Router() {
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
         {isStaff && <Route path="/my-invoices" component={MyInvoicesPage} />}
         {(isOwner || isPartner) && <Route path="/contractor-invoices" component={ContractorInvoicesPage} />}
-        {(isOwner || isPartner) && <Route path="/staff-invoice-preview" component={MyInvoicesPage} />}
         {!isStaff && <Route path="/calendar" component={CalendarPage} />}
         {(isOwner || isPartner) && <Route path="/billing" component={BillingPage} />}
         {(isOwner || isPartner) && <Route path="/reports" component={ReportsPage} />}
