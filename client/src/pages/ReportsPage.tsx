@@ -6,7 +6,7 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, Client, AppData } from "@/lib/types";
+import type { Project, Client } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

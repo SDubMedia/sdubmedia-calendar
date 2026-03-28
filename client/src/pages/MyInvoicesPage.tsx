@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  FileText, Plus, Download, Eye, Trash2, Edit3, Save, Building2,
+  FileText, Plus, Download, Trash2, Save, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";

@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { UserRole } from "@/lib/types";
 import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
-  Clock, DollarSign, HeartPulse, BarChart2,
+  Clock, DollarSign, HeartPulse,
   Film, ChevronRight, ChevronLeft, CheckCircle,
   Building2, Receipt,
 } from "lucide-react";
