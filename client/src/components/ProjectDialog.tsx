@@ -170,7 +170,17 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-[100dvh] !rounded-none overflow-y-auto overflow-x-hidden bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg">
+      <DialogContent
+        className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none overflow-x-hidden bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg"
+        style={{
+          height: "100%",
+          maxHeight: "100%",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          paddingTop: "max(1rem, env(safe-area-inset-top))",
+          paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+        }}
+      >
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             {isEdit ? "Edit Project" : "New Project"}
@@ -420,7 +430,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sticky bottom-0 bg-card pt-4 pb-2 -mx-6 px-6 border-t border-border sm:relative sm:border-0 sm:mx-0 sm:px-0 sm:pt-0 sm:pb-0">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
             {isEdit ? "Save Changes" : "Create Project"}
