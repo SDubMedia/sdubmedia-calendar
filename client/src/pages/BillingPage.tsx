@@ -79,19 +79,37 @@ export default function BillingPage() {
       const crewMap: Record<string, { name: string; totalHours: number; totalPay: number }> = {};
 
       projects.forEach(p => {
-        [...p.crew, ...p.postProduction].forEach(entry => {
+        // Crew entries
+        p.crew.forEach(entry => {
           const hrs = Number(entry.hoursWorked ?? 0);
           const rate = Number(entry.payRatePerHour ?? 0);
-          const billable = getBillableHours(entry, client);
-          totalBillableHours += billable;
-
+          totalBillableHours += getBillableHours(entry, client);
           const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
           const name = member?.name ?? "Unknown";
-          if (!crewMap[entry.crewMemberId]) {
-            crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
-          }
+          if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
           crewMap[entry.crewMemberId].totalHours += hrs;
           crewMap[entry.crewMemberId].totalPay += hrs * rate;
+        });
+        // Post-production entries — use editorBilling for photo editors
+        p.postProduction.forEach(entry => {
+          const isPhotoEditorWithBilling = entry.role === "Photo Editor" && p.editorBilling;
+          if (isPhotoEditorWithBilling) {
+            totalBillableHours += p.editorBilling!.finalHours;
+            const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
+            const name = member?.name ?? "Unknown";
+            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
+            crewMap[entry.crewMemberId].totalHours += p.editorBilling!.imageCount;
+            crewMap[entry.crewMemberId].totalPay += p.editorBilling!.imageCount * 6;
+          } else {
+            const hrs = Number(entry.hoursWorked ?? 0);
+            const rate = Number(entry.payRatePerHour ?? 0);
+            totalBillableHours += getBillableHours(entry, client);
+            const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
+            const name = member?.name ?? "Unknown";
+            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
+            crewMap[entry.crewMemberId].totalHours += hrs;
+            crewMap[entry.crewMemberId].totalPay += hrs * rate;
+          }
         });
       });
 

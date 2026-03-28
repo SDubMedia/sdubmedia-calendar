@@ -36,10 +36,23 @@ function getProjectHours(project: Project) {
   return { crewHours, postHours, totalHours: crewHours + postHours };
 }
 
+function getPhotoEditorCost(project: Project): number {
+  if (!project.editorBilling) return 0;
+  return project.editorBilling.imageCount * 6; // $6 per image
+}
+
 function getProjectCrewCost(project: Project) {
-  return [...(project.crew || []), ...(project.postProduction || [])].reduce(
+  const crewCost = (project.crew || []).reduce(
     (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
   );
+  // For post-production, use editorBilling for photo editors when available
+  const postCost = (project.postProduction || []).reduce((s, e) => {
+    if (e.role === "Photo Editor" && project.editorBilling) {
+      return s; // skip — handled by getPhotoEditorCost
+    }
+    return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+  }, 0);
+  return crewCost + postCost + getPhotoEditorCost(project);
 }
 
 // Preview state type
@@ -138,8 +151,13 @@ export default function ReportsPage() {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
         if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
-        personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
-        personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+        if (e.role === "Photo Editor" && p.editorBilling) {
+          personPay[e.crewMemberId].editHours += p.editorBilling.imageCount;
+          personPay[e.crewMemberId].totalPay += p.editorBilling.imageCount * 6;
+        } else {
+          personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
+          personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+        }
       });
     });
     const personList = Object.values(personPay).sort((a, b) => b.totalPay - a.totalPay);
@@ -212,19 +230,22 @@ export default function ReportsPage() {
         ];
         const payRows = allEntries.map(e => {
           const member = data.crewMembers.find(c => c.id === e.crewMemberId);
-          const hrs = Number(e.hoursWorked ?? 0);
-          const rate = Number(e.payRatePerHour ?? 0);
+          const isPhotoEditorWithBilling = e.role === "Photo Editor" && p.editorBilling;
+          const qty = isPhotoEditorWithBilling ? p.editorBilling!.imageCount : Number(e.hoursWorked ?? 0);
+          const rate = isPhotoEditorWithBilling ? 6 : Number(e.payRatePerHour ?? 0);
+          const qtyLabel = isPhotoEditorWithBilling ? `${qty} imgs` : `${qty.toFixed(2)}`;
+          const rateLabel = isPhotoEditorWithBilling ? "$6/img" : formatCurrency(rate);
           return `
             <tr>
               <td>${member?.name ?? "Unknown"}</td>
               <td>${e.role}</td>
-              <td style="text-align:right">${hrs.toFixed(2)}</td>
-              <td style="text-align:right">${formatCurrency(rate)}</td>
-              <td style="text-align:right">${formatCurrency(hrs * rate)}</td>
+              <td style="text-align:right">${qtyLabel}</td>
+              <td style="text-align:right">${rateLabel}</td>
+              <td style="text-align:right">${formatCurrency(qty * rate)}</td>
             </tr>
           `;
         }).join("");
-        const projectLabor = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+        const projectLabor = getProjectCrewCost(p);
 
         return `
           <div class="project-card" style="margin-bottom: 16px;">
