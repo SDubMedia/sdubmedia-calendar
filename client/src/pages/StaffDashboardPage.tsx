@@ -83,23 +83,29 @@ export default function StaffDashboardPage() {
 
     thisMonthProjects.forEach(p => {
       const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
-      const allEntries = [
-        ...p.crew.filter(c => c.crewMemberId === crewMemberId),
-        ...p.postProduction.filter(c => c.crewMemberId === crewMemberId),
-      ];
-      allEntries.forEach(e => {
+      // Crew entries
+      p.crew.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
         const hours = Number(e.hoursWorked ?? 0);
         const pay = hours * Number(e.payRatePerHour ?? 0);
         totalHours += hours;
         totalPay += pay;
-        breakdown.push({
-          projectId: p.id,
-          date: p.date,
-          typeName: pType?.name ?? "Project",
-          role: e.role,
-          hours,
-          pay,
-        });
+        breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, pay });
+      });
+      // Post-production entries — use editorBilling for photo editors
+      p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
+        if (e.role === "Photo Editor" && p.editorBilling) {
+          const imgs = p.editorBilling.imageCount;
+          const pay = imgs * 6;
+          totalHours += imgs;
+          totalPay += pay;
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, pay });
+        } else {
+          const hours = Number(e.hoursWorked ?? 0);
+          const pay = hours * Number(e.payRatePerHour ?? 0);
+          totalHours += hours;
+          totalPay += pay;
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, pay });
+        }
       });
     });
 

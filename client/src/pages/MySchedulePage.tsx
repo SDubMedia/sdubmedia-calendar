@@ -90,11 +90,19 @@ export default function MySchedulePage() {
 
     project.postProduction.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
-        const hours = Number(c.hoursWorked ?? 0);
-        const rate = Number(c.payRatePerHour ?? 0);
-        totalHours += hours;
-        totalPay += hours * rate;
-        entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Post" });
+        if (c.role === "Photo Editor" && project.editorBilling) {
+          const imgs = project.editorBilling.imageCount;
+          const rate = 6;
+          totalHours += imgs;
+          totalPay += imgs * rate;
+          entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post" });
+        } else {
+          const hours = Number(c.hoursWorked ?? 0);
+          const rate = Number(c.payRatePerHour ?? 0);
+          totalHours += hours;
+          totalPay += hours * rate;
+          entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Post" });
+        }
       }
     });
 
