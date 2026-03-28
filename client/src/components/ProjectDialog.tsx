@@ -170,7 +170,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[calc(100vw-2rem)] !max-w-[900px] max-h-[90dvh] overflow-y-auto overflow-x-hidden bg-card border-border text-foreground !top-[1rem] !translate-y-0 sm:!top-[50%] sm:!translate-y-[-50%]">
+      <DialogContent className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !h-[100dvh] !rounded-none overflow-y-auto overflow-x-hidden bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg">
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             {isEdit ? "Edit Project" : "New Project"}
