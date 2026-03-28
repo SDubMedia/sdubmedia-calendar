@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink, MessageSquare, Send, CheckCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SeriesEpisode, EpisodeStatus, EpisodeComment, Location, CrewMember, Project } from "@/lib/types";

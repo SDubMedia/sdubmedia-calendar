@@ -12,26 +12,8 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Plus, Edit3, Trash2, Users, Briefcase } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { CrewMember, ProjectType, CrewRole } from "@/lib/types";
+import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-
-const ALL_ROLES: CrewRole[] = ["Main Videographer", "Secondary Videographer", "Videographer", "Main Photographer", "Second Photographer", "Video Editor", "Photo Editor", "Editor", "Audio Engineer", "Director", "Producer", "Crew"];
-
-const ROLE_LABELS: Record<CrewRole, string> = {
-  "Main Videographer": "Main Videographer",
-  "Secondary Videographer": "Secondary Videographer",
-  Videographer: "Videographer",
-  "Main Photographer": "Main Photographer",
-  "Second Photographer": "Second Photographer",
-  Editor: "Editor",
-  "Video Editor": "Video Editor",
-  "Photo Editor": "Photo Editor",
-  "Audio Engineer": "Audio Engineer",
-  Director: "Director",
-  Producer: "Producer",
-  Crew: "Crew",
-};
 
 export default function ManagePage() {
   return (

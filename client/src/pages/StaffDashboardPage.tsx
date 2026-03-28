@@ -65,7 +65,7 @@ export default function StaffDashboardPage() {
   }, [myProjects, todayStr]);
 
   // Next shoot
-  const nextShoot = upcomingProjects[0];
+  const _nextShoot = upcomingProjects[0];
 
   // This month's projects
   const thisMonthProjects = useMemo(() => {

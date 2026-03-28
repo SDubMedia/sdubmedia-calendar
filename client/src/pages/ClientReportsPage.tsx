@@ -6,7 +6,7 @@
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
-import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { downloadCSV } from "@/lib/csv";
 

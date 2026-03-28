@@ -3,7 +3,7 @@
 // Shows their projects, statuses, and invoices
 // ============================================================
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { InvoiceStatus, SeriesEpisode } from "@/lib/types";
 import { Link } from "wouter";

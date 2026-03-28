@@ -6,7 +6,6 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useLocation } from "wouter";
 import { Search, X, CalendarDays, Users, Users2, FileText, Film } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface SearchResult {
   type: "project" | "client" | "crew" | "invoice" | "series";

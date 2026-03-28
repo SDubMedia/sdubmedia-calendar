@@ -70,7 +70,7 @@ export default function SeriesWorkspacePage() {
         await updateEpisode(scheduleEpisode.id, { projectId: project.id, status: "scheduled" });
         setEpisodes(prev => prev.map(e => e.id === scheduleEpisode.id ? { ...e, projectId: project.id, status: "scheduled" } : e));
         toast.success(`Episode ${scheduleEpisode.episodeNumber} linked to calendar`);
-      } catch (err: any) {
+      } catch (_err: any) {
         toast.error("Project created but failed to link episode — link it manually");
       }
       setScheduleEpisode(null);
@@ -102,7 +102,7 @@ export default function SeriesWorkspacePage() {
         await updateEpisode(ep.id, { projectId: newProject.id, status: "scheduled" });
         setEpisodes(prev => prev.map(e => e.id === ep.id ? { ...e, projectId: newProject.id, status: "scheduled" } : e));
         published++;
-      } catch (err: any) {
+      } catch (_err: any) {
         toast.error(`Failed to publish Episode ${ep.episodeNumber}`);
       }
     }
@@ -131,7 +131,7 @@ export default function SeriesWorkspacePage() {
         seriesId, role: "user", senderName, content, tokensUsed: 0,
       });
       setMessages(prev => [...prev, userMsg]);
-    } catch (err: any) {
+    } catch (_err: any) {
       toast.error("Failed to save message");
       setSending(false);
       return;
@@ -233,7 +233,7 @@ export default function SeriesWorkspacePage() {
     } finally {
       setSending(false);
     }
-  }, [series, client, episodes, messages, seriesId, profile, addMessage, updateSeries]);
+  }, [series, client, episodes, messages, seriesId, profile, addMessage, updateSeries, addEpisode, updateEpisode]);
 
   if (!series) {
     return (

@@ -6,12 +6,11 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { UserRole } from "@/lib/types";
 import {
-  LayoutDashboard, CalendarDays, Clapperboard, FileText, Receipt,
-  BarChart2, Users, Users2, HeartPulse, PiggyBank, MapPin, Settings,
+  LayoutDashboard, CalendarDays, Clapperboard, Receipt,
+  HeartPulse,
   Shield, Search, Bell, Sun, ChevronDown, ChevronUp, HelpCircle,
-  MessageSquare, CheckCircle, Download, Clock, DollarSign,
+  MessageSquare, Download, DollarSign,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface HelpSection {
   icon: React.ComponentType<{ className?: string }>;

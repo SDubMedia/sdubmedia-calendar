@@ -92,7 +92,7 @@ export default function CalendarPage() {
   const getClient = (id: string) => data.clients.find((c) => c.id === id);
   const getLocation = (id: string) => data.locations.find((l) => l.id === id);
   const getProjectType = (id: string) => data.projectTypes.find((pt) => pt.id === id);
-  const getCrewMember = (id: string) => data.crewMembers.find((c) => c.id === id);
+  const _getCrewMember = (id: string) => data.crewMembers.find((c) => c.id === id);
 
   const monthlyHoursTotals = useMemo(() => {
     let worked = 0, billed = 0;

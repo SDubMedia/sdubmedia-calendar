@@ -6,9 +6,9 @@
 import { useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { getProjectInvoiceAmount } from "@/lib/data";
-import { TrendingUp, TrendingDown, Minus, DollarSign, CalendarDays, Clock, FileText } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, DollarSign, CalendarDays, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);

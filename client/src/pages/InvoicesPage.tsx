@@ -110,7 +110,7 @@ export default function InvoicesPage() {
       a.download = `${invoice.invoiceNumber}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err: any) {
+    } catch (_err: any) {
       toast.error("Failed to generate PDF");
     }
   };
@@ -121,7 +121,7 @@ export default function InvoicesPage() {
       const url = URL.createObjectURL(blob);
       setPreviewInvoice(invoice);
       setPreviewUrl(url);
-    } catch (err: any) {
+    } catch (_err: any) {
       toast.error("Failed to generate preview");
     }
   };

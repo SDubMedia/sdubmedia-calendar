@@ -5,10 +5,10 @@
 import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getProjectInvoiceAmount, getProjectBillableHours } from "@/lib/data";
+import { getProjectInvoiceAmount } from "@/lib/data";
 import type { InvoiceStatus, UserRole } from "@/lib/types";
 import { Link } from "wouter";
-import { CalendarDays, DollarSign, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -75,7 +75,7 @@ export default function DashboardPage() {
   }, [data.projects, data.clients, currentYear, currentMonth]);
 
   // This month's crew costs + margin
-  const { crewCost, marginPercent } = useMemo(() => {
+  const { crewCost: _crewCost, marginPercent: _marginPercent } = useMemo(() => {
     const monthProjects = data.projects.filter(p => {
       const d = new Date(p.date + "T00:00:00");
       return d.getFullYear() === currentYear && d.getMonth() === currentMonth;

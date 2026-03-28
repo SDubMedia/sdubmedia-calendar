@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (profileError) throw new Error(profileError.message);
 
     await refreshProfiles();
-  }, [refreshProfiles]);
+  }, [refreshProfiles, profile?.orgId]);
 
   const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => {
     const patch: any = {};

@@ -17,7 +17,7 @@ interface SeriesChatProps {
 }
 
 export default function SeriesChat({
-  seriesId,
+  seriesId: _seriesId,
   messages,
   onSendMessage,
   sending,

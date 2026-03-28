@@ -3,7 +3,7 @@
 // Toggle between simplified schedule list and filtered calendar
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays, List, Clock, MapPin, DollarSign } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,7 +29,7 @@ export default function MySchedulePage() {
   const { data } = useApp();
   const { profile } = useAuth();
   const crewMemberId = profile?.crewMemberId || "";
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [view, setView] = useState<"schedule" | "calendar">("schedule");
@@ -58,7 +58,7 @@ export default function MySchedulePage() {
     return [...myProjects]
       .filter(p => p.date >= todayStr)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [myProjects]);
+  }, [myProjects, today]);
 
   // Past projects for schedule view
   const pastProjects = useMemo(() => {
@@ -66,14 +66,14 @@ export default function MySchedulePage() {
     return [...myProjects]
       .filter(p => p.date < todayStr)
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [myProjects]);
+  }, [myProjects, today]);
 
   const getClient = (id: string) => data.clients.find(c => c.id === id);
   const getLocation = (id: string) => data.locations.find(l => l.id === id);
   const getProjectType = (id: string) => data.projectTypes.find(pt => pt.id === id);
 
   // Calculate pay for this crew member on a project
-  const getMyPay = (project: Project) => {
+  const getMyPay = useCallback((project: Project) => {
     let totalHours = 0;
     let totalPay = 0;
     const entries: { role: string; hours: number; rate: number; pay: number; type: string }[] = [];
@@ -107,7 +107,7 @@ export default function MySchedulePage() {
     });
 
     return { totalHours, totalPay, entries };
-  };
+  }, [crewMemberId]);
 
   // Monthly totals
   const monthlyTotals = useMemo(() => {
@@ -118,7 +118,7 @@ export default function MySchedulePage() {
       pay += myPay.totalPay;
     });
     return { hours, pay };
-  }, [monthProjects, crewMemberId]);
+  }, [monthProjects, getMyPay]);
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }

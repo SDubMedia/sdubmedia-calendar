@@ -62,6 +62,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
       setFinalHours(saved.finalHours);
       setUserOverride(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
   const handleFinalHoursChange = (val: string) => {

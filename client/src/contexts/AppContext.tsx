@@ -277,7 +277,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: invoices, error: e7 },
         { data: contractorInvs, error: e7b },
         { data: seriesData, error: e8 },
-        { data: orgData, error: e9 },
+        { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -311,7 +311,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -331,7 +331,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const client = rowToClient(row);
     setData(d => ({ ...d, clients: [...d.clients, client].sort((a, b) => a.company.localeCompare(b.company)) }));
     return client;
-  }, []);
+  }, [orgId]);
 
   const updateClient = useCallback(async (id: string, c: Partial<Client>) => {
     const patch: any = {};
@@ -369,7 +369,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const member = rowToCrew(row);
     setData(d => ({ ...d, crewMembers: [...d.crewMembers, member].sort((a, b) => a.name.localeCompare(b.name)) }));
     return member;
-  }, []);
+  }, [orgId]);
 
   const updateCrewMember = useCallback(async (id: string, c: Partial<CrewMember>) => {
     const patch: any = {};
@@ -404,7 +404,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const loc = rowToLocation(row);
     setData(d => ({ ...d, locations: [...d.locations, loc].sort((a, b) => a.name.localeCompare(b.name)) }));
     return loc;
-  }, []);
+  }, [orgId]);
 
   const updateLocation = useCallback(async (id: string, l: Partial<Location>) => {
     const { error } = await supabase.from("locations").update(l).eq("id", id);
@@ -426,7 +426,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const type = rowToProjectType(row);
     setData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
     return type;
-  }, []);
+  }, [orgId]);
 
   const updateProjectType = useCallback(async (id: string, pt: Partial<ProjectType>) => {
     const { error } = await supabase.from("project_types").update(pt).eq("id", id);
@@ -464,7 +464,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const project = rowToProject(row);
     setData(d => ({ ...d, projects: [...d.projects, project].sort((a, b) => a.date.localeCompare(b.date)) }));
     return project;
-  }, []);
+  }, [orgId]);
 
   const updateProject = useCallback(async (id: string, p: Partial<Project>) => {
     const patch: any = {};
@@ -503,7 +503,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const expense = rowToExpense(row);
     setData(d => ({ ...d, marketingExpenses: [expense, ...d.marketingExpenses].sort((a, b) => b.date.localeCompare(a.date)) }));
     return expense;
-  }, []);
+  }, [orgId]);
 
   const deleteMarketingExpense = useCallback(async (id: string) => {
     const { error } = await supabase.from("marketing_expenses").delete().eq("id", id);
@@ -538,7 +538,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const invoice = rowToInvoice(row);
     setData(d => ({ ...d, invoices: [invoice, ...d.invoices] }));
     return invoice;
-  }, []);
+  }, [orgId]);
 
   const updateInvoice = useCallback(async (id: string, inv: Partial<Invoice>) => {
     const patch: any = {};
@@ -623,7 +623,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const series = rowToSeries(row);
     setData(d => ({ ...d, series: [series, ...d.series] }));
     return series;
-  }, []);
+  }, [orgId]);
 
   const updateSeries = useCallback(async (id: string, s: Partial<Series>) => {
     const patch: any = {};
