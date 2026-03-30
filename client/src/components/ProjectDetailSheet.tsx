@@ -235,18 +235,35 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   <Film className="w-3.5 h-3.5" /> Post Production
                 </div>
                 <div className="space-y-1.5">
-                  {project.postProduction.map((entry, i) => (
-                    <div key={i} className="flex items-center justify-between bg-secondary rounded-md px-3 py-2">
-                      <div>
-                        <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
-                        <div className="text-xs text-muted-foreground">{entry.role}</div>
+                  {project.postProduction.map((entry, i) => {
+                    const isPhotoEditorWithBilling = entry.role === "Photo Editor" && project.editorBilling;
+                    const editorRate = project.editorBilling?.perImageRate ?? 6;
+                    return (
+                      <div key={i} className="flex items-center justify-between bg-secondary rounded-md px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
+                          <div className="text-xs text-muted-foreground">{entry.role}</div>
+                        </div>
+                        <div className="text-right">
+                          {isPhotoEditorWithBilling ? (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">
+                                ${(project.editorBilling!.imageCount * editorRate).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {project.editorBilling!.imageCount} images x ${editorRate}/img
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
+                              <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                        <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

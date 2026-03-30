@@ -38,7 +38,7 @@ function getProjectHours(project: Project) {
 
 function getPhotoEditorCost(project: Project): number {
   if (!project.editorBilling) return 0;
-  return project.editorBilling.imageCount * 6; // $6 per image
+  return project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
 }
 
 function getProjectCrewCost(project: Project) {
@@ -153,7 +153,7 @@ export default function ReportsPage() {
         if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
         if (e.role === "Photo Editor" && p.editorBilling) {
           personPay[e.crewMemberId].editHours += p.editorBilling.imageCount;
-          personPay[e.crewMemberId].totalPay += p.editorBilling.imageCount * 6;
+          personPay[e.crewMemberId].totalPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
         } else {
           personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
           personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);

@@ -99,7 +99,7 @@ export default function BillingPage() {
             const name = member?.name ?? "Unknown";
             if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
             crewMap[entry.crewMemberId].totalHours += p.editorBilling!.imageCount;
-            crewMap[entry.crewMemberId].totalPay += p.editorBilling!.imageCount * 6;
+            crewMap[entry.crewMemberId].totalPay += p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
           } else {
             const hrs = Number(entry.hoursWorked ?? 0);
             const rate = Number(entry.payRatePerHour ?? 0);

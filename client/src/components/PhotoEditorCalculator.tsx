@@ -15,7 +15,7 @@ import type { Project, Client, EditorBilling } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const EDITOR_RATE_PER_IMAGE = 6;
+const DEFAULT_RATE_PER_IMAGE = 6;
 const CLIENT_RATE_PER_HOUR = 200;
 
 interface Props {
@@ -24,8 +24,8 @@ interface Props {
   editorName: string;
 }
 
-function calcSuggestedHours(imageCount: number, mode: "standard" | "event"): number {
-  const editorCost = imageCount * EDITOR_RATE_PER_IMAGE;
+function calcSuggestedHours(imageCount: number, mode: "standard" | "event", perImageRate: number): number {
+  const editorCost = imageCount * perImageRate;
   if (mode === "standard") {
     return (editorCost * 2) / CLIENT_RATE_PER_HOUR;
   }
@@ -39,20 +39,21 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
   const [imageCount, setImageCount] = useState(saved?.imageCount ?? 0);
   const [billingMode, setBillingMode] = useState<"standard" | "event">(saved?.billingMode ?? "standard");
   const [finalHours, setFinalHours] = useState(saved?.finalHours ?? 0);
+  const [perImageRate, setPerImageRate] = useState(saved?.perImageRate ?? DEFAULT_RATE_PER_IMAGE);
   const [saving, setSaving] = useState(false);
 
-  const editorCost = imageCount * EDITOR_RATE_PER_IMAGE;
-  const suggestedHours = calcSuggestedHours(imageCount, billingMode);
+  const editorCost = imageCount * perImageRate;
+  const suggestedHours = calcSuggestedHours(imageCount, billingMode, perImageRate);
   const invoiceTotal = finalHours * CLIENT_RATE_PER_HOUR;
   const profit = invoiceTotal - editorCost;
 
-  // Update final hours when image count or mode changes (only if user hasn't manually overridden)
+  // Update final hours when image count, mode, or rate changes (only if user hasn't manually overridden)
   const [userOverride, setUserOverride] = useState(false);
   useEffect(() => {
     if (!userOverride && imageCount > 0) {
       setFinalHours(Math.round(suggestedHours * 100) / 100);
     }
-  }, [imageCount, billingMode, suggestedHours, userOverride]);
+  }, [imageCount, billingMode, perImageRate, suggestedHours, userOverride]);
 
   // Sync from saved data when project changes
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
       setImageCount(saved.imageCount);
       setBillingMode(saved.billingMode);
       setFinalHours(saved.finalHours);
+      setPerImageRate(saved.perImageRate ?? DEFAULT_RATE_PER_IMAGE);
       setUserOverride(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,6 +82,29 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
     setBillingMode(mode);
   };
 
+  const handlePerImageRateChange = (val: string) => {
+    setUserOverride(false);
+    setPerImageRate(Number(val) || 0);
+  };
+
+  // Auto-save whenever calculator values change (debounced)
+  const [autoSaveTimer, setAutoSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (imageCount <= 0) return;
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    const timer = setTimeout(async () => {
+      try {
+        const billing: EditorBilling = { imageCount, billingMode, finalHours, perImageRate };
+        await updateProject(project.id, { editorBilling: billing });
+      } catch {
+        // silent — manual save is still available as fallback
+      }
+    }, 800);
+    setAutoSaveTimer(timer);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageCount, billingMode, finalHours, perImageRate]);
+
   const handleSave = useCallback(async () => {
     if (imageCount <= 0) {
       toast.error("Enter an image count first");
@@ -87,7 +112,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
     }
     setSaving(true);
     try {
-      const billing: EditorBilling = { imageCount, billingMode, finalHours };
+      const billing: EditorBilling = { imageCount, billingMode, finalHours, perImageRate };
       await updateProject(project.id, { editorBilling: billing });
       toast.success("Editor billing saved");
     } catch (err: any) {
@@ -95,7 +120,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
     } finally {
       setSaving(false);
     }
-  }, [imageCount, billingMode, finalHours, project.id, updateProject]);
+  }, [imageCount, billingMode, finalHours, perImageRate, project.id, updateProject]);
 
   const hasPartnerSplit = client.partnerSplit != null;
   const split = client.partnerSplit;
@@ -112,20 +137,35 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
           <ImageIcon className="w-4 h-4 text-muted-foreground" />
           <span className="text-muted-foreground">Editor:</span>
           <span className="font-medium">{editorName}</span>
-          <span className="text-xs text-muted-foreground ml-auto">${EDITOR_RATE_PER_IMAGE}/image</span>
         </div>
 
-        {/* Image count input */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">Images Edited</label>
-          <Input
-            type="number"
-            min={0}
-            value={imageCount || ""}
-            onChange={(e) => handleImageCountChange(e.target.value)}
-            placeholder="Enter image count"
-            className="bg-background border-border tabular-nums"
-          />
+        {/* Image count and per-image rate */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">Images Edited</label>
+            <Input
+              type="number"
+              min={0}
+              value={imageCount || ""}
+              onChange={(e) => handleImageCountChange(e.target.value)}
+              placeholder="Enter image count"
+              className="bg-background border-border tabular-nums"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">Rate per Image</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                value={perImageRate || ""}
+                onChange={(e) => handlePerImageRateChange(e.target.value)}
+                className="bg-background border-border tabular-nums pl-7"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Billing mode toggle */}
@@ -164,7 +204,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
             {/* Calculation breakdown */}
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-muted-foreground">
-                <span>Editor Cost ({imageCount} x ${EDITOR_RATE_PER_IMAGE})</span>
+                <span>Editor Cost ({imageCount} x ${perImageRate})</span>
                 <span className="tabular-nums">${editorCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">

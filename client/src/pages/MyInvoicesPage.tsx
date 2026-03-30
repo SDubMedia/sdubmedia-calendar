@@ -138,8 +138,8 @@ export default function MyInvoicesPage() {
               items.push({
                 projectId: p.id, date: p.date, description: desc,
                 role: e.role, hours: p.editorBilling.imageCount,
-                rate: 6,
-                amount: p.editorBilling.imageCount * 6,
+                rate: p.editorBilling.perImageRate ?? 6,
+                amount: p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6),
               });
             } else {
               items.push({
