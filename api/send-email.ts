@@ -5,7 +5,13 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyApiKey } from "./_api-auth";
+
+function verifyApiKey(req: VercelRequest): boolean {
+  const key = req.headers["x-api-key"];
+  const expected = process.env.SLATE_API_KEY;
+  if (!expected) return false;
+  return key === expected;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
