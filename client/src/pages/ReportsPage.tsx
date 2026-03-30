@@ -119,21 +119,21 @@ export default function ReportsPage() {
     const marketingBudget = totalBilling - totalCrewCost - ownerCut - adminCut;
 
     // Per-person pay breakdown
-    const personPay: Record<string, { name: string; prodHours: number; editHours: number; totalPay: number }> = {};
+    const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; totalPay: number }> = {};
     projects.forEach(p => {
       (p.crew || []).forEach(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
-        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, editImages: 0, totalPay: 0 };
         personPay[e.crewMemberId].prodHours += Number(e.hoursWorked ?? 0);
         personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
       });
       (p.postProduction || []).forEach(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
-        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, totalPay: 0 };
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, editImages: 0, totalPay: 0 };
         if (e.role === "Photo Editor" && p.editorBilling) {
-          personPay[e.crewMemberId].editHours += p.editorBilling.imageCount;
+          personPay[e.crewMemberId].editImages += p.editorBilling.imageCount;
           personPay[e.crewMemberId].totalPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
         } else {
           personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
@@ -157,14 +157,24 @@ export default function ReportsPage() {
     `).join("");
 
     // Hours by person table
-    const hoursTableRows = personList.map(p => `
-      <tr>
-        <td>${p.name}</td>
-        <td style="text-align:right">${p.prodHours.toFixed(2)}</td>
-        <td style="text-align:right">${p.editHours.toFixed(2)}</td>
-        <td style="text-align:right; font-weight:700">${(p.prodHours + p.editHours).toFixed(2)}</td>
-      </tr>
-    `).join("");
+    const hoursTableRows = personList.map(p => {
+      const editDisplay = p.editImages > 0 && p.editHours > 0
+        ? `${p.editHours.toFixed(2)} hrs + ${p.editImages} imgs`
+        : p.editImages > 0
+          ? `${p.editImages} images`
+          : p.editHours.toFixed(2);
+      const totalDisplay = p.editImages > 0
+        ? `${p.prodHours.toFixed(2)} hrs${p.editImages > 0 ? ` + ${p.editImages} imgs` : ""}`
+        : (p.prodHours + p.editHours).toFixed(2);
+      return `
+        <tr>
+          <td>${p.name}</td>
+          <td style="text-align:right">${p.prodHours.toFixed(2)}</td>
+          <td style="text-align:right">${editDisplay}</td>
+          <td style="text-align:right; font-weight:700">${totalDisplay}</td>
+        </tr>
+      `;
+    }).join("");
 
     // Group projects by date
     const dateGroups = new Map<string, typeof projects>();
