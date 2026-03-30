@@ -1,16 +1,15 @@
 // ============================================================
-// Vercel Serverless Function — Send email via Gmail API (OAuth)
-// Falls back to Resend if available
+// Vercel Serverless Function — Send email via Gmail SMTP
+// Used by Claude AI to send reports, invoices, notifications
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 function verifyApiKey(req: VercelRequest): boolean {
   const key = req.headers["x-api-key"] as string | undefined;
   const expected = process.env.SLATE_API_KEY;
-  console.log("Auth debug:", { hasKey: !!key, hasExpected: !!expected, keyLen: key?.length, expectedLen: expected?.length, match: key === expected, keyFirst5: key?.slice(0, 5), expectedFirst5: expected?.slice(0, 5) });
-  if (!expected) return false;
+  if (!expected || !key) return false;
   return key === expected;
 }
 
@@ -19,11 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Temporarily log auth details for debugging
-  const apiKey = req.headers["x-api-key"] as string | undefined;
-  const envKey = process.env.SLATE_API_KEY;
-  if (!apiKey || !envKey || apiKey !== envKey) {
-    console.log("AUTH_FAIL", JSON.stringify({ apiKeyLen: apiKey?.length, envKeyLen: envKey?.length, apiKeyEnd: apiKey?.slice(-8), envKeyEnd: envKey?.slice(-8) }));
+  if (!verifyApiKey(req)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -33,28 +28,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Missing required fields: to, subject, body or html" });
   }
 
-  // Use Resend (already working in this project)
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "ai@sdubmedia.com";
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
 
-  if (!resendKey) {
-    return res.status(500).json({ error: "Email service not configured (RESEND_API_KEY missing)" });
+  if (!user || !pass) {
+    return res.status(500).json({ error: "Gmail SMTP not configured" });
   }
 
   try {
-    const resend = new Resend(resendKey);
-    const { data, error } = await resend.emails.send({
-      from: `SDub Media AI <${fromEmail}>`,
-      to: [to],
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass },
+    });
+
+    const info = await transporter.sendMail({
+      from: `SDub Media AI <${user}>`,
+      to,
       subject,
       ...(html ? { html } : { text: body }),
     });
 
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    return res.status(200).json({ success: true, messageId: data?.id });
+    return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || "Failed to send email" });
   }
