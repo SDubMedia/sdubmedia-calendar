@@ -7,8 +7,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 
 function verifyApiKey(req: VercelRequest): boolean {
-  const key = req.headers["x-api-key"];
+  const key = req.headers["x-api-key"] as string | undefined;
   const expected = process.env.SLATE_API_KEY;
+  console.log("Auth check:", { hasKey: !!key, hasExpected: !!expected, keyLen: key?.length, expectedLen: expected?.length });
   if (!expected) return false;
   return key === expected;
 }
