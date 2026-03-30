@@ -76,7 +76,7 @@ export default function MySchedulePage() {
   const getMyPay = useCallback((project: Project) => {
     let totalHours = 0;
     let totalPay = 0;
-    const entries: { role: string; hours: number; rate: number; pay: number; type: string }[] = [];
+    const entries: { role: string; hours: number; rate: number; pay: number; type: string; unit: string }[] = [];
 
     project.crew.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
@@ -84,7 +84,7 @@ export default function MySchedulePage() {
         const rate = Number(c.payRatePerHour ?? 0);
         totalHours += hours;
         totalPay += hours * rate;
-        entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Shoot" });
+        entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Shoot", unit: "hrs" });
       }
     });
 
@@ -93,15 +93,14 @@ export default function MySchedulePage() {
         if (c.role === "Photo Editor" && project.editorBilling) {
           const imgs = project.editorBilling.imageCount;
           const rate = project.editorBilling.perImageRate ?? 6;
-          totalHours += imgs;
           totalPay += imgs * rate;
-          entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post" });
+          entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post", unit: "images" });
         } else {
           const hours = Number(c.hoursWorked ?? 0);
           const rate = Number(c.payRatePerHour ?? 0);
           totalHours += hours;
           totalPay += hours * rate;
-          entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Post" });
+          entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Post", unit: "hrs" });
         }
       }
     });
@@ -201,7 +200,7 @@ export default function MySchedulePage() {
                 <span className="ml-1 opacity-60">({entry.type})</span>
               </span>
               <span className="text-foreground tabular-nums">
-                {entry.hours}h × ${entry.rate}/hr = <span className="text-green-400">${entry.pay.toFixed(0)}</span>
+                {entry.hours} {entry.unit === "images" ? "imgs" : "h"} × ${entry.rate}/{entry.unit === "images" ? "img" : "hr"} = <span className="text-green-400">${entry.pay.toFixed(0)}</span>
               </span>
             </div>
           ))}

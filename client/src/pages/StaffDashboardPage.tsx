@@ -79,7 +79,7 @@ export default function StaffDashboardPage() {
   const { totalHours, totalPay, projectBreakdown } = useMemo(() => {
     let totalHours = 0;
     let totalPay = 0;
-    const breakdown: { projectId: string; date: string; typeName: string; role: string; hours: number; pay: number }[] = [];
+    const breakdown: { projectId: string; date: string; typeName: string; role: string; hours: number; unit: string; pay: number }[] = [];
 
     thisMonthProjects.forEach(p => {
       const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
@@ -89,22 +89,21 @@ export default function StaffDashboardPage() {
         const pay = hours * Number(e.payRatePerHour ?? 0);
         totalHours += hours;
         totalPay += pay;
-        breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, pay });
+        breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, unit: "hrs", pay });
       });
       // Post-production entries — use editorBilling for photo editors
       p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
         if (e.role === "Photo Editor" && p.editorBilling) {
           const imgs = p.editorBilling.imageCount;
           const pay = imgs * (p.editorBilling.perImageRate ?? 6);
-          totalHours += imgs;
           totalPay += pay;
-          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, pay });
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay });
         } else {
           const hours = Number(e.hoursWorked ?? 0);
           const pay = hours * Number(e.payRatePerHour ?? 0);
           totalHours += hours;
           totalPay += pay;
-          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, pay });
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, unit: "hrs", pay });
         }
       });
     });
@@ -240,7 +239,7 @@ export default function StaffDashboardPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-foreground">{expandedSection === "hours" ? `${entry.hours}h` : formatCurrency(entry.pay)}</p>
+                        <p className="text-sm font-semibold text-foreground">{expandedSection === "hours" ? `${entry.hours} ${entry.unit}` : formatCurrency(entry.pay)}</p>
                       </div>
                     </div>
                   ))}
@@ -329,7 +328,7 @@ export default function StaffDashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-semibold text-foreground">{formatCurrency(entry.pay)}</p>
-                        <p className="text-[10px] text-muted-foreground">{entry.hours}h</p>
+                        <p className="text-[10px] text-muted-foreground">{entry.hours} {entry.unit}</p>
                       </div>
                     </div>
                   ))}

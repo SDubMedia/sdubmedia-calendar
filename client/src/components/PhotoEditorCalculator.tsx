@@ -97,7 +97,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
         const billing: EditorBilling = { imageCount, billingMode, finalHours, perImageRate };
         await updateProject(project.id, { editorBilling: billing });
       } catch {
-        // silent — manual save is still available as fallback
+        toast.error("Auto-save failed — use Save button");
       }
     }, 800);
     setAutoSaveTimer(timer);

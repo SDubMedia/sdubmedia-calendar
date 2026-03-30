@@ -135,11 +135,12 @@ export default function MyInvoicesPage() {
           if (e.crewMemberId === crewMember.id) {
             // For photo editors with image-based billing, use that
             if (e.role === "Photo Editor" && p.editorBilling) {
+              const imgRate = p.editorBilling.perImageRate ?? 6;
               items.push({
-                projectId: p.id, date: p.date, description: desc,
+                projectId: p.id, date: p.date, description: `${desc} (${p.editorBilling.imageCount} images)`,
                 role: e.role, hours: p.editorBilling.imageCount,
-                rate: p.editorBilling.perImageRate ?? 6,
-                amount: p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6),
+                rate: imgRate,
+                amount: p.editorBilling.imageCount * imgRate,
               });
             } else {
               items.push({

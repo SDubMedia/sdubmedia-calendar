@@ -114,7 +114,7 @@ export default function ContractorInvoicePDF({ invoice }: { invoice: ContractorI
             <Text style={[s.tableHeaderText, s.colDate]}>Date</Text>
             <Text style={[s.tableHeaderText, s.colDesc]}>Project</Text>
             <Text style={[s.tableHeaderText, s.colRole]}>Role</Text>
-            <Text style={[s.tableHeaderText, s.colHrs]}>Hours</Text>
+            <Text style={[s.tableHeaderText, s.colHrs]}>Qty</Text>
             <Text style={[s.tableHeaderText, s.colRate]}>Rate</Text>
             <Text style={[s.tableHeaderText, s.colAmount]}>Amount</Text>
           </View>

@@ -258,19 +258,6 @@ export function calcHoursWorked(
     .reduce((sum, p) => sum + getProjectWorkedHours(p).totalHours, 0);
 }
 
-/**
- * Calculates the total client invoice amount for a given month.
- */
-export function calcClientInvoice(
-  client: Client,
-  projects: Project[],
-  year: number,
-  month: number
-): number {
-  const hours = calcHoursWorked(projects, client.id, year, month);
-  return hours * client.billingRatePerHour;
-}
-
 // ---- CRUD helpers ----
 
 export function generateId(): string {

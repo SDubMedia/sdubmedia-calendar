@@ -18,7 +18,7 @@ interface ClientSummary {
   projects: Project[];
   totalBillableHours: number;
   clientInvoiceAmount: number;
-  crewPayBreakdown: { crewMemberId: string; name: string; totalHours: number; totalPay: number }[];
+  crewPayBreakdown: { crewMemberId: string; name: string; totalHours: number; totalImages: number; totalPay: number }[];
   totalCrewCost: number;
   grossMargin: number;
 }
@@ -76,7 +76,7 @@ export default function BillingPage() {
 
       // Total billable hours = sum of all crew + post hours, with role multipliers applied
       let totalBillableHours = 0;
-      const crewMap: Record<string, { name: string; totalHours: number; totalPay: number }> = {};
+      const crewMap: Record<string, { name: string; totalHours: number; totalImages: number; totalPay: number }> = {};
 
       projects.forEach(p => {
         // Crew entries
@@ -86,7 +86,7 @@ export default function BillingPage() {
           totalBillableHours += getBillableHours(entry, client);
           const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
           const name = member?.name ?? "Unknown";
-          if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
+          if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalImages: 0, totalPay: 0 };
           crewMap[entry.crewMemberId].totalHours += hrs;
           crewMap[entry.crewMemberId].totalPay += hrs * rate;
         });
@@ -97,8 +97,8 @@ export default function BillingPage() {
             totalBillableHours += p.editorBilling!.finalHours;
             const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
             const name = member?.name ?? "Unknown";
-            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
-            crewMap[entry.crewMemberId].totalHours += p.editorBilling!.imageCount;
+            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalImages: 0, totalPay: 0 };
+            crewMap[entry.crewMemberId].totalImages += p.editorBilling!.imageCount;
             crewMap[entry.crewMemberId].totalPay += p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
           } else {
             const hrs = Number(entry.hoursWorked ?? 0);
@@ -106,7 +106,7 @@ export default function BillingPage() {
             totalBillableHours += getBillableHours(entry, client);
             const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
             const name = member?.name ?? "Unknown";
-            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalPay: 0 };
+            if (!crewMap[entry.crewMemberId]) crewMap[entry.crewMemberId] = { name, totalHours: 0, totalImages: 0, totalPay: 0 };
             crewMap[entry.crewMemberId].totalHours += hrs;
             crewMap[entry.crewMemberId].totalPay += hrs * rate;
           }
@@ -150,9 +150,12 @@ export default function BillingPage() {
     const title = `Billing Summary — ${MONTH_NAMES[month]} ${year}`;
 
     const clientSections = clientSummaries.map(s => {
-      const crewRows = s.crewPayBreakdown.map(c => `
-        <tr><td>${c.name}</td><td>${Number(c.totalHours).toFixed(1)} hrs</td><td>${formatCurrencyReport(c.totalPay)}</td></tr>
-      `).join("");
+      const crewRows = s.crewPayBreakdown.map((c: any) => {
+        const qty = c.totalImages > 0 && c.totalHours > 0
+          ? `${Number(c.totalHours).toFixed(1)} hrs + ${c.totalImages} imgs`
+          : c.totalImages > 0 ? `${c.totalImages} images` : `${Number(c.totalHours).toFixed(1)} hrs`;
+        return `<tr><td>${c.name}</td><td>${qty}</td><td>${formatCurrencyReport(c.totalPay)}</td></tr>`;
+      }).join("");
 
       const marginPct = s.clientInvoiceAmount > 0 ? ((s.grossMargin / s.clientInvoiceAmount) * 100).toFixed(0) : "0";
 
@@ -411,7 +414,13 @@ function ClientBillingCard({ summary }: { summary: ClientSummary }) {
                 <div key={entry.crewMemberId} className="flex items-center justify-between py-1.5 px-3 bg-secondary/40 rounded-md">
                   <div>
                     <span className="text-sm font-medium text-foreground">{entry.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">{Number(entry.totalHours).toFixed(1)} hrs</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {entry.totalImages > 0 && entry.totalHours > 0
+                        ? `${Number(entry.totalHours).toFixed(1)} hrs + ${entry.totalImages} images`
+                        : entry.totalImages > 0
+                          ? `${entry.totalImages} images`
+                          : `${Number(entry.totalHours).toFixed(1)} hrs`}
+                    </span>
                   </div>
                   <span className="text-sm font-semibold text-purple-300 tabular-nums">{formatCurrency(entry.totalPay)}</span>
                 </div>
