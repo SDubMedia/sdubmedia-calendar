@@ -6,7 +6,8 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
-import type { InvoiceStatus, UserRole } from "@/lib/types";
+import type { InvoiceStatus, UserRole, Project } from "@/lib/types";
+import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
 import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const { profile, viewAsRole, setViewAsRole } = useAuth();
   const isRealOwner = profile?.role === "owner";
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -212,7 +214,7 @@ export default function DashboardPage() {
                   const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                   const loc = data.locations.find(l => l.id === p.locationId);
                   return (
-                    <div key={p.id} className="px-4 py-3">
+                    <div key={p.id} className="px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(p)}>
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
@@ -292,7 +294,7 @@ export default function DashboardPage() {
                   const loc = data.locations.find(l => l.id === p.locationId);
                   const crewNames = p.crew.map(c => data.crewMembers.find(cm => cm.id === c.crewMemberId)?.name ?? "").filter(Boolean);
                   return (
-                    <div key={p.id} className="px-4 py-3">
+                    <div key={p.id} className="px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(p)}>
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
@@ -378,6 +380,14 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Project Detail Sheet */}
+      {selectedProject && (
+        <ProjectDetailSheet
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
+        />
+      )}
     </div>
   );
 }
