@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import type { InvoiceStatus, UserRole } from "@/lib/types";
 import { Link } from "wouter";
 import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
@@ -82,9 +82,7 @@ export default function DashboardPage() {
     });
     let totalCrewCost = 0;
     monthProjects.forEach(p => {
-      [...p.crew, ...p.postProduction].forEach(e => {
-        totalCrewCost += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
-      });
+      totalCrewCost += getProjectCrewCost(p);
     });
     const margin = thisMonthRevenue > 0 ? ((thisMonthRevenue - totalCrewCost) / thisMonthRevenue) * 100 : 0;
     return { crewCost: totalCrewCost, marginPercent: margin };
@@ -118,9 +116,7 @@ export default function DashboardPage() {
       monthProjects.forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (client) revenue += getProjectInvoiceAmount(p, client);
-        [...p.crew, ...p.postProduction].forEach(e => {
-          cost += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
-        });
+        cost += getProjectCrewCost(p);
       });
       months.push({ name: `${MONTH_SHORT[mo]}`, revenue, cost });
     }

@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -31,28 +31,11 @@ function formatCurrency(n: number) {
 }
 
 function getProjectHours(project: Project) {
-  const crewHours = (project.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
-  const postHours = (project.postProduction || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
-  return { crewHours, postHours, totalHours: crewHours + postHours };
-}
-
-function getPhotoEditorCost(project: Project): number {
-  if (!project.editorBilling) return 0;
-  return project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
+  return getProjectWorkedHours(project);
 }
 
 function getProjectCrewCost(project: Project) {
-  const crewCost = (project.crew || []).reduce(
-    (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
-  );
-  // For post-production, use editorBilling for photo editors when available
-  const postCost = (project.postProduction || []).reduce((s, e) => {
-    if (e.role === "Photo Editor" && project.editorBilling) {
-      return s; // skip — handled by getPhotoEditorCost
-    }
-    return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
-  }, 0);
-  return crewCost + postCost + getPhotoEditorCost(project);
+  return getProjectCrewCostHelper(project);
 }
 
 // Preview state type
@@ -119,10 +102,8 @@ export default function ReportsPage() {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Calculate totals
-    const totalProductionHours = projects.reduce((s, p) =>
-      s + (p.crew || []).reduce((cs, c) => cs + Number(c.hoursWorked ?? 0), 0), 0);
-    const totalEditorHours = projects.reduce((s, p) =>
-      s + (p.postProduction || []).reduce((ps, e) => ps + Number(e.hoursWorked ?? 0), 0), 0);
+    const totalProductionHours = projects.reduce((s, p) => s + getProjectWorkedHours(p).crewHours, 0);
+    const totalEditorHours = projects.reduce((s, p) => s + getProjectWorkedHours(p).postHours, 0);
     const totalHours = totalProductionHours + totalEditorHours;
 
     const totalBilling = projects.reduce((s, p) => {
@@ -203,9 +184,7 @@ export default function ReportsPage() {
         const client = data.clients.find(c => c.id === p.clientId);
         const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
         const loc = data.locations.find(l => l.id === p.locationId);
-        const crewHours = (p.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
-        const postHours = (p.postProduction || []).reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-        const projTotal = crewHours + postHours;
+        const { crewHours, postHours, totalHours: projTotal } = getProjectWorkedHours(p);
 
         const locationHtml = loc ? `
           <div class="project-meta-label">Filming Location</div>
@@ -231,10 +210,11 @@ export default function ReportsPage() {
         const payRows = allEntries.map(e => {
           const member = data.crewMembers.find(c => c.id === e.crewMemberId);
           const isPhotoEditorWithBilling = e.role === "Photo Editor" && p.editorBilling;
+          const editorRate = p.editorBilling?.perImageRate ?? 6;
           const qty = isPhotoEditorWithBilling ? p.editorBilling!.imageCount : Number(e.hoursWorked ?? 0);
-          const rate = isPhotoEditorWithBilling ? 6 : Number(e.payRatePerHour ?? 0);
+          const rate = isPhotoEditorWithBilling ? editorRate : Number(e.payRatePerHour ?? 0);
           const qtyLabel = isPhotoEditorWithBilling ? `${qty} imgs` : `${qty.toFixed(2)}`;
-          const rateLabel = isPhotoEditorWithBilling ? "$6/img" : formatCurrency(rate);
+          const rateLabel = isPhotoEditorWithBilling ? `$${editorRate}/img` : formatCurrency(rate);
           return `
             <tr>
               <td>${member?.name ?? "Unknown"}</td>

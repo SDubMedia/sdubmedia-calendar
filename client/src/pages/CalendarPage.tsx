@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/contexts/AppContext";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { getBillableHours } from "@/lib/data";
+import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 
@@ -46,8 +46,8 @@ export default function CalendarPage() {
       const d = new Date(p.date + "T00:00:00");
       if (d.getFullYear() === year && d.getMonth() === month) {
         const client = data.clients.find(c => c.id === p.clientId);
-        const worked = [...p.crew, ...p.postProduction].reduce((s, e) => s + Number(e.hoursWorked ?? 0), 0);
-        const billed = client ? [...p.crew, ...p.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0) : worked;
+        const worked = getProjectWorkedHours(p).totalHours;
+        const billed = client ? getProjectBillableHours(p, client).totalBillable : worked;
         if (!map[p.date]) map[p.date] = { worked: 0, billed: 0 };
         map[p.date].worked += worked;
         map[p.date].billed += billed;
@@ -100,8 +100,8 @@ export default function CalendarPage() {
     let worked = 0, billed = 0;
     monthProjects.forEach(p => {
       const client = data.clients.find(c => c.id === p.clientId);
-      const w = [...p.crew, ...p.postProduction].reduce((s, e) => s + (Number(e.hoursWorked) || 0), 0);
-      const b = client ? [...p.crew, ...p.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0) : w;
+      const w = getProjectWorkedHours(p).totalHours;
+      const b = client ? getProjectBillableHours(p, client).totalBillable : w;
       worked += w;
       billed += b;
     });
@@ -326,12 +326,9 @@ export default function CalendarPage() {
                 const client = getClient(project.clientId);
                 const location = getLocation(project.locationId);
                 const pType = getProjectType(project.projectTypeId);
-                const totalWorked = [
-                  ...project.crew.map((c) => Number(c.hoursWorked ?? 0)),
-                  ...project.postProduction.map((c) => Number(c.hoursWorked ?? 0)),
-                ].reduce((s, h) => s + h, 0);
+                const totalWorked = getProjectWorkedHours(project).totalHours;
                 const totalBilled = client
-                  ? [...project.crew, ...project.postProduction].reduce((s, e) => s + getBillableHours(e, client), 0)
+                  ? getProjectBillableHours(project, client).totalBillable
                   : totalWorked;
 
                 return (

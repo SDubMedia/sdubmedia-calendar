@@ -10,7 +10,7 @@ import type { Project, Client, AppData } from "@/lib/types";
 import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
 import { downloadCSV } from "@/lib/csv";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getBillableHours, getProjectInvoiceAmount, getProjectBillableHours, getProjectCrewCost, getProjectWorkedHours } from "@/lib/data";
 import ReportPreview from "@/components/ReportPreview";
 
 interface ClientSummary {
@@ -176,9 +176,8 @@ export default function BillingPage() {
     const projectRows = filteredProjects.map(p => {
       const client = data.clients.find(c => c.id === p.clientId);
       const pType = data.projectTypes.find(pt => pt.id === p.projectTypeId);
-      const allEntries = [...p.crew, ...p.postProduction];
-      const totalBillableHrs = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
-      const crewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+      const totalBillableHrs = client ? getProjectBillableHours(p, client).totalBillable : 0;
+      const crewCost = getProjectCrewCost(p);
       const invoice = client ? getProjectInvoiceAmount(p, client) : 0;
       return `<tr><td>${p.date}</td><td>${pType?.name ?? "—"}</td><td>${client?.company ?? "—"}</td><td>${totalBillableHrs.toFixed(1)}</td><td>${formatCurrencyReport(crewCost)}</td><td>${formatCurrencyReport(invoice)}</td></tr>`;
     }).join("");
@@ -234,12 +233,11 @@ export default function BillingPage() {
             const rows = filteredProjects.map(p => {
               const client = data.clients.find(c => c.id === p.clientId);
               const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
-              const crewHrs = p.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
-              const postHrs = p.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
+              const { crewHours, postHours, totalHours } = getProjectWorkedHours(p);
               return {
                 Date: p.date, Client: client?.company || "", Type: pType?.name || "",
-                Status: p.status, "Crew Hours": crewHrs, "Post Hours": postHrs,
-                "Total Hours": crewHrs + postHrs,
+                Status: p.status, "Crew Hours": crewHours, "Post Hours": postHours,
+                "Total Hours": totalHours,
                 "Invoice Amount": client ? getProjectInvoiceAmount(p, client) : 0,
               };
             });
@@ -449,9 +447,8 @@ function ProjectRow({ project, data }: { project: Project; data: AppData }) {
   const client = data.clients.find(c => c.id === project.clientId);
   const pType = data.projectTypes.find(pt => pt.id === project.projectTypeId);
 
-  const allEntries = [...project.crew, ...project.postProduction];
-  const totalBillableHours = client ? allEntries.reduce((s, e) => s + getBillableHours(e, client), 0) : 0;
-  const totalCrewCost = allEntries.reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+  const totalBillableHours = client ? getProjectBillableHours(project, client).totalBillable : 0;
+  const totalCrewCost = getProjectCrewCost(project);
   const invoiceAmount = client ? getProjectInvoiceAmount(project, client) : 0;
 
   const dateStr = new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });

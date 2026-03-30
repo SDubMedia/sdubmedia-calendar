@@ -14,6 +14,7 @@ import {
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { getProjectWorkedHours } from "@/lib/data";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
 import PhotoEditorCalculator from "./PhotoEditorCalculator";
@@ -71,15 +72,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
   const getCrewName = (id: string) => data.crewMembers.find((c) => c.id === id)?.name ?? "Unknown";
 
-  const totalCrewHrs = project.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
-  const totalPostHrs = project.postProduction.reduce((s, c) => {
-    // For photo editors with calculator billing, use finalHours instead of the entry's hoursWorked
-    if (c.role === "Photo Editor" && project.editorBilling?.finalHours) {
-      return s + project.editorBilling.finalHours;
-    }
-    return s + Number(c.hoursWorked || 0);
-  }, 0);
-  const totalHrs = totalCrewHrs + totalPostHrs;
+  const { crewHours: totalCrewHrs, postHours: totalPostHrs, totalHours: totalHrs } = getProjectWorkedHours(project);
 
   // Detect photo editor in post-production for the billing calculator
   const photoEditorEntry = project.postProduction.find(

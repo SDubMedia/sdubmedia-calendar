@@ -5,7 +5,7 @@
 
 import { useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import { TrendingUp, TrendingDown, Minus, DollarSign, CalendarDays, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -52,9 +52,7 @@ export default function ClientHealthPage() {
       let totalCrewCost = 0;
       clientProjects.forEach(p => {
         totalRevenue += getProjectInvoiceAmount(p, client);
-        [...p.crew, ...p.postProduction].forEach(e => {
-          totalCrewCost += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
-        });
+        totalCrewCost += getProjectCrewCost(p);
       });
       const grossMargin = totalRevenue - totalCrewCost;
       const marginPercent = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0;

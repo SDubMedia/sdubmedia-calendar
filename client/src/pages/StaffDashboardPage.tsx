@@ -95,7 +95,7 @@ export default function StaffDashboardPage() {
       p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
         if (e.role === "Photo Editor" && p.editorBilling) {
           const imgs = p.editorBilling.imageCount;
-          const pay = imgs * 6;
+          const pay = imgs * (p.editorBilling.perImageRate ?? 6);
           totalHours += imgs;
           totalPay += pay;
           breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, pay });

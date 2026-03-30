@@ -154,6 +154,36 @@ export const seedData: AppData = {
 // ---- Billing math helpers ----
 
 /**
+ * Get total worked hours for a project, using editorBilling.finalHours for photo editors.
+ */
+export function getProjectWorkedHours(project: Project): { crewHours: number; postHours: number; totalHours: number } {
+  const crewHours = (project.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
+  const postHours = (project.postProduction || []).reduce((s, c) => {
+    if (c.role === "Photo Editor" && project.editorBilling?.finalHours) {
+      return s + project.editorBilling.finalHours;
+    }
+    return s + Number(c.hoursWorked ?? 0);
+  }, 0);
+  return { crewHours, postHours, totalHours: crewHours + postHours };
+}
+
+/**
+ * Get total crew cost for a project, using editorBilling for photo editors.
+ */
+export function getProjectCrewCost(project: Project): number {
+  const crewCost = (project.crew || []).reduce(
+    (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
+  );
+  const postCost = (project.postProduction || []).reduce((s, e) => {
+    if (e.role === "Photo Editor" && project.editorBilling) {
+      return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
+    }
+    return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+  }, 0);
+  return crewCost + postCost;
+}
+
+/**
  * Get the billing multiplier for a role on a specific client.
  * Default is 1.0 (1 hour worked = 1 hour billed).
  * e.g. "2nd Videographer" on CBSR might be 0.5 (6hrs worked = 3hrs billed)
@@ -225,11 +255,7 @@ export function calcHoursWorked(
       const d = new Date(p.date + "T00:00:00");
       return d.getFullYear() === year && d.getMonth() === month;
     })
-    .reduce((sum, p) => {
-      const crewHrs = p.crew.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
-      const postHrs = p.postProduction.reduce((s, c) => s + Number(c.hoursWorked || 0), 0);
-      return sum + crewHrs + postHrs;
-    }, 0);
+    .reduce((sum, p) => sum + getProjectWorkedHours(p).totalHours, 0);
 }
 
 /**

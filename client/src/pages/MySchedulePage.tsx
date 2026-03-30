@@ -92,7 +92,7 @@ export default function MySchedulePage() {
       if (c.crewMemberId === crewMemberId) {
         if (c.role === "Photo Editor" && project.editorBilling) {
           const imgs = project.editorBilling.imageCount;
-          const rate = 6;
+          const rate = project.editorBilling.perImageRate ?? 6;
           totalHours += imgs;
           totalPay += imgs * rate;
           entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post" });
