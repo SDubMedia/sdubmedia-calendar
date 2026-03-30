@@ -282,11 +282,24 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS for Claude.ai
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // GET request — Claude.ai may use this to open an SSE stream for notifications
+  if (req.method === "GET") {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    // Send a keep-alive comment and hold connection open briefly
+    res.write(": connected\n\n");
+    // For stateless Vercel functions, we can't hold SSE open long
+    // Just end gracefully — Claude.ai will reconnect as needed
+    return res.end();
   }
 
   if (req.method !== "POST") {
@@ -294,10 +307,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = req.body;
+
+  // Handle batch requests (array of JSON-RPC messages)
+  if (Array.isArray(body)) {
+    const responses = [];
+    for (const msg of body) {
+      const response = await handleJsonRpc(msg);
+      if (response) responses.push(response);
+    }
+    res.setHeader("Content-Type", "application/json");
+    return res.status(200).json(responses.length === 1 ? responses[0] : responses);
+  }
+
+  const response = await handleJsonRpc(body);
+  if (!response) {
+    // Notification — no response needed
+    return res.status(202).end();
+  }
+  res.setHeader("Content-Type", "application/json");
+  return res.status(200).json(response);
+}
+
+async function handleJsonRpc(body: any): Promise<any> {
   const { jsonrpc, id, method, params } = body;
 
+  // Notifications (no id) don't require a response
+  const isNotification = id === undefined || id === null;
+
   if (jsonrpc !== "2.0") {
-    return res.status(400).json({ jsonrpc: "2.0", error: { code: -32600, message: "Invalid JSON-RPC" }, id });
+    if (isNotification) return null;
+    return { jsonrpc: "2.0", error: { code: -32600, message: "Invalid JSON-RPC" }, id };
   }
 
   try {
@@ -316,8 +355,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
 
       case "notifications/initialized":
-        // Client confirms initialization — no response needed
-        return res.status(200).json({ jsonrpc: "2.0", result: {}, id });
+        return null; // Notification — no response
 
       case "tools/list":
         result = { tools: TOOLS };
@@ -344,19 +382,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       default:
-        return res.status(400).json({
+        if (isNotification) return null;
+        return {
           jsonrpc: "2.0",
           error: { code: -32601, message: `Method not found: ${method}` },
           id,
-        });
+        };
     }
 
-    return res.status(200).json({ jsonrpc: "2.0", result, id });
+    if (isNotification) return null;
+    return { jsonrpc: "2.0", result, id };
   } catch (err: any) {
-    return res.status(500).json({
+    if (isNotification) return null;
+    return {
       jsonrpc: "2.0",
       error: { code: -32603, message: err.message },
       id,
-    });
+    };
   }
 }
