@@ -369,11 +369,11 @@ export default function ReportsPage() {
       .filter(p => p.clientId === clientId && parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => b.date.localeCompare(a.date));
 
-    // Calculate billable hours (with role multipliers)
+    // Calculate billable hours (with role multipliers + editorBilling)
     const totalProductionHours = clientProjects.reduce((s, p) =>
-      s + (p.crew || []).reduce((cs, c) => cs + getBillableHours(c, client), 0), 0);
+      s + getProjectBillableHours(p, client).crewBillable, 0);
     const totalEditorHours = clientProjects.reduce((s, p) =>
-      s + (p.postProduction || []).reduce((ps, e) => ps + getBillableHours(e, client), 0), 0);
+      s + getProjectBillableHours(p, client).postBillable, 0);
     const totalHours = totalProductionHours + totalEditorHours;
     const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
 
@@ -410,9 +410,7 @@ export default function ReportsPage() {
     const projectCards = clientProjects.map(p => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
       const loc = data.locations.find(l => l.id === p.locationId);
-      const crewHours = (p.crew || []).reduce((s, c) => s + getBillableHours(c, client), 0);
-      const postHours = (p.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
-      const projTotal = crewHours + postHours;
+      const { crewBillable: crewHours, postBillable: postHours, totalBillable: projTotal } = getProjectBillableHours(p, client);
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
       const locationHtml = loc ? `
@@ -438,10 +436,12 @@ export default function ReportsPage() {
 
       const postEntries = (p.postProduction || []).map(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const isPhotoEditorWithBilling = e.role === "Photo Editor" && p.editorBilling?.finalHours;
+        const displayHours = isPhotoEditorWithBilling ? p.editorBilling!.finalHours : getBillableHours(e, client);
         return `
           <div class="crew-entry">
             <div><div class="crew-role">Editing</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${getBillableHours(e, client).toFixed(2)} hrs</div>
+            <div class="crew-hours">${displayHours.toFixed(2)} hrs</div>
           </div>
         `;
       }).join("");
