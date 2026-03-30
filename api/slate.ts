@@ -51,6 +51,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "soft-delete-project":
         return await softDeleteProject(req, res);
 
+      // ---- PERSONAL EVENTS ----
+      case "list-personal-events":
+        return await listPersonalEvents(req, res);
+      case "create-personal-event":
+        return await createPersonalEvent(req, res);
+      case "update-personal-event":
+        return await updatePersonalEvent(req, res);
+      case "delete-personal-event":
+        return await deletePersonalEvent(req, res);
+
       // ---- BILLING ----
       case "billing-summary":
         return await billingSummary(req, res);
@@ -219,4 +229,70 @@ async function billingSummary(req: VercelRequest, res: VercelResponse) {
   const { data: clients } = await db.from("clients").select("*");
 
   return res.status(200).json({ projects, clients });
+}
+
+// ---- Personal Events ----
+
+async function listPersonalEvents(req: VercelRequest, res: VercelResponse) {
+  const db = getDb();
+  const { from, to, category } = req.query;
+  let query = db.from("personal_events").select("*").order("date", { ascending: true });
+  if (from) query = query.gte("date", from as string);
+  if (to) query = query.lte("date", to as string);
+  if (category) query = query.eq("category", category as string);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ events: data });
+}
+
+async function createPersonalEvent(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
+  const db = getDb();
+  const body = req.body;
+  if (!body.title || !body.date) return res.status(400).json({ error: "Missing required: title, date" });
+
+  const { data, error } = await db.from("personal_events").insert({
+    id: `pe_${Date.now()}`,
+    title: body.title,
+    date: body.date,
+    start_time: body.start_time || "",
+    end_time: body.end_time || "",
+    all_day: body.all_day ?? !body.start_time,
+    location: body.location || "",
+    notes: body.notes || "",
+    category: body.category || "personal",
+  }).select().single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(201).json({ event: data });
+}
+
+async function updatePersonalEvent(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
+  const db = getDb();
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: "Missing id" });
+  const body = req.body;
+  const patch: Record<string, any> = {};
+  if (body.title !== undefined) patch.title = body.title;
+  if (body.date !== undefined) patch.date = body.date;
+  if (body.start_time !== undefined) patch.start_time = body.start_time;
+  if (body.end_time !== undefined) patch.end_time = body.end_time;
+  if (body.all_day !== undefined) patch.all_day = body.all_day;
+  if (body.location !== undefined) patch.location = body.location;
+  if (body.notes !== undefined) patch.notes = body.notes;
+  if (body.category !== undefined) patch.category = body.category;
+  const { data, error } = await db.from("personal_events").update(patch).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ event: data });
+}
+
+async function deletePersonalEvent(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
+  const db = getDb();
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: "Missing id" });
+  const { error } = await db.from("personal_events").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ success: true });
 }

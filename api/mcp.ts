@@ -147,6 +147,44 @@ const TOOLS = [
     },
   },
   {
+    name: "list_personal_events",
+    description: "List personal calendar events (My Life calendar). Can filter by date range and category.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        to: { type: "string", description: "End date (YYYY-MM-DD)" },
+        category: { type: "string", description: "Filter by category: personal, appointment, reminder" },
+      },
+    },
+  },
+  {
+    name: "create_personal_event",
+    description: "Create a personal event on the My Life calendar. For personal appointments, reminders, and non-work events.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Event title" },
+        date: { type: "string", description: "Date (YYYY-MM-DD)" },
+        start_time: { type: "string", description: "Start time (HH:MM) — omit for all-day" },
+        end_time: { type: "string", description: "End time (HH:MM)" },
+        location: { type: "string", description: "Location/address" },
+        notes: { type: "string", description: "Notes" },
+        category: { type: "string", description: "Category: personal, appointment, reminder" },
+      },
+      required: ["title", "date"],
+    },
+  },
+  {
+    name: "delete_personal_event",
+    description: "Delete a personal event from the My Life calendar.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Event ID" } },
+      required: ["id"],
+    },
+  },
+  {
     name: "send_email",
     description: "Send an email from ai.sdubmedia@gmail.com. Use for sending reports, invoices, notifications, or any communication to Geoffski or clients.",
     inputSchema: {
@@ -239,6 +277,38 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       const { data, error } = await db.from("project_types").select("*").order("name");
       if (error) throw new Error(error.message);
       return data;
+    }
+
+    case "list_personal_events": {
+      let query = db.from("personal_events").select("*").order("date", { ascending: true });
+      if (args.from) query = query.gte("date", args.from);
+      if (args.to) query = query.lte("date", args.to);
+      if (args.category) query = query.eq("category", args.category);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "create_personal_event": {
+      const { data, error } = await db.from("personal_events").insert({
+        id: `pe_${Date.now()}`,
+        title: args.title,
+        date: args.date,
+        start_time: args.start_time || "",
+        end_time: args.end_time || "",
+        all_day: !args.start_time,
+        location: args.location || "",
+        notes: args.notes || "",
+        category: args.category || "personal",
+      }).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "delete_personal_event": {
+      const { error } = await db.from("personal_events").delete().eq("id", args.id);
+      if (error) throw new Error(error.message);
+      return { success: true, message: "Event deleted" };
     }
 
     case "billing_summary": {
