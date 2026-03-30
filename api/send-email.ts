@@ -6,7 +6,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { verifyApiKey } from "./_api-auth";
-import * as tls from "tls";
+import * as tls from "node:tls";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
