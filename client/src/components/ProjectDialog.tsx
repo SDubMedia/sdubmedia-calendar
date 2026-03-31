@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ArrowLeft } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus } from "@/lib/types";
 import { toast } from "sonner";
@@ -171,6 +171,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
+        showCloseButton={false}
         className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none overflow-x-hidden bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg"
         style={{
           height: "100%",
@@ -182,9 +183,17 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         }}
       >
         <DialogHeader>
-          <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            {isEdit ? "Edit Project" : "New Project"}
-          </DialogTitle>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="sm:hidden -ml-1 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {isEdit ? "Edit Project" : "New Project"}
+            </DialogTitle>
+          </div>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
