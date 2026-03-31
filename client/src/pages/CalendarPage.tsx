@@ -42,9 +42,9 @@ export default function CalendarPage() {
   // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
     const map: Record<string, { worked: number; billed: number }> = {};
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     data.projects.forEach(p => {
-      const d = new Date(p.date + "T00:00:00");
-      if (d.getFullYear() === year && d.getMonth() === month) {
+      if (p.date.startsWith(prefix)) {
         const client = data.clients.find(c => c.id === p.clientId);
         const worked = getProjectWorkedHours(p).totalHours;
         const billed = client ? getProjectBillableHours(p, client).totalBillable : worked;
@@ -63,10 +63,8 @@ export default function CalendarPage() {
 
   // Projects for this month
   const monthProjects = useMemo(() => {
-    return data.projects.filter((p) => {
-      const d = new Date(p.date);
-      return d.getFullYear() === year && d.getMonth() === month;
-    });
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return data.projects.filter((p) => p.date.startsWith(prefix));
   }, [data.projects, year, month]);
 
   // Projects filtered by scope (month or all) and status for the list below
