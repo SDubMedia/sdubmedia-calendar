@@ -111,3 +111,4 @@ backups/
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 .vercel
+.env*.local
