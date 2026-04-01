@@ -534,7 +534,7 @@ export default function ReportsPage() {
         <div class="section-header">Service Provider & Client</div>
         <div class="section-body">
           <div class="provider-grid">
-            <div><div class="col-label">Service Provider</div><div class="col-value">${client.partnerSplit?.partnerName || "SDub Media LLC"}</div></div>
+            <div><div class="col-label">Service Provider</div><div class="col-value">SDub Media LLC</div></div>
             <div><div class="col-label">Client</div><div class="col-value">${client.company}</div></div>
           </div>
         </div>
