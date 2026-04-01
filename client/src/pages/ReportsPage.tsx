@@ -113,10 +113,18 @@ export default function ReportsPage() {
     }, 0);
     const totalCrewCost = projects.reduce((s, p) => s + getProjectCrewCost(p), 0);
 
-    // Earnings splits
-    const ownerCut = totalBilling * 0.20;
-    const adminCut = totalBilling * 0.20;
-    const marketingBudget = totalBilling - totalCrewCost - ownerCut - adminCut;
+    // Earnings splits — use client's partnerSplit if available, otherwise SDub-only split
+    const selectedClient = selectedClientId !== "all" ? data.clients.find(c => c.id === selectedClientId) : null;
+    const split = selectedClient?.partnerSplit;
+    const partnerName = split?.partnerName || null;
+    const partnerPct = split?.partnerPercent ?? 0;
+    const adminPct = split?.adminPercent ?? 0.60;
+    const marketingPct = split?.marketingPercent ?? 0.10;
+    const ownerCut = split ? totalBilling * partnerPct : 0;
+    const adminCut = totalBilling * adminPct;
+    const marketingBudget = split
+      ? totalBilling - totalCrewCost - ownerCut - adminCut
+      : totalBilling - totalCrewCost - adminCut;
 
     // Per-person pay breakdown
     const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; totalPay: number }> = {};
@@ -307,15 +315,15 @@ export default function ReportsPage() {
       </div>
 
       <div class="earnings-grid-2">
-        <div class="earnings-card owner">
-          <div class="card-label" style="color: #22c55e; font-weight: 600;">Showcase (Owner)</div>
+        ${partnerName ? `<div class="earnings-card owner">
+          <div class="card-label" style="color: #22c55e; font-weight: 600;">${partnerName} (Partner)</div>
           <div class="card-value">${formatCurrency(ownerCut)}</div>
-          <div class="card-note">20% of billing value</div>
-        </div>
+          <div class="card-note">${(partnerPct * 100).toFixed(0)}% of billing value</div>
+        </div>` : ""}
         <div class="earnings-card admin">
-          <div class="card-label" style="color: #3b82f6; font-weight: 600;">SDub Media (Admin)</div>
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">SDub Media LLC</div>
           <div class="card-value">${formatCurrency(adminCut)}</div>
-          <div class="card-note">20% of billing value</div>
+          <div class="card-note">${(adminPct * 100).toFixed(0)}% of billing value</div>
         </div>
       </div>
 
@@ -517,7 +525,7 @@ export default function ReportsPage() {
             <span class="value">${formatCurrency(totalInvoice)}</span>
           </div>
           <div class="calc">${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr</div>
-          <div class="note">Make checks payable to Showcase Photography if additional charges apply.</div>
+          <div class="note">Make checks payable to ${client.partnerSplit?.partnerName || "SDub Media LLC"} if additional charges apply.</div>
         </div>
       </div>
 
@@ -526,7 +534,7 @@ export default function ReportsPage() {
         <div class="section-header">Service Provider & Client</div>
         <div class="section-body">
           <div class="provider-grid">
-            <div><div class="col-label">Service Provider</div><div class="col-value">Showcase Photography</div></div>
+            <div><div class="col-label">Service Provider</div><div class="col-value">${client.partnerSplit?.partnerName || "SDub Media LLC"}</div></div>
             <div><div class="col-label">Client</div><div class="col-value">${client.company}</div></div>
           </div>
         </div>
