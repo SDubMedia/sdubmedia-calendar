@@ -148,18 +148,29 @@ export default function ReportsPage() {
       projects.forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return;
+
+        // Only apply partner split logic to clients that have a partnerSplit
+        const clientSplit = client.partnerSplit;
+        if (!clientSplit) {
+          // Non-partner client (e.g. Hannah Grace): revenue goes entirely to SDub Media
+          const projRevenue = getProjectInvoiceAmount(p, client);
+          const projCrewCost = getProjectCrewCostHelper(p);
+          const projTravelCost = getProjectTravelCost(p);
+          adminCut += projRevenue - projCrewCost - projTravelCost;
+          return;
+        }
+
         const rate = Number(client.billingRatePerHour ?? 0);
         if (client.billingModel === "per_project") {
-          // Per-project: use project invoice amount as revenue, crew cost as labor
+          // Per-project with partner: use project invoice amount as revenue, crew cost as labor
           const projRevenue = getProjectInvoiceAmount(p, client);
           const projCrewCost = getProjectCrewCostHelper(p);
           const projTravelCost = getProjectTravelCost(p);
           const projProfit = projRevenue - projCrewCost;
           if (projProfit > 0) {
-            // Apply same split ratios as hourly
-            const partnerPct = split!.partnerPercent ?? 0;
-            const adminPct = split!.adminPercent ?? 0.45;
-            const mktgPct = split!.marketingPercent ?? 0.10;
+            const partnerPct = clientSplit.partnerPercent ?? 0;
+            const adminPct = clientSplit.adminPercent ?? 0.45;
+            const mktgPct = clientSplit.marketingPercent ?? 0.10;
             ownerCut += projProfit * partnerPct;
             adminCut += projProfit * adminPct;
             marketingBudget += projProfit * mktgPct;
@@ -609,6 +620,8 @@ export default function ReportsPage() {
     const allDeliverables = new Set<string>();
     clientProjects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
 
+    const isPerProject = client.billingModel === "per_project";
+
     // Build project cards
     const projectCards = clientProjects.map(p => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
@@ -673,10 +686,12 @@ export default function ReportsPage() {
           <div class="project-card-body">
             ${locationHtml}
             ${deliverablesHtml}
+            ${!isPerProject ? `
             <div style="margin-top: 16px;">
               ${crewEntries}
               ${postEntries}
             </div>
+            ` : ""}
           </div>
         </div>
       `;
@@ -685,8 +700,6 @@ export default function ReportsPage() {
     const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
     const locationsList = Array.from(locationSet.values()).join("; ");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
-
-    const isPerProject = client.billingModel === "per_project";
 
     setPreview({ title: `Client Report — ${client.company} ${monthName} ${yr}`, html: `
       <!-- Header Banner -->
