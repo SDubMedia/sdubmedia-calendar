@@ -9,7 +9,7 @@ import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
-import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film } from "lucide-react";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -124,6 +124,47 @@ export default function DashboardPage() {
     }
     return months;
   }, [data.projects, data.clients, currentYear, currentMonth]);
+
+  // Mileage summary for the current user's crew member
+  const mileageStats = useMemo(() => {
+    const crewMemberId = profile?.crewMemberId || "";
+    // For owner, find their crew member by matching email or use crew_geoff
+    const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === profile?.email)?.id || "";
+    if (!ownerCrewId) return { monthMiles: 0, yearMiles: 0, tripCount: 0 };
+
+    const distances = data.crewLocationDistances.filter(d => d.crewMemberId === ownerCrewId);
+    const distanceMap = new Map(distances.map(d => [d.locationId, d.distanceMiles]));
+
+    let monthMiles = 0;
+    let yearMiles = 0;
+    let tripCount = 0;
+
+    data.projects.forEach(p => {
+      const d = new Date(p.date + "T00:00:00");
+      const isThisYear = d.getFullYear() === currentYear;
+      const isThisMonth = isThisYear && d.getMonth() === currentMonth;
+
+      // Check if this crew member is on this project
+      const isOnProject = [...(p.crew || []), ...(p.postProduction || [])]
+        .some(e => e.crewMemberId === ownerCrewId);
+
+      if (isOnProject && p.locationId) {
+        // Use snapshot miles from crew entry first, fall back to cached distance
+        const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
+        const oneWay = crewEntry?.roundTripMiles
+          ? crewEntry.roundTripMiles / 2
+          : (distanceMap.get(p.locationId) || 0);
+        const roundTrip = oneWay * 2;
+
+        if (roundTrip > 0) {
+          if (isThisYear) yearMiles += roundTrip;
+          if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
+        }
+      }
+    });
+
+    return { monthMiles: Math.round(monthMiles * 10) / 10, yearMiles: Math.round(yearMiles * 10) / 10, tripCount };
+  }, [data.projects, data.crewLocationDistances, data.crewMembers, profile, currentYear, currentMonth]);
 
   return (
     <div className="flex flex-col h-full">
@@ -353,6 +394,32 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Mileage Summary */}
+        {(mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Car className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Mileage
+              </h3>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-3 rounded-lg bg-muted/30">
+                <p className="text-xl font-bold text-foreground">{mileageStats.monthMiles.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Miles This Month</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-muted/30">
+                <p className="text-xl font-bold text-foreground">{mileageStats.yearMiles.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Miles YTD</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-muted/30">
+                <p className="text-xl font-bold text-foreground">{mileageStats.tripCount}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Trips This Month</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Revenue Chart */}
         <div className="bg-card border border-border rounded-lg p-4">

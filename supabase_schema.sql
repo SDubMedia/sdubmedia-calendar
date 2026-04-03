@@ -45,6 +45,7 @@ create table if not exists crew_members (
   roles text[] not null default '{}',
   role_rates jsonb not null default '[]',
   default_pay_rate_per_hour numeric not null default 0,
+  home_address jsonb,
   phone text not null default '',
   email text not null default '',
   business_name text not null default '',
@@ -52,6 +53,16 @@ create table if not exists crew_members (
   business_city text not null default '',
   business_state text not null default '',
   business_zip text not null default ''
+);
+
+-- ---- Crew Location Distances (mileage cache) ----
+create table if not exists crew_location_distances (
+  id text primary key,
+  crew_member_id text not null references crew_members(id) on delete cascade,
+  location_id text not null references locations(id) on delete cascade,
+  distance_miles numeric not null default 0,
+  created_at timestamptz not null default now(),
+  unique(crew_member_id, location_id)
 );
 
 -- ---- Contractor Invoices (1099 self-service) ----

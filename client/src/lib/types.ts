@@ -87,6 +87,13 @@ export interface RoleRate {
   payRatePerHour: number;
 }
 
+export interface HomeAddress {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
 export interface CrewMember {
   id: string;
   name: string;
@@ -94,6 +101,7 @@ export interface CrewMember {
   phone: string;
   email: string;
   defaultPayRatePerHour: number;   // fallback rate if role-specific rate not found
+  homeAddress?: HomeAddress | null; // for mileage calculation
   // Business info for contractor invoicing (optional, self-managed by staff)
   businessName?: string;
   businessAddress?: string;
@@ -122,6 +130,7 @@ export interface ProjectCrewEntry {
   role: string;
   hoursWorked: number;
   payRatePerHour: number; // $ per hour — set per-entry so it can be overridden
+  roundTripMiles?: number; // miles from crew member's home to location and back (snapshot at project time)
 }
 
 // A post-production person assigned to a project (editing)
@@ -334,6 +343,15 @@ export interface AppNotification {
   createdAt: string;
 }
 
+// Cached distance from a crew member's home to a location (one-way, in miles)
+export interface CrewLocationDistance {
+  id: string;
+  crewMemberId: string;
+  locationId: string;
+  distanceMiles: number;
+  createdAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -343,6 +361,7 @@ export interface AppData {
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];
   contractorInvoices: ContractorInvoice[];
+  crewLocationDistances: CrewLocationDistance[];
   series: Series[];
   organization: Organization | null;
 }

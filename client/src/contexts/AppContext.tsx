@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -60,6 +60,8 @@ interface AppContextValue {
   // Episode Comments
   fetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
   addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
+  // Crew Location Distances
+  upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -92,11 +94,22 @@ function rowToCrew(r: any): CrewMember {
     phone: r.phone,
     email: r.email,
     defaultPayRatePerHour: Number(r.default_pay_rate_per_hour ?? 0),
+    homeAddress: r.home_address || null,
     businessName: r.business_name || "",
     businessAddress: r.business_address || "",
     businessCity: r.business_city || "",
     businessState: r.business_state || "",
     businessZip: r.business_zip || "",
+  };
+}
+
+function rowToCrewLocationDistance(r: any): CrewLocationDistance {
+  return {
+    id: r.id,
+    crewMemberId: r.crew_member_id,
+    locationId: r.location_id,
+    distanceMiles: Number(r.distance_miles ?? 0),
+    createdAt: r.created_at,
   };
 }
 
@@ -132,6 +145,7 @@ function normalizeCrewEntry(c: any) {
     role: c.role || "",
     hoursWorked: Number(c.hoursWorked ?? c.hours_worked ?? 0),
     payRatePerHour: Number(c.payRatePerHour ?? c.pay_rate_per_hour ?? 0),
+    roundTripMiles: c.roundTripMiles ?? c.round_trip_miles ?? undefined,
   };
 }
 
@@ -255,7 +269,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -278,6 +292,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
         { data: contractorInvs, error: e7b },
+        { data: distances, error: e7c },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -289,11 +304,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
+        supabase.from("crew_location_distances").select("*"),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7c || e8;
       if (firstError) throw new Error(firstError.message);
 
       setData({
@@ -305,6 +321,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         marketingExpenses: (expenses || []).map(rowToExpense),
         invoices: (invoices || []).map(rowToInvoice),
         contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
+        crewLocationDistances: (distances || []).map(rowToCrewLocationDistance),
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -365,7 +382,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("crew_members").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
-      default_pay_rate_per_hour: c.defaultPayRatePerHour,
+      default_pay_rate_per_hour: c.defaultPayRatePerHour, home_address: c.homeAddress || null,
     }).select().single();
     if (error) throw new Error(error.message);
     const member = rowToCrew(row);
@@ -380,6 +397,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.phone !== undefined) patch.phone = c.phone;
     if (c.email !== undefined) patch.email = c.email;
     if (c.defaultPayRatePerHour !== undefined) patch.default_pay_rate_per_hour = c.defaultPayRatePerHour;
+    if (c.homeAddress !== undefined) patch.home_address = c.homeAddress;
     if (c.businessName !== undefined) patch.business_name = c.businessName;
     if (c.businessAddress !== undefined) patch.business_address = c.businessAddress;
     if (c.businessCity !== undefined) patch.business_city = c.businessCity;
@@ -394,6 +412,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("crew_members").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Crew Location Distances ----
+  const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
+    const id = `${crewMemberId}_${locationId}`;
+    const { error } = await supabase.from("crew_location_distances").upsert({
+      id, crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
+    }, { onConflict: "crew_member_id,location_id" });
+    if (error) throw new Error(error.message);
+    setData(d => {
+      const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.locationId === locationId);
+      if (existing) {
+        return { ...d, crewLocationDistances: d.crewLocationDistances.map(x => x.id === existing.id ? { ...x, distanceMiles } : x) };
+      }
+      return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
+    });
   }, []);
 
   // ---- Locations ----
@@ -743,6 +777,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,
       fetchComments, addComment,
+      upsertDistance,
     }}>
       {children}
     </AppContext.Provider>

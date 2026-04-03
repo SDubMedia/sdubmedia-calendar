@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { CrewMember, CrewRole, RoleRate } from "@/lib/types";
+import type { CrewMember, CrewRole, RoleRate, HomeAddress } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,8 +27,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
 
 const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
@@ -52,6 +53,7 @@ interface StaffFormData {
   phone: string;
   email: string;
   defaultPayRatePerHour: number;
+  homeAddress: HomeAddress | null;
 }
 
 const emptyForm = (): StaffFormData => ({
@@ -60,10 +62,11 @@ const emptyForm = (): StaffFormData => ({
   phone: "",
   email: "",
   defaultPayRatePerHour: 0,
+  homeAddress: null,
 });
 
 export default function StaffPage() {
-  const { data, addCrewMember, updateCrewMember, deleteCrewMember } = useApp();
+  const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance } = useApp();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StaffFormData>(emptyForm());
@@ -72,6 +75,40 @@ export default function StaffPage() {
   // For adding a new role row in the form
   const [newRole, setNewRole] = useState<CrewRole | "">("");
   const [newRate, setNewRate] = useState<number>(0);
+
+  const [calculatingDistances, setCalculatingDistances] = useState(false);
+
+  async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
+    const locationsWithAddress = data.locations.filter(l => l.address && l.city);
+    if (locationsWithAddress.length === 0) return;
+
+    setCalculatingDistances(true);
+    const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
+    let successCount = 0;
+
+    for (const loc of locationsWithAddress) {
+      const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+      try {
+        const token = await getAuthToken();
+        const res = await fetch("/api/calculate-distance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ origin, destination }),
+        });
+        if (res.ok) {
+          const { distanceMiles } = await res.json();
+          await upsertDistance(crewMemberId, loc.id, distanceMiles);
+          successCount++;
+        }
+      } catch {
+        // Skip failed calculations — API key may not be configured yet
+      }
+    }
+    setCalculatingDistances(false);
+    if (successCount > 0) {
+      toast.success(`Calculated distances to ${successCount} location${successCount !== 1 ? "s" : ""}`);
+    }
+  }
 
   function openAdd() {
     setEditingId(null);
@@ -89,6 +126,7 @@ export default function StaffPage() {
       phone: member.phone,
       email: member.email,
       defaultPayRatePerHour: Number(member.defaultPayRatePerHour ?? 0),
+      homeAddress: member.homeAddress || null,
     });
     setNewRole("");
     setNewRate(0);
@@ -135,13 +173,20 @@ export default function StaffPage() {
         phone: form.phone.trim(),
         email: form.email.trim(),
         defaultPayRatePerHour: form.defaultPayRatePerHour,
+        homeAddress: form.homeAddress,
       };
+      let memberId = editingId;
       if (editingId) {
         await updateCrewMember(editingId, payload);
         toast.success("Staff member updated");
       } else {
-        await addCrewMember(payload);
+        const newMember = await addCrewMember(payload);
+        memberId = newMember.id;
         toast.success("Staff member added");
+      }
+      // Calculate distances if home address is set
+      if (form.homeAddress?.address && memberId) {
+        calculateDistances(memberId, form.homeAddress);
       }
       setDialogOpen(false);
     } catch (e: any) {
@@ -226,6 +271,12 @@ export default function StaffPage() {
                     {(member.phone || member.email) && (
                       <p className="text-xs text-muted-foreground mt-2">
                         {[member.phone, member.email].filter(Boolean).join(" · ")}
+                      </p>
+                    )}
+                    {member.homeAddress?.address && (
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {member.homeAddress.city}, {member.homeAddress.state}
                       </p>
                     )}
                   </div>
@@ -379,6 +430,62 @@ export default function StaffPage() {
               </div>
             </div>
           </div>
+
+            {/* Home Address (for mileage) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-primary" />
+                Home Address (for mileage tracking)
+              </Label>
+              <p className="text-xs text-muted-foreground">Used to calculate driving distance to project locations. Only you and the owner can see this.</p>
+              <Input
+                placeholder="Street address"
+                value={form.homeAddress?.address || ""}
+                onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, address: e.target.value } }))}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  placeholder="City"
+                  value={form.homeAddress?.city || ""}
+                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, city: e.target.value } }))}
+                />
+                <Input
+                  placeholder="State"
+                  value={form.homeAddress?.state || ""}
+                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, state: e.target.value } }))}
+                />
+                <Input
+                  placeholder="ZIP"
+                  value={form.homeAddress?.zip || ""}
+                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, zip: e.target.value } }))}
+                />
+              </div>
+            </div>
+
+            {/* Mileage distances */}
+            {editingId && (() => {
+              const memberDistances = data.crewLocationDistances.filter(d => d.crewMemberId === editingId);
+              if (memberDistances.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Car className="w-3.5 h-3.5 text-primary" />
+                    Cached Distances (one-way)
+                  </Label>
+                  <div className="space-y-1">
+                    {memberDistances.map(d => {
+                      const loc = data.locations.find(l => l.id === d.locationId);
+                      return (
+                        <div key={d.id} className="flex items-center justify-between bg-secondary/50 rounded-md px-3 py-1.5 text-xs">
+                          <span className="text-foreground">{loc?.name || "Unknown"}</span>
+                          <span className="text-primary font-medium">{d.distanceMiles} mi</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
