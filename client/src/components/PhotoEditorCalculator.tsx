@@ -258,7 +258,7 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
                     <span className="tabular-nums">${(profit * split.adminPercent).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Marketing Budget ({(split.marketingPercent * 100).toFixed(0)}%)</span>
+                    <span className="text-muted-foreground">Spending Budget ({(split.marketingPercent * 100).toFixed(0)}%)</span>
                     <span className="tabular-nums">${(profit * split.marketingPercent).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>

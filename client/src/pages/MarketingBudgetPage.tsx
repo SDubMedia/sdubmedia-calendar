@@ -1,5 +1,5 @@
 // ============================================================
-// Marketing Budget Page — Track annual marketing budget and expenses
+// Spending Budget Page — Track annual marketing budget and expenses
 // Budget = 10% of total client billing for the year
 // Design: Dark Cinematic Studio | Amber accent on charcoal
 // ============================================================
@@ -7,10 +7,11 @@
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { ExpenseCategory } from "@/lib/types";
-import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank } from "lucide-react";
+import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectTravelCost } from "@/lib/data";
 import { cn } from "@/lib/utils";
+import ReportPreview from "@/components/ReportPreview";
 
 const MONTHS = [
   "January","February","March","April","May","June",
@@ -28,8 +29,10 @@ function formatCurrency(n: number) {
 export default function MarketingBudgetPage() {
   const { data, addMarketingExpense, deleteMarketingExpense } = useApp();
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [selectedClientId, setSelectedClientId] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
+    clientId: "",
     date: new Date().toISOString().split("T")[0],
     category: "Other" as ExpenseCategory,
     description: "",
@@ -37,28 +40,41 @@ export default function MarketingBudgetPage() {
     amount: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
-  // Calculate total billing for the year (all clients, all projects)
+  // Calculate total billing for the year (filtered by client)
   const totalBilling = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
+      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return sum;
         return sum + getProjectInvoiceAmount(p, client);
       }, 0);
-  }, [data.projects, data.clients, selectedYear]);
+  }, [data.projects, data.clients, selectedYear, selectedClientId]);
 
   // Budget = 10% of total billing
   const totalBudget = totalBilling * 0.10;
 
-  // Expenses for selected year
+  // Expenses for selected year (filtered by client)
   const yearExpenses = useMemo(() => {
-    return data.marketingExpenses.filter(e => e.date.startsWith(String(selectedYear)));
-  }, [data.marketingExpenses, selectedYear]);
+    return data.marketingExpenses
+      .filter(e => e.date.startsWith(String(selectedYear)))
+      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId || (!e.clientId && selectedClientId === "all"));
+  }, [data.marketingExpenses, selectedYear, selectedClientId]);
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
-  const remaining = totalBudget - totalExpenses;
+
+  // Travel costs from projects (deducted from marketing budget)
+  const totalTravelCost = useMemo(() => {
+    return data.projects
+      .filter(p => p.date.startsWith(String(selectedYear)))
+      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
+      .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
+  }, [data.projects, selectedYear, selectedClientId]);
+
+  const remaining = totalBudget - totalExpenses - totalTravelCost;
 
   // Monthly breakdown: billing earned and expenses per month
   const monthlyBreakdown = useMemo(() => {
@@ -68,6 +84,7 @@ export default function MarketingBudgetPage() {
 
       const monthBilling = data.projects
         .filter(p => p.date.startsWith(monthStr))
+        .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
         .reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
           if (!client) return sum;
@@ -81,9 +98,10 @@ export default function MarketingBudgetPage() {
 
       return { name, budgetAdded, monthExpenses, net: budgetAdded - monthExpenses };
     });
-  }, [data.projects, data.clients, yearExpenses, selectedYear]);
+  }, [data.projects, data.clients, yearExpenses, selectedYear, selectedClientId]);
 
   const handleSubmit = async () => {
+    if (!formData.clientId) { toast.error("Select a client"); return; }
     if (!formData.description.trim()) { toast.error("Description is required"); return; }
     const amount = parseFloat(formData.amount);
     if (isNaN(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
@@ -91,6 +109,7 @@ export default function MarketingBudgetPage() {
     setSubmitting(true);
     try {
       await addMarketingExpense({
+        clientId: formData.clientId,
         date: formData.date,
         category: formData.category,
         description: formData.description.trim(),
@@ -98,7 +117,7 @@ export default function MarketingBudgetPage() {
         amount,
       });
       toast.success("Expense added");
-      setFormData({ date: new Date().toISOString().split("T")[0], category: "Other", description: "", notes: "", amount: "" });
+      setFormData({ clientId: formData.clientId, date: new Date().toISOString().split("T")[0], category: "Other", description: "", notes: "", amount: "" });
       setShowForm(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to add expense");
@@ -116,29 +135,143 @@ export default function MarketingBudgetPage() {
     }
   };
 
+  function generatePrintReport() {
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    const monthRows = monthlyBreakdown.map(m => {
+      if (m.budgetAdded === 0 && m.monthExpenses === 0) {
+        return `<tr><td>${m.name}</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td></tr>`;
+      }
+      return `<tr>
+        <td>${m.name}</td>
+        <td style="text-align:right;color:#3b82f6;font-weight:600">${formatCurrency(m.budgetAdded)}</td>
+        <td style="text-align:right;color:#ef4444;font-weight:600">${m.monthExpenses > 0 ? formatCurrency(m.monthExpenses) : "—"}</td>
+        <td style="text-align:right;font-weight:600;color:${m.net >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(m.net)}</td>
+      </tr>`;
+    }).join("");
+
+    const expenseRows = yearExpenses.length > 0
+      ? yearExpenses.map(e => `<tr>
+          <td>${new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
+          <td><span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px">${e.category}</span></td>
+          <td>${e.description}${e.notes ? `<br/><span style="font-size:11px;color:#888">${e.notes}</span>` : ""}</td>
+          <td style="text-align:right;font-weight:600">${formatCurrency(e.amount)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="4" style="text-align:center;color:#888;padding:20px">No expenses recorded</td></tr>`;
+
+    setPreview({
+      title: `Spending Budget — ${selectedYear}`,
+      html: `
+        <div class="invoice-header">
+          <h1>Spending Budget Report</h1>
+          <div class="meta-grid">
+            <div><div class="meta-label">Year</div><div class="meta-value">${selectedYear}</div></div>
+            <div><div class="meta-label">Generated</div><div class="meta-value">${issueDate}</div></div>
+          </div>
+        </div>
+
+        <h2 style="font-size:18px;font-weight:700;margin:24px 0 12px;border:none;">Budget Summary</h2>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">Total Budget</div>
+            <div class="stat-value" style="color:#3b82f6">${formatCurrency(totalBudget)}</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">10% of ${formatCurrency(totalBilling)} billed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Total Expenses</div>
+            <div class="stat-value" style="color:#ef4444">${formatCurrency(totalExpenses)}</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">${yearExpenses.length} expense${yearExpenses.length !== 1 ? "s" : ""}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Remaining</div>
+            <div class="stat-value" style="color:${remaining >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(remaining)}</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Monthly Breakdown</div>
+          <div class="section-body" style="padding:0">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Month</th>
+                <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Budget Added</th>
+                <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Expenses</th>
+                <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Net</th>
+              </tr></thead>
+              <tbody>${monthRows}</tbody>
+              <tfoot><tr style="border-top:2px solid #1e293b;background:#f8fafc">
+                <td style="padding:8px 12px;font-weight:700">Total</td>
+                <td style="text-align:right;padding:8px 12px;font-weight:700;color:#3b82f6">${formatCurrency(totalBudget)}</td>
+                <td style="text-align:right;padding:8px 12px;font-weight:700;color:#ef4444">${formatCurrency(totalExpenses)}</td>
+                <td style="text-align:right;padding:8px 12px;font-weight:700;color:${remaining >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(remaining)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Expense History</div>
+          <div class="section-body" style="padding:0">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Date</th>
+                <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Category</th>
+                <th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Description</th>
+                <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Amount</th>
+              </tr></thead>
+              <tbody>${expenseRows}</tbody>
+              ${yearExpenses.length > 0 ? `<tfoot><tr style="border-top:2px solid #1e293b;background:#f8fafc">
+                <td colspan="3" style="padding:8px 12px;font-weight:700">Total Expenses</td>
+                <td style="text-align:right;padding:8px 12px;font-weight:700;color:#ef4444">${formatCurrency(totalExpenses)}</td>
+              </tr></tfoot>` : ""}
+            </table>
+          </div>
+        </div>
+
+        <div class="report-footer">
+          <p>Spending Budget Report — SDub Media ${selectedYear}</p>
+          <p class="contact">Generated ${issueDate}</p>
+        </div>
+      `,
+    });
+  }
+
+  if (preview) {
+    return <ReportPreview title={preview.title} html={preview.html} onClose={() => setPreview(null)} />;
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Marketing Budget
+            Spending Budget
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             10% of annual billing value
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Expense</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={generatePrintReport}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors text-sm font-medium"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="hidden sm:inline">Print / PDF</span>
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Expense</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
-        {/* Year selector */}
+        {/* Year + Client selector */}
         <div className="flex items-center gap-3">
           <select
             value={selectedYear}
@@ -146,6 +279,14 @@ export default function MarketingBudgetPage() {
             className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select
+            value={selectedClientId}
+            onChange={e => setSelectedClientId(e.target.value)}
+            className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Clients</option>
+            {data.clients.map(c => <option key={c.id} value={c.id}>{c.company}</option>)}
           </select>
         </div>
 
@@ -174,7 +315,7 @@ export default function MarketingBudgetPage() {
             <p className="text-2xl font-bold text-red-400 tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {formatCurrency(totalExpenses)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">{yearExpenses.length} expense{yearExpenses.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-muted-foreground mt-1">{yearExpenses.length} expense{yearExpenses.length !== 1 ? "s" : ""}{totalTravelCost > 0 ? ` + ${formatCurrency(totalTravelCost)} travel` : ""}</p>
           </div>
 
           <div className="bg-card border border-border rounded-lg p-5">
@@ -187,7 +328,7 @@ export default function MarketingBudgetPage() {
             <p className={cn("text-2xl font-bold tabular-nums", remaining >= 0 ? "text-green-400" : "text-red-400")} style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {formatCurrency(remaining)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Available</p>
+            <p className="text-xs text-muted-foreground mt-1">After expenses{totalTravelCost > 0 ? " & travel" : ""}</p>
           </div>
         </div>
 
@@ -244,6 +385,17 @@ export default function MarketingBudgetPage() {
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Client *</label>
+                <select
+                  value={formData.clientId}
+                  onChange={e => setFormData(f => ({ ...f, clientId: e.target.value }))}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Select client...</option>
+                  {data.clients.map(c => <option key={c.id} value={c.id}>{c.company}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Date</label>
                 <input
@@ -332,6 +484,7 @@ export default function MarketingBudgetPage() {
                       <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
                         {expense.category}
                       </span>
+                      {expense.clientId && <span className="text-xs text-muted-foreground">{data.clients.find(c => c.id === expense.clientId)?.company}</span>}
                     </div>
                     <p className="text-base font-semibold text-foreground">{expense.description}</p>
                     {expense.notes && (

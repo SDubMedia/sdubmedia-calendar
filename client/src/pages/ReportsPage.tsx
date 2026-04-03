@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -101,9 +101,29 @@ export default function ReportsPage() {
       .filter(p => parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Calculate totals
-    const totalProductionHours = projects.reduce((s, p) => s + getProjectWorkedHours(p).crewHours, 0);
-    const totalEditorHours = projects.reduce((s, p) => s + getProjectWorkedHours(p).postHours, 0);
+    // March 2026+: use billable hours with image tracking; before: use worked hours
+    const useNewHoursDisplay = yr > 2026 || (yr === 2026 && monthNum >= 3);
+    const totalProductionHours = useNewHoursDisplay
+      ? projects.reduce((s, p) => {
+          const client = data.clients.find(c => c.id === p.clientId);
+          if (!client) return s + (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
+          const crewBillable = (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + getBillableHours(e, client), 0);
+          const nonEditorPost = (p.postProduction || []).filter(e => e.role !== "Photo Editor" && e.role !== "Travel");
+          const postBillable = nonEditorPost.reduce((h, e) => h + getBillableHours(e, client), 0);
+          return s + crewBillable + postBillable;
+        }, 0)
+      : projects.reduce((s, p) => s + (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0), 0);
+    const totalEditorHours = useNewHoursDisplay
+      ? projects.reduce((s, p) => s + (p.editorBilling?.finalHours ?? 0), 0)
+      : projects.reduce((s, p) => s + getProjectWorkedHours(p).postHours, 0);
+    const totalImages = useNewHoursDisplay
+      ? projects.reduce((s, p) => s + (p.editorBilling?.imageCount ?? 0), 0)
+      : 0;
+    const totalTravelHours = projects.reduce((s, p) => {
+      const crewTravel = (p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
+      const postTravel = (p.postProduction || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
+      return s + crewTravel + postTravel;
+    }, 0);
     const totalHours = totalProductionHours + totalEditorHours;
 
     const totalBilling = projects.reduce((s, p) => {
@@ -117,34 +137,141 @@ export default function ReportsPage() {
     const selectedClient = selectedClientId !== "all" ? data.clients.find(c => c.id === selectedClientId) : null;
     const split = selectedClient?.partnerSplit;
     const partnerName = split?.partnerName || null;
-    const partnerPct = split?.partnerPercent ?? 0;
-    const adminPct = split?.adminPercent ?? 0.60;
-    const marketingPct = split?.marketingPercent ?? 0.10;
-    const ownerCut = split ? totalBilling * partnerPct : 0;
-    const adminCut = totalBilling * adminPct;
-    const marketingBudget = split
-      ? totalBilling - totalCrewCost - ownerCut - adminCut
-      : totalBilling - totalCrewCost - adminCut;
+    const useNewSplitLogic = split && (yr > 2026 || (yr === 2026 && monthNum >= 3));
+
+    let ownerCut = 0;
+    let adminCut = 0;
+    let marketingBudget = 0;
+
+    if (useNewSplitLogic) {
+      // March 2026+ partner split: per-project crew/editor formula
+      projects.forEach(p => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        if (!client) return;
+        const rate = Number(client.billingRatePerHour ?? 0);
+        if (client.billingModel === "per_project" || rate === 0) return;
+
+        const { crewBillable, postBillable } = getProjectBillableHours(p, client);
+        const hasPhotoEditor = p.editorBilling?.finalHours != null;
+        const editorBillableHours = hasPhotoEditor ? p.editorBilling!.finalHours : 0;
+        const nonEditorPostBillable = postBillable - editorBillableHours;
+
+        // Billing amounts
+        const crewBillingAmt = (crewBillable + nonEditorPostBillable) * rate;
+        const editorBillingAmt = editorBillableHours * rate;
+
+        // Crew costs (excluding photo editor and travel)
+        const crewPayCost = (p.crew || []).filter(e => e.role !== "Travel").reduce((s, e) =>
+          s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+        const nonEditorPostCost = (p.postProduction || [])
+          .filter(e => e.role !== "Photo Editor" && e.role !== "Travel")
+          .reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+        const crewCost = crewPayCost + nonEditorPostCost;
+        const travelCost = getProjectTravelCost(p);
+
+        // CREW SPLIT: if crew ≤ 50% of billing → 10% marketing, remainder 50/50
+        //             if crew > 50% → no marketing, remainder 50/50
+        if (crewBillingAmt > 0) {
+          if (crewCost <= crewBillingAmt * 0.5) {
+            const mktg = crewBillingAmt * 0.10;
+            const remainder = crewBillingAmt - crewCost - mktg;
+            marketingBudget += mktg;
+            ownerCut += remainder / 2;
+            adminCut += remainder / 2;
+          } else {
+            const remainder = crewBillingAmt - crewCost;
+            ownerCut += remainder / 2;
+            adminCut += remainder / 2;
+          }
+        }
+
+        // Travel deducted from marketing budget
+        marketingBudget -= travelCost;
+
+        // EDITOR SPLIT: profit split 45/45/10
+        if (editorBillingAmt > 0 && hasPhotoEditor) {
+          const editorCost = p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
+          const editorProfit = editorBillingAmt - editorCost;
+          ownerCut += editorProfit * 0.45;
+          adminCut += editorProfit * 0.45;
+          marketingBudget += editorProfit * 0.10;
+        }
+      });
+    } else if (split) {
+      // Jan/Feb 2026 legacy partner split (flat percentages on total billing)
+      const partnerPct = split.partnerPercent ?? 0;
+      const adminPct = split.adminPercent ?? 0.45;
+      ownerCut = totalBilling * partnerPct;
+      adminCut = totalBilling * adminPct;
+      marketingBudget = totalBilling - totalCrewCost - ownerCut - adminCut;
+    } else {
+      // No partner — SDub-only split
+      adminCut = totalBilling * 0.60;
+      marketingBudget = totalBilling - totalCrewCost - adminCut;
+    }
+
+    // Total travel cost (shown on report, already deducted from marketing in new split logic)
+    const totalTravelCost = projects.reduce((s, p) => s + getProjectTravelCost(p), 0);
+    if (!useNewSplitLogic && totalTravelCost > 0) {
+      marketingBudget -= totalTravelCost;
+    }
+
+    // Monthly marketing expenses (same month only)
+    const monthStr = `${yr}-${String(monthNum).padStart(2, "0")}`;
+    const monthlyExpensesList = data.marketingExpenses.filter(e => e.date.startsWith(monthStr));
+    const monthlyExpenses = monthlyExpensesList.reduce((s, e) => s + e.amount, 0);
+    const monthlyTravelExpenses = monthlyExpensesList.filter(e => e.category === "Travel").reduce((s, e) => s + e.amount, 0);
+    const travelReimbursement = totalTravelCost + monthlyTravelExpenses;
+
+    // YTD marketing balance (filtered by selected client if applicable, through selected month)
+    const ytdProjects = data.projects
+      .filter(p => p.date.startsWith(String(yr)) && parseInt(p.date.split("-")[1]) <= monthNum)
+      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId);
+    const ytdMarketingEarned = ytdProjects.reduce((s, p) => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        if (!client) return s;
+        return s + getProjectInvoiceAmount(p, client) * 0.10;
+      }, 0);
+    const ytdTravelCost = ytdProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
+    const ytdExpenses = data.marketingExpenses
+      .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) <= monthNum)
+      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId)
+      .reduce((s, e) => s + e.amount, 0);
+    const ytdMarketingBalance = ytdMarketingEarned - ytdExpenses - ytdTravelCost;
 
     // Per-person pay breakdown
-    const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; totalPay: number }> = {};
+    const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; editorBilledHours: number; travelHours: number; travelCost: number; totalPay: number }> = {};
+    const emptyPerson = () => ({ name: "", prodHours: 0, editHours: 0, editImages: 0, editorBilledHours: 0, travelHours: 0, travelCost: 0, totalPay: 0 });
     projects.forEach(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
       (p.crew || []).forEach(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
-        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, editImages: 0, totalPay: 0 };
-        personPay[e.crewMemberId].prodHours += Number(e.hoursWorked ?? 0);
-        personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { ...emptyPerson(), name };
+        const hrs = Number(e.hoursWorked ?? 0);
+        const rate = Number(e.payRatePerHour ?? 0);
+        if (e.role === "Travel") {
+          personPay[e.crewMemberId].travelHours += hrs;
+          personPay[e.crewMemberId].travelCost += hrs * rate;
+        } else {
+          personPay[e.crewMemberId].prodHours += (useNewHoursDisplay && client) ? getBillableHours(e, client) : hrs;
+          personPay[e.crewMemberId].totalPay += hrs * rate;
+        }
       });
       (p.postProduction || []).forEach(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
-        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, prodHours: 0, editHours: 0, editImages: 0, totalPay: 0 };
-        if (e.role === "Photo Editor" && p.editorBilling) {
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { ...emptyPerson(), name };
+        if (e.role === "Travel") {
+          const hrs = Number(e.hoursWorked ?? 0);
+          personPay[e.crewMemberId].travelHours += hrs;
+          personPay[e.crewMemberId].travelCost += hrs * Number(e.payRatePerHour ?? 0);
+        } else if (useNewHoursDisplay && e.role === "Photo Editor" && p.editorBilling) {
           personPay[e.crewMemberId].editImages += p.editorBilling.imageCount;
+          personPay[e.crewMemberId].editorBilledHours += p.editorBilling.finalHours ?? 0;
           personPay[e.crewMemberId].totalPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
         } else {
-          personPay[e.crewMemberId].editHours += Number(e.hoursWorked ?? 0);
+          personPay[e.crewMemberId].editHours += (useNewHoursDisplay && client) ? getBillableHours(e, client) : Number(e.hoursWorked ?? 0);
           personPay[e.crewMemberId].totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
         }
       });
@@ -166,19 +293,21 @@ export default function ReportsPage() {
 
     // Hours by person table
     const hoursTableRows = personList.map(p => {
-      const editDisplay = p.editImages > 0 && p.editHours > 0
-        ? `${p.editHours.toFixed(2)} hrs + ${p.editImages} imgs`
-        : p.editImages > 0
-          ? `${p.editImages} images`
-          : p.editHours.toFixed(2);
+      const editDisplay = p.editImages > 0
+        ? `${p.editorBilledHours.toFixed(2)} hrs / ${p.editImages} imgs`
+        : p.editHours > 0
+          ? p.editHours.toFixed(2)
+          : "—";
+      const totalBilledHrs = p.prodHours + p.editHours + p.editorBilledHours;
       const totalDisplay = p.editImages > 0
-        ? `${p.prodHours.toFixed(2)} hrs${p.editImages > 0 ? ` + ${p.editImages} imgs` : ""}`
-        : (p.prodHours + p.editHours).toFixed(2);
+        ? `${totalBilledHrs.toFixed(2)} hrs / ${p.editImages} imgs`
+        : totalBilledHrs.toFixed(2);
       return `
         <tr>
           <td>${p.name}</td>
-          <td style="text-align:right">${p.prodHours.toFixed(2)}</td>
+          <td style="text-align:right">${p.prodHours > 0 ? p.prodHours.toFixed(2) : "—"}</td>
           <td style="text-align:right">${editDisplay}</td>
+          <td style="text-align:right">${p.travelCost > 0 ? formatCurrency(p.travelCost) : "—"}</td>
           <td style="text-align:right; font-weight:700">${totalDisplay}</td>
         </tr>
       `;
@@ -196,13 +325,23 @@ export default function ReportsPage() {
     const daySections = Array.from(dateGroups.entries()).map(([date, dayProjects]) => {
       const dayDate = new Date(date + "T00:00:00");
       const dayName = dayDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-      const dayTotalHours = dayProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
+      const dayTotalHours = useNewHoursDisplay
+        ? dayProjects.reduce((s, p) => {
+            const client = data.clients.find(c => c.id === p.clientId);
+            return s + (client ? getProjectBillableHours(p, client).totalBillable : getProjectHours(p).totalHours);
+          }, 0)
+        : dayProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
 
       const projectCards = dayProjects.map(p => {
         const client = data.clients.find(c => c.id === p.clientId);
         const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
         const loc = data.locations.find(l => l.id === p.locationId);
-        const { crewHours, postHours, totalHours: projTotal } = getProjectWorkedHours(p);
+        const { crewHours: rawCrewHours, postHours, totalHours: projTotal } = getProjectWorkedHours(p);
+        const crewHours = rawCrewHours - (p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
+        const billable = (useNewHoursDisplay && client) ? getProjectBillableHours(p, client) : null;
+        const projTravelCost = getProjectTravelCost(p);
+        const billedTotal = (billable?.totalBillable ?? projTotal) - (p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
+        const hasEditorBilling = useNewHoursDisplay && !!p.editorBilling?.finalHours;
 
         const locationHtml = loc ? `
           <div class="project-meta-label">Filming Location</div>
@@ -253,10 +392,11 @@ export default function ReportsPage() {
                 <div class="project-type-badge">${type}</div>
               </div>
               <div style="text-align: right;">
-                <div class="hours-badge">${projTotal.toFixed(2)} hrs</div>
-                <div class="hours-detail">Total Hours Billed</div>
-                <div class="hours-detail">Production: ${crewHours.toFixed(2)} hrs</div>
-                <div class="hours-detail">Editing: ${postHours.toFixed(2)} hrs</div>
+                <div class="hours-badge">${billedTotal.toFixed(2)} hrs</div>
+                <div class="hours-detail">Hours Billed to Client</div>
+                ${crewHours > 0 ? `<div class="hours-detail">Production: ${(billable ? billable.crewBillable - ((p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + getBillableHours(e, client!), 0)) : crewHours).toFixed(2)} hrs</div>` : ""}
+                ${hasEditorBilling ? `<div class="hours-detail">${p.editorBilling!.imageCount} images @ $${(p.editorBilling!.perImageRate ?? 6).toFixed(0)}/img</div>` : postHours > 0 ? `<div class="hours-detail">Editing: ${postHours.toFixed(2)} hrs</div>` : ""}
+                ${projTravelCost > 0 ? `<div class="hours-detail" style="color:#8b5cf6">Travel: ${formatCurrency(projTravelCost)}</div>` : ""}
               </div>
             </div>
             <hr class="project-card-divider" />
@@ -308,22 +448,25 @@ export default function ReportsPage() {
       <!-- Earnings Summary -->
       <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">Earnings Summary</h2>
 
-      <div class="earnings-card marketing">
-        <div class="card-label" style="color: #8b5cf6; font-weight: 600;">Marketing Budget</div>
-        <div class="card-value">${formatCurrency(Math.max(0, marketingBudget))}</div>
-        <div class="card-note">10% of billing (after crew costs)</div>
+      <div class="section">
+        <div class="section-header">Spending Budget</div>
+        <div class="section-body" style="padding: 0;">
+          <table style="width:100%;border-collapse:collapse">
+            <tbody>
+              <tr><td style="padding:10px 16px;font-size:13px">Added in ${monthName}</td><td style="text-align:right;padding:10px 16px;font-size:13px;font-weight:600;color:#22c55e">+${formatCurrency(marketingBudget)}</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="earnings-grid-2">
         ${partnerName ? `<div class="earnings-card owner">
           <div class="card-label" style="color: #22c55e; font-weight: 600;">${partnerName} (Partner)</div>
           <div class="card-value">${formatCurrency(ownerCut)}</div>
-          <div class="card-note">${(partnerPct * 100).toFixed(0)}% of billing value</div>
         </div>` : ""}
         <div class="earnings-card admin">
           <div class="card-label" style="color: #3b82f6; font-weight: 600;">SDub Media LLC</div>
           <div class="card-value">${formatCurrency(adminCut)}</div>
-          <div class="card-note">${(adminPct * 100).toFixed(0)}% of billing value</div>
         </div>
       </div>
 
@@ -333,6 +476,17 @@ export default function ReportsPage() {
       <div class="earnings-grid-2">
         ${crewPayCards}
       </div>
+      ${split ? (() => {
+        const geoffCrewPay = personList.find(p => p.name === "Geoff Southworth")?.totalPay ?? 0;
+        const geoffTotal = geoffCrewPay + adminCut + travelReimbursement;
+        return `<div class="earnings-card" style="border-top: 3px solid #3b82f6; margin-bottom: 16px;">
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">Geoff Southworth — Total Payout</div>
+          <div class="card-value">${formatCurrency(geoffTotal)}</div>
+          <div class="card-note" style="margin-top:6px;font-size:12px;color:#555">
+            Crew: ${formatCurrency(geoffCrewPay)} · Admin: ${formatCurrency(adminCut)} · Travel: ${formatCurrency(travelReimbursement)}
+          </div>
+        </div>`;
+      })() : ""}
 
       <!-- Pay This Week -->
       <div class="section">
@@ -340,8 +494,12 @@ export default function ReportsPage() {
         <div class="section-body">
           <table class="pay-table">
             <thead><tr><th>Person</th><th style="text-align:right">Amount to Pay</th></tr></thead>
-            <tbody>${payTableRows}</tbody>
-            <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalCrewCost)}</td></tr></tfoot>
+            <tbody>${payTableRows}
+              ${partnerName ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
+              ${split ? `<tr><td>Geoff Southworth (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
+              ${split ? `<tr><td>Geoff Southworth (Travel Expense)</td><td style="text-align:right">${formatCurrency(travelReimbursement)}</td></tr>` : ""}
+            </tbody>
+            <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalCrewCost + adminCut + (partnerName ? ownerCut : 0) + travelReimbursement)}</td></tr></tfoot>
           </table>
           <p style="font-size: 11px; color: #888;">Reference: Earnings Breakdown Report for ${monthName} ${yr}</p>
         </div>
@@ -351,10 +509,11 @@ export default function ReportsPage() {
       <div class="section">
         <div class="section-header">Hours Billed to Client — Summary</div>
         <div class="section-body" style="padding: 0;">
-          <div class="hours-billed-grid">
-            <div class="hours-billed-cell"><div class="hb-label">Production</div><div class="hb-value">${totalProductionHours.toFixed(2)}</div></div>
-            <div class="hours-billed-cell"><div class="hb-label">Editor</div><div class="hb-value">${totalEditorHours.toFixed(2)}</div></div>
-            <div class="hours-billed-cell"><div class="hb-label">Total Billed</div><div class="hb-value highlight">${totalHours.toFixed(2)}</div></div>
+          <div class="hours-billed-grid" style="grid-template-columns: ${totalTravelCost > 0 ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr"}">
+            <div class="hours-billed-cell"><div class="hb-label">Production</div><div class="hb-value">${totalProductionHours.toFixed(2)} hrs</div></div>
+            <div class="hours-billed-cell"><div class="hb-label">Editor</div><div class="hb-value">${totalEditorHours.toFixed(2)} hrs${totalImages > 0 ? ` / ${totalImages} imgs` : ""}</div></div>
+            ${totalTravelCost > 0 ? `<div class="hours-billed-cell"><div class="hb-label">Travel</div><div class="hb-value" style="color:#8b5cf6">${formatCurrency(totalTravelCost)}</div></div>` : ""}
+            <div class="hours-billed-cell"><div class="hb-label">Total Billed</div><div class="hb-value highlight">${totalHours.toFixed(2)} hrs</div></div>
           </div>
         </div>
       </div>
@@ -363,9 +522,9 @@ export default function ReportsPage() {
       <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 4px; border: none;">Hours Billed to Client (by Person)</h2>
       <p class="subtitle" style="margin-bottom: 12px;">Billed hours reflect billable time entries for this period.</p>
       <table class="pay-table">
-        <thead><tr><th>Person</th><th style="text-align:right">Production Hours</th><th style="text-align:right">Editor Hours</th><th style="text-align:right">Total Billed Hours</th></tr></thead>
+        <thead><tr><th>Person</th><th style="text-align:right">Production Hours</th><th style="text-align:right">Editor Hours</th><th style="text-align:right">Travel</th><th style="text-align:right">Total Billed Hours</th></tr></thead>
         <tbody>${hoursTableRows}</tbody>
-        <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totalProductionHours.toFixed(2)}</td><td style="text-align:right">${totalEditorHours.toFixed(2)}</td><td style="text-align:right">${totalHours.toFixed(2)}</td></tr></tfoot>
+        <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totalProductionHours.toFixed(2)}</td><td style="text-align:right">${totalEditorHours.toFixed(2)} hrs${totalImages > 0 ? ` / ${totalImages} imgs` : ""}</td><td style="text-align:right">${totalTravelCost > 0 ? formatCurrency(totalTravelCost) : "—"}</td><td style="text-align:right">${totalHours.toFixed(2)} hrs</td></tr></tfoot>
       </table>
 
       <!-- Weekly Activity & Pay Breakdown -->
@@ -534,7 +693,7 @@ export default function ReportsPage() {
         <div class="section-header">Service Provider & Client</div>
         <div class="section-body">
           <div class="provider-grid">
-            <div><div class="col-label">Service Provider</div><div class="col-value">SDub Media LLC</div></div>
+            <div><div class="col-label">Service Provider</div><div class="col-value">${client.partnerSplit?.partnerName || "SDub Media LLC"}</div></div>
             <div><div class="col-label">Client</div><div class="col-value">${client.company}</div></div>
           </div>
         </div>
@@ -754,7 +913,7 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Internal earnings breakdown with crew pay allocation, owner/admin splits, marketing budget, and per-project labor costs for {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}.
+                Internal earnings breakdown with crew pay allocation, owner/admin splits, spending budget, and per-project labor costs for {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}.
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 {monthlyProjects.length} project{monthlyProjects.length !== 1 ? "s" : ""} this month

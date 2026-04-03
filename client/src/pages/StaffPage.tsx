@@ -43,6 +43,7 @@ const ALL_ROLES: CrewRole[] = [
   "Director",
   "Producer",
   "Crew",
+  "Travel",
 ];
 
 interface StaffFormData {
@@ -123,9 +124,14 @@ export default function StaffPage() {
     if (!form.name.trim()) { toast.error("Name is required"); return; }
     setSaving(true);
     try {
+      // Auto-include any pending role selection that wasn't explicitly added with "+"
+      let finalRoleRates = form.roleRates;
+      if (newRole && !form.roleRates.some(rr => rr.role === newRole)) {
+        finalRoleRates = [...finalRoleRates, { role: newRole as CrewRole, payRatePerHour: newRate }];
+      }
       const payload = {
         name: form.name.trim(),
-        roleRates: form.roleRates,
+        roleRates: finalRoleRates,
         phone: form.phone.trim(),
         email: form.email.trim(),
         defaultPayRatePerHour: form.defaultPayRatePerHour,

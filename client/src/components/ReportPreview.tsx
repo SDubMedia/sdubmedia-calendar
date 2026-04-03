@@ -140,7 +140,7 @@ const REPORT_STYLES = `
 
   .project-type-badge { display: inline-block; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 4px; margin-top: 4px; }
 
-  @media print { body { padding: 20px; } .project-card { page-break-inside: avoid; } .day-header { page-break-inside: avoid; } }
+  @media print { body { padding: 20px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; } .project-card { page-break-inside: avoid; } .day-header { page-break-inside: avoid; } }
 `;
 
 export default function ReportPreview({ title, html, onClose }: ReportPreviewProps) {
