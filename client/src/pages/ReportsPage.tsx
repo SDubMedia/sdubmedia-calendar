@@ -149,7 +149,25 @@ export default function ReportsPage() {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return;
         const rate = Number(client.billingRatePerHour ?? 0);
-        if (client.billingModel === "per_project" || rate === 0) return;
+        if (client.billingModel === "per_project") {
+          // Per-project: use project invoice amount as revenue, crew cost as labor
+          const projRevenue = getProjectInvoiceAmount(p, client);
+          const projCrewCost = getProjectCrewCostHelper(p);
+          const projTravelCost = getProjectTravelCost(p);
+          const projProfit = projRevenue - projCrewCost;
+          if (projProfit > 0) {
+            // Apply same split ratios as hourly
+            const partnerPct = split!.partnerPercent ?? 0;
+            const adminPct = split!.adminPercent ?? 0.45;
+            const mktgPct = split!.marketingPercent ?? 0.10;
+            ownerCut += projProfit * partnerPct;
+            adminCut += projProfit * adminPct;
+            marketingBudget += projProfit * mktgPct;
+          }
+          marketingBudget -= projTravelCost;
+          return;
+        }
+        if (rate === 0) return;
 
         const { crewBillable, postBillable } = getProjectBillableHours(p, client);
         const hasPhotoEditor = p.editorBilling?.finalHours != null;
@@ -384,6 +402,9 @@ export default function ReportsPage() {
         }).join("");
         const projectLabor = getProjectCrewCost(p);
 
+        const isClientPerProject = client?.billingModel === "per_project";
+        const projInvoiceAmt = client ? getProjectInvoiceAmount(p, client) : 0;
+
         return `
           <div class="project-card" style="margin-bottom: 16px;">
             <div class="project-card-header">
@@ -392,8 +413,13 @@ export default function ReportsPage() {
                 <div class="project-type-badge">${type}</div>
               </div>
               <div style="text-align: right;">
+                ${isClientPerProject ? `
+                <div class="hours-badge">${formatCurrency(projInvoiceAmt)}</div>
+                <div class="hours-detail">Project Rate</div>
+                ` : `
                 <div class="hours-badge">${billedTotal.toFixed(2)} hrs</div>
                 <div class="hours-detail">Hours Billed to Client</div>
+                `}
                 ${crewHours > 0 ? `<div class="hours-detail">Production: ${(billable ? billable.crewBillable - ((p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + getBillableHours(e, client!), 0)) : crewHours).toFixed(2)} hrs</div>` : ""}
                 ${hasEditorBilling ? `<div class="hours-detail">${p.editorBilling!.imageCount} images @ $${(p.editorBilling!.perImageRate ?? 6).toFixed(0)}/img</div>` : postHours > 0 ? `<div class="hours-detail">Editing: ${postHours.toFixed(2)} hrs</div>` : ""}
                 ${projTravelCost > 0 ? `<div class="hours-detail" style="color:#8b5cf6">Travel: ${formatCurrency(projTravelCost)}</div>` : ""}
@@ -623,6 +649,8 @@ export default function ReportsPage() {
         `;
       }).join("");
 
+      const projRate = getProjectInvoiceAmount(p, client);
+
       return `
         <div class="project-card">
           <div class="project-card-header">
@@ -631,9 +659,14 @@ export default function ReportsPage() {
               <div class="project-date">${dateStr}</div>
             </div>
             <div style="text-align: right;">
+              ${isPerProject ? `
+              <div class="hours-badge">${formatCurrency(projRate)}</div>
+              <div class="hours-detail">Flat Rate</div>
+              ` : `
               <div class="hours-badge">${projTotal.toFixed(2)} hrs</div>
               <div class="hours-detail">Production: ${crewHours.toFixed(2)}</div>
               <div class="hours-detail">Editing: ${postHours.toFixed(2)}</div>
+              `}
             </div>
           </div>
           <hr class="project-card-divider" />
@@ -653,10 +686,12 @@ export default function ReportsPage() {
     const locationsList = Array.from(locationSet.values()).join("; ");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
 
+    const isPerProject = client.billingModel === "per_project";
+
     setPreview({ title: `Client Report — ${client.company} ${monthName} ${yr}`, html: `
       <!-- Header Banner -->
       <div class="invoice-header">
-        <h1>Hourly Activity Report & Project Invoice</h1>
+        <h1>${isPerProject ? "Project Activity Report & Invoice" : "Hourly Activity Report & Project Invoice"}</h1>
         <div class="meta-grid">
           <div><div class="meta-label">Report #</div><div class="meta-value">${reportNum}</div></div>
           <div><div class="meta-label">Report Period</div><div class="meta-value">${periodStart} - ${periodEnd}</div></div>
@@ -664,14 +699,19 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <!-- Hours Summary -->
+      <!-- Summary -->
       <div class="section">
-        <div class="section-header">Hours Summary</div>
+        <div class="section-header">${isPerProject ? "Project Summary" : "Hours Summary"}</div>
         <div class="section-body">
+          ${isPerProject ? `
+          <div class="hours-row"><span>Projects Completed</span><span>${clientProjects.length}</span></div>
+          <div class="hours-row highlight"><span>Total Billed</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+          ` : `
           <div class="hours-row"><span>Production Hours Used</span><span>${totalProductionHours.toFixed(1)} hrs</span></div>
           <div class="hours-row"><span>Editor Hours Used</span><span>${totalEditorHours.toFixed(1)} hrs</span></div>
           <div class="hours-row total"><span>Total Hours Used</span><span>${totalHours.toFixed(1)} hrs</span></div>
           <div class="hours-row highlight"><span>Total Value of Hours Used</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+          `}
         </div>
       </div>
 
@@ -683,7 +723,10 @@ export default function ReportsPage() {
             <span class="label">Amount Due</span>
             <span class="value">${formatCurrency(totalInvoice)}</span>
           </div>
-          <div class="calc">${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr</div>
+          <div class="calc">${isPerProject
+            ? `${clientProjects.length} project${clientProjects.length !== 1 ? "s" : ""} — flat rate billing`
+            : `${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr`
+          }</div>
           <div class="note">Make checks payable to ${client.partnerSplit?.partnerName ? client.partnerSplit.partnerName : "SDub Media LLC"} if additional charges apply.</div>
         </div>
       </div>
@@ -865,7 +908,7 @@ export default function ReportsPage() {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <CardTitle className="text-base">{client.company}</CardTitle>
-                      <p className="text-xs text-muted-foreground mt-0.5">{client.contactName} · {client.email} · ${client.billingRatePerHour}/hr</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{client.contactName} · {client.email} · {client.billingModel === "per_project" ? `$${Number(client.perProjectRate).toFixed(0)}/project` : `$${client.billingRatePerHour}/hr`}</p>
                     </div>
                     <Button size="sm" onClick={() => generateClientReport(client.id)} className="gap-2">
                       <Eye className="w-4 h-4" />
@@ -874,15 +917,17 @@ export default function ReportsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className={`grid ${client.billingModel === "per_project" ? "grid-cols-2" : "grid-cols-3"} gap-3 mb-4`}>
                     <div className="text-center p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Projects</p>
                       <p className="text-xl font-bold text-foreground">{stat.projectCount}</p>
                     </div>
-                    <div className="text-center p-3 rounded-lg bg-muted/30">
-                      <p className="text-xs text-muted-foreground mb-1">Hours</p>
-                      <p className="text-xl font-bold text-foreground">{formatHours(stat.totalHours)}</p>
-                    </div>
+                    {client.billingModel !== "per_project" && (
+                      <div className="text-center p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Hours</p>
+                        <p className="text-xl font-bold text-foreground">{formatHours(stat.totalHours)}</p>
+                      </div>
+                    )}
                     <div className="text-center p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Invoice</p>
                       <p className="text-xl font-bold text-amber-400">{formatCurrency(stat.invoiceAmount)}</p>

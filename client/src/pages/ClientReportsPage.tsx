@@ -47,6 +47,10 @@ export default function ClientReportsPage() {
     }).sort((a, b) => a.date.localeCompare(b.date));
   }, [data.projects, year, month]);
 
+  // Determine if this is a per-project client (client portal shows one client)
+  const currentClient = data.clients[0] || null;
+  const isPerProject = currentClient?.billingModel === "per_project";
+
   // Monthly summary
   const monthlySummary = useMemo(() => {
     let totalHours = 0;
@@ -106,23 +110,29 @@ export default function ClientReportsPage() {
   }, [annualProjects, data.clients]);
 
   const handleDownloadMonthly = () => {
-    downloadCSV(monthlySummary.rows.map(r => ({
-      Date: r.date,
-      Type: r.type,
-      Location: r.location,
-      Status: r.status,
-      "Billable Hours": r.hours,
-      Amount: r.amount,
-    })), `report-${MONTH_NAMES[month]}-${year}`);
+    downloadCSV(monthlySummary.rows.map(r => {
+      const base: Record<string, any> = {
+        Date: r.date,
+        Type: r.type,
+        Location: r.location,
+        Status: r.status,
+      };
+      if (!isPerProject) base["Billable Hours"] = r.hours;
+      base.Amount = r.amount;
+      return base;
+    }), `report-${MONTH_NAMES[month]}-${year}`);
   };
 
   const handleDownloadAnnual = () => {
-    downloadCSV(annualSummary.months.map(m => ({
-      Month: m.month,
-      Projects: m.projectCount,
-      "Billable Hours": m.hours,
-      Amount: m.amount,
-    })), `annual-report-${year}`);
+    downloadCSV(annualSummary.months.map(m => {
+      const base: Record<string, any> = {
+        Month: m.month,
+        Projects: m.projectCount,
+      };
+      if (!isPerProject) base["Billable Hours"] = m.hours;
+      base.Amount = m.amount;
+      return base;
+    }), `annual-report-${year}`);
   };
 
   const STATUS_LABELS: Record<string, string> = {
@@ -183,8 +193,17 @@ export default function ClientReportsPage() {
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-card border border-border rounded-lg p-4 text-center">
-                <p className="text-2xl font-semibold text-foreground">{formatHours(monthlySummary.totalHours)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Total Hours</p>
+                {isPerProject ? (
+                  <>
+                    <p className="text-2xl font-semibold text-foreground">{monthlySummary.rows.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Projects</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold text-foreground">{formatHours(monthlySummary.totalHours)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Total Hours</p>
+                  </>
+                )}
               </div>
               <div className="bg-card border border-border rounded-lg p-4 text-center">
                 <p className="text-2xl font-semibold text-foreground">{formatCurrency(monthlySummary.totalAmount)}</p>
@@ -221,8 +240,14 @@ export default function ClientReportsPage() {
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-foreground">{formatHours(r.hours)}</p>
-                        <p className="text-[10px] text-muted-foreground">{formatCurrency(r.amount)}</p>
+                        {isPerProject ? (
+                          <p className="text-sm font-semibold text-foreground">{formatCurrency(r.amount)}</p>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-foreground">{formatHours(r.hours)}</p>
+                            <p className="text-[10px] text-muted-foreground">{formatCurrency(r.amount)}</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))
@@ -244,8 +269,17 @@ export default function ClientReportsPage() {
             {/* Annual summary cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-card border border-border rounded-lg p-4 text-center">
-                <p className="text-2xl font-semibold text-foreground">{formatHours(annualSummary.yearTotalHours)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Total Hours ({year})</p>
+                {isPerProject ? (
+                  <>
+                    <p className="text-2xl font-semibold text-foreground">{annualProjects.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Total Projects ({year})</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold text-foreground">{formatHours(annualSummary.yearTotalHours)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Total Hours ({year})</p>
+                  </>
+                )}
               </div>
               <div className="bg-card border border-border rounded-lg p-4 text-center">
                 <p className="text-2xl font-semibold text-foreground">{formatCurrency(annualSummary.yearTotalAmount)}</p>
@@ -275,8 +309,14 @@ export default function ClientReportsPage() {
                       <p className="text-xs text-muted-foreground">{m.projectCount} project{m.projectCount !== 1 ? "s" : ""}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold text-foreground">{formatHours(m.hours)}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatCurrency(m.amount)}</p>
+                      {isPerProject ? (
+                        <p className="text-sm font-semibold text-foreground">{formatCurrency(m.amount)}</p>
+                      ) : (
+                        <>
+                          <p className="text-sm font-semibold text-foreground">{formatHours(m.hours)}</p>
+                          <p className="text-[10px] text-muted-foreground">{formatCurrency(m.amount)}</p>
+                        </>
+                      )}
                     </div>
                   </button>
                 ))}
