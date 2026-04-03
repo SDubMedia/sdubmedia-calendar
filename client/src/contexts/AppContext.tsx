@@ -481,13 +481,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
-    if (p.projectRate !== undefined) patch.project_rate = p.projectRate;
+    if (p.projectRate != null) patch.project_rate = p.projectRate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
-    const { error } = await supabase.from("projects").update(patch).eq("id", id);
+    const { data: updated, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? { ...x, ...p } : x) }));
+    if (updated) {
+      const normalized = rowToProject(updated);
+      setData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
+    }
   }, []);
 
   const deleteProject = useCallback(async (id: string) => {
