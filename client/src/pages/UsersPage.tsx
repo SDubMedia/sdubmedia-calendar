@@ -221,15 +221,17 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {form.role === "staff" && (
+            {(form.role === "staff" || form.role === "owner" || form.role === "partner") && (
               <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Assign to Crew Member</label>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">
+                  {form.role === "staff" ? "Assign to Crew Member" : "Link to Crew Profile (for mileage, etc.)"}
+                </label>
                 <select
                   value={form.crewMemberId}
                   onChange={e => setForm(f => ({ ...f, crewMemberId: e.target.value }))}
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  <option value="">Select crew member...</option>
+                  <option value="">{form.role === "staff" ? "Select crew member..." : "None"}</option>
                   {data.crewMembers.map(cm => (
                     <option key={cm.id} value={cm.id}>{cm.name}</option>
                   ))}
@@ -305,7 +307,7 @@ export default function UsersPage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
-                    {u.role === "staff" && u.crewMemberId && editingUser !== u.id && (
+                    {u.crewMemberId && editingUser !== u.id && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-300">
                           {data.crewMembers.find(cm => cm.id === u.crewMemberId)?.name ?? "Unknown crew member"}
@@ -336,15 +338,17 @@ export default function UsersPage() {
                             <option value="staff">Staff</option>
                           </select>
                         </div>
-                        {editRole === "staff" && (
+                        {(editRole === "staff" || editRole === "owner" || editRole === "partner") && (
                           <div>
-                            <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Assigned Crew Member</label>
+                            <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">
+                              {editRole === "staff" ? "Assigned Crew Member" : "Linked Crew Profile"}
+                            </label>
                             <select
                               value={editCrewMemberId}
                               onChange={e => setEditCrewMemberId(e.target.value)}
                               className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground"
                             >
-                              <option value="">Select crew member...</option>
+                              <option value="">{editRole === "staff" ? "Select crew member..." : "None"}</option>
                               {data.crewMembers.map(cm => (
                                 <option key={cm.id} value={cm.id}>{cm.name}</option>
                               ))}
