@@ -43,7 +43,8 @@ export type CrewRole =
   | "Audio Engineer"
   | "Director"
   | "Producer"
-  | "Crew";
+  | "Crew"
+  | "Travel";
 
 export type EditType =
   | "Social Vertical"
@@ -159,17 +160,19 @@ export interface Project {
   crew: ProjectCrewEntry[];
   postProduction: ProjectPostEntry[];
   editorBilling?: EditorBilling | null; // photo editor image-based billing
+  projectRate?: number | null; // per-project rate override (for per_project billing)
   editTypes: EditType[];
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables
   createdAt: string;
 }
 
-// Marketing budget expense
+// Spending budget expense
 export type ExpenseCategory = "Equipment" | "Software" | "Advertising" | "Travel" | "Other";
 
 export interface MarketingExpense {
   id: string;
+  clientId: string;
   date: string; // ISO date YYYY-MM-DD
   category: ExpenseCategory;
   description: string;

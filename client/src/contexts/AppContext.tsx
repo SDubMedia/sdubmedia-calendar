@@ -148,6 +148,7 @@ function rowToProject(r: any): Project {
     crew: (r.crew || []).map(normalizeCrewEntry),
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
     editorBilling: r.editor_billing || null,
+    projectRate: r.project_rate != null ? Number(r.project_rate) : null,
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     deliverableUrl: r.deliverable_url || "",
@@ -158,9 +159,10 @@ function rowToProject(r: any): Project {
 function rowToExpense(r: any): MarketingExpense {
   return {
     id: r.id,
+    clientId: r.client_id || "",
     date: r.date,
     category: r.category,
-    description: r.description,
+    description: r.description || "",
     notes: r.notes || "",
     amount: Number(r.amount ?? 0),
     createdAt: r.created_at,
@@ -456,6 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       crew: p.crew,
       post_production: p.postProduction,
       editor_billing: p.editorBilling || null,
+      project_rate: p.projectRate ?? null,
       edit_types: p.editTypes,
       notes: p.notes,
       deliverable_url: p.deliverableUrl || "",
@@ -478,6 +481,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
+    if (p.projectRate !== undefined) patch.project_rate = p.projectRate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
@@ -496,8 +500,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addMarketingExpense = useCallback(async (e: Omit<MarketingExpense, "id" | "createdAt">): Promise<MarketingExpense> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("marketing_expenses").insert({
-      id, ...(orgId ? { org_id: orgId } : {}), date: e.date, category: e.category, description: e.description,
-      notes: e.notes, amount: e.amount,
+      id, ...(orgId ? { org_id: orgId } : {}), client_id: e.clientId, date: e.date, category: e.category,
+      description: e.description, notes: e.notes, amount: e.amount,
     }).select().single();
     if (error) throw new Error(error.message);
     const expense = rowToExpense(row);

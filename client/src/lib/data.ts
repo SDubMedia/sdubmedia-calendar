@@ -171,16 +171,25 @@ export function getProjectWorkedHours(project: Project): { crewHours: number; po
  * Get total crew cost for a project, using editorBilling for photo editors.
  */
 export function getProjectCrewCost(project: Project): number {
-  const crewCost = (project.crew || []).reduce(
+  const crewCost = (project.crew || []).filter(e => e.role !== "Travel").reduce(
     (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
   );
-  const postCost = (project.postProduction || []).reduce((s, e) => {
+  const postCost = (project.postProduction || []).filter(e => e.role !== "Travel").reduce((s, e) => {
     if (e.role === "Photo Editor" && project.editorBilling) {
       return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
     }
     return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
   }, 0);
   return crewCost + postCost;
+}
+
+/** Get total travel cost for a project (Travel role entries only). */
+export function getProjectTravelCost(project: Project): number {
+  const crewTravel = (project.crew || []).filter(e => e.role === "Travel")
+    .reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+  const postTravel = (project.postProduction || []).filter(e => e.role === "Travel")
+    .reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+  return crewTravel + postTravel;
 }
 
 /**
@@ -228,11 +237,16 @@ export function getProjectBillableHours(project: Project, client: Client): {
 
 /**
  * Get the invoice amount for a single project based on the client's billing model.
- * Hourly: billable hours × rate. Per-project: flat rate per project.
+ * Hourly: billable hours × rate.
+ * Per-project: project-level override → type-specific rate → client default rate.
  */
 export function getProjectInvoiceAmount(project: Project, client: Client): number {
   if (client.billingModel === "per_project") {
-    // Check for project-type-specific rate first, fall back to default per-project rate
+    // 1. Project-level override (editable per project)
+    if (project.projectRate != null && project.projectRate > 0) {
+      return project.projectRate;
+    }
+    // 2. Project-type-specific rate, 3. Client default per-project rate
     const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }

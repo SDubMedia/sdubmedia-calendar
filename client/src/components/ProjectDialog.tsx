@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2, ArrowLeft } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus, Client } from "@/lib/types";
 import { toast } from "sonner";
 
 const EDIT_TYPES: EditType[] = [
@@ -61,6 +61,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [editTypes, setEditTypes] = useState<EditType[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
+  const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
 
   useEffect(() => {
     if (open) {
@@ -76,8 +77,21 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
+      // For new projects, pre-fill project rate from client default
+      if (project?.projectRate != null) {
+        setProjectRate(project.projectRate);
+      } else if (!project) {
+        const client = data.clients.find(c => c.id === (defaultClientId ?? data.clients[0]?.id));
+        if (client?.billingModel === "per_project") {
+          setProjectRate(client.perProjectRate || 0);
+        } else {
+          setProjectRate(null);
+        }
+      } else {
+        setProjectRate(null);
+      }
     }
-  }, [open, project, defaultDate, data.clients]);
+  }, [open, project, defaultDate, defaultClientId, data.clients]);
 
   const toggleEditType = (et: EditType) => {
     setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
@@ -93,7 +107,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     return data.projectTypes;
   }, [data.projectTypes, selectedClient]);
 
-  // When client changes, auto-select default project type
+  // When client changes, auto-select default project type and pre-fill project rate
   const handleClientChange = (newClientId: string) => {
     setClientId(newClientId);
     const client = data.clients.find(c => c.id === newClientId);
@@ -101,6 +115,24 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setProjectTypeId(client.defaultProjectTypeId);
     } else {
       setProjectTypeId("");
+    }
+    if (client?.billingModel === "per_project") {
+      setProjectRate(client.perProjectRate || 0);
+    } else {
+      setProjectRate(null);
+    }
+  };
+
+  // When project type changes for per_project clients, check for type-specific rate
+  const handleProjectTypeChange = (newTypeId: string) => {
+    setProjectTypeId(newTypeId);
+    if (selectedClient?.billingModel === "per_project") {
+      const typeRate = selectedClient.projectTypeRates?.find(r => r.projectTypeId === newTypeId);
+      if (typeRate) {
+        setProjectRate(typeRate.rate);
+      } else if (!isEdit) {
+        setProjectRate(selectedClient.perProjectRate || 0);
+      }
     }
   };
 
@@ -151,6 +183,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
       editorBilling: project?.editorBilling ?? null,
+      projectRate: selectedClient?.billingModel === "per_project" ? projectRate : null,
       editTypes, notes, deliverableUrl,
     };
     try {
@@ -214,7 +247,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Type</Label>
-              <Select value={projectTypeId} onValueChange={setProjectTypeId}>
+              <Select value={projectTypeId} onValueChange={handleProjectTypeChange}>
                 <SelectTrigger className="bg-secondary border-border">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
@@ -273,6 +306,25 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </Select>
             </div>
           </div>
+
+          {/* Project Rate (per-project billing clients only) */}
+          {selectedClient?.billingModel === "per_project" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Project Rate ($)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="25"
+                value={projectRate ?? ""}
+                onChange={(e) => setProjectRate(parseFloat(e.target.value) || 0)}
+                className="bg-secondary border-border"
+                placeholder="e.g. 300"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Flat rate billed to client for this project. Crew entries below are for internal cost tracking only.
+              </p>
+            </div>
+          )}
 
           {/* Crew (Filming) */}
           <div className="space-y-2">
