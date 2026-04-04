@@ -13,13 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-let pdfjsLoaded = false;
+let _pdfjsLib: any = null;
 async function loadPdfJs() {
-  if (pdfjsLoaded) return;
-  const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-  pdfjsLoaded = true;
-  return pdfjsLib;
+  if (_pdfjsLib) return _pdfjsLib;
+  _pdfjsLib = await import("pdfjs-dist");
+  // Disable worker — runs on main thread, simpler and works everywhere
+  _pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  return _pdfjsLib;
 }
 
 const CATEGORIES: BusinessExpenseCategory[] = [
@@ -148,7 +148,7 @@ export default function BusinessExpensesPage() {
     const pdfjsLib = await loadPdfJs();
     if (!pdfjsLib) throw new Error("Failed to load PDF library");
 
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const pdf = await pdfjsLib.getDocument({ data: buffer, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true }).promise;
     const lines: string[] = [];
 
     for (let i = 1; i <= pdf.numPages; i++) {
