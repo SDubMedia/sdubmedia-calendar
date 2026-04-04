@@ -155,6 +155,16 @@ export interface PartnerSplit {
   partnerPercent: number; // e.g. 0.45
   adminPercent: number;   // e.g. 0.45
   marketingPercent: number; // e.g. 0.10
+  // Crew split settings
+  crewSplitThreshold: number;  // e.g. 0.5 — if crew ≤ this % of billing, deduct marketing
+  crewMarketingPercent: number; // e.g. 0.10 — marketing % when under threshold
+  crewRemainderSplit: number;  // e.g. 0.5 — each side gets this % of remainder (partner/admin)
+  // Editor split settings
+  editorPartnerPercent: number;  // e.g. 0.45
+  editorAdminPercent: number;    // e.g. 0.45
+  editorMarketingPercent: number; // e.g. 0.10
+  // Spending budget
+  spendingBudgetEnabled: boolean; // whether to track marketing budget for this client
 }
 
 export interface Project {

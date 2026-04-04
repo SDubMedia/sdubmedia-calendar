@@ -198,32 +198,37 @@ export default function ReportsPage() {
         const crewCost = crewPayCost + nonEditorPostCost;
         const travelCost = getProjectTravelCost(p);
 
-        // CREW SPLIT: if crew ≤ 50% of billing → 10% marketing, remainder 50/50
-        //             if crew > 50% → no marketing, remainder 50/50
+        // CREW SPLIT: use client's configurable settings
+        const threshold = clientSplit.crewSplitThreshold ?? 0.5;
+        const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
+        const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
         if (crewBillingAmt > 0) {
-          if (crewCost <= crewBillingAmt * 0.5) {
-            const mktg = crewBillingAmt * 0.10;
+          if (crewCost <= crewBillingAmt * threshold) {
+            const mktg = crewBillingAmt * crewMktgPct;
             const remainder = crewBillingAmt - crewCost - mktg;
-            marketingBudget += mktg;
-            ownerCut += remainder / 2;
-            adminCut += remainder / 2;
+            if (clientSplit.spendingBudgetEnabled !== false) marketingBudget += mktg;
+            ownerCut += remainder * remainderSplit;
+            adminCut += remainder * (1 - remainderSplit);
           } else {
             const remainder = crewBillingAmt - crewCost;
-            ownerCut += remainder / 2;
-            adminCut += remainder / 2;
+            ownerCut += remainder * remainderSplit;
+            adminCut += remainder * (1 - remainderSplit);
           }
         }
 
         // Travel deducted from marketing budget
-        marketingBudget -= travelCost;
+        if (clientSplit.spendingBudgetEnabled !== false) marketingBudget -= travelCost;
 
-        // EDITOR SPLIT: profit split 45/45/10
+        // EDITOR SPLIT: use client's configurable settings
         if (editorBillingAmt > 0 && hasPhotoEditor) {
           const editorCost = p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
           const editorProfit = editorBillingAmt - editorCost;
-          ownerCut += editorProfit * 0.45;
-          adminCut += editorProfit * 0.45;
-          marketingBudget += editorProfit * 0.10;
+          const ePtnr = clientSplit.editorPartnerPercent ?? 0.45;
+          const eAdmin = clientSplit.editorAdminPercent ?? 0.45;
+          const eMktg = clientSplit.editorMarketingPercent ?? 0.10;
+          ownerCut += editorProfit * ePtnr;
+          adminCut += editorProfit * eAdmin;
+          if (clientSplit.spendingBudgetEnabled !== false) marketingBudget += editorProfit * eMktg;
         }
       });
     } else if (split) {
@@ -234,9 +239,9 @@ export default function ReportsPage() {
       adminCut = totalBilling * adminPct;
       marketingBudget = totalBilling - totalCrewCost - ownerCut - adminCut;
     } else {
-      // No partner — SDub-only split
-      adminCut = totalBilling * 0.60;
-      marketingBudget = totalBilling - totalCrewCost - adminCut;
+      // No partner — all profit goes to owner/admin
+      adminCut = totalBilling - totalCrewCost;
+      marketingBudget = 0;
     }
 
     // Total travel cost (shown on report, already deducted from marketing in new split logic)

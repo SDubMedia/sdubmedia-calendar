@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useApp } from "@/contexts/AppContext";
-import type { Client, RoleBillingMultiplier, BillingModel } from "@/lib/types";
+import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,22 @@ interface ClientFormData {
   allowedProjectTypeIds: string[];
   defaultProjectTypeId: string;
   roleBillingMultipliers: RoleBillingMultiplier[];
+  partnerSplit: PartnerSplit | null;
 }
+
+const DEFAULT_PARTNER_SPLIT: PartnerSplit = {
+  partnerName: "",
+  partnerPercent: 0.45,
+  adminPercent: 0.45,
+  marketingPercent: 0.10,
+  crewSplitThreshold: 0.5,
+  crewMarketingPercent: 0.10,
+  crewRemainderSplit: 0.5,
+  editorPartnerPercent: 0.45,
+  editorAdminPercent: 0.45,
+  editorMarketingPercent: 0.10,
+  spendingBudgetEnabled: true,
+};
 
 const emptyForm = (): ClientFormData => ({
   company: "",
@@ -41,6 +56,7 @@ const emptyForm = (): ClientFormData => ({
   allowedProjectTypeIds: [],
   defaultProjectTypeId: "",
   roleBillingMultipliers: [],
+  partnerSplit: null,
 });
 
 export default function ClientsPage() {
@@ -70,6 +86,7 @@ export default function ClientsPage() {
       allowedProjectTypeIds: client.allowedProjectTypeIds || [],
       defaultProjectTypeId: client.defaultProjectTypeId || "",
       roleBillingMultipliers: client.roleBillingMultipliers || [],
+      partnerSplit: client.partnerSplit || null,
     });
     setDialogOpen(true);
   };
@@ -386,6 +403,144 @@ export default function ClientsPage() {
               ))}
             </div>
           </div>
+            {/* Partner Toggle */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Partner</Label>
+                <button
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    partnerSplit: f.partnerSplit ? null : { ...DEFAULT_PARTNER_SPLIT },
+                  }))}
+                  className={cn(
+                    "relative w-10 h-5 rounded-full transition-colors",
+                    form.partnerSplit ? "bg-primary" : "bg-secondary border border-border"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                    form.partnerSplit ? "translate-x-5" : "translate-x-0.5"
+                  )} />
+                </button>
+              </div>
+              {form.partnerSplit && (
+                <div className="space-y-3 bg-secondary/30 rounded-lg p-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Partner Name</Label>
+                    <Input
+                      value={form.partnerSplit.partnerName}
+                      onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, partnerName: e.target.value } : null }))}
+                      className="bg-secondary border-border h-8 text-sm"
+                      placeholder="e.g. Showcase Media"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Partner %</Label>
+                      <Input type="number" min="0" max="1" step="0.05"
+                        value={form.partnerSplit.partnerPercent}
+                        onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, partnerPercent: parseFloat(e.target.value) || 0 } : null }))}
+                        className="bg-secondary border-border h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Admin %</Label>
+                      <Input type="number" min="0" max="1" step="0.05"
+                        value={form.partnerSplit.adminPercent}
+                        onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, adminPercent: parseFloat(e.target.value) || 0 } : null }))}
+                        className="bg-secondary border-border h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
+                      <Input type="number" min="0" max="1" step="0.05"
+                        value={form.partnerSplit.marketingPercent}
+                        onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, marketingPercent: parseFloat(e.target.value) || 0 } : null }))}
+                        className="bg-secondary border-border h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Crew Split Settings */}
+                  <div className="space-y-2 border-t border-border/50 pt-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Crew Split Rules</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Crew Cost Threshold</Label>
+                        <Input type="number" min="0" max="1" step="0.05"
+                          value={form.partnerSplit.crewSplitThreshold}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewSplitThreshold: parseFloat(e.target.value) || 0 } : null }))}
+                          className="bg-secondary border-border h-8 text-xs"
+                        />
+                        <p className="text-[9px] text-muted-foreground">If crew ≤ this % of billing, deduct marketing</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Crew Marketing %</Label>
+                        <Input type="number" min="0" max="1" step="0.05"
+                          value={form.partnerSplit.crewMarketingPercent}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
+                          className="bg-secondary border-border h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Editor Split Settings */}
+                  <div className="space-y-2 border-t border-border/50 pt-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Editor Split Rules</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Partner %</Label>
+                        <Input type="number" min="0" max="1" step="0.05"
+                          value={form.partnerSplit.editorPartnerPercent}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorPartnerPercent: parseFloat(e.target.value) || 0 } : null }))}
+                          className="bg-secondary border-border h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Admin %</Label>
+                        <Input type="number" min="0" max="1" step="0.05"
+                          value={form.partnerSplit.editorAdminPercent}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorAdminPercent: parseFloat(e.target.value) || 0 } : null }))}
+                          className="bg-secondary border-border h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
+                        <Input type="number" min="0" max="1" step="0.05"
+                          value={form.partnerSplit.editorMarketingPercent}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
+                          className="bg-secondary border-border h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Spending Budget Toggle */}
+                  <div className="flex items-center justify-between border-t border-border/50 pt-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Spending Budget</Label>
+                      <p className="text-[9px] text-muted-foreground">Track marketing budget deductions for this client</p>
+                    </div>
+                    <button
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEnabled: !f.partnerSplit.spendingBudgetEnabled } : null,
+                      }))}
+                      className={cn(
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        form.partnerSplit?.spendingBudgetEnabled ? "bg-primary" : "bg-secondary border border-border"
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                        form.partnerSplit?.spendingBudgetEnabled ? "translate-x-5" : "translate-x-0.5"
+                      )} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
