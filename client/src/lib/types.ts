@@ -136,6 +136,9 @@ export interface CrewMember {
   businessCity?: string;
   businessState?: string;
   businessZip?: string;
+  // W-9 info (owner-only, for 1099 filing)
+  taxId?: string; // SSN or EIN from W-9
+  taxIdType?: "ssn" | "ein" | ""; // type of tax ID
 }
 
 export interface Location {

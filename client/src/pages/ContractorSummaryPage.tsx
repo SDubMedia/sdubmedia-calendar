@@ -22,6 +22,8 @@ interface ContractorSummary {
   zip: string;
   email: string;
   phone: string;
+  taxId: string;
+  taxIdType: string;
   totalPaid: number;
   projectCount: number;
   hours: number;
@@ -59,6 +61,8 @@ export default function ContractorSummaryPage() {
             zip: member.businessZip || "",
             email: member.email || "",
             phone: member.phone || "",
+            taxId: member.taxId || "",
+            taxIdType: member.taxIdType || "",
             totalPaid: 0,
             projectCount: 0,
             hours: 0,
@@ -175,7 +179,11 @@ export default function ContractorSummaryPage() {
                     </div>
                   </div>
                   <div className="mt-2 text-[10px] text-muted-foreground/50 print:text-gray-400">
-                    SSN/TIN: ___________________________
+                    {c.taxId ? (
+                      <span>{c.taxIdType === "ein" ? "EIN" : "SSN"}: <span className="font-mono print:text-gray-800">{c.taxId}</span></span>
+                    ) : (
+                      <span className="text-amber-400/70 print:text-gray-500">W-9 not on file — SSN/TIN: ___________________________</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -226,7 +234,7 @@ export default function ContractorSummaryPage() {
         <div className="text-xs text-muted-foreground print:text-gray-500 space-y-1">
           <p><strong>Filing requirement:</strong> File Form 1099-NEC for each contractor paid $600 or more in non-employee compensation during the tax year.</p>
           <p><strong>Deadline:</strong> 1099-NEC forms must be filed with the IRS and furnished to recipients by January 31 of the following year.</p>
-          <p><strong>Note:</strong> SSN/TIN numbers are not stored in this system for security. Obtain W-9 forms from contractors before filing.</p>
+          <p><strong>Note:</strong> Collect W-9 forms from all contractors. Tax IDs can be stored in crew profiles under Staff settings.</p>
         </div>
       </div>
     </div>

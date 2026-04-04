@@ -112,6 +112,8 @@ function rowToCrew(r: any): CrewMember {
     businessCity: r.business_city || "",
     businessState: r.business_state || "",
     businessZip: r.business_zip || "",
+    taxId: r.tax_id || "",
+    taxIdType: r.tax_id_type || "",
   };
 }
 
@@ -469,6 +471,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.businessCity !== undefined) patch.business_city = c.businessCity;
     if (c.businessState !== undefined) patch.business_state = c.businessState;
     if (c.businessZip !== undefined) patch.business_zip = c.businessZip;
+    if (c.taxId !== undefined) patch.tax_id = c.taxId;
+    if (c.taxIdType !== undefined) patch.tax_id_type = c.taxIdType;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));

@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 
@@ -54,6 +54,8 @@ interface StaffFormData {
   email: string;
   defaultPayRatePerHour: number;
   homeAddress: HomeAddress | null;
+  taxId: string;
+  taxIdType: "ssn" | "ein" | "";
 }
 
 const emptyForm = (): StaffFormData => ({
@@ -63,6 +65,8 @@ const emptyForm = (): StaffFormData => ({
   email: "",
   defaultPayRatePerHour: 0,
   homeAddress: null,
+  taxId: "",
+  taxIdType: "",
 });
 
 export default function StaffPage() {
@@ -127,6 +131,8 @@ export default function StaffPage() {
       email: member.email,
       defaultPayRatePerHour: Number(member.defaultPayRatePerHour ?? 0),
       homeAddress: member.homeAddress || null,
+      taxId: member.taxId || "",
+      taxIdType: member.taxIdType || "",
     });
     setNewRole("");
     setNewRate(0);
@@ -174,6 +180,8 @@ export default function StaffPage() {
         email: form.email.trim(),
         defaultPayRatePerHour: form.defaultPayRatePerHour,
         homeAddress: form.homeAddress,
+        taxId: form.taxId,
+        taxIdType: form.taxIdType,
       };
       let memberId = editingId;
       if (editingId) {
@@ -486,6 +494,34 @@ export default function StaffPage() {
                 </div>
               );
             })()}
+
+            {/* W-9 / Tax ID (owner only) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                W-9 Tax ID (for 1099 filing)
+              </Label>
+              <p className="text-xs text-muted-foreground">From their W-9 form. Only visible to the owner.</p>
+              <div className="flex gap-2">
+                <select
+                  value={form.taxIdType}
+                  onChange={e => setForm(f => ({ ...f, taxIdType: e.target.value as any }))}
+                  className="bg-secondary border border-border rounded-md px-2 py-2 text-sm text-foreground w-24"
+                >
+                  <option value="">Type</option>
+                  <option value="ssn">SSN</option>
+                  <option value="ein">EIN</option>
+                </select>
+                <Input
+                  value={form.taxId}
+                  onChange={e => setForm(f => ({ ...f, taxId: e.target.value }))}
+                  className="bg-secondary border-border flex-1"
+                  placeholder={form.taxIdType === "ein" ? "XX-XXXXXXX" : "XXX-XX-XXXX"}
+                  type="password"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
