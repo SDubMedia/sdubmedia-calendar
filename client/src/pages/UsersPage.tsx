@@ -296,8 +296,8 @@ export default function UsersPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <button
-                        onClick={() => !isMe && openEdit(u)}
-                        className={cn("text-sm font-semibold", isMe ? "text-foreground cursor-default" : "text-foreground hover:text-primary cursor-pointer")}
+                        onClick={() => openEdit(u)}
+                        className="text-sm font-semibold text-foreground hover:text-primary cursor-pointer"
                       >
                         {u.name}
                       </button>
