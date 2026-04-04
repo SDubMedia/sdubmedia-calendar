@@ -12,6 +12,7 @@ import {
   Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours } from "@/lib/data";
@@ -63,6 +64,8 @@ interface Props {
 
 export default function ProjectDetailSheet({ project, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === "owner";
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -153,14 +156,16 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 mr-8">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setEditOpen(true)}>
-                  <Edit3 className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+              {isOwner && (
+                <div className="flex items-center gap-1 mr-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setEditOpen(true)}>
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </SheetHeader>
 
@@ -335,17 +340,21 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   {STATUS_NEXT_LABEL[project.status]}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                onClick={togglePaid}
-                className={cn("w-full gap-2", project.paidDate ? "border-green-500/50 text-green-300" : "border-border")}
-              >
-                <DollarSign className="w-4 h-4" />
-                {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
-              </Button>
-              <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
-                Edit Project
-              </Button>
+              {isOwner && (
+                <Button
+                  variant="outline"
+                  onClick={togglePaid}
+                  className={cn("w-full gap-2", project.paidDate ? "border-green-500/50 text-green-300" : "border-border")}
+                >
+                  <DollarSign className="w-4 h-4" />
+                  {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
+                </Button>
+              )}
+              {isOwner && (
+                <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
+                  Edit Project
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>
