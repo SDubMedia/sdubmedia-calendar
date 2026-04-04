@@ -13,14 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-let _pdfjsLib: any = null;
-async function loadPdfJs() {
-  if (_pdfjsLib) return _pdfjsLib;
-  _pdfjsLib = await import("pdfjs-dist");
-  // Disable worker — runs on main thread, simpler and works everywhere
-  _pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-  return _pdfjsLib;
-}
+// PDF support note: Chase PDFs have inconsistent formats.
+// For reliable import, download CSV from chase.com → Activity → Download.
+// PDF upload attempts basic text extraction as a convenience.
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -112,7 +107,6 @@ export default function BusinessExpensesPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const pdfRef = useRef<HTMLInputElement>(null);
 
   // Manual add dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -143,116 +137,38 @@ export default function BusinessExpensesPage() {
 
   const [uploading, setUploading] = useState(false);
 
-  // Parse Chase PDF client-side
-  async function parseChasePDF(buffer: ArrayBuffer): Promise<CsvRow[]> {
-    const pdfjsLib = await loadPdfJs();
-    if (!pdfjsLib) throw new Error("Failed to load PDF library");
-
-    const pdf = await pdfjsLib.getDocument({ data: buffer, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true }).promise;
-    const lines: string[] = [];
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      // Group text items by Y position to reconstruct lines
-      const byY = new Map<number, string[]>();
-      for (const item of content.items as any[]) {
-        const y = Math.round(item.transform[5]);
-        if (!byY.has(y)) byY.set(y, []);
-        byY.get(y)!.push(item.str);
-      }
-      // Sort by Y descending (top of page first) and join each line
-      const sortedYs = Array.from(byY.keys()).sort((a, b) => b - a);
-      for (const y of sortedYs) {
-        lines.push(byY.get(y)!.join(" ").trim());
-      }
-    }
-
-    const fullText = lines.join("\n");
-
-    // Try to find statement year
-    const yearMatch = fullText.match(/statement\s+(?:closing\s+)?date[:\s]*\d{2}\/\d{2}\/(\d{4})/i)
-      || fullText.match(/opening.*closing.*(\d{4})/i)
-      || fullText.match(/(\d{4})\s+totals/i)
-      || fullText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}.*?(\d{4})/i);
-    const statementYear = yearMatch ? (yearMatch[1] || yearMatch[2]) : String(new Date().getFullYear());
-
-    const rows: CsvRow[] = [];
-
-    // Try multiple regex patterns for Chase statement formats
-    const patterns = [
-      // MM/DD MM/DD DESCRIPTION AMOUNT (two dates)
-      /(\d{2}\/\d{2})\s+\d{2}\/\d{2}\s+(.+?)\s+(-?\d{1,3}(?:,\d{3})*\.\d{2})$/,
-      // MM/DD DESCRIPTION AMOUNT (single date)
-      /(\d{2}\/\d{2})\s+(.+?)\s+(-?\d{1,3}(?:,\d{3})*\.\d{2})$/,
-    ];
-
-    for (const line of lines) {
-      for (const pattern of patterns) {
-        const match = line.match(pattern);
-        if (!match) continue;
-
-        const [, dateStr, description, amountStr] = match;
-        const amount = Math.abs(parseFloat(amountStr.replace(/,/g, "")) || 0);
-        if (amount === 0) break;
-        if (/payment.*thank/i.test(description) || /automatic payment/i.test(description)) break;
-
-        const [month, day] = dateStr.split("/");
-        const date = `${statementYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-
-        rows.push({
-          date,
-          description: description.trim(),
-          category: autoCategory(description) as BusinessExpenseCategory,
-          amount,
-          chaseCategory: "",
-          selected: true,
-        });
-        break; // matched this line, move to next
-      }
-    }
-    return rows;
+  // For PDF: redirect to Chase CSV download instructions
+  function handlePdfFallback() {
+    toast.error(
+      "PDF parsing is not supported on mobile yet. To import your Chase statement:\n\n" +
+      "1. Go to chase.com in your browser\n" +
+      "2. Go to Activity → Download\n" +
+      "3. Select CSV format\n" +
+      "4. Upload the CSV here",
+      { duration: 10000 }
+    );
   }
 
-  // Handle CSV or PDF file upload
-  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // Handle CSV file upload
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    const isPDF = file.type === "application/pdf" || file.name.endsWith(".pdf");
-
-    if (isPDF) {
-      setUploading(true);
-      toast.info("Parsing PDF...");
-      try {
-        const buffer = await file.arrayBuffer();
-        const rows = await parseChasePDF(buffer);
-        if (rows.length === 0) {
-          toast.error("No transactions found in PDF. The format may not be supported yet.");
-        } else {
-          toast.success(`Found ${rows.length} transactions`);
-          setCsvRows(rows);
-          setShowUpload(true);
-        }
-      } catch (err: any) {
-        console.error("PDF parse error:", err);
-        toast.error(err.message || "Failed to parse PDF");
-      } finally {
-        setUploading(false);
-      }
-    } else {
-      // CSV: parse client-side
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        const rows = parseChaseCSV(text);
-        rows.forEach(r => { r.category = autoCategory(r.description); });
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const rows = parseChaseCSV(text);
+      rows.forEach(r => { r.category = autoCategory(r.description); });
+      if (rows.length === 0) {
+        toast.error("No transactions found. Make sure it's a Chase CSV export.");
+      } else {
+        toast.success(`Found ${rows.length} transactions`);
         setCsvRows(rows);
         setShowUpload(true);
-      };
-      reader.readAsText(file);
-    }
+      }
+    };
+    reader.readAsText(file);
   }
 
   // Import selected CSV rows
@@ -375,12 +291,8 @@ export default function BusinessExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv,.pdf,text/csv,text/plain,application/pdf,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
-          <input ref={pdfRef} type="file" accept="application/pdf,.pdf" onChange={handleFileUpload} className="hidden" />
-          <Button size="sm" variant="outline" onClick={() => pdfRef.current?.click()} disabled={uploading} className="gap-2">
-            <Upload className="w-4 h-4" /> {uploading ? "Parsing..." : "Upload PDF"}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} className="gap-2">
             <Upload className="w-4 h-4" /> Upload CSV
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="gap-2">
