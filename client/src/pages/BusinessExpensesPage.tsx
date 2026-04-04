@@ -449,7 +449,7 @@ export default function BusinessExpensesPage() {
                       <td className="px-3 py-2">
                         <button
                           onClick={() => openCatPickerForExpense(e.id)}
-                          className="text-xs px-2 py-0.5 rounded bg-secondary text-foreground hover:bg-primary/20 hover:text-primary transition-colors"
+                          className="text-xs px-3 py-1.5 rounded-lg bg-secondary text-foreground hover:bg-primary/20 hover:text-primary transition-colors active:bg-primary/30 min-h-[32px]"
                         >
                           {e.category}
                         </button>
