@@ -38,6 +38,7 @@ export default function BillingPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
+  const [view, setView] = useState<"monthly" | "annual">("monthly");
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -139,6 +140,41 @@ export default function BillingPage() {
     crewCost: clientSummaries.reduce((s: number, c: ClientSummary) => s + c.totalCrewCost, 0),
     margin: clientSummaries.reduce((s: number, c: ClientSummary) => s + c.grossMargin, 0),
   }), [clientSummaries]);
+
+  // Annual data — monthly breakdown for the year
+  const annualData = useMemo(() => {
+    if (view !== "annual") return [];
+    const months: { month: string; monthIndex: number; projects: number; hours: number; revenue: number; crewCost: number; margin: number }[] = [];
+    for (let m = 0; m < 12; m++) {
+      const mp = data.projects.filter(p => {
+        const d = new Date(p.date + "T00:00:00");
+        if (d.getFullYear() !== year || d.getMonth() !== m) return false;
+        if (selectedClientId !== "all" && p.clientId !== selectedClientId) return false;
+        return true;
+      });
+      let hours = 0, revenue = 0, crewCost = 0;
+      mp.forEach(p => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        if (client) {
+          hours += getProjectBillableHours(p, client).totalBillable;
+          revenue += getProjectInvoiceAmount(p, client);
+        }
+        crewCost += getProjectCrewCost(p);
+      });
+      months.push({ month: MONTH_NAMES[m], monthIndex: m, projects: mp.length, hours, revenue, crewCost, margin: revenue - crewCost });
+    }
+    return months;
+  }, [data.projects, data.clients, year, selectedClientId, view]);
+
+  const annualTotals = useMemo(() => {
+    return annualData.reduce((acc, m) => ({
+      projects: acc.projects + m.projects,
+      hours: acc.hours + m.hours,
+      revenue: acc.revenue + m.revenue,
+      crewCost: acc.crewCost + m.crewCost,
+      margin: acc.margin + m.margin,
+    }), { projects: 0, hours: 0, revenue: 0, crewCost: 0, margin: 0 });
+  }, [annualData]);
 
   const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
@@ -254,19 +290,33 @@ export default function BillingPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
-        {/* Month navigator + client filter */}
+        {/* View toggle + navigator + client filter */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          {/* Month nav */}
-          <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2">
-            <button onClick={prevMonth} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-base font-semibold text-foreground min-w-[140px] text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              {MONTH_NAMES[month]} {year}
-            </span>
-            <button onClick={nextMonth} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-3">
+            {/* Monthly/Annual toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-border">
+              <button
+                onClick={() => setView("monthly")}
+                className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "monthly" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
+              >Monthly</button>
+              <button
+                onClick={() => setView("annual")}
+                className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "annual" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
+              >Annual</button>
+            </div>
+
+            {/* Navigator */}
+            <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2">
+              <button onClick={view === "monthly" ? prevMonth : () => setYear(y => y - 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-base font-semibold text-foreground min-w-[140px] text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {view === "monthly" ? `${MONTH_NAMES[month]} ${year}` : String(year)}
+              </span>
+              <button onClick={view === "monthly" ? nextMonth : () => setYear(y => y + 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Client filter */}
@@ -281,6 +331,70 @@ export default function BillingPage() {
             ))}
           </select>
         </div>
+
+        {view === "annual" ? (
+          /* ---- Annual View ---- */
+          <div className="space-y-5">
+            {/* Annual summary cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <SummaryCard icon={<Clock className="w-4 h-4" />} label="Total Hours" value={`${annualTotals.hours.toFixed(1)} hrs`} color="text-blue-400" bg="bg-blue-500/10" />
+              <SummaryCard icon={<DollarSign className="w-4 h-4" />} label="Total Revenue" value={formatCurrency(annualTotals.revenue)} color="text-amber-400" bg="bg-amber-500/10" />
+              <SummaryCard icon={<Users className="w-4 h-4" />} label="Crew Cost" value={formatCurrency(annualTotals.crewCost)} color="text-purple-400" bg="bg-purple-500/10" />
+              <SummaryCard icon={<TrendingUp className="w-4 h-4" />} label="Gross Margin" value={formatCurrency(annualTotals.margin)} color={annualTotals.margin >= 0 ? "text-green-400" : "text-red-400"} bg={annualTotals.margin >= 0 ? "bg-green-500/10" : "bg-red-500/10"} />
+            </div>
+
+            {/* Monthly breakdown table */}
+            <div className="bg-card border border-border rounded-lg">
+              <div className="px-4 py-3 border-b border-border">
+                <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Monthly Breakdown — {year}
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground border-b border-border">
+                      <th className="text-left px-4 py-2">Month</th>
+                      <th className="text-right px-3 py-2">Projects</th>
+                      <th className="text-right px-3 py-2">Hours</th>
+                      <th className="text-right px-3 py-2">Revenue</th>
+                      <th className="text-right px-3 py-2">Crew Cost</th>
+                      <th className="text-right px-4 py-2">Margin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {annualData.map(m => (
+                      <tr
+                        key={m.monthIndex}
+                        className={cn("border-b border-border/50 cursor-pointer hover:bg-white/3 transition-colors", m.projects === 0 && "text-muted-foreground")}
+                        onClick={() => { setMonth(m.monthIndex); setView("monthly"); }}
+                      >
+                        <td className="px-4 py-2 font-medium">{m.month}</td>
+                        <td className="text-right px-3 py-2">{m.projects || "—"}</td>
+                        <td className="text-right px-3 py-2">{m.hours ? `${m.hours.toFixed(1)}` : "—"}</td>
+                        <td className="text-right px-3 py-2">{m.revenue ? formatCurrency(m.revenue) : "—"}</td>
+                        <td className="text-right px-3 py-2 text-red-300/70">{m.crewCost ? formatCurrency(m.crewCost) : "—"}</td>
+                        <td className={cn("text-right px-4 py-2 font-medium", m.margin >= 0 ? "text-green-400" : "text-red-400")}>
+                          {m.revenue ? formatCurrency(m.margin) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-bold border-t-2 border-border">
+                      <td className="px-4 py-3">TOTAL</td>
+                      <td className="text-right px-3 py-3">{annualTotals.projects}</td>
+                      <td className="text-right px-3 py-3">{annualTotals.hours.toFixed(1)}</td>
+                      <td className="text-right px-3 py-3">{formatCurrency(annualTotals.revenue)}</td>
+                      <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.crewCost)}</td>
+                      <td className={cn("text-right px-4 py-3", annualTotals.margin >= 0 ? "text-green-400" : "text-red-400")}>{formatCurrency(annualTotals.margin)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (<>
 
         {/* Grand total summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -356,6 +470,7 @@ export default function BillingPage() {
             </div>
           </div>
         )}
+      </>)}
       </div>
     </div>
     </>
