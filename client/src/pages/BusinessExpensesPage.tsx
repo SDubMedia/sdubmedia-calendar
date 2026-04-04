@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
+import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X, Download } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getAuthToken } from "@/lib/supabase";
@@ -398,7 +398,7 @@ export default function BusinessExpensesPage() {
           </Button>
           {view === "report" && (
             <Button size="sm" onClick={() => window.print()} className="gap-2">
-              <Printer className="w-4 h-4" /> Print
+              <Download className="w-4 h-4" /> Save as PDF
             </Button>
           )}
         </div>
