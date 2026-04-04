@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { Plus, MapPin, Edit3, Trash2, ExternalLink } from "lucide-react";
+import { Plus, MapPin, Edit3, Trash2, ExternalLink, RefreshCw, Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useApp } from "@/contexts/AppContext";
 import type { Location } from "@/lib/types";
 import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
 
 interface LocationFormData {
   name: string;
@@ -27,11 +28,46 @@ const emptyForm = (): LocationFormData => ({
 });
 
 export default function LocationsPage() {
-  const { data, addLocation, updateLocation, deleteLocation } = useApp();
+  const { data, addLocation, updateLocation, deleteLocation, upsertDistance } = useApp();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Location | null>(null);
   const [form, setForm] = useState<LocationFormData>(emptyForm());
+  const [recalculating, setRecalculating] = useState(false);
+
+  async function recalculateAllDistances() {
+    const crewWithAddress = data.crewMembers.filter(c => c.homeAddress?.address && c.homeAddress?.city);
+    const locsWithAddress = data.locations.filter(l => l.address && l.city);
+    if (crewWithAddress.length === 0) { toast.error("No crew members have a home address set"); return; }
+    if (locsWithAddress.length === 0) { toast.error("No locations with addresses"); return; }
+
+    setRecalculating(true);
+    let count = 0;
+
+    for (const crew of crewWithAddress) {
+      const ha = crew.homeAddress!;
+      const origin = `${ha.address}, ${ha.city}, ${ha.state} ${ha.zip}`;
+      for (const loc of locsWithAddress) {
+        const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/calculate-distance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ origin, destination }),
+          });
+          if (res.ok) {
+            const { distanceMiles } = await res.json();
+            await upsertDistance(crew.id, loc.id, distanceMiles);
+            count++;
+          }
+        } catch { /* skip */ }
+      }
+    }
+    setRecalculating(false);
+    if (count > 0) toast.success(`Calculated ${count} distance${count !== 1 ? "s" : ""} for ${crewWithAddress.length} crew member${crewWithAddress.length !== 1 ? "s" : ""}`);
+    else toast.error("No distances calculated — check your Google Maps API key");
+  }
 
   const openAdd = () => { setEditingLocation(null); setForm(emptyForm()); setDialogOpen(true); };
   const openEdit = (loc: Location) => {
@@ -62,9 +98,15 @@ export default function LocationsPage() {
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Locations</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{data.locations.length} saved location{data.locations.length !== 1 ? "s" : ""}</p>
         </div>
-        <Button onClick={openAdd} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-          <Plus className="w-4 h-4" /> Add Location
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={recalculateAllDistances} disabled={recalculating} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
+            {recalculating ? "Calculating..." : "Recalculate Mileage"}
+          </Button>
+          <Button onClick={openAdd} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <Plus className="w-4 h-4" /> Add Location
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6">
@@ -95,14 +137,24 @@ export default function LocationsPage() {
                   {loc.address}<br />
                   {loc.city}, {loc.state} {loc.zip}
                 </div>
-                <a
-                  href={getMapsUrl(loc)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 text-xs text-primary flex items-center gap-1 hover:underline"
-                >
-                  <ExternalLink className="w-3 h-3" /> Open in Maps
-                </a>
+                <div className="flex items-center justify-between mt-2">
+                  <a
+                    href={getMapsUrl(loc)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary flex items-center gap-1 hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Open in Maps
+                  </a>
+                  {(() => {
+                    const dist = data.crewLocationDistances.find(d => d.locationId === loc.id);
+                    return dist ? (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Car className="w-3 h-3" /> {dist.distanceMiles} mi
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
               </div>
             ))}
           </div>
