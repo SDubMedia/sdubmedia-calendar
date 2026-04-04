@@ -269,7 +269,7 @@ export default function BusinessExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+          <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} className="gap-2">
             <Upload className="w-4 h-4" /> Upload Chase CSV
           </Button>
