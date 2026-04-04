@@ -110,6 +110,60 @@ export default function ProfitLossPage() {
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
   }, [data.projects, data.clients, year]);
 
+  // Pay per crew member for the year
+  const crewPayBreakdown = useMemo(() => {
+    const map = new Map<string, { name: string; totalPay: number; hours: number; projectCount: number }>();
+    data.projects
+      .filter(p => new Date(p.date + "T00:00:00").getFullYear() === year)
+      .forEach(p => {
+        const allEntries = [
+          ...(p.crew || []).map(e => ({ ...e, type: "crew" })),
+          ...(p.postProduction || []).map(e => ({ ...e, type: "post" })),
+        ];
+        const seen = new Set<string>(); // count project once per person
+        allEntries.forEach(e => {
+          const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+          if (!member) return;
+          const existing = map.get(e.crewMemberId) || { name: member.name, totalPay: 0, hours: 0, projectCount: 0 };
+          if (e.role === "Photo Editor" && p.editorBilling) {
+            existing.totalPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
+          } else if (e.role !== "Travel") {
+            existing.totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+          }
+          existing.hours += Number(e.hoursWorked ?? 0);
+          if (!seen.has(e.crewMemberId)) {
+            existing.projectCount++;
+            seen.add(e.crewMemberId);
+          }
+          map.set(e.crewMemberId, existing);
+        });
+      });
+    return Array.from(map.values()).sort((a, b) => b.totalPay - a.totalPay);
+  }, [data.projects, data.crewMembers, year]);
+
+  // Partner payouts for the year
+  const partnerPayouts = useMemo(() => {
+    const map = new Map<string, { name: string; totalPayout: number }>();
+    data.projects
+      .filter(p => new Date(p.date + "T00:00:00").getFullYear() === year)
+      .forEach(p => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        if (!client?.partnerSplit) return;
+        const split = client.partnerSplit;
+        const revenue = getProjectInvoiceAmount(p, client);
+        const crewCost = getProjectCrewCost(p);
+        const profit = revenue - crewCost;
+        if (profit <= 0) return;
+        const partnerCut = profit * (split.partnerPercent ?? 0);
+        if (partnerCut > 0) {
+          const existing = map.get(split.partnerName) || { name: split.partnerName, totalPayout: 0 };
+          existing.totalPayout += partnerCut;
+          map.set(split.partnerName, existing);
+        }
+      });
+    return Array.from(map.values()).sort((a, b) => b.totalPayout - a.totalPayout);
+  }, [data.projects, data.clients, year]);
+
   const annualTotals = useMemo(() => {
     return monthlyData.reduce((acc, m) => ({
       projectCount: acc.projectCount + m.projectCount,
@@ -282,6 +336,75 @@ export default function ProfitLossPage() {
             </table>
           </div>
         </div>
+        {/* Crew Pay Breakdown */}
+        {crewPayBreakdown.length > 0 && (
+          <div className="bg-card border border-border rounded-lg print:border-gray-300">
+            <div className="px-4 py-3 border-b border-border print:border-gray-300">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Crew Pay Breakdown
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300">
+                    <th className="text-left px-4 py-2">Crew Member</th>
+                    <th className="text-right px-3 py-2">Projects</th>
+                    <th className="text-right px-3 py-2">Hours</th>
+                    <th className="text-right px-4 py-2">Total Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crewPayBreakdown.map(c => (
+                    <tr key={c.name} className="border-b border-border/50 print:border-gray-200">
+                      <td className="px-4 py-2 font-medium">{c.name}</td>
+                      <td className="text-right px-3 py-2">{c.projectCount}</td>
+                      <td className="text-right px-3 py-2">{c.hours.toFixed(1)}</td>
+                      <td className="text-right px-4 py-2 font-medium">{formatCurrencyFull(c.totalPay)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-bold border-t-2 border-border print:border-gray-400">
+                    <td className="px-4 py-3">TOTAL</td>
+                    <td className="text-right px-3 py-3">{crewPayBreakdown.reduce((s, c) => s + c.projectCount, 0)}</td>
+                    <td className="text-right px-3 py-3">{crewPayBreakdown.reduce((s, c) => s + c.hours, 0).toFixed(1)}</td>
+                    <td className="text-right px-4 py-3">{formatCurrencyFull(crewPayBreakdown.reduce((s, c) => s + c.totalPay, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Partner Payouts */}
+        {partnerPayouts.length > 0 && (
+          <div className="bg-card border border-border rounded-lg print:border-gray-300">
+            <div className="px-4 py-3 border-b border-border print:border-gray-300">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Partner Payouts
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300">
+                    <th className="text-left px-4 py-2">Partner</th>
+                    <th className="text-right px-4 py-2">Total Payout</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {partnerPayouts.map(p => (
+                    <tr key={p.name} className="border-b border-border/50 print:border-gray-200">
+                      <td className="px-4 py-2 font-medium">{p.name}</td>
+                      <td className="text-right px-4 py-2 font-medium">{formatCurrencyFull(p.totalPayout)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
