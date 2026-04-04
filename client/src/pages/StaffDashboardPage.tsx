@@ -7,8 +7,14 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
-import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase } from "lucide-react";
+import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Home, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
+import type { HomeAddress } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
   upcoming: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -40,7 +46,7 @@ const MONTH_NAMES = [
 ];
 
 export default function StaffDashboardPage() {
-  const { data } = useApp();
+  const { data, updateCrewMember, upsertDistance } = useApp();
   const { profile } = useAuth();
   const crewMemberId = profile?.crewMemberId || "";
   const today = new Date();
@@ -113,6 +119,46 @@ export default function StaffDashboardPage() {
 
   const crewMember = data.crewMembers.find(cm => cm.id === crewMemberId);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  // Home address editing
+  const [addressForm, setAddressForm] = useState<HomeAddress>(
+    crewMember?.homeAddress || { address: "", city: "", state: "", zip: "" }
+  );
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  async function saveHomeAddress() {
+    if (!crewMemberId || !addressForm.address) {
+      toast.error("Please enter your street address");
+      return;
+    }
+    setSavingAddress(true);
+    try {
+      await updateCrewMember(crewMemberId, { homeAddress: addressForm });
+      const origin = `${addressForm.address}, ${addressForm.city}, ${addressForm.state} ${addressForm.zip}`;
+      let count = 0;
+      for (const loc of data.locations.filter(l => l.address && l.city)) {
+        const dest = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/calculate-distance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ origin, destination: dest }),
+          });
+          if (res.ok) {
+            const { distanceMiles } = await res.json();
+            await upsertDistance(crewMemberId, loc.id, distanceMiles);
+            count++;
+          }
+        } catch { /* skip */ }
+      }
+      toast.success(count > 0 ? `Address saved, ${count} distances calculated` : "Address saved");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save");
+    } finally {
+      setSavingAddress(false);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -342,6 +388,49 @@ export default function StaffDashboardPage() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Home Address for Mileage */}
+        <div className="bg-card border border-border rounded-lg">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Home className="w-4 h-4 text-primary" />
+              Home Address
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Used to calculate mileage to project locations. Only you and the owner can see this.</p>
+          </div>
+          <div className="p-4 space-y-3">
+            <Input
+              placeholder="Street address"
+              value={addressForm.address}
+              onChange={e => setAddressForm(f => ({ ...f, address: e.target.value }))}
+              className="bg-secondary border-border"
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                placeholder="City"
+                value={addressForm.city}
+                onChange={e => setAddressForm(f => ({ ...f, city: e.target.value }))}
+                className="bg-secondary border-border"
+              />
+              <Input
+                placeholder="State"
+                value={addressForm.state}
+                onChange={e => setAddressForm(f => ({ ...f, state: e.target.value }))}
+                className="bg-secondary border-border"
+              />
+              <Input
+                placeholder="ZIP"
+                value={addressForm.zip}
+                onChange={e => setAddressForm(f => ({ ...f, zip: e.target.value }))}
+                className="bg-secondary border-border"
+              />
+            </div>
+            <Button onClick={saveHomeAddress} disabled={savingAddress} className="gap-2">
+              <Save className="w-4 h-4" />
+              {savingAddress ? "Saving..." : "Save Address"}
+            </Button>
           </div>
         </div>
       </div>
