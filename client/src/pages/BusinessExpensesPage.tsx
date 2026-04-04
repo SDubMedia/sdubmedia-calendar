@@ -13,7 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getAuthToken } from "@/lib/supabase";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -136,6 +138,45 @@ export default function BusinessExpensesPage() {
 
   const [uploading, setUploading] = useState(false);
 
+  // Parse Chase PDF client-side
+  async function parseChasePDF(buffer: ArrayBuffer): Promise<CsvRow[]> {
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let fullText = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((item: any) => item.str).join(" ");
+      fullText += pageText + "\n";
+    }
+
+    // Extract transactions: MM/DD  MM/DD  DESCRIPTION  AMOUNT or MM/DD  DESCRIPTION  AMOUNT
+    const txnRegex = /(\d{2}\/\d{2})(?:\s+\d{2}\/\d{2})?\s+(.+?)\s+(-?\d{1,}[,\d]*\.\d{2})/g;
+    const yearMatch = fullText.match(/(\d{4})/);
+    const statementYear = yearMatch ? yearMatch[1] : String(new Date().getFullYear());
+
+    const rows: CsvRow[] = [];
+    let match;
+    while ((match = txnRegex.exec(fullText)) !== null) {
+      const [, dateStr, description, amountStr] = match;
+      const amount = Math.abs(parseFloat(amountStr.replace(/,/g, "")) || 0);
+      if (amount === 0) continue;
+      if (/payment.*thank/i.test(description) || /automatic payment/i.test(description)) continue;
+
+      const [month, day] = dateStr.split("/");
+      const date = `${statementYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+
+      rows.push({
+        date,
+        description: description.trim(),
+        category: autoCategory(description) as BusinessExpenseCategory,
+        amount,
+        chaseCategory: "",
+        selected: true,
+      });
+    }
+    return rows;
+  }
+
   // Handle CSV or PDF file upload
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -145,35 +186,16 @@ export default function BusinessExpensesPage() {
     const isPDF = file.type === "application/pdf" || file.name.endsWith(".pdf");
 
     if (isPDF) {
-      // Send PDF to server for parsing
       setUploading(true);
       try {
         const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const base64 = btoa(binary);
-        const token = await getAuthToken();
-        const res = await fetch("/api/parse-statement", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ fileData: base64, fileType: "pdf" }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Failed" }));
-          throw new Error(err.error || "Failed to parse PDF");
+        const rows = await parseChasePDF(buffer);
+        if (rows.length === 0) {
+          toast.error("No transactions found in PDF. Make sure it's a Chase statement.");
+        } else {
+          setCsvRows(rows);
+          setShowUpload(true);
         }
-        const { transactions } = await res.json();
-        const rows: CsvRow[] = (transactions || []).map((t: any) => ({
-          date: t.date,
-          description: t.description,
-          category: autoCategory(t.description) as BusinessExpenseCategory,
-          amount: t.amount,
-          chaseCategory: t.category || "",
-          selected: true,
-        }));
-        setCsvRows(rows);
-        setShowUpload(true);
       } catch (err: any) {
         toast.error(err.message || "Failed to parse PDF");
       } finally {
