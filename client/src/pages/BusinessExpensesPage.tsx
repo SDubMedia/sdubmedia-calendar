@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getAuthToken } from "@/lib/supabase";
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -132,21 +133,63 @@ export default function BusinessExpensesPage() {
     return "Other";
   }
 
-  // Handle CSV file upload
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  const [uploading, setUploading] = useState(false);
+
+  // Handle CSV or PDF file upload
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const rows = parseChaseCSV(text);
-      // Auto-categorize each row
-      rows.forEach(r => { r.category = autoCategory(r.description); });
-      setCsvRows(rows);
-      setShowUpload(true);
-    };
-    reader.readAsText(file);
     e.target.value = "";
+
+    const isPDF = file.type === "application/pdf" || file.name.endsWith(".pdf");
+
+    if (isPDF) {
+      // Send PDF to server for parsing
+      setUploading(true);
+      try {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+        const token = await getAuthToken();
+        const res = await fetch("/api/parse-statement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ fileData: base64, fileType: "pdf" }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Failed" }));
+          throw new Error(err.error || "Failed to parse PDF");
+        }
+        const { transactions } = await res.json();
+        const rows: CsvRow[] = (transactions || []).map((t: any) => ({
+          date: t.date,
+          description: t.description,
+          category: autoCategory(t.description) as BusinessExpenseCategory,
+          amount: t.amount,
+          chaseCategory: t.category || "",
+          selected: true,
+        }));
+        setCsvRows(rows);
+        setShowUpload(true);
+      } catch (err: any) {
+        toast.error(err.message || "Failed to parse PDF");
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      // CSV: parse client-side
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        const rows = parseChaseCSV(text);
+        rows.forEach(r => { r.category = autoCategory(r.description); });
+        setCsvRows(rows);
+        setShowUpload(true);
+      };
+      reader.readAsText(file);
+    }
   }
 
   // Import selected CSV rows
@@ -269,9 +312,9 @@ export default function BusinessExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} className="gap-2">
-            <Upload className="w-4 h-4" /> Upload Chase CSV
+          <input ref={fileRef} type="file" accept=".csv,.pdf,text/csv,text/plain,application/pdf,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-2">
+            <Upload className="w-4 h-4" /> {uploading ? "Parsing..." : "Upload Statement"}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" /> Add Expense
