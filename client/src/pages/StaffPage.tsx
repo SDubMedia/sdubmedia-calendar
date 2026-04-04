@@ -54,6 +54,11 @@ interface StaffFormData {
   email: string;
   defaultPayRatePerHour: number;
   homeAddress: HomeAddress | null;
+  businessName: string;
+  businessAddress: string;
+  businessCity: string;
+  businessState: string;
+  businessZip: string;
   taxId: string;
   taxIdType: "ssn" | "ein" | "";
 }
@@ -65,6 +70,11 @@ const emptyForm = (): StaffFormData => ({
   email: "",
   defaultPayRatePerHour: 0,
   homeAddress: null,
+  businessName: "",
+  businessAddress: "",
+  businessCity: "",
+  businessState: "",
+  businessZip: "",
   taxId: "",
   taxIdType: "",
 });
@@ -131,6 +141,11 @@ export default function StaffPage() {
       email: member.email,
       defaultPayRatePerHour: Number(member.defaultPayRatePerHour ?? 0),
       homeAddress: member.homeAddress || null,
+      businessName: member.businessName || "",
+      businessAddress: member.businessAddress || "",
+      businessCity: member.businessCity || "",
+      businessState: member.businessState || "",
+      businessZip: member.businessZip || "",
       taxId: member.taxId || "",
       taxIdType: member.taxIdType || "",
     });
@@ -180,18 +195,20 @@ export default function StaffPage() {
         email: form.email.trim(),
         defaultPayRatePerHour: form.defaultPayRatePerHour,
         homeAddress: form.homeAddress,
+        businessName: form.businessName.trim(),
+        businessAddress: form.businessAddress.trim(),
+        businessCity: form.businessCity.trim(),
+        businessState: form.businessState.trim(),
+        businessZip: form.businessZip.trim(),
         taxId: form.taxId,
         taxIdType: form.taxIdType,
       };
-      // Auto-fill business address from home address if not set
-      if (form.homeAddress?.address) {
-        const existing = editingId ? data.crewMembers.find(c => c.id === editingId) : null;
-        if (!existing?.businessAddress) {
-          payload.businessAddress = form.homeAddress.address;
-          payload.businessCity = form.homeAddress.city;
-          payload.businessState = form.homeAddress.state;
-          payload.businessZip = form.homeAddress.zip;
-        }
+      // Auto-fill business address from home address if business address is still empty
+      if (form.homeAddress?.address && !form.businessAddress) {
+        payload.businessAddress = form.homeAddress.address;
+        payload.businessCity = form.homeAddress.city;
+        payload.businessState = form.homeAddress.state;
+        payload.businessZip = form.homeAddress.zip;
       }
       let memberId = editingId;
       if (editingId) {
@@ -477,6 +494,29 @@ export default function StaffPage() {
                   value={form.homeAddress?.zip || ""}
                   onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, zip: e.target.value } }))}
                 />
+              </div>
+            </div>
+
+            {/* Business Info (for invoices & 1099) */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-primary" />
+                Business Info (for invoices & 1099)
+              </Label>
+              <Input
+                placeholder="Business name (or personal name)"
+                value={form.businessName}
+                onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))}
+              />
+              <Input
+                placeholder="Business address"
+                value={form.businessAddress}
+                onChange={e => setForm(f => ({ ...f, businessAddress: e.target.value }))}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <Input placeholder="City" value={form.businessCity} onChange={e => setForm(f => ({ ...f, businessCity: e.target.value }))} />
+                <Input placeholder="State" value={form.businessState} onChange={e => setForm(f => ({ ...f, businessState: e.target.value }))} />
+                <Input placeholder="ZIP" value={form.businessZip} onChange={e => setForm(f => ({ ...f, businessZip: e.target.value }))} />
               </div>
             </div>
 
