@@ -51,14 +51,19 @@ export default function ContractorSummaryPage() {
           const member = data.crewMembers.find(c => c.id === e.crewMemberId);
           if (!member) return;
 
+          // Use business address, fall back to home address
+          const addr = member.businessAddress || member.homeAddress?.address || "";
+          const city = member.businessCity || member.homeAddress?.city || "";
+          const state = member.businessState || member.homeAddress?.state || "";
+          const zip = member.businessZip || member.homeAddress?.zip || "";
           const existing = map.get(e.crewMemberId) || {
             id: member.id,
             name: member.name,
             businessName: member.businessName || "",
-            address: member.businessAddress || "",
-            city: member.businessCity || "",
-            state: member.businessState || "",
-            zip: member.businessZip || "",
+            address: addr,
+            city,
+            state,
+            zip,
             email: member.email || "",
             phone: member.phone || "",
             taxId: member.taxId || "",

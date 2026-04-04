@@ -173,7 +173,7 @@ export default function StaffPage() {
       if (newRole && !form.roleRates.some(rr => rr.role === newRole)) {
         finalRoleRates = [...finalRoleRates, { role: newRole as CrewRole, payRatePerHour: newRate }];
       }
-      const payload = {
+      const payload: any = {
         name: form.name.trim(),
         roleRates: finalRoleRates,
         phone: form.phone.trim(),
@@ -183,6 +183,16 @@ export default function StaffPage() {
         taxId: form.taxId,
         taxIdType: form.taxIdType,
       };
+      // Auto-fill business address from home address if not set
+      if (form.homeAddress?.address) {
+        const existing = editingId ? data.crewMembers.find(c => c.id === editingId) : null;
+        if (!existing?.businessAddress) {
+          payload.businessAddress = form.homeAddress.address;
+          payload.businessCity = form.homeAddress.city;
+          payload.businessState = form.homeAddress.state;
+          payload.businessZip = form.homeAddress.zip;
+        }
+      }
       let memberId = editingId;
       if (editingId) {
         await updateCrewMember(editingId, payload);

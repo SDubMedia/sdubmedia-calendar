@@ -133,7 +133,15 @@ export default function StaffDashboardPage() {
     }
     setSavingAddress(true);
     try {
-      await updateCrewMember(crewMemberId, { homeAddress: addressForm });
+      // Save home address + auto-fill business address if empty
+      const updates: any = { homeAddress: addressForm };
+      if (!crewMember?.businessAddress) {
+        updates.businessAddress = addressForm.address;
+        updates.businessCity = addressForm.city;
+        updates.businessState = addressForm.state;
+        updates.businessZip = addressForm.zip;
+      }
+      await updateCrewMember(crewMemberId, updates);
       const origin = `${addressForm.address}, ${addressForm.city}, ${addressForm.state} ${addressForm.zip}`;
       let count = 0;
       for (const loc of data.locations.filter(l => l.address && l.city)) {
