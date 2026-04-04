@@ -152,14 +152,19 @@ export default function MileageReportPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 print:hidden">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Mileage Log
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Business mileage for tax records</p>
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 print:hidden space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Mileage Log
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Business mileage for tax records</p>
+          </div>
+          <Button size="sm" onClick={handlePrint} className="gap-2">
+            <Printer className="w-4 h-4" /> Print
+          </Button>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">Rate/mi:</span>
             <span className="text-muted-foreground text-sm">$</span>
@@ -175,9 +180,6 @@ export default function MileageReportPage() {
           <Button size="sm" variant="outline" onClick={recalculateDistances} disabled={recalculating} className="gap-2">
             <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
             {recalculating ? "Calculating..." : "Recalculate"}
-          </Button>
-          <Button size="sm" onClick={handlePrint} className="gap-2">
-            <Printer className="w-4 h-4" /> Print
           </Button>
         </div>
       </div>
