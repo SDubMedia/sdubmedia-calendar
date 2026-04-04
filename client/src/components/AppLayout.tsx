@@ -65,6 +65,7 @@ const allNavItems: NavItem[] = [
   { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
   { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
   { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
+  { label: "1099", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
   { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"] },
   { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
   { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
