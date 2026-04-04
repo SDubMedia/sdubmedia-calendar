@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
@@ -117,6 +117,12 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
     }
   };
 
+  const togglePaid = async () => {
+    const newPaidDate = project.paidDate ? null : new Date().toISOString().slice(0, 10);
+    await updateProject(project.id, { paidDate: newPaidDate });
+    toast.success(newPaidDate ? "Marked as paid" : "Marked as unpaid");
+  };
+
   const mapsUrl = location
     ? `https://maps.google.com/?q=${encodeURIComponent(`${location.address}, ${location.city}, ${location.state} ${location.zip}`)}`
     : null;
@@ -140,6 +146,11 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   )}>
                     {STATUS_LABELS[project.status]}
                   </Badge>
+                  {project.paidDate && (
+                    <Badge className="text-xs bg-green-500/20 text-green-300 border-green-500/30">
+                      Paid
+                    </Badge>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 mr-8">
@@ -324,6 +335,14 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   {STATUS_NEXT_LABEL[project.status]}
                 </Button>
               )}
+              <Button
+                variant="outline"
+                onClick={togglePaid}
+                className={cn("w-full gap-2", project.paidDate ? "border-green-500/50 text-green-300" : "border-border")}
+              >
+                <DollarSign className="w-4 h-4" />
+                {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
+              </Button>
               <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
                 Edit Project
               </Button>

@@ -163,6 +163,7 @@ function rowToProject(r: any): Project {
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
     editorBilling: r.editor_billing || null,
     projectRate: r.project_rate != null ? Number(r.project_rate) : null,
+    paidDate: r.paid_date || null,
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     deliverableUrl: r.deliverable_url || "",
@@ -493,6 +494,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       post_production: p.postProduction,
       editor_billing: p.editorBilling || null,
       project_rate: p.projectRate ?? null,
+      paid_date: p.paidDate || null,
       edit_types: p.editTypes,
       notes: p.notes,
       deliverable_url: p.deliverableUrl || "",
@@ -516,6 +518,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
     if (p.projectRate != null) patch.project_rate = p.projectRate;
+    if (p.paidDate !== undefined) patch.paid_date = p.paidDate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
@@ -602,8 +605,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     patch.updated_at = new Date().toISOString();
     const { error } = await supabase.from("invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x) }));
-  }, []);
+
+    // When invoice marked paid, auto-mark all linked projects as paid
+    if (inv.status === "paid") {
+      const invoice = data.invoices.find(x => x.id === id);
+      const projectIds = (invoice?.lineItems || []).map(li => li.projectId).filter(Boolean);
+      const today = new Date().toISOString().slice(0, 10);
+      for (const pid of projectIds) {
+        await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
+      }
+      setData(d => ({
+        ...d,
+        invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x),
+        projects: d.projects.map(p => projectIds.includes(p.id) ? { ...p, paidDate: today } : p),
+      }));
+    } else {
+      setData(d => ({ ...d, invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x) }));
+    }
+  }, [data.invoices]);
 
   const deleteInvoice = useCallback(async (id: string) => {
     const { error } = await supabase.from("invoices").delete().eq("id", id);

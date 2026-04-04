@@ -170,6 +170,7 @@ export interface Project {
   postProduction: ProjectPostEntry[];
   editorBilling?: EditorBilling | null; // photo editor image-based billing
   projectRate?: number | null; // per-project rate override (for per_project billing)
+  paidDate?: string | null; // date this project was marked paid (ISO date or null)
   editTypes: EditType[];
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables

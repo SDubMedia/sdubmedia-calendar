@@ -799,8 +799,16 @@ export default function ReportsPage() {
     );
   }
 
-  const ytdHours = filteredProjects.reduce((s, p) => s + getProjectHours(p).totalHours, 0);
-  const ytdInvoice = clientBillingStats.reduce((s, r) => s + r.invoiceAmount, 0);
+  const ytdHours = filteredProjects.reduce((s, p) => {
+    const client = data.clients.find(c => c.id === p.clientId);
+    if (!client) return s + getProjectHours(p).totalHours;
+    return s + getProjectBillableHours(p, client).totalBillable;
+  }, 0);
+  const ytdInvoice = filteredProjects.reduce((s, p) => {
+    const client = data.clients.find(c => c.id === p.clientId);
+    if (!client) return s;
+    return s + getProjectInvoiceAmount(p, client);
+  }, 0);
 
   return (
     <>
@@ -864,7 +872,7 @@ export default function ReportsPage() {
       </Card>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2 mb-1">
@@ -886,17 +894,8 @@ export default function ReportsPage() {
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2 mb-1">
-              <Users className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">This Month</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{monthlyProjects.length}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-2 mb-1">
               <DollarSign className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">YTD Invoice</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">YTD Revenue</span>
             </div>
             <p className="text-2xl font-bold text-foreground">{formatCurrency(ytdInvoice)}</p>
           </CardContent>

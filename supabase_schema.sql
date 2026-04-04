@@ -115,6 +115,7 @@ create table if not exists projects (
   post_production jsonb not null default '[]',
   editor_billing jsonb,
   project_rate numeric,
+  paid_date text,
   edit_types text[] not null default '{}',
   notes text not null default '',
   deliverable_url text not null default '',

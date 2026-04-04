@@ -36,6 +36,7 @@ const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
 const ClientReportsPage = lazy(() => import("./pages/ClientReportsPage"));
 const HelpPage = lazy(() => import("./pages/HelpPage"));
 const MileageReportPage = lazy(() => import("./pages/MileageReportPage"));
+const ProfitLossPage = lazy(() => import("./pages/ProfitLossPage"));
 
 function LoadingScreen() {
   return (
@@ -98,6 +99,7 @@ function Router() {
         {isOwner && <Route path="/manage" component={ManagePage} />}
         {isOwner && <Route path="/users" component={UsersPage} />}
         <Route path="/mileage" component={MileageReportPage} />
+        {(isOwner || isPartner) && <Route path="/profit-loss" component={ProfitLossPage} />}
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />

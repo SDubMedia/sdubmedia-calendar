@@ -152,6 +152,7 @@ async function createProject(req: VercelRequest, res: VercelResponse) {
     post_production: body.post_production || [],
     editor_billing: body.editor_billing || null,
     project_rate: body.project_rate ?? null,
+    paid_date: body.paid_date || null,
     edit_types: body.edit_types || [],
     notes: body.notes || "",
     deliverable_url: body.deliverable_url || "",
@@ -182,6 +183,7 @@ async function updateProject(req: VercelRequest, res: VercelResponse) {
   if (body.post_production !== undefined) patch.post_production = body.post_production;
   if (body.editor_billing !== undefined) patch.editor_billing = body.editor_billing;
   if (body.project_rate !== undefined) patch.project_rate = body.project_rate;
+  if (body.paid_date !== undefined) patch.paid_date = body.paid_date;
   if (body.edit_types !== undefined) patch.edit_types = body.edit_types;
   if (body.notes !== undefined) patch.notes = body.notes;
   if (body.deliverable_url !== undefined) patch.deliverable_url = body.deliverable_url;
