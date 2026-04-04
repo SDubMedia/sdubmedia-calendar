@@ -105,6 +105,7 @@ export default function BusinessExpensesPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   // Manual add dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -313,8 +314,12 @@ export default function BusinessExpensesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv,.pdf,text/csv,text/plain,application/pdf,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
+          <input ref={pdfRef} type="file" accept="application/pdf,.pdf" onChange={handleFileUpload} className="hidden" />
+          <Button size="sm" variant="outline" onClick={() => pdfRef.current?.click()} disabled={uploading} className="gap-2">
+            <Upload className="w-4 h-4" /> {uploading ? "Parsing..." : "Upload PDF"}
+          </Button>
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-2">
-            <Upload className="w-4 h-4" /> {uploading ? "Parsing..." : "Upload Statement"}
+            <Upload className="w-4 h-4" /> Upload CSV
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" /> Add Expense
