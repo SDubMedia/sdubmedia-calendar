@@ -133,10 +133,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   // Filter nav structure based on role and features
+  // Owner always sees everything — feature flags only affect staff/partner/client
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
       if (!item.roles.includes(role)) return false;
-      if (item.feature && features && !features[item.feature]) return false;
+      if (role !== "owner" && item.feature && features && !features[item.feature]) return false;
       return true;
     }
     return navStructure

@@ -269,41 +269,55 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Feature Toggles */}
+        {/* Feature Visibility */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Features
+              Feature Visibility
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Toggle features on or off. Disabled features are hidden from the sidebar and your team.</p>
+            <p className="text-xs text-muted-foreground">You (owner) always have access to everything. These toggles control what your team sees.</p>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {FEATURE_TOGGLES.map(ft => (
-              <button
-                key={ft.key}
-                onClick={() => toggleFeature(ft.key)}
-                className={cn(
-                  "w-full flex items-center justify-between p-3 rounded-lg border transition-colors text-left",
-                  features[ft.key] ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/20"
-                )}
-              >
-                <div className="min-w-0">
-                  <p className={cn("text-sm font-medium", features[ft.key] ? "text-foreground" : "text-muted-foreground")}>
-                    {ft.label}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{ft.description}</p>
-                </div>
-                <div className={cn(
-                  "w-10 h-5 rounded-full transition-colors shrink-0 ml-3",
-                  features[ft.key] ? "bg-primary" : "bg-secondary border border-border"
-                )}>
-                  <span className={cn(
-                    "block w-4 h-4 rounded-full bg-white transition-transform mt-0.5",
-                    features[ft.key] ? "translate-x-5" : "translate-x-0.5"
-                  )} />
-                </div>
-              </button>
-            ))}
+          <CardContent className="space-y-6">
+            {/* Staff & Crew */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Staff & Crew</p>
+              <div className="space-y-1.5">
+                {FEATURE_TOGGLES.filter(ft => ["calendar", "crewManagement", "invoicing", "mileage"].includes(ft.key)).map(ft => (
+                  <FeatureToggleRow key={ft.key} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
+                ))}
+              </div>
+            </div>
+
+            {/* Partners */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Partners</p>
+              <div className="space-y-1.5">
+                {FEATURE_TOGGLES.filter(ft => ["calendar", "invoicing", "partnerSplits", "contentSeries"].includes(ft.key)).map(ft => (
+                  <FeatureToggleRow key={`partner-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
+                ))}
+              </div>
+            </div>
+
+            {/* Clients */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Clients</p>
+              <div className="space-y-1.5">
+                {FEATURE_TOGGLES.filter(ft => ["clientPortal", "contentSeries", "calendar"].includes(ft.key)).map(ft => (
+                  <FeatureToggleRow key={`client-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
+                ))}
+              </div>
+            </div>
+
+            {/* All Features (master toggles) */}
+            <div className="border-t border-border pt-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">All Features (Master Toggles)</p>
+              <p className="text-[10px] text-muted-foreground mb-2">Turn features on/off globally. Affects all non-owner roles above.</p>
+              <div className="space-y-1.5">
+                {FEATURE_TOGGLES.map(ft => (
+                  <FeatureToggleRow key={`all-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -345,6 +359,33 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function FeatureToggleRow({ ft, features, onToggle }: { ft: FeatureToggle; features: OrgFeatures; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        "w-full flex items-center justify-between p-2.5 rounded-lg border transition-colors text-left",
+        features[ft.key] ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/20"
+      )}
+    >
+      <div className="min-w-0">
+        <p className={cn("text-sm font-medium", features[ft.key] ? "text-foreground" : "text-muted-foreground")}>
+          {ft.label}
+        </p>
+      </div>
+      <div className={cn(
+        "w-10 h-5 rounded-full transition-colors shrink-0 ml-3",
+        features[ft.key] ? "bg-primary" : "bg-secondary border border-border"
+      )}>
+        <span className={cn(
+          "block w-4 h-4 rounded-full bg-white transition-transform mt-0.5",
+          features[ft.key] ? "translate-x-5" : "translate-x-0.5"
+        )} />
+      </div>
+    </button>
   );
 }
 
