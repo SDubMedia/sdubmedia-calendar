@@ -344,6 +344,39 @@ export interface AppNotification {
   createdAt: string;
 }
 
+// Business expense categories (Schedule C aligned)
+export type BusinessExpenseCategory =
+  | "Equipment"
+  | "Software"
+  | "Travel"
+  | "Meals"
+  | "Advertising"
+  | "Office"
+  | "Insurance"
+  | "Vehicle"
+  | "Education"
+  | "Subscriptions"
+  | "Other";
+
+export interface BusinessExpense {
+  id: string;
+  date: string;
+  description: string;
+  category: BusinessExpenseCategory;
+  amount: number;
+  serialNumber: string; // optional — for equipment tracking
+  notes: string;
+  chaseCategory: string; // original category from Chase CSV
+  createdAt: string;
+}
+
+export interface CategoryRule {
+  id: string;
+  keyword: string;
+  category: BusinessExpenseCategory;
+  createdAt: string;
+}
+
 // Manual mileage trip (office visit, gear pickup, ad-hoc)
 export interface ManualTrip {
   id: string;
@@ -376,6 +409,8 @@ export interface AppData {
   contractorInvoices: ContractorInvoice[];
   crewLocationDistances: CrewLocationDistance[];
   manualTrips: ManualTrip[];
+  businessExpenses: BusinessExpense[];
+  categoryRules: CategoryRule[];
   series: Series[];
   organization: Organization | null;
 }

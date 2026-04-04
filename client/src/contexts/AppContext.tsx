@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -65,6 +65,13 @@ interface AppContextValue {
   // Manual Trips
   addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
   deleteManualTrip: (id: string) => Promise<void>;
+  // Business Expenses
+  addBusinessExpense: (e: Omit<BusinessExpense, "id" | "createdAt">) => Promise<BusinessExpense>;
+  addBusinessExpenses: (expenses: Omit<BusinessExpense, "id" | "createdAt">[]) => Promise<void>;
+  updateBusinessExpense: (id: string, e: Partial<BusinessExpense>) => Promise<void>;
+  deleteBusinessExpense: (id: string) => Promise<void>;
+  // Category Rules
+  upsertCategoryRule: (keyword: string, category: BusinessExpenseCategory) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -112,6 +119,29 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
     crewMemberId: r.crew_member_id,
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToBusinessExpense(r: any): BusinessExpense {
+  return {
+    id: r.id,
+    date: r.date,
+    description: r.description || "",
+    category: r.category || "Other",
+    amount: Number(r.amount ?? 0),
+    serialNumber: r.serial_number || "",
+    notes: r.notes || "",
+    chaseCategory: r.chase_category || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToCategoryRule(r: any): CategoryRule {
+  return {
+    id: r.id,
+    keyword: r.keyword,
+    category: r.category || "Other",
     createdAt: r.created_at,
   };
 }
@@ -286,7 +316,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -311,6 +341,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: contractorInvs, error: e7b },
         { data: distances, error: _e7c },
         { data: manualTripsData, error: _e7d },
+        { data: bizExpenses, error: _e7e },
+        { data: catRules, error: _e7f },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -324,6 +356,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("crew_location_distances").select("*"),
         supabase.from("manual_trips").select("*").order("date", { ascending: false }),
+        supabase.from("business_expenses").select("*").order("date", { ascending: false }),
+        supabase.from("category_rules").select("*"),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -342,6 +376,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
         crewLocationDistances: (distances || []).map(rowToCrewLocationDistance),
         manualTrips: (manualTripsData || []).map(rowToManualTrip),
+        businessExpenses: (bizExpenses || []).map(rowToBusinessExpense),
+        categoryRules: (catRules || []).map(rowToCategoryRule),
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -468,6 +504,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, manualTrips: d.manualTrips.filter(x => x.id !== id) }));
   }, []);
+
+  // ---- Business Expenses ----
+  const addBusinessExpense = useCallback(async (e: Omit<BusinessExpense, "id" | "createdAt">): Promise<BusinessExpense> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("business_expenses").insert({
+      id, ...(orgId ? { org_id: orgId } : {}), date: e.date, description: e.description,
+      category: e.category, amount: e.amount, serial_number: e.serialNumber || "",
+      notes: e.notes || "", chase_category: e.chaseCategory || "",
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const expense = rowToBusinessExpense(row);
+    setData(d => ({ ...d, businessExpenses: [expense, ...d.businessExpenses] }));
+    return expense;
+  }, [orgId]);
+
+  const addBusinessExpenses = useCallback(async (expenses: Omit<BusinessExpense, "id" | "createdAt">[]) => {
+    const rows = expenses.map(e => ({
+      id: nanoid(10), ...(orgId ? { org_id: orgId } : {}), date: e.date, description: e.description,
+      category: e.category, amount: e.amount, serial_number: e.serialNumber || "",
+      notes: e.notes || "", chase_category: e.chaseCategory || "",
+    }));
+    const { data: inserted, error } = await supabase.from("business_expenses").insert(rows).select();
+    if (error) throw new Error(error.message);
+    const newExpenses = (inserted || []).map(rowToBusinessExpense);
+    setData(d => ({ ...d, businessExpenses: [...newExpenses, ...d.businessExpenses] }));
+  }, [orgId]);
+
+  const updateBusinessExpense = useCallback(async (id: string, e: Partial<BusinessExpense>) => {
+    const patch: any = {};
+    if (e.date !== undefined) patch.date = e.date;
+    if (e.description !== undefined) patch.description = e.description;
+    if (e.category !== undefined) patch.category = e.category;
+    if (e.amount !== undefined) patch.amount = e.amount;
+    if (e.serialNumber !== undefined) patch.serial_number = e.serialNumber;
+    if (e.notes !== undefined) patch.notes = e.notes;
+    const { error } = await supabase.from("business_expenses").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, businessExpenses: d.businessExpenses.map(x => x.id === id ? { ...x, ...e } : x) }));
+  }, []);
+
+  const deleteBusinessExpense = useCallback(async (id: string) => {
+    const { error } = await supabase.from("business_expenses").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, businessExpenses: d.businessExpenses.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Category Rules ----
+  const upsertCategoryRule = useCallback(async (keyword: string, category: BusinessExpenseCategory) => {
+    const id = nanoid(10);
+    const { error } = await supabase.from("category_rules").upsert({
+      id, ...(orgId ? { org_id: orgId } : {}), keyword: keyword.toUpperCase(), category,
+    }, { onConflict: "org_id,keyword" });
+    if (error) throw new Error(error.message);
+    setData(d => {
+      const existing = d.categoryRules.find(r => r.keyword === keyword.toUpperCase());
+      if (existing) {
+        return { ...d, categoryRules: d.categoryRules.map(r => r.keyword === keyword.toUpperCase() ? { ...r, category } : r) };
+      }
+      return { ...d, categoryRules: [...d.categoryRules, { id, keyword: keyword.toUpperCase(), category, createdAt: new Date().toISOString() }] };
+    });
+  }, [orgId]);
 
   // ---- Locations ----
   const addLocation = useCallback(async (l: Omit<Location, "id">): Promise<Location> => {
@@ -836,6 +933,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       fetchComments, addComment,
       upsertDistance,
       addManualTrip, deleteManualTrip,
+      addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
+      upsertCategoryRule,
     }}>
       {children}
     </AppContext.Provider>
