@@ -23,7 +23,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { extractText } = await import("unpdf");
     const buffer = Buffer.from(fileData, "base64");
-    const { text } = await extractText(buffer);
+    const uint8 = new Uint8Array(buffer);
+    const { text } = await extractText(uint8);
 
     const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
 
