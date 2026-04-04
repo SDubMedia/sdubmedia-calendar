@@ -76,14 +76,42 @@ export default function LocationsPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  async function calculateDistancesForLocation(loc: Location) {
+    const crewWithAddress = data.crewMembers.filter(c => c.homeAddress?.address && c.homeAddress?.city);
+    if (crewWithAddress.length === 0 || !loc.address || !loc.city) return;
+
+    const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+    for (const crew of crewWithAddress) {
+      const ha = crew.homeAddress!;
+      const origin = `${ha.address}, ${ha.city}, ${ha.state} ${ha.zip}`;
+      try {
+        const token = await getAuthToken();
+        const res = await fetch("/api/calculate-distance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ origin, destination }),
+        });
+        if (res.ok) {
+          const { distanceMiles } = await res.json();
+          await upsertDistance(crew.id, loc.id, distanceMiles);
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  const handleSave = async () => {
     if (!form.name || !form.address) { toast.error("Name and address are required"); return; }
     if (editingLocation) {
-      updateLocation(editingLocation.id, form);
+      await updateLocation(editingLocation.id, form);
       toast.success("Location updated");
+      // Recalculate if address changed
+      if (form.address !== editingLocation.address || form.city !== editingLocation.city) {
+        calculateDistancesForLocation({ ...editingLocation, ...form });
+      }
     } else {
-      addLocation(form);
+      const newLoc = await addLocation(form);
       toast.success("Location added");
+      calculateDistancesForLocation(newLoc);
     }
     setDialogOpen(false);
   };
