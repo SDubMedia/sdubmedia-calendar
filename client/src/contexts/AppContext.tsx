@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -72,6 +72,8 @@ interface AppContextValue {
   deleteBusinessExpense: (id: string) => Promise<void>;
   // Category Rules
   upsertCategoryRule: (keyword: string, category: BusinessExpenseCategory) => Promise<void>;
+  // Organization
+  updateOrganization: (updates: Partial<Organization>) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -312,7 +314,15 @@ function rowToComment(r: any): EpisodeComment {
 }
 
 function rowToOrg(r: any): Organization {
-  return { id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan, createdAt: r.created_at };
+  const defaultFeatures = { calendar: true, crewManagement: true, invoicing: true, mileage: false, expenses: false, clientPortal: false, contentSeries: false, partnerSplits: false };
+  return {
+    id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
+    features: { ...defaultFeatures, ...(r.features || {}) },
+    productionType: r.production_type || "both",
+    defaultBillingModel: r.default_billing_model || "hourly",
+    defaultBillingRate: Number(r.default_billing_rate ?? 0),
+    createdAt: r.created_at,
+  };
 }
 
 const emptyData: AppData = {
@@ -469,6 +479,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
   }, []);
+
+  // ---- Organization ----
+  const updateOrganization = useCallback(async (updates: Partial<Organization>) => {
+    if (!data.organization) return;
+    const patch: any = {};
+    if (updates.name !== undefined) patch.name = updates.name;
+    if (updates.features !== undefined) patch.features = updates.features;
+    if (updates.productionType !== undefined) patch.production_type = updates.productionType;
+    if (updates.defaultBillingModel !== undefined) patch.default_billing_model = updates.defaultBillingModel;
+    if (updates.defaultBillingRate !== undefined) patch.default_billing_rate = updates.defaultBillingRate;
+    const { error } = await supabase.from("organizations").update(patch).eq("id", data.organization.id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
+  }, [data.organization]);
 
   // ---- Crew Location Distances ----
   const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
@@ -935,6 +959,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
+      updateOrganization,
     }}>
       {children}
     </AppContext.Provider>

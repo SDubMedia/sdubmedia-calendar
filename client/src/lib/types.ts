@@ -4,12 +4,40 @@
 // ============================================================
 
 // ---- Organizations ----
+export interface OrgFeatures {
+  calendar: boolean;
+  crewManagement: boolean;
+  invoicing: boolean;
+  mileage: boolean;
+  expenses: boolean;
+  clientPortal: boolean;
+  contentSeries: boolean;
+  partnerSplits: boolean;
+}
+
+export const DEFAULT_FEATURES: OrgFeatures = {
+  calendar: true,
+  crewManagement: true,
+  invoicing: true,
+  mileage: false,
+  expenses: false,
+  clientPortal: false,
+  contentSeries: false,
+  partnerSplits: false,
+};
+
+export type ProductionType = "video" | "photo" | "both";
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   logoUrl: string;
   plan: string;
+  features: OrgFeatures;
+  productionType: ProductionType;
+  defaultBillingModel: BillingModel;
+  defaultBillingRate: number;
   createdAt: string;
 }
 

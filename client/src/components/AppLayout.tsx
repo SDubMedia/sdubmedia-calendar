@@ -40,31 +40,34 @@ import { useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
 
+import type { OrgFeatures } from "@/lib/types";
+
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   roles: UserRole[]; // which roles can see this item
+  feature?: keyof OrgFeatures; // if set, only show when this feature is enabled
 }
 
 const allNavItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"] },
-  { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"] },
-  { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"] },
-  { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"] },
-  { label: "Reports", href: "/my-reports", icon: BarChart2, roles: ["client"] },
-  { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"] },
-  { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"] },
-  { label: "Contractor Invoices", href: "/contractor-invoices", icon: FileText, roles: ["owner", "partner"] },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"], feature: "calendar" },
+  { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
+  { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"], feature: "invoicing" },
+  { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
+  { label: "Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
+  { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
+  { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+  { label: "Contractor Invoices", href: "/contractor-invoices", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
   { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
   { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
   { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
-  { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"] },
-  { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"] },
+  { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
+  { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
   { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"] },
-  { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"] },
-  { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"] },
+  { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
+  { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
   { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
@@ -81,9 +84,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
 
+  const features = data.organization?.features;
   const navItems = useMemo(() =>
-    allNavItems.filter(item => item.roles.includes(role)),
-    [role]
+    allNavItems.filter(item => {
+      if (!item.roles.includes(role)) return false;
+      if (item.feature && features && !features[item.feature]) return false;
+      return true;
+    }),
+    [role, features]
   );
 
   const isActive = (href: string) =>

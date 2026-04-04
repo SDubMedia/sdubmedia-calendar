@@ -154,6 +154,9 @@ function getRoleWelcome(role: UserRole, name: string): { title: string; subtitle
   }
 }
 
+import OwnerOnboardingWizard from "@/components/OwnerOnboardingWizard";
+import StaffOnboardingWelcome from "@/components/StaffOnboardingWelcome";
+
 export default function OnboardingPage() {
   const { profile, completeOnboarding } = useAuth();
   const [step, setStep] = useState(-1); // -1 = welcome screen, 0+ = steps
@@ -161,6 +164,12 @@ export default function OnboardingPage() {
 
   const role = profile?.role ?? "client";
   const name = profile?.name ?? "";
+
+  // Owner gets the setup wizard
+  if (role === "owner") return <OwnerOnboardingWizard />;
+  // Staff gets the welcome + address screen
+  if (role === "staff") return <StaffOnboardingWelcome />;
+
   const steps = getStepsForRole(role);
   const welcome = getRoleWelcome(role, name);
 
