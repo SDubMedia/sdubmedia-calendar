@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -62,6 +62,9 @@ interface AppContextValue {
   addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
   // Crew Location Distances
   upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number) => Promise<void>;
+  // Manual Trips
+  addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
+  deleteManualTrip: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -109,6 +112,19 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
     crewMemberId: r.crew_member_id,
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToManualTrip(r: any): ManualTrip {
+  return {
+    id: r.id,
+    crewMemberId: r.crew_member_id,
+    date: r.date,
+    destination: r.destination || "",
+    locationId: r.location_id || null,
+    purpose: r.purpose || "",
+    roundTripMiles: Number(r.round_trip_miles ?? 0),
     createdAt: r.created_at,
   };
 }
@@ -270,7 +286,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -294,6 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: invoices, error: e7 },
         { data: contractorInvs, error: e7b },
         { data: distances, error: _e7c },
+        { data: manualTripsData, error: _e7d },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -306,6 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("crew_location_distances").select("*"),
+        supabase.from("manual_trips").select("*").order("date", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -323,6 +341,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: (invoices || []).map(rowToInvoice),
         contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
         crewLocationDistances: (distances || []).map(rowToCrewLocationDistance),
+        manualTrips: (manualTripsData || []).map(rowToManualTrip),
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -429,6 +448,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
     });
+  }, []);
+
+  // ---- Manual Trips ----
+  const addManualTrip = useCallback(async (t: Omit<ManualTrip, "id" | "createdAt">): Promise<ManualTrip> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("manual_trips").insert({
+      id, crew_member_id: t.crewMemberId, date: t.date, destination: t.destination,
+      location_id: t.locationId || null, purpose: t.purpose, round_trip_miles: t.roundTripMiles,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const trip = rowToManualTrip(row);
+    setData(d => ({ ...d, manualTrips: [trip, ...d.manualTrips] }));
+    return trip;
+  }, []);
+
+  const deleteManualTrip = useCallback(async (id: string) => {
+    const { error } = await supabase.from("manual_trips").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, manualTrips: d.manualTrips.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Locations ----
@@ -797,6 +835,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       fetchMessages, addMessage, fetchEpisodes,
       fetchComments, addComment,
       upsertDistance,
+      addManualTrip, deleteManualTrip,
     }}>
       {children}
     </AppContext.Provider>

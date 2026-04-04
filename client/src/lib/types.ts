@@ -344,6 +344,18 @@ export interface AppNotification {
   createdAt: string;
 }
 
+// Manual mileage trip (office visit, gear pickup, ad-hoc)
+export interface ManualTrip {
+  id: string;
+  crewMemberId: string;
+  date: string;
+  destination: string;
+  locationId?: string | null;
+  purpose: string;
+  roundTripMiles: number;
+  createdAt: string;
+}
+
 // Cached distance from a crew member's home to a location (one-way, in miles)
 export interface CrewLocationDistance {
   id: string;
@@ -363,6 +375,7 @@ export interface AppData {
   invoices: Invoice[];
   contractorInvoices: ContractorInvoice[];
   crewLocationDistances: CrewLocationDistance[];
+  manualTrips: ManualTrip[];
   series: Series[];
   organization: Organization | null;
 }

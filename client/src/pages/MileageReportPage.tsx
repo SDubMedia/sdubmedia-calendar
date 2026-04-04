@@ -6,8 +6,12 @@
 import { useState, useMemo, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 
@@ -25,10 +29,11 @@ interface MileageTrip {
   purpose: string;  // project type + client
   destination: string;  // location name + address
   roundTripMiles: number;
+  manualTripId?: string; // set for manually logged trips
 }
 
 export default function MileageReportPage() {
-  const { data, upsertDistance } = useApp();
+  const { data, upsertDistance, addManualTrip, deleteManualTrip } = useApp();
   const { profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
@@ -76,6 +81,48 @@ export default function MileageReportPage() {
     else toast.error("No distances calculated — check your Google Maps API key");
   }
 
+  // Log trip dialog
+  const [tripDialogOpen, setTripDialogOpen] = useState(false);
+  const [tripForm, setTripForm] = useState({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+
+  async function handleLogTrip() {
+    if (!crewMemberId) { toast.error("No crew profile linked"); return; }
+    if (!tripForm.date) { toast.error("Date is required"); return; }
+
+    let destination = tripForm.destination;
+    let miles = tripForm.miles;
+    const locationId = tripForm.locationId || null;
+
+    // If location selected, use cached distance and location name
+    if (locationId) {
+      const loc = data.locations.find(l => l.id === locationId);
+      if (loc) {
+        destination = `${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}`;
+        const cached = distanceMap.get(locationId);
+        if (cached && miles === 0) miles = Math.round(cached * 2 * 10) / 10;
+      }
+    }
+
+    if (!destination) { toast.error("Enter a destination"); return; }
+    if (miles <= 0) { toast.error("Enter round-trip miles"); return; }
+
+    try {
+      await addManualTrip({
+        crewMemberId,
+        date: tripForm.date,
+        destination,
+        locationId,
+        purpose: tripForm.purpose || "Office / Gear Pickup",
+        roundTripMiles: miles,
+      });
+      toast.success("Trip logged");
+      setTripDialogOpen(false);
+      setTripForm({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to log trip");
+    }
+  }
+
   // Build distance lookup from cached distances
   const distanceMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -85,15 +132,15 @@ export default function MileageReportPage() {
     return map;
   }, [data.crewLocationDistances, crewMemberId]);
 
-  // Build trips for the year
+  // Build trips for the year (projects + manual trips)
   const trips = useMemo((): MileageTrip[] => {
     if (!crewMemberId) return [];
 
-    return data.projects
+    // Project-based trips
+    const projectTrips = data.projects
       .filter(p => {
         const d = new Date(p.date + "T00:00:00");
         if (d.getFullYear() !== year) return false;
-        // Check if this crew member is on this project
         return [...(p.crew || []), ...(p.postProduction || [])]
           .some(e => e.crewMemberId === crewMemberId);
       })
@@ -102,7 +149,6 @@ export default function MileageReportPage() {
         const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
         const loc = data.locations.find(l => l.id === p.locationId);
 
-        // Use snapshot from crew entry or fall back to cached distance
         const crewEntry = (p.crew || []).find(e => e.crewMemberId === crewMemberId);
         const oneWay = crewEntry?.roundTripMiles
           ? crewEntry.roundTripMiles / 2
@@ -115,9 +161,21 @@ export default function MileageReportPage() {
           roundTripMiles: Math.round(oneWay * 2 * 10) / 10,
         };
       })
-      .filter(t => t.roundTripMiles > 0)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [data.projects, data.clients, data.projectTypes, data.locations, crewMemberId, distanceMap, year]);
+      .filter(t => t.roundTripMiles > 0);
+
+    // Manual trips
+    const manual = data.manualTrips
+      .filter(t => t.crewMemberId === crewMemberId && t.date.startsWith(String(year)))
+      .map(t => ({
+        date: t.date,
+        purpose: t.purpose,
+        destination: t.destination,
+        roundTripMiles: t.roundTripMiles,
+        manualTripId: t.id,
+      }));
+
+    return [...projectTrips, ...manual].sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.projects, data.clients, data.projectTypes, data.locations, data.manualTrips, crewMemberId, distanceMap, year]);
 
   // Group by month
   const monthlyGroups = useMemo(() => {
@@ -177,6 +235,9 @@ export default function MileageReportPage() {
               className="w-16 h-8 bg-secondary border border-border rounded-md px-2 text-sm text-foreground"
             />
           </div>
+          <Button size="sm" variant="outline" onClick={() => setTripDialogOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Log Trip
+          </Button>
           <Button size="sm" variant="outline" onClick={recalculateDistances} disabled={recalculating} className="gap-2">
             <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
             {recalculating ? "Calculating..." : "Recalculate"}
@@ -252,9 +313,22 @@ export default function MileageReportPage() {
                           <td className="px-4 py-2 whitespace-nowrap">
                             {new Date(trip.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </td>
-                          <td className="px-4 py-2">{trip.purpose}</td>
+                          <td className="px-4 py-2">
+                            {trip.purpose}
+                            {trip.manualTripId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">manual</span>}
+                          </td>
                           <td className="px-4 py-2 text-muted-foreground">{trip.destination}</td>
-                          <td className="px-4 py-2 text-right font-medium">{trip.roundTripMiles} mi</td>
+                          <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                            {trip.roundTripMiles} mi
+                            {trip.manualTripId && (
+                              <button
+                                onClick={() => { deleteManualTrip(trip.manualTripId!); toast.success("Trip deleted"); }}
+                                className="ml-2 text-muted-foreground hover:text-destructive print:hidden inline-block"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -285,6 +359,77 @@ export default function MileageReportPage() {
           </div>
         )}
       </div>
+
+      {/* Log Trip Dialog */}
+      <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Log a Trip</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Input type="date" value={tripForm.date} onChange={e => setTripForm(f => ({ ...f, date: e.target.value }))} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Location (optional — auto-fills distance)</Label>
+              <Select value={tripForm.locationId} onValueChange={v => {
+                const loc = data.locations.find(l => l.id === v);
+                const cached = distanceMap.get(v);
+                setTripForm(f => ({
+                  ...f,
+                  locationId: v,
+                  destination: loc ? `${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}` : "",
+                  miles: cached ? Math.round(cached * 2 * 10) / 10 : f.miles,
+                }));
+              }}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue placeholder="Select a location..." />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {data.locations.map(l => (
+                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Destination (or custom address)</Label>
+              <Input
+                value={tripForm.destination}
+                onChange={e => setTripForm(f => ({ ...f, destination: e.target.value, locationId: "" }))}
+                className="bg-secondary border-border"
+                placeholder="e.g. Office, Best Buy, client site"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Purpose</Label>
+              <Input
+                value={tripForm.purpose}
+                onChange={e => setTripForm(f => ({ ...f, purpose: e.target.value }))}
+                className="bg-secondary border-border"
+                placeholder="e.g. Gear pickup, Client meeting"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Round-Trip Miles</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.1"
+                value={tripForm.miles || ""}
+                onChange={e => setTripForm(f => ({ ...f, miles: parseFloat(e.target.value) || 0 }))}
+                className="bg-secondary border-border"
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTripDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleLogTrip}>Log Trip</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
