@@ -6,8 +6,10 @@
 import { useState, useMemo, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, ChevronRight, Printer, Car } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -26,7 +28,7 @@ interface MileageTrip {
 }
 
 export default function MileageReportPage() {
-  const { data } = useApp();
+  const { data, upsertDistance } = useApp();
   const { profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
@@ -41,6 +43,38 @@ export default function MileageReportPage() {
   }, [profile, data.crewMembers]);
 
   const crewMember = data.crewMembers.find(c => c.id === crewMemberId);
+  const [recalculating, setRecalculating] = useState(false);
+
+  async function recalculateDistances() {
+    if (!crewMemberId || !crewMember?.homeAddress?.address) {
+      toast.error("Set your home address in Staff settings first");
+      return;
+    }
+    setRecalculating(true);
+    const homeAddr = crewMember.homeAddress;
+    const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
+    let count = 0;
+
+    for (const loc of data.locations.filter(l => l.address && l.city)) {
+      const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+      try {
+        const token = await getAuthToken();
+        const res = await fetch("/api/calculate-distance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ origin, destination }),
+        });
+        if (res.ok) {
+          const { distanceMiles } = await res.json();
+          await upsertDistance(crewMemberId, loc.id, distanceMiles);
+          count++;
+        }
+      } catch { /* skip */ }
+    }
+    setRecalculating(false);
+    if (count > 0) toast.success(`Updated distances for ${count} location${count !== 1 ? "s" : ""}`);
+    else toast.error("No distances calculated — check your Google Maps API key");
+  }
 
   // Build distance lookup from cached distances
   const distanceMap = useMemo(() => {
@@ -138,6 +172,10 @@ export default function MileageReportPage() {
               className="w-16 h-8 bg-secondary border border-border rounded-md px-2 text-sm text-foreground"
             />
           </div>
+          <Button size="sm" variant="outline" onClick={recalculateDistances} disabled={recalculating} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${recalculating ? "animate-spin" : ""}`} />
+            {recalculating ? "Calculating..." : "Recalculate"}
+          </Button>
           <Button size="sm" onClick={handlePrint} className="gap-2">
             <Printer className="w-4 h-4" /> Print
           </Button>
