@@ -24,15 +24,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { extractText } = await import("unpdf");
     const buffer = Buffer.from(fileData, "base64");
     const uint8 = new Uint8Array(buffer);
-    const { text } = await extractText(uint8);
+    const result = await extractText(uint8);
 
-    const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+    // extractText returns { totalPages, text } where text can be string or string[]
+    const rawText = Array.isArray(result.text) ? result.text.join("\n") : String(result.text || "");
+    const lines = rawText.split("\n").map((l: string) => l.trim()).filter(Boolean);
 
     // Find statement year
-    const yearMatch = text.match(/statement\s+(?:closing\s+)?date[:\s]*\d{2}\/\d{2}\/(\d{4})/i)
-      || text.match(/opening.*closing.*(\d{4})/i)
-      || text.match(/(\d{4})\s+totals/i)
-      || text.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}.*?(\d{4})/i);
+    const yearMatch = rawText.match(/statement\s+(?:closing\s+)?date[:\s]*\d{2}\/\d{2}\/(\d{4})/i)
+      || rawText.match(/opening.*closing.*(\d{4})/i)
+      || rawText.match(/(\d{4})\s+totals/i)
+      || rawText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}.*?(\d{4})/i);
     const statementYear = yearMatch ? (yearMatch[1] || yearMatch[2]) : String(new Date().getFullYear());
 
     const transactions: { date: string; description: string; amount: number }[] = [];
