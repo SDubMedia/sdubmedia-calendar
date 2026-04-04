@@ -108,6 +108,62 @@ export default function BusinessExpensesPage() {
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
+  // Category picker state
+  const [catPickerOpen, setCatPickerOpen] = useState(false);
+  const [catPickerIndex, setCatPickerIndex] = useState<number | null>(null); // index in csvRows, or null for edit mode
+  const [catPickerTarget, setCatPickerTarget] = useState<string | null>(null); // expense ID for edit mode
+  const [customCategory, setCustomCategory] = useState("");
+
+  // All categories: built-in + any custom ones from existing expenses
+  const allCategories = useMemo(() => {
+    const custom = data.businessExpenses
+      .map(e => e.category)
+      .filter(c => !CATEGORIES.includes(c as any) && c !== "Other");
+    return [...CATEGORIES, ...Array.from(new Set(custom))];
+  }, [data.businessExpenses]);
+
+  function openCatPicker(index: number) {
+    setCatPickerIndex(index);
+    setCatPickerTarget(null);
+    setCatPickerOpen(true);
+    setCustomCategory("");
+  }
+
+  function openCatPickerForExpense(expenseId: string) {
+    setCatPickerIndex(null);
+    setCatPickerTarget(expenseId);
+    setCatPickerOpen(true);
+    setCustomCategory("");
+  }
+
+  async function selectCategory(category: string) {
+    if (catPickerIndex !== null) {
+      // Import preview mode
+      const updated = [...csvRows];
+      updated[catPickerIndex] = { ...updated[catPickerIndex], category: category as BusinessExpenseCategory };
+      setCsvRows(updated);
+    } else if (catPickerTarget) {
+      // Edit existing expense
+      await updateBusinessExpense(catPickerTarget, { category: category as BusinessExpenseCategory });
+      // Learn the rule
+      const expense = data.businessExpenses.find(e => e.id === catPickerTarget);
+      if (expense && category !== "Other") {
+        const keyword = expense.description.split(/\s+/)[0]?.toUpperCase();
+        if (keyword && keyword.length >= 3) {
+          await upsertCategoryRule(keyword, category as BusinessExpenseCategory);
+        }
+      }
+      toast.success("Category updated");
+    }
+    setCatPickerOpen(false);
+  }
+
+  function addCustomCategory() {
+    if (!customCategory.trim()) return;
+    selectCategory(customCategory.trim());
+    setCustomCategory("");
+  }
+
   // Manual add dialog
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({ date: today.toISOString().slice(0, 10), description: "", category: "Other" as BusinessExpenseCategory, amount: 0, serialNumber: "", notes: "" });
@@ -391,7 +447,12 @@ export default function BusinessExpensesPage() {
                       </td>
                       <td className="px-4 py-2 max-w-[200px] truncate">{e.description}</td>
                       <td className="px-3 py-2">
-                        <span className="text-xs px-2 py-0.5 rounded bg-secondary text-foreground">{e.category}</span>
+                        <button
+                          onClick={() => openCatPickerForExpense(e.id)}
+                          className="text-xs px-2 py-0.5 rounded bg-secondary text-foreground hover:bg-primary/20 hover:text-primary transition-colors"
+                        >
+                          {e.category}
+                        </button>
                       </td>
                       <td className="px-3 py-2 text-right font-medium">{formatCurrency(e.amount)}</td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">{e.serialNumber || ""}</td>
@@ -566,17 +627,17 @@ export default function BusinessExpensesPage() {
                       <td className="px-2 py-1.5 whitespace-nowrap text-xs">{row.date}</td>
                       <td className="px-2 py-1.5 text-xs max-w-[200px] truncate">{row.description}</td>
                       <td className="px-2 py-1.5">
-                        <select
-                          value={row.category}
-                          onChange={e => {
-                            const updated = [...csvRows];
-                            updated[i] = { ...updated[i], category: e.target.value as BusinessExpenseCategory };
-                            setCsvRows(updated);
-                          }}
-                          className="bg-secondary border border-border rounded px-1.5 py-0.5 text-xs text-foreground w-full"
+                        <button
+                          onClick={() => openCatPicker(i)}
+                          className={cn(
+                            "px-2 py-0.5 rounded text-xs font-medium border transition-colors",
+                            row.category === "Other"
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                              : "bg-primary/20 text-primary border-primary/30"
+                          )}
                         >
-                          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                          {row.category}
+                        </button>
                       </td>
                       <td className="px-2 py-1.5 text-right text-xs font-medium">{formatCurrency(row.amount)}</td>
                     </tr>
@@ -663,6 +724,41 @@ export default function BusinessExpensesPage() {
             <Button variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
             <Button onClick={handleEditSave}>Save</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Picker Dialog */}
+      <Dialog open={catPickerOpen} onOpenChange={setCatPickerOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Select Category</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-2 py-2">
+            {allCategories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => selectCategory(cat)}
+                className={cn(
+                  "px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                  "border-border text-foreground hover:border-primary hover:bg-primary/10"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
+            <Input
+              value={customCategory}
+              onChange={e => setCustomCategory(e.target.value)}
+              placeholder="Custom category..."
+              className="bg-secondary border-border text-sm"
+              onKeyDown={e => e.key === "Enter" && addCustomCategory()}
+            />
+            <Button size="sm" onClick={addCustomCategory} disabled={!customCategory.trim()}>
+              Add
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
