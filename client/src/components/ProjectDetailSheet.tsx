@@ -12,6 +12,7 @@ import {
   Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours } from "@/lib/data";
@@ -63,6 +64,17 @@ interface Props {
 
 export default function ProjectDetailSheet({ project, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
+  const { effectiveProfile } = useAuth();
+  const role = effectiveProfile?.role ?? "client";
+  const isOwner = role === "owner";
+  const isStaff = role === "staff";
+  const canEdit = isOwner; // Only owner can edit/delete projects
+  // Staff can only advance status to filming_done or in_editing (not completed)
+  const staffAllowedAdvance: Partial<Record<ProjectStatus, ProjectStatus>> = {
+    upcoming: "filming_done",
+    filming_done: "in_editing",
+  };
+  const canAdvanceStatus = canEdit || (isStaff && project.status in staffAllowedAdvance);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -153,14 +165,16 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 mr-8">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setEditOpen(true)}>
-                  <Edit3 className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+              {canEdit && (
+                <div className="flex items-center gap-1 mr-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setEditOpen(true)}>
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </SheetHeader>
 
@@ -278,8 +292,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
               </div>
             )}
 
-            {/* Photo Editor Billing Calculator */}
-            {photoEditorEntry && client && (
+            {/* Photo Editor Billing Calculator — owner only */}
+            {canEdit && photoEditorEntry && client && (
               <PhotoEditorCalculator
                 project={project}
                 client={client}
@@ -329,33 +343,37 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
             {/* Actions */}
             <div className="flex flex-col gap-2">
-              {STATUS_NEXT[project.status] && (
+              {canAdvanceStatus && STATUS_NEXT[project.status] && (
                 <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
                   <CheckCircle2 className="w-4 h-4" />
-                  {STATUS_NEXT_LABEL[project.status]}
+                  {isStaff ? staffAllowedAdvance[project.status] && STATUS_NEXT_LABEL[project.status] : STATUS_NEXT_LABEL[project.status]}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                onClick={togglePaid}
-                className={cn("w-full gap-2", project.paidDate ? "border-green-500/50 text-green-300" : "border-border")}
-              >
-                <DollarSign className="w-4 h-4" />
-                {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
-              </Button>
-              <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
-                Edit Project
-              </Button>
+              {canEdit && (
+                <>
+                  <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
+                    Edit Project
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={togglePaid}
+                    className={cn("w-full gap-2", project.paidDate ? "border-green-500/50 text-green-300" : "border-border")}
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Edit dialog */}
-      <ProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} />
+      {/* Edit dialog — owner only */}
+      {canEdit && <ProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} />}
 
-      {/* Delete confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      {/* Delete confirmation — owner only */}
+      <AlertDialog open={canEdit && deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Project?</AlertDialogTitle>
