@@ -70,8 +70,8 @@ const allNavItems: NavItem[] = [
   { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
-  { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
+  { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
 ];
 
