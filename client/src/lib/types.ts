@@ -28,6 +28,17 @@ export const DEFAULT_FEATURES: OrgFeatures = {
 
 export type ProductionType = "video" | "photo" | "both";
 
+export interface OrgBusinessInfo {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+  email: string;
+  website: string;
+  ein: string;
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -38,6 +49,7 @@ export interface Organization {
   productionType: ProductionType;
   defaultBillingModel: BillingModel;
   defaultBillingRate: number;
+  businessInfo: OrgBusinessInfo;
   createdAt: string;
 }
 

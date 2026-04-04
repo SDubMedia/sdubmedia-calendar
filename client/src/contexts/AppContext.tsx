@@ -323,6 +323,7 @@ function rowToOrg(r: any): Organization {
     productionType: r.production_type || "both",
     defaultBillingModel: r.default_billing_model || "hourly",
     defaultBillingRate: Number(r.default_billing_rate ?? 0),
+    businessInfo: r.business_info || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" },
     createdAt: r.created_at,
   };
 }
@@ -493,6 +494,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.productionType !== undefined) patch.production_type = updates.productionType;
     if (updates.defaultBillingModel !== undefined) patch.default_billing_model = updates.defaultBillingModel;
     if (updates.defaultBillingRate !== undefined) patch.default_billing_rate = updates.defaultBillingRate;
+    if (updates.businessInfo !== undefined) patch.business_info = updates.businessInfo;
     const { error } = await supabase.from("organizations").update(patch).eq("id", data.organization.id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));

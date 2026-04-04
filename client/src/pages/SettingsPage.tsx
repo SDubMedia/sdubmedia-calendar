@@ -5,12 +5,12 @@
 
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { OrgFeatures, BillingModel, ProductionType } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateOrganization } = useApp();
+  const { data, updateOrganization, addLocation, updateLocation } = useApp();
   const org = data.organization;
 
   const [name, setName] = useState(org?.name || "");
@@ -42,6 +42,9 @@ export default function SettingsPage() {
   const [features, setFeatures] = useState<OrgFeatures>(org?.features || {
     calendar: true, crewManagement: true, invoicing: true, mileage: false,
     expenses: false, clientPortal: false, contentSeries: false, partnerSplits: false,
+  });
+  const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
+    address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -53,6 +56,7 @@ export default function SettingsPage() {
       setBillingModel(org.defaultBillingModel);
       setBillingRate(org.defaultBillingRate);
       setFeatures(org.features);
+      setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" });
     }
   }, [org]);
 
@@ -65,7 +69,35 @@ export default function SettingsPage() {
         defaultBillingModel: billingModel,
         defaultBillingRate: billingRate,
         features,
+        businessInfo,
       });
+
+      // Auto-create or update office location if business address is set
+      if (businessInfo.address && businessInfo.city) {
+        const officeName = `${name || "Company"} Office`;
+        const existingOffice = data.locations.find(l => l.name.includes("Office") && l.address === businessInfo.address);
+        if (!existingOffice) {
+          const officeByName = data.locations.find(l => l.name.includes("Office"));
+          if (officeByName) {
+            await updateLocation(officeByName.id, {
+              name: officeName,
+              address: businessInfo.address,
+              city: businessInfo.city,
+              state: businessInfo.state,
+              zip: businessInfo.zip,
+            });
+          } else {
+            await addLocation({
+              name: officeName,
+              address: businessInfo.address,
+              city: businessInfo.city,
+              state: businessInfo.state,
+              zip: businessInfo.zip,
+            });
+          }
+        }
+      }
+
       toast.success("Settings saved");
     } catch (e: any) {
       toast.error(e.message || "Failed to save");
@@ -132,6 +164,48 @@ export default function SettingsPage() {
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* My Business */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Building2 className="w-4 h-4 text-primary" />
+              My Business
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Appears on invoices and reports. Office address auto-creates a location for mileage.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Business Address</Label>
+              <Input value={businessInfo.address} onChange={e => setBusinessInfo(b => ({ ...b, address: e.target.value }))} className="bg-secondary border-border" placeholder="123 Main St" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Input placeholder="City" value={businessInfo.city} onChange={e => setBusinessInfo(b => ({ ...b, city: e.target.value }))} className="bg-secondary border-border" />
+              <Input placeholder="State" value={businessInfo.state} onChange={e => setBusinessInfo(b => ({ ...b, state: e.target.value }))} className="bg-secondary border-border" />
+              <Input placeholder="ZIP" value={businessInfo.zip} onChange={e => setBusinessInfo(b => ({ ...b, zip: e.target.value }))} className="bg-secondary border-border" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Phone</Label>
+                <Input value={businessInfo.phone} onChange={e => setBusinessInfo(b => ({ ...b, phone: e.target.value }))} className="bg-secondary border-border" placeholder="(615) 555-0000" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Email</Label>
+                <Input value={businessInfo.email} onChange={e => setBusinessInfo(b => ({ ...b, email: e.target.value }))} className="bg-secondary border-border" placeholder="info@company.com" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Website</Label>
+                <Input value={businessInfo.website} onChange={e => setBusinessInfo(b => ({ ...b, website: e.target.value }))} className="bg-secondary border-border" placeholder="company.com" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">EIN (Tax ID)</Label>
+                <Input value={businessInfo.ein} onChange={e => setBusinessInfo(b => ({ ...b, ein: e.target.value }))} className="bg-secondary border-border" placeholder="XX-XXXXXXX" type="password" autoComplete="off" />
               </div>
             </div>
           </CardContent>
