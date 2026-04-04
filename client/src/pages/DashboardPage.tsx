@@ -6,7 +6,8 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
-import type { InvoiceStatus, UserRole, Project } from "@/lib/types";
+import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
+import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
 import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car } from "lucide-react";
@@ -41,6 +42,12 @@ export default function DashboardPage() {
   const { profile, viewAsRole, setViewAsRole } = useAuth();
   const isRealOwner = profile?.role === "owner";
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const widgetConfig = data.organization?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS;
+  const isWidgetEnabled = (id: DashboardWidgetId) => {
+    const w = widgetConfig.find(c => c.id === id);
+    return w ? w.enabled : true;
+  };
+  const widgetOrder = widgetConfig.filter(w => w.enabled).map(w => w.id);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -195,6 +202,7 @@ export default function DashboardPage() {
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
         {/* Metric Cards */}
+        {isWidgetEnabled("metrics") && (<>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
             icon={CalendarDays}
@@ -313,9 +321,12 @@ export default function DashboardPage() {
           </div>
         )}
 
+        </>)}
+
         {/* Middle Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Upcoming Projects */}
+          {isWidgetEnabled("upcoming") && (
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -359,7 +370,9 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          )}
           {/* Recent Invoices */}
+          {isWidgetEnabled("invoices") && (
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -393,10 +406,11 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Mileage Summary */}
-        {(mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
+        {isWidgetEnabled("mileage") && (mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Car className="w-4 h-4 text-primary" />
@@ -422,6 +436,7 @@ export default function DashboardPage() {
         )}
 
         {/* Revenue Chart */}
+        {isWidgetEnabled("revenue") && (
         <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm font-semibold text-foreground mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Monthly Revenue
@@ -446,6 +461,7 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
         </div>
+        )}
       </div>
 
       {/* Project Detail Sheet */}

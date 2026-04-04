@@ -5,12 +5,16 @@
 
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId } from "@/lib/types";
+import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS } from "@/lib/types";
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2 } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +50,15 @@ export default function SettingsPage() {
   const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
     address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
   });
+  const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
+    org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
+  );
   const [saving, setSaving] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  );
 
   // Sync when org loads
   useEffect(() => {
@@ -57,6 +69,7 @@ export default function SettingsPage() {
       setBillingRate(org.defaultBillingRate);
       setFeatures(org.features);
       setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" });
+      setDashboardWidgets(org.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS);
     }
   }, [org]);
 
@@ -70,6 +83,7 @@ export default function SettingsPage() {
         defaultBillingRate: billingRate,
         features,
         businessInfo,
+        dashboardWidgets,
       });
 
       // Auto-create or update office location if business address is set
@@ -292,7 +306,87 @@ export default function SettingsPage() {
             ))}
           </CardContent>
         </Card>
+
+        {/* Dashboard Layout */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <LayoutDashboard className="w-4 h-4 text-primary" />
+              Dashboard Layout
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Toggle widgets on/off and drag to reorder. Press and hold to move.</p>
+          </CardHeader>
+          <CardContent>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(event) => {
+                const { active, over } = event;
+                if (over && active.id !== over.id) {
+                  const oldIndex = dashboardWidgets.findIndex(w => w.id === active.id);
+                  const newIndex = dashboardWidgets.findIndex(w => w.id === over.id);
+                  setDashboardWidgets(arrayMove(dashboardWidgets, oldIndex, newIndex));
+                }
+              }}
+            >
+              <SortableContext items={dashboardWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {dashboardWidgets.map(widget => (
+                    <SortableWidget
+                      key={widget.id}
+                      widget={widget}
+                      onToggle={() => setDashboardWidgets(ws => ws.map(w => w.id === widget.id ? { ...w, enabled: !w.enabled } : w))}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </CardContent>
+        </Card>
       </div>
+    </div>
+  );
+}
+
+function SortableWidget({ widget, onToggle }: { widget: DashboardWidgetConfig; onToggle: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: widget.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+        widget.enabled ? "border-primary/30 bg-primary/5" : "border-border",
+        isDragging && "shadow-lg"
+      )}
+    >
+      <button {...attributes} {...listeners} className="touch-none text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing p-1">
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-sm font-medium", widget.enabled ? "text-foreground" : "text-muted-foreground")}>
+          {DASHBOARD_WIDGET_LABELS[widget.id]}
+        </p>
+      </div>
+      <button
+        onClick={onToggle}
+        className={cn(
+          "w-10 h-5 rounded-full transition-colors shrink-0",
+          widget.enabled ? "bg-primary" : "bg-secondary border border-border"
+        )}
+      >
+        <span className={cn(
+          "block w-4 h-4 rounded-full bg-white transition-transform mt-0.5",
+          widget.enabled ? "translate-x-5" : "translate-x-0.5"
+        )} />
+      </button>
     </div>
   );
 }
