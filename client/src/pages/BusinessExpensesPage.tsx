@@ -13,9 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-// PDF support note: Chase PDFs have inconsistent formats.
-// For reliable import, download CSV from chase.com → Activity → Download.
-// PDF upload attempts basic text extraction as a convenience.
+import { getAuthToken } from "@/lib/supabase";
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -107,6 +105,8 @@ export default function BusinessExpensesPage() {
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [showUpload, setShowUpload] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Manual add dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -135,18 +135,56 @@ export default function BusinessExpensesPage() {
     return "Other";
   }
 
-  const [uploading, setUploading] = useState(false);
+  // Upload PDF to server for parsing
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
 
-  // For PDF: redirect to Chase CSV download instructions
-  function handlePdfFallback() {
-    toast.error(
-      "PDF parsing is not supported on mobile yet. To import your Chase statement:\n\n" +
-      "1. Go to chase.com in your browser\n" +
-      "2. Go to Activity → Download\n" +
-      "3. Select CSV format\n" +
-      "4. Upload the CSV here",
-      { duration: 10000 }
-    );
+    setUploading(true);
+    toast.info("Parsing PDF...");
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+
+      const token = await getAuthToken();
+      const res = await fetch("/api/parse-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fileData: base64 }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to parse PDF");
+      }
+
+      const { transactions, count } = await res.json();
+      if (count === 0) {
+        toast.error("No transactions found in PDF");
+        return;
+      }
+
+      const rows: CsvRow[] = (transactions || []).map((t: any) => ({
+        date: t.date,
+        description: t.description,
+        category: autoCategory(t.description) as BusinessExpenseCategory,
+        amount: t.amount,
+        chaseCategory: "",
+        selected: true,
+      }));
+
+      toast.success(`Found ${rows.length} transactions`);
+      setCsvRows(rows);
+      setShowUpload(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to parse PDF");
+    } finally {
+      setUploading(false);
+    }
   }
 
   // Handle CSV file upload
@@ -291,7 +329,11 @@ export default function BusinessExpensesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <input ref={pdfRef} type="file" accept="application/pdf,.pdf" onChange={handlePdfUpload} className="hidden" />
           <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain,application/vnd.ms-excel" onChange={handleFileUpload} className="hidden" />
+          <Button size="sm" variant="outline" onClick={() => pdfRef.current?.click()} disabled={uploading} className="gap-2">
+            <Upload className="w-4 h-4" /> {uploading ? "Parsing..." : "Upload PDF"}
+          </Button>
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} className="gap-2">
             <Upload className="w-4 h-4" /> Upload CSV
           </Button>
