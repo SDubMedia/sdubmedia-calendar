@@ -13,9 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import * as pdfjsLib from "pdfjs-dist";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+let pdfjsLoaded = false;
+async function loadPdfJs() {
+  if (pdfjsLoaded) return;
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  pdfjsLoaded = true;
+  return pdfjsLib;
+}
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -140,39 +145,71 @@ export default function BusinessExpensesPage() {
 
   // Parse Chase PDF client-side
   async function parseChasePDF(buffer: ArrayBuffer): Promise<CsvRow[]> {
+    const pdfjsLib = await loadPdfJs();
+    if (!pdfjsLib) throw new Error("Failed to load PDF library");
+
     const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    let fullText = "";
+    const lines: string[] = [];
+
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items.map((item: any) => item.str).join(" ");
-      fullText += pageText + "\n";
+      // Group text items by Y position to reconstruct lines
+      const byY = new Map<number, string[]>();
+      for (const item of content.items as any[]) {
+        const y = Math.round(item.transform[5]);
+        if (!byY.has(y)) byY.set(y, []);
+        byY.get(y)!.push(item.str);
+      }
+      // Sort by Y descending (top of page first) and join each line
+      const sortedYs = Array.from(byY.keys()).sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        lines.push(byY.get(y)!.join(" ").trim());
+      }
     }
 
-    // Extract transactions: MM/DD  MM/DD  DESCRIPTION  AMOUNT or MM/DD  DESCRIPTION  AMOUNT
-    const txnRegex = /(\d{2}\/\d{2})(?:\s+\d{2}\/\d{2})?\s+(.+?)\s+(-?\d{1,}[,\d]*\.\d{2})/g;
-    const yearMatch = fullText.match(/(\d{4})/);
-    const statementYear = yearMatch ? yearMatch[1] : String(new Date().getFullYear());
+    const fullText = lines.join("\n");
+
+    // Try to find statement year
+    const yearMatch = fullText.match(/statement\s+(?:closing\s+)?date[:\s]*\d{2}\/\d{2}\/(\d{4})/i)
+      || fullText.match(/opening.*closing.*(\d{4})/i)
+      || fullText.match(/(\d{4})\s+totals/i)
+      || fullText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}.*?(\d{4})/i);
+    const statementYear = yearMatch ? (yearMatch[1] || yearMatch[2]) : String(new Date().getFullYear());
 
     const rows: CsvRow[] = [];
-    let match;
-    while ((match = txnRegex.exec(fullText)) !== null) {
-      const [, dateStr, description, amountStr] = match;
-      const amount = Math.abs(parseFloat(amountStr.replace(/,/g, "")) || 0);
-      if (amount === 0) continue;
-      if (/payment.*thank/i.test(description) || /automatic payment/i.test(description)) continue;
 
-      const [month, day] = dateStr.split("/");
-      const date = `${statementYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    // Try multiple regex patterns for Chase statement formats
+    const patterns = [
+      // MM/DD MM/DD DESCRIPTION AMOUNT (two dates)
+      /(\d{2}\/\d{2})\s+\d{2}\/\d{2}\s+(.+?)\s+(-?\d{1,3}(?:,\d{3})*\.\d{2})$/,
+      // MM/DD DESCRIPTION AMOUNT (single date)
+      /(\d{2}\/\d{2})\s+(.+?)\s+(-?\d{1,3}(?:,\d{3})*\.\d{2})$/,
+    ];
 
-      rows.push({
-        date,
-        description: description.trim(),
-        category: autoCategory(description) as BusinessExpenseCategory,
-        amount,
-        chaseCategory: "",
-        selected: true,
-      });
+    for (const line of lines) {
+      for (const pattern of patterns) {
+        const match = line.match(pattern);
+        if (!match) continue;
+
+        const [, dateStr, description, amountStr] = match;
+        const amount = Math.abs(parseFloat(amountStr.replace(/,/g, "")) || 0);
+        if (amount === 0) break;
+        if (/payment.*thank/i.test(description) || /automatic payment/i.test(description)) break;
+
+        const [month, day] = dateStr.split("/");
+        const date = `${statementYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+
+        rows.push({
+          date,
+          description: description.trim(),
+          category: autoCategory(description) as BusinessExpenseCategory,
+          amount,
+          chaseCategory: "",
+          selected: true,
+        });
+        break; // matched this line, move to next
+      }
     }
     return rows;
   }
@@ -187,16 +224,19 @@ export default function BusinessExpensesPage() {
 
     if (isPDF) {
       setUploading(true);
+      toast.info("Parsing PDF...");
       try {
         const buffer = await file.arrayBuffer();
         const rows = await parseChasePDF(buffer);
         if (rows.length === 0) {
-          toast.error("No transactions found in PDF. Make sure it's a Chase statement.");
+          toast.error("No transactions found in PDF. The format may not be supported yet.");
         } else {
+          toast.success(`Found ${rows.length} transactions`);
           setCsvRows(rows);
           setShowUpload(true);
         }
       } catch (err: any) {
+        console.error("PDF parse error:", err);
         toast.error(err.message || "Failed to parse PDF");
       } finally {
         setUploading(false);
