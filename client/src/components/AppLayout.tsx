@@ -36,42 +36,77 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useApp } from "@/contexts/AppContext";
 import type { UserRole } from "@/lib/types";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
 
 import type { OrgFeatures } from "@/lib/types";
+import { ChevronDown } from "lucide-react";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles: UserRole[]; // which roles can see this item
-  feature?: keyof OrgFeatures; // if set, only show when this feature is enabled
+  roles: UserRole[];
+  feature?: keyof OrgFeatures;
 }
 
-const allNavItems: NavItem[] = [
+interface NavGroup {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: UserRole[];
+  items: NavItem[];
+}
+
+type NavEntry = NavItem | NavGroup;
+
+function isGroup(entry: NavEntry): entry is NavGroup {
+  return "items" in entry;
+}
+
+const navStructure: NavEntry[] = [
+  // Top-level items (no group)
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
+
+  // Production
+  { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client"], items: [
+    { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
+    { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
+    { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
+    { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
+  ]},
+
+  // Team
+  { label: "Team", icon: Users2, roles: ["owner", "partner"], items: [
+    { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
+    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
+    { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
+  ]},
+
+  // Finance
+  { label: "Finance", icon: FileText, roles: ["owner", "partner"], items: [
+    { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
+    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"] },
+    { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
+  ]},
+
+  // Reports & Tracking
+  { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
+    { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
+    { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
+    { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
+  ]},
+
+  // Staff-specific
   { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"], feature: "invoicing" },
-  { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
-  { label: "Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
-  { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
-  { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
-  { label: "Contractor Invoices", href: "/contractor-invoices", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
-  { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
-  { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
-  { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
-  { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
-  { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
-  { label: "1099", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
-  { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"] },
-  { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
-  { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
-  { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
+
+  // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
-  { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
 ];
@@ -87,17 +122,55 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isRealOwner = profile?.role === "owner";
 
   const features = data.organization?.features;
-  const navItems = useMemo(() =>
-    allNavItems.filter(item => {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(label: string) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  }
+
+  // Filter nav structure based on role and features
+  const filteredNav = useMemo(() => {
+    function filterItem(item: NavItem): boolean {
       if (!item.roles.includes(role)) return false;
       if (item.feature && features && !features[item.feature]) return false;
       return true;
-    }),
-    [role, features]
-  );
+    }
+    return navStructure
+      .filter(entry => {
+        if (isGroup(entry)) {
+          if (!entry.roles.some(r => r === role)) return false;
+          return entry.items.some(filterItem);
+        }
+        return filterItem(entry);
+      })
+      .map(entry => {
+        if (isGroup(entry)) {
+          return { ...entry, items: entry.items.filter(filterItem) };
+        }
+        return entry;
+      });
+  }, [role, features]);
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
+
+  // Auto-expand group if active page is inside it
+  useEffect(() => {
+    for (const entry of filteredNav) {
+      if (isGroup(entry) && entry.items.some(item => isActive(item.href))) {
+        setExpandedGroups(prev => {
+          if (prev.has(entry.label)) return prev;
+          const next = new Set(prev);
+          next.add(entry.label);
+          return next;
+        });
+      }
+    }
+  }, [location]);
 
   return (
     <div className="flex overflow-hidden bg-background" style={{ height: '100dvh' }}>
@@ -126,7 +199,51 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => {
+          {filteredNav.map((entry) => {
+            if (isGroup(entry)) {
+              const expanded = expandedGroups.has(entry.label);
+              const groupActive = entry.items.some(item => isActive(item.href));
+              const GroupIcon = entry.icon;
+              return (
+                <div key={entry.label}>
+                  <button
+                    onClick={() => toggleGroup(entry.label)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 w-full group",
+                      groupActive
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
+                  >
+                    <GroupIcon className={cn("w-4 h-4 flex-shrink-0", groupActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                    <span className="flex-1 truncate text-left">{entry.label}</span>
+                    <ChevronDown className={cn("w-3 h-3 transition-transform", expanded ? "rotate-0" : "-rotate-90")} />
+                  </button>
+                  {expanded && (
+                    <div className="ml-4 pl-3 border-l border-border/50 space-y-0.5 mt-0.5 mb-1">
+                      {entry.items.map(item => {
+                        const active = isActive(item.href);
+                        const Icon = item.icon;
+                        return (
+                          <Link key={item.href} href={item.href}>
+                            <div className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-150 group",
+                              active
+                                ? "bg-white/8 text-foreground"
+                                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                            )}>
+                              <Icon className={cn("w-3.5 h-3.5 flex-shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                              <span className="flex-1 truncate">{item.label}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            const item = entry as NavItem;
             const active = isActive(item.href);
             const Icon = item.icon;
             return (
@@ -213,7 +330,50 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {mobileMenuOpen && (
           <div className="md:hidden bg-sidebar border-b border-border z-40 max-h-[80vh] overflow-auto" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
             <nav className="py-2 px-3 space-y-0.5">
-              {navItems.map((item) => {
+              {filteredNav.map((entry) => {
+                if (isGroup(entry)) {
+                  const expanded = expandedGroups.has(entry.label);
+                  const groupActive = entry.items.some(item => isActive(item.href));
+                  const GroupIcon = entry.icon;
+                  return (
+                    <div key={entry.label}>
+                      <button
+                        onClick={() => toggleGroup(entry.label)}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-3 rounded-md text-sm transition-colors w-full",
+                          groupActive ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                        )}
+                      >
+                        <GroupIcon className={cn("w-4 h-4", groupActive ? "text-primary" : "text-muted-foreground")} />
+                        <span className="flex-1 text-left">{entry.label}</span>
+                        <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", expanded ? "rotate-0" : "-rotate-90")} />
+                      </button>
+                      {expanded && (
+                        <div className="ml-4 pl-3 border-l border-border/50 space-y-0.5 mb-1">
+                          {entry.items.map(item => {
+                            const active = isActive(item.href);
+                            const Icon = item.icon;
+                            return (
+                              <Link key={item.href} href={item.href}>
+                                <div
+                                  onClick={() => setMobileMenuOpen(false)}
+                                  className={cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors",
+                                    active ? "bg-white/8 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                                  )}
+                                >
+                                  <Icon className={cn("w-3.5 h-3.5", active ? "text-primary" : "text-muted-foreground")} />
+                                  <span className="flex-1">{item.label}</span>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                const item = entry as NavItem;
                 const active = isActive(item.href);
                 const Icon = item.icon;
                 return (
@@ -222,9 +382,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       onClick={() => setMobileMenuOpen(false)}
                       className={cn(
                         "flex items-center gap-3 px-3 py-3 rounded-md text-sm transition-colors",
-                        active
-                          ? "bg-white/8 text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                        active ? "bg-white/8 text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                       )}
                     >
                       <Icon className={cn("w-4 h-4", active ? "text-primary" : "text-muted-foreground")} />
