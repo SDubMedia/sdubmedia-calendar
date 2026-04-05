@@ -477,6 +477,46 @@ export interface CrewLocationDistance {
   createdAt: string;
 }
 
+// ---- Contracts & E-Signatures ----
+export type ContractStatus = "draft" | "sent" | "client_signed" | "completed" | "void";
+
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  content: string; // HTML content
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContractSignature {
+  name: string;
+  email: string;
+  ip: string;
+  timestamp: string;
+  signatureData: string; // base64 image or typed name
+  signatureType: "drawn" | "typed";
+}
+
+export interface Contract {
+  id: string;
+  templateId: string | null;
+  clientId: string;
+  projectId: string | null;
+  title: string;
+  content: string; // HTML content or 'pdf:filename' for uploaded PDFs
+  status: ContractStatus;
+  sentAt: string | null;
+  clientSignedAt: string | null;
+  ownerSignedAt: string | null;
+  clientSignature: ContractSignature | null;
+  ownerSignature: ContractSignature | null;
+  clientEmail: string;
+  signToken: string;
+  pdfUrl?: string; // for uploaded PDF contracts
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -490,6 +530,8 @@ export interface AppData {
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];
   categoryRules: CategoryRule[];
+  contractTemplates: ContractTemplate[];
+  contracts: Contract[];
   series: Series[];
   organization: Organization | null;
 }

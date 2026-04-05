@@ -74,6 +74,7 @@ const navStructure: NavEntry[] = [
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
+    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner"] },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
   ]},

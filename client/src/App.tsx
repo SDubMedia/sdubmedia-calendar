@@ -39,6 +39,8 @@ const MileageReportPage = lazy(() => import("./pages/MileageReportPage"));
 const ProfitLossPage = lazy(() => import("./pages/ProfitLossPage"));
 const BusinessExpensesPage = lazy(() => import("./pages/BusinessExpensesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const ContractsPage = lazy(() => import("./pages/ContractsPage"));
+const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage"));
 
 function LoadingScreen() {
@@ -105,6 +107,7 @@ function Router() {
         <Route path="/mileage" component={MileageReportPage} />
         {(isOwner || isPartner) && <Route path="/profit-loss" component={ProfitLossPage} />}
         {isOwner && <Route path="/expenses" component={BusinessExpensesPage} />}
+        {isOwner && <Route path="/contracts" component={ContractsPage} />}
         {isOwner && <Route path="/1099" component={ContractorSummaryPage} />}
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />
@@ -129,6 +132,20 @@ function AuthGate() {
 }
 
 function App() {
+  // Public signing page — no auth required
+  if (window.location.pathname.startsWith("/sign/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/sign/:token" component={SignContractPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark" switchable>

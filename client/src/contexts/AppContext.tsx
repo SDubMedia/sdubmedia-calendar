@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, ContractTemplate, Contract, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -72,6 +72,13 @@ interface AppContextValue {
   deleteBusinessExpense: (id: string) => Promise<void>;
   // Category Rules
   upsertCategoryRule: (keyword: string, category: BusinessExpenseCategory) => Promise<void>;
+  // Contracts
+  addContractTemplate: (t: Omit<ContractTemplate, "id" | "createdAt" | "updatedAt">) => Promise<ContractTemplate>;
+  updateContractTemplate: (id: string, t: Partial<ContractTemplate>) => Promise<void>;
+  deleteContractTemplate: (id: string) => Promise<void>;
+  addContract: (c: Omit<Contract, "id" | "createdAt" | "updatedAt">) => Promise<Contract>;
+  updateContract: (id: string, c: Partial<Contract>) => Promise<void>;
+  deleteContract: (id: string) => Promise<void>;
   // Organization
   updateOrganization: (updates: Partial<Organization>) => Promise<void>;
 }
@@ -124,6 +131,22 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
     createdAt: r.created_at,
+  };
+}
+
+function rowToContractTemplate(r: any): ContractTemplate {
+  return { id: r.id, name: r.name || "", content: r.content || "", createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+function rowToContract(r: any): Contract {
+  return {
+    id: r.id, templateId: r.template_id || null, clientId: r.client_id || "",
+    projectId: r.project_id || null, title: r.title || "", content: r.content || "",
+    status: r.status || "draft", sentAt: r.sent_at || null,
+    clientSignedAt: r.client_signed_at || null, ownerSignedAt: r.owner_signed_at || null,
+    clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
+    clientEmail: r.client_email || "", signToken: r.sign_token || "",
+    createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
 
@@ -330,7 +353,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], contractTemplates: [], contracts: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -357,6 +380,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: manualTripsData, error: _e7d },
         { data: bizExpenses, error: _e7e },
         { data: catRules, error: _e7f },
+        { data: contractTpls, error: _e7g },
+        { data: contractsData, error: _e7h },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -372,6 +397,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("manual_trips").select("*").order("date", { ascending: false }),
         supabase.from("business_expenses").select("*").order("date", { ascending: false }),
         supabase.from("category_rules").select("*"),
+        supabase.from("contract_templates").select("*").order("created_at", { ascending: false }),
+        supabase.from("contracts").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -392,6 +419,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         manualTrips: (manualTripsData || []).map(r => { try { return rowToManualTrip(r); } catch { return null; } }).filter(Boolean) as any[],
         businessExpenses: (bizExpenses || []).map(r => { try { return rowToBusinessExpense(r); } catch { return null; } }).filter(Boolean) as any[],
         categoryRules: (catRules || []).map(r => { try { return rowToCategoryRule(r); } catch { return null; } }).filter(Boolean) as any[],
+        contractTemplates: (contractTpls || []).map(r => { try { return rowToContractTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
+        contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -484,6 +513,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("crew_members").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Contract Templates ----
+  const addContractTemplate = useCallback(async (t: Omit<ContractTemplate, "id" | "createdAt" | "updatedAt">): Promise<ContractTemplate> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("contract_templates").insert({
+      id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content, updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const tpl = rowToContractTemplate(row);
+    setData(d => ({ ...d, contractTemplates: [tpl, ...d.contractTemplates] }));
+    return tpl;
+  }, [orgId]);
+
+  const updateContractTemplate = useCallback(async (id: string, t: Partial<ContractTemplate>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (t.name !== undefined) patch.name = t.name;
+    if (t.content !== undefined) patch.content = t.content;
+    const { error } = await supabase.from("contract_templates").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteContractTemplate = useCallback(async (id: string) => {
+    const { error } = await supabase.from("contract_templates").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contractTemplates: d.contractTemplates.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Contracts ----
+  const addContract = useCallback(async (c: Omit<Contract, "id" | "createdAt" | "updatedAt">): Promise<Contract> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("contracts").insert({
+      id, ...(orgId ? { org_id: orgId } : {}), template_id: c.templateId, client_id: c.clientId,
+      project_id: c.projectId, title: c.title, content: c.content, status: c.status,
+      sent_at: c.sentAt, client_email: c.clientEmail, sign_token: c.signToken,
+      client_signature: c.clientSignature, owner_signature: c.ownerSignature,
+      client_signed_at: c.clientSignedAt, owner_signed_at: c.ownerSignedAt,
+      updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const contract = rowToContract(row);
+    setData(d => ({ ...d, contracts: [contract, ...d.contracts] }));
+    return contract;
+  }, [orgId]);
+
+  const updateContract = useCallback(async (id: string, c: Partial<Contract>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (c.title !== undefined) patch.title = c.title;
+    if (c.content !== undefined) patch.content = c.content;
+    if (c.status !== undefined) patch.status = c.status;
+    if (c.sentAt !== undefined) patch.sent_at = c.sentAt;
+    if (c.clientEmail !== undefined) patch.client_email = c.clientEmail;
+    if (c.signToken !== undefined) patch.sign_token = c.signToken;
+    if (c.clientSignature !== undefined) patch.client_signature = c.clientSignature;
+    if (c.ownerSignature !== undefined) patch.owner_signature = c.ownerSignature;
+    if (c.clientSignedAt !== undefined) patch.client_signed_at = c.clientSignedAt;
+    if (c.ownerSignedAt !== undefined) patch.owner_signed_at = c.ownerSignedAt;
+    if (c.clientId !== undefined) patch.client_id = c.clientId;
+    if (c.projectId !== undefined) patch.project_id = c.projectId;
+    const { error } = await supabase.from("contracts").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteContract = useCallback(async (id: string) => {
+    const { error } = await supabase.from("contracts").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, contracts: d.contracts.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Organization ----
@@ -967,6 +1067,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
+      addContractTemplate, updateContractTemplate, deleteContractTemplate,
+      addContract, updateContract, deleteContract,
       updateOrganization,
     }}>
       {children}
