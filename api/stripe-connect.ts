@@ -36,9 +36,11 @@ async function createConnectLink(req: VercelRequest, res: VercelResponse) {
   if (!orgId) return res.status(400).json({ error: "Missing orgId" });
 
   // Check if org already has a connected account
-  const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", orgId).single();
+  const { data: org, error: orgError } = await supabase.from("organizations").select("*").eq("id", orgId).single();
+  if (orgError) return res.status(500).json({ error: `DB error: ${orgError.message}` });
+  if (!org) return res.status(404).json({ error: "Organization not found" });
 
-  let accountId = org?.stripe_account_id;
+  let accountId = org.stripe_account_id;
 
   if (!accountId) {
     // Create a new Connect account
@@ -46,7 +48,8 @@ async function createConnectLink(req: VercelRequest, res: VercelResponse) {
     accountId = account.id;
 
     // Save to org
-    await supabase.from("organizations").update({ stripe_account_id: accountId }).eq("id", orgId);
+    const { error: updateError } = await supabase.from("organizations").update({ stripe_account_id: accountId }).eq("id", orgId);
+    if (updateError) return res.status(500).json({ error: `Failed to save: ${updateError.message}` });
   }
 
   // Create onboarding link

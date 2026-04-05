@@ -68,7 +68,7 @@ export default function SettingsPage() {
   }, [org?.id]);
 
   async function connectStripe() {
-    if (!org?.id) return;
+    if (!org?.id) { toast.error("Organization not found"); return; }
     setConnectingStripe(true);
     try {
       const res = await fetch("/api/stripe-connect?action=connect", {
@@ -76,8 +76,13 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId: org.id, returnUrl: window.location.href }),
       });
-      const { url } = await res.json();
-      if (url) window.location.href = url;
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to connect Stripe");
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        throw new Error("No redirect URL received from Stripe");
+      }
     } catch (e: any) {
       toast.error(e.message || "Failed to connect Stripe");
       setConnectingStripe(false);
