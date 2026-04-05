@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    return res.status(200).json({ transactions, count: transactions.length, rawLineCount: lines.length });
+    return res.status(200).json({ transactions, count: transactions.length, rawLineCount: lines.length, text: rawText });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || "Failed to parse PDF" });
   }

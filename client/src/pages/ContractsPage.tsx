@@ -275,6 +275,55 @@ export default function ContractsPage() {
     if (client?.email) setContractClientEmail(client.email);
   }
 
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
+
+    if (isPdf) {
+      setUploadingPdf(true);
+      try {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+
+        const token = await getAuthToken();
+        const res = await fetch("/api/parse-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ fileData: base64 }),
+        });
+        if (!res.ok) throw new Error("Failed to parse PDF");
+        const { text } = await res.json();
+        if (text) {
+          setContractContent(text);
+          toast.success("PDF content imported — review and edit as needed");
+        } else {
+          toast.error("No text found in PDF");
+        }
+      } catch (err: any) {
+        toast.error(err.message || "Failed to upload");
+      } finally {
+        setUploadingPdf(false);
+      }
+    } else {
+      // Text file
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        if (text) {
+          setContractContent(text);
+          toast.success("Document imported");
+        }
+      };
+      reader.readAsText(file);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
@@ -451,12 +500,25 @@ export default function ContractsPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Contract Content</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">Contract Content</Label>
+                <div className="flex gap-2">
+                  <input ref={pdfRef} type="file" accept=".pdf,.txt,.doc,.docx,text/plain,application/pdf" onChange={handlePdfUpload} className="hidden" />
+                  <button
+                    onClick={() => pdfRef.current?.click()}
+                    disabled={uploadingPdf}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                  >
+                    <Upload className="w-3 h-3" />
+                    {uploadingPdf ? "Uploading..." : "Upload PDF/Doc"}
+                  </button>
+                </div>
+              </div>
               <textarea
                 value={contractContent}
                 onChange={e => setContractContent(e.target.value)}
                 className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[250px] resize-y"
-                placeholder="Enter or paste your contract text..."
+                placeholder="Enter or paste your contract text, or upload a PDF..."
               />
             </div>
           </div>
