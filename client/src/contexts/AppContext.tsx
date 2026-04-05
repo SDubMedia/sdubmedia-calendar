@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, ContractTemplate, Contract, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -72,6 +72,9 @@ interface AppContextValue {
   deleteBusinessExpense: (id: string) => Promise<void>;
   // Category Rules
   upsertCategoryRule: (keyword: string, category: BusinessExpenseCategory) => Promise<void>;
+  // Time Entries
+  addTimeEntry: (t: Omit<TimeEntry, "id" | "createdAt">) => Promise<TimeEntry>;
+  updateTimeEntry: (id: string, t: Partial<TimeEntry>) => Promise<void>;
   // Contracts
   addContractTemplate: (t: Omit<ContractTemplate, "id" | "createdAt" | "updatedAt">) => Promise<ContractTemplate>;
   updateContractTemplate: (id: string, t: Partial<ContractTemplate>) => Promise<void>;
@@ -131,6 +134,15 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
     createdAt: r.created_at,
+  };
+}
+
+function rowToTimeEntry(r: any): TimeEntry {
+  return {
+    id: r.id, crewMemberId: r.crew_member_id, projectId: r.project_id,
+    startTime: r.start_time, endTime: r.end_time || null,
+    durationMinutes: r.duration_minutes != null ? Number(r.duration_minutes) : null,
+    autoStopped: r.auto_stopped || false, notes: r.notes || "", createdAt: r.created_at,
   };
 }
 
@@ -353,7 +365,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], contractTemplates: [], contracts: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -380,6 +392,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: manualTripsData, error: _e7d },
         { data: bizExpenses, error: _e7e },
         { data: catRules, error: _e7f },
+        { data: timeEntriesData, error: _e7i },
         { data: contractTpls, error: _e7g },
         { data: contractsData, error: _e7h },
         { data: seriesData, error: e8 },
@@ -397,6 +410,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("manual_trips").select("*").order("date", { ascending: false }),
         supabase.from("business_expenses").select("*").order("date", { ascending: false }),
         supabase.from("category_rules").select("*"),
+        supabase.from("time_entries").select("*").order("start_time", { ascending: false }),
         supabase.from("contract_templates").select("*").order("created_at", { ascending: false }),
         supabase.from("contracts").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
@@ -419,6 +433,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         manualTrips: (manualTripsData || []).map(r => { try { return rowToManualTrip(r); } catch { return null; } }).filter(Boolean) as any[],
         businessExpenses: (bizExpenses || []).map(r => { try { return rowToBusinessExpense(r); } catch { return null; } }).filter(Boolean) as any[],
         categoryRules: (catRules || []).map(r => { try { return rowToCategoryRule(r); } catch { return null; } }).filter(Boolean) as any[],
+        timeEntries: (timeEntriesData || []).map(r => { try { return rowToTimeEntry(r); } catch { return null; } }).filter(Boolean) as any[],
         contractTemplates: (contractTpls || []).map(r => { try { return rowToContractTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
@@ -513,6 +528,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("crew_members").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Time Entries ----
+  const addTimeEntry = useCallback(async (t: Omit<TimeEntry, "id" | "createdAt">): Promise<TimeEntry> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("time_entries").insert({
+      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: t.crewMemberId, project_id: t.projectId,
+      start_time: t.startTime, end_time: t.endTime, duration_minutes: t.durationMinutes,
+      auto_stopped: t.autoStopped, notes: t.notes,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const entry = rowToTimeEntry(row);
+    setData(d => ({ ...d, timeEntries: [entry, ...d.timeEntries] }));
+    return entry;
+  }, [orgId]);
+
+  const updateTimeEntry = useCallback(async (id: string, t: Partial<TimeEntry>) => {
+    const patch: any = {};
+    if (t.endTime !== undefined) patch.end_time = t.endTime;
+    if (t.durationMinutes !== undefined) patch.duration_minutes = t.durationMinutes;
+    if (t.autoStopped !== undefined) patch.auto_stopped = t.autoStopped;
+    if (t.notes !== undefined) patch.notes = t.notes;
+    const { error } = await supabase.from("time_entries").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, timeEntries: d.timeEntries.map(x => x.id === id ? { ...x, ...t } : x) }));
   }, []);
 
   // ---- Contract Templates ----
@@ -1067,6 +1107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
+      addTimeEntry, updateTimeEntry,
       addContractTemplate, updateContractTemplate, deleteContractTemplate,
       addContract, updateContract, deleteContract,
       updateOrganization,

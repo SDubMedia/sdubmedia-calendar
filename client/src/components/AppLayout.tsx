@@ -39,6 +39,7 @@ import type { UserRole } from "@/lib/types";
 import { useEffect, useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
+import TimerWidget from "./TimerWidget";
 
 import type { OrgFeatures } from "@/lib/types";
 import { ChevronDown } from "lucide-react";
@@ -191,10 +192,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </Link>
 
-        {/* Search + Notifications */}
+        {/* Search + Notifications + Timer */}
         <div className="px-3 pt-3 flex items-center gap-2">
           <div className="flex-1"><GlobalSearch /></div>
           <NotificationBell />
+        </div>
+        <div className="px-3 pt-2">
+          <TimerWidget />
         </div>
 
         {/* Navigation */}
@@ -316,6 +320,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
           <div className="flex items-center gap-1">
+            <TimerWidget />
             <NotificationBell />
             <button
               onClick={() => setMobileMenuOpen(o => !o)}

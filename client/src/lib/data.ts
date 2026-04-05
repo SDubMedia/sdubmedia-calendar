@@ -151,6 +151,7 @@ export const seedData: AppData = {
   manualTrips: [],
   businessExpenses: [],
   categoryRules: [],
+  timeEntries: [],
   contractTemplates: [],
   contracts: [],
   series: [],

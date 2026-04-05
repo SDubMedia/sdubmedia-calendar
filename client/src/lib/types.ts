@@ -477,6 +477,19 @@ export interface CrewLocationDistance {
   createdAt: string;
 }
 
+// ---- Time Tracking ----
+export interface TimeEntry {
+  id: string;
+  crewMemberId: string;
+  projectId: string;
+  startTime: string;
+  endTime: string | null;
+  durationMinutes: number | null;
+  autoStopped: boolean;
+  notes: string;
+  createdAt: string;
+}
+
 // ---- Contracts & E-Signatures ----
 export type ContractStatus = "draft" | "sent" | "client_signed" | "completed" | "void";
 
@@ -530,6 +543,7 @@ export interface AppData {
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];
   categoryRules: CategoryRule[];
+  timeEntries: TimeEntry[];
   contractTemplates: ContractTemplate[];
   contracts: Contract[];
   series: Series[];
