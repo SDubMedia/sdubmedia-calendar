@@ -9,13 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours } from "@/lib/data";
+import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
 import PhotoEditorCalculator from "./PhotoEditorCalculator";
@@ -76,6 +76,16 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
   const getCrewName = (id: string) => data.crewMembers.find((c) => c.id === id)?.name ?? "Unknown";
 
   const { crewHours: totalCrewHrs, postHours: totalPostHrs, totalHours: totalHrs } = getProjectWorkedHours(project);
+
+  // Tracked time from timer
+  const trackedEntries = data.timeEntries?.filter(t => t.projectId === project.id && t.endTime) || [];
+  const totalTrackedMinutes = trackedEntries.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+  const trackedHours = Math.floor(totalTrackedMinutes / 60);
+  const trackedMins = Math.round(totalTrackedMinutes % 60);
+  const trackedDisplay = trackedHours > 0 ? `${trackedHours}h ${trackedMins}m` : `${trackedMins}m`;
+
+  // Invoice amount
+  const invoiceAmount = client ? getProjectInvoiceAmount(project, client) : 0;
 
   // Detect photo editor in post-production for the billing calculator
   const photoEditorEntry = project.postProduction.find(
@@ -219,6 +229,55 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                 <span>Post: {Number(totalPostHrs ?? 0).toFixed(2)} hrs</span>
               </div>
             </div>
+
+            {/* Billing & Tracked Time */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-secondary rounded-lg p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <DollarSign className="w-3.5 h-3.5" /> Billed Amount
+                </div>
+                <div className="text-sm font-bold text-amber-400">
+                  {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(invoiceAmount)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {client?.billingModel === "per_project" ? "Flat rate" : `${totalHrs.toFixed(1)} hrs billed`}
+                </div>
+              </div>
+              <div className="bg-secondary rounded-lg p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Timer className="w-3.5 h-3.5" /> Tracked Time
+                </div>
+                <div className="text-sm font-bold text-foreground">
+                  {totalTrackedMinutes > 0 ? trackedDisplay : "—"}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {trackedEntries.length > 0 ? `${trackedEntries.length} session${trackedEntries.length !== 1 ? "s" : ""}` : "No time tracked"}
+                </div>
+              </div>
+            </div>
+
+            {/* Tracked time breakdown by person */}
+            {trackedEntries.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Time Log</div>
+                {trackedEntries.map(t => {
+                  const member = data.crewMembers.find(c => c.id === t.crewMemberId);
+                  const mins = t.durationMinutes || 0;
+                  const h = Math.floor(mins / 60);
+                  const m = Math.round(mins % 60);
+                  return (
+                    <div key={t.id} className="flex items-center justify-between bg-secondary/50 rounded-md px-3 py-2 text-xs">
+                      <div>
+                        <span className="text-foreground font-medium">{member?.name || "Unknown"}</span>
+                        <span className="text-muted-foreground ml-2">{new Date(t.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        {t.autoStopped && <span className="text-amber-400 ml-1">(auto-stopped)</span>}
+                      </div>
+                      <span className="font-mono text-foreground">{h > 0 ? `${h}h ${m}m` : `${m}m`}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Crew */}
             {project.crew.length > 0 && (
