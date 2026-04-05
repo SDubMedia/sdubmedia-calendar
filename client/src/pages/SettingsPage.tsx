@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +54,46 @@ export default function SettingsPage() {
     org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
   );
   const [saving, setSaving] = useState(false);
+  const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
+  const [connectingStripe, setConnectingStripe] = useState(false);
+
+  // Check Stripe Connect status
+  useEffect(() => {
+    if (org?.id) {
+      fetch(`/api/stripe-connect?action=status&orgId=${org.id}`)
+        .then(r => r.json())
+        .then(d => setStripeStatus({ connected: d.connected, loading: false }))
+        .catch(() => setStripeStatus({ connected: false, loading: false }));
+    }
+  }, [org?.id]);
+
+  async function connectStripe() {
+    if (!org?.id) return;
+    setConnectingStripe(true);
+    try {
+      const res = await fetch("/api/stripe-connect?action=connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: org.id, returnUrl: window.location.href }),
+      });
+      const { url } = await res.json();
+      if (url) window.location.href = url;
+    } catch (e: any) {
+      toast.error(e.message || "Failed to connect Stripe");
+      setConnectingStripe(false);
+    }
+  }
+
+  async function disconnectStripe() {
+    if (!org?.id || !confirm("Disconnect your Stripe account?")) return;
+    await fetch("/api/stripe-connect?action=disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgId: org.id }),
+    });
+    setStripeStatus({ connected: false, loading: false });
+    toast.success("Stripe disconnected");
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -222,6 +262,45 @@ export default function SettingsPage() {
                 <Input value={businessInfo.ein} onChange={e => setBusinessInfo(b => ({ ...b, ein: e.target.value }))} className="bg-secondary border-border" placeholder="XX-XXXXXXX" type="password" autoComplete="off" />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Stripe Connect */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', system-ui" }}>
+              <CreditCard className="w-4 h-4 text-primary" />
+              Payment Processing
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Connect your Stripe account to accept invoice payments from clients.</p>
+          </CardHeader>
+          <CardContent>
+            {stripeStatus.loading ? (
+              <p className="text-sm text-muted-foreground">Checking connection...</p>
+            ) : stripeStatus.connected ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                  <div>
+                    <p className="text-sm font-medium text-green-300">Stripe Connected</p>
+                    <p className="text-xs text-green-400/70">Your clients can pay invoices online</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <a href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline">
+                    <ExternalLink className="w-3 h-3" /> Stripe Dashboard
+                  </a>
+                  <button onClick={disconnectStripe} className="text-xs text-muted-foreground hover:text-destructive ml-auto">
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <Button onClick={connectStripe} disabled={connectingStripe} variant="outline" className="gap-2">
+                <CreditCard className="w-4 h-4" />
+                {connectingStripe ? "Connecting..." : "Connect Stripe Account"}
+              </Button>
+            )}
           </CardContent>
         </Card>
 

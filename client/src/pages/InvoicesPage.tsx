@@ -8,7 +8,7 @@ import { buildInvoice } from "@/lib/invoice";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,33 @@ export default function InvoicesPage() {
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all");
+  const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
+
+  async function createPaymentLink(invoiceId: string) {
+    const orgId = data.organization?.id;
+    if (!orgId) { toast.error("Organization not found"); return; }
+
+    setCreatingPaymentLink(invoiceId);
+    try {
+      const res = await fetch("/api/stripe-payment?action=create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId, orgId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to create payment link");
+
+      // Copy to clipboard
+      if (result.url) {
+        await navigator.clipboard.writeText(result.url);
+        toast.success("Payment link copied to clipboard!");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create payment link");
+    } finally {
+      setCreatingPaymentLink(null);
+    }
+  }
   const [filterClient, setFilterClient] = useState<string>("all");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -382,6 +409,16 @@ export default function InvoicesPage() {
                     {(inv.status === "draft" || inv.status === "sent") && (
                       <button onClick={() => handleMarkPaid(inv.id)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors">
                         <CheckCircle className="w-3.5 h-3.5" /> Mark Paid
+                      </button>
+                    )}
+                    {inv.status !== "void" && inv.status !== "paid" && (
+                      <button
+                        onClick={() => createPaymentLink(inv.id)}
+                        disabled={creatingPaymentLink === inv.id}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        {creatingPaymentLink === inv.id ? "Creating..." : "Payment Link"}
                       </button>
                     )}
                     {inv.status !== "void" && inv.status !== "paid" && (
