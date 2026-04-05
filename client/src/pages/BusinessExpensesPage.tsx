@@ -17,7 +17,7 @@ import { getAuthToken } from "@/lib/supabase";
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
-  "Office", "Insurance", "Vehicle", "Education", "Subscriptions", "Other",
+  "Office", "Insurance", "Vehicle", "Education", "Subscriptions", "Other", "Personal",
 ];
 
 const MONTH_NAMES = [
@@ -334,10 +334,14 @@ export default function BusinessExpensesPage() {
     setEditId(null);
   }
 
-  // Report: group by category
+  // Report: group by category (exclude Personal from CPA report)
+  const businessExpensesOnly = useMemo(() => yearExpenses.filter(e => e.category !== "Personal"), [yearExpenses]);
+  const businessTotal = businessExpensesOnly.reduce((s, e) => s + e.amount, 0);
+  const personalTotal = yearExpenses.filter(e => e.category === "Personal").reduce((s, e) => s + e.amount, 0);
+
   const categoryTotals = useMemo(() => {
     const map = new Map<string, { category: string; total: number; count: number; items: BusinessExpense[] }>();
-    yearExpenses.forEach(e => {
+    businessExpensesOnly.forEach(e => {
       const existing = map.get(e.category) || { category: e.category, total: 0, count: 0, items: [] };
       existing.total += e.amount;
       existing.count++;
@@ -345,7 +349,7 @@ export default function BusinessExpensesPage() {
       map.set(e.category, existing);
     });
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [yearExpenses]);
+  }, [businessExpensesOnly]);
 
   // Equipment with serial numbers
   const equipmentWithSerials = useMemo(() =>
@@ -441,7 +445,7 @@ export default function BusinessExpensesPage() {
                   {yearExpenses.length === 0 ? (
                     <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No expenses for {year}. Upload a Chase CSV or add manually.</td></tr>
                   ) : yearExpenses.map(e => (
-                    <tr key={e.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+                    <tr key={e.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/30 ${e.category === "Personal" ? "opacity-40" : ""}`}>
                       <td className="px-4 py-2 whitespace-nowrap">
                         {new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </td>
@@ -508,10 +512,17 @@ export default function BusinessExpensesPage() {
                   </tbody>
                   <tfoot>
                     <tr className="font-bold border-t-2 border-border print:border-gray-400">
-                      <td className="px-4 py-3">TOTAL</td>
-                      <td className="text-right px-3 py-3">{yearExpenses.length}</td>
-                      <td className="text-right px-4 py-3">{formatCurrency(yearTotal)}</td>
+                      <td className="px-4 py-3">BUSINESS TOTAL</td>
+                      <td className="text-right px-3 py-3">{businessExpensesOnly.length}</td>
+                      <td className="text-right px-4 py-3">{formatCurrency(businessTotal)}</td>
                     </tr>
+                    {personalTotal > 0 && (
+                      <tr className="text-muted-foreground text-xs">
+                        <td className="px-4 py-2">Personal (excluded)</td>
+                        <td className="text-right px-3 py-2">{yearExpenses.length - businessExpensesOnly.length}</td>
+                        <td className="text-right px-4 py-2">{formatCurrency(personalTotal)}</td>
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               </div>

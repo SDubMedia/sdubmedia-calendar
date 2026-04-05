@@ -434,6 +434,7 @@ export type BusinessExpenseCategory =
   | "Vehicle"
   | "Education"
   | "Subscriptions"
+  | "Personal"
   | "Other";
 
 export interface BusinessExpense {

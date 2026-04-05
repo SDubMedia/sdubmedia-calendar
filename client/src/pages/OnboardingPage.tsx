@@ -204,9 +204,7 @@ export default function OnboardingPage() {
           {isWelcome ? (
             /* Welcome Screen */
             <>
-              <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-6">
-                <Film className="w-8 h-8 text-primary" />
-              </div>
+              <img src="/pwa-192x192.png" alt="Slate" className="w-16 h-16 rounded-2xl mx-auto mb-6" />
               <h1 className="text-2xl font-bold text-foreground mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {welcome.title}
               </h1>

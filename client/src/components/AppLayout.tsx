@@ -180,9 +180,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Logo / Brand */}
         <Link href="/">
           <div className="flex items-center gap-2.5 px-4 py-5 border-b border-border cursor-pointer hover:bg-white/5 transition-colors">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-              <Film className="w-4 h-4 text-primary-foreground" />
-            </div>
+            <img src="/pwa-192x192.png" alt="Slate" className="w-8 h-8 rounded-md flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {orgName}
