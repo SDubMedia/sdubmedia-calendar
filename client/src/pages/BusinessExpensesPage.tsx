@@ -721,6 +721,17 @@ export default function BusinessExpensesPage() {
               <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value as BusinessExpenseCategory }))} className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+              <button
+                onClick={() => setEditForm(f => ({ ...f, category: "Personal" as BusinessExpenseCategory }))}
+                className={cn(
+                  "w-full mt-2 py-2 rounded-lg border text-sm font-medium transition-colors",
+                  editForm.category === "Personal"
+                    ? "border-red-500/50 bg-red-500/10 text-red-300"
+                    : "border-border text-muted-foreground hover:border-red-500/30 hover:text-red-300"
+                )}
+              >
+                Mark as Not Business Related
+              </button>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Serial Number (optional)</Label>
