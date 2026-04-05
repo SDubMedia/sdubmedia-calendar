@@ -230,8 +230,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
               </div>
             </div>
 
-            {/* Billing & Tracked Time */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Billing & Tracked Time (owner only) */}
+            {isOwner && (<><div className="grid grid-cols-2 gap-3">
               <div className="bg-secondary rounded-lg p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <DollarSign className="w-3.5 h-3.5" /> Billed Amount
@@ -278,6 +278,8 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                 })}
               </div>
             )}
+
+            </>)}
 
             {/* Crew */}
             {project.crew.length > 0 && (
