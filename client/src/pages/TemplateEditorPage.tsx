@@ -419,57 +419,139 @@ export default function TemplateEditorPage() {
                   </div>
                 </>
               ) : activePage.type === "invoice" ? (
-                <div className="bg-white rounded-xl shadow-sm border border-border p-8">
-                  <p className="text-sm text-gray-500 mb-4">This page auto-generates from the selected package. Preview:</p>
-                  {packages.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Add packages in the properties panel to see the invoice preview.</p>
-                  ) : (
-                    packages.map(pkg => (
-                      <div key={pkg.id} className="mb-6 last:mb-0">
-                        <h3 className="text-sm font-bold text-gray-900 mb-2">{pkg.name || "Untitled Package"}</h3>
-                        <div className="divide-y divide-gray-100">
-                          {pkg.lineItems.map(li => (
-                            <div key={li.id} className="flex justify-between py-1.5 text-sm text-gray-700">
-                              <span>{li.description || "Service"}</span>
-                              <span className="font-mono">${(li.quantity * li.unitPrice).toFixed(2)}</span>
-                            </div>
-                          ))}
+                <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
+                  {/* Invoice Header */}
+                  <div className="p-8 pb-0">
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                          {data.organization?.name || "Your Company"}
+                        </h2>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {data.organization?.businessInfo?.phone}{data.organization?.businessInfo?.phone && data.organization?.businessInfo?.email ? " | " : ""}{data.organization?.businessInfo?.email}
+                        </p>
+                        {data.organization?.businessInfo?.address && (
+                          <p className="text-xs text-gray-400">{data.organization.businessInfo.address}, {data.organization.businessInfo.city}, {data.organization.businessInfo.state} {data.organization.businessInfo.zip}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <h3 className="text-lg font-bold text-gray-900">Invoice</h3>
+                        <p className="text-xs text-gray-400 mt-1">INV-XXXX</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-8 mb-6 bg-gray-50 rounded-lg p-4">
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">Bill to</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">{"{{client_name}}"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">Date Issued</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">{"{{date}}"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">Next Payment Due</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">{"{{project_date}}"}</p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Line Items Table */}
+                  <div className="px-8">
+                    <div className="grid grid-cols-[1fr_60px_60px_80px_80px] gap-2 px-3 py-2 text-[10px] text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                      <span>Service Info</span><span className="text-center">Qty</span><span className="text-center">Unit</span><span className="text-right">Unit Price</span><span className="text-right">Total</span>
+                    </div>
+                    {packages.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic py-6 text-center">Add packages in the properties panel</p>
+                    ) : (
+                      packages.map(pkg => pkg.lineItems.map(li => (
+                        <div key={li.id} className="grid grid-cols-[1fr_60px_60px_80px_80px] gap-2 px-3 py-3 border-b border-gray-100 text-sm">
+                          <div>
+                            <p className="font-semibold text-gray-900">{li.description || "Service"}</p>
+                            {li.details && <p className="text-xs text-gray-400 mt-0.5">{li.details}</p>}
+                          </div>
+                          <span className="text-center text-gray-600">{li.quantity}</span>
+                          <span className="text-center text-gray-600">Unit</span>
+                          <span className="text-right text-gray-600 font-mono">${li.unitPrice.toFixed(2)}</span>
+                          <span className="text-right font-semibold text-gray-900 font-mono">${(li.quantity * li.unitPrice).toFixed(2)}</span>
                         </div>
-                        <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between text-sm font-bold text-gray-900">
-                          <span>Total</span>
-                          <span className="font-mono">${pkg.totalPrice.toFixed(2)}</span>
+                      )))
+                    )}
+                  </div>
+                  {/* Totals */}
+                  <div className="p-8 pt-4">
+                    <div className="flex justify-end">
+                      <div className="w-64 space-y-2">
+                        <div className="flex justify-between text-sm text-gray-500">
+                          <span>Subtotal</span>
+                          <span className="font-mono">${packages.reduce((s, p) => s + p.totalPrice, 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-500">
+                          <span>Tax</span>
+                          <span className="font-mono">$0.00</span>
+                        </div>
+                        <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-2">
+                          <span>Total (USD)</span>
+                          <span className="font-mono">${packages.reduce((s, p) => s + p.totalPrice, 0).toFixed(2)}</span>
                         </div>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  </div>
                 </div>
               ) : activePage.type === "payment" ? (
-                <div className="bg-white rounded-xl shadow-sm border border-border p-8">
-                  <p className="text-sm text-gray-500 mb-4">Payment schedule auto-generates from package milestones. Preview:</p>
-                  {packages.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">Add packages with payment milestones in the properties panel.</p>
-                  ) : (
-                    packages.map(pkg => (
-                      <div key={pkg.id} className="mb-6 last:mb-0">
-                        <h3 className="text-sm font-bold text-gray-900 mb-3">{pkg.name || "Untitled Package"}</h3>
-                        {pkg.paymentMilestones.map((ms, idx) => {
-                          const amount = ms.type === "percent" ? (pkg.totalPrice * (ms.percent || 0) / 100) : (ms.fixedAmount || 0);
-                          return (
-                            <div key={ms.id} className="flex items-center gap-3 py-2 text-sm text-gray-700">
-                              <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-400">{idx + 1}</div>
-                              <div className="flex-1">
-                                <span className="font-medium">{ms.label}</span>
-                                <span className="text-gray-400 ml-2">
-                                  {ms.dueType === "at_signing" ? "Due at signing" : ms.dueType === "relative_days" ? `Due ${ms.dueDays || 0} days after signing` : ms.dueDate ? `Due ${ms.dueDate}` : ""}
-                                </span>
-                              </div>
-                              <span className="font-mono font-semibold">${amount.toFixed(2)}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))
-                  )}
+                <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
+                  {/* Payment Header */}
+                  <div className="p-8 text-center border-b border-gray-100">
+                    <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      {data.organization?.name || "Your Company"}
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {data.organization?.businessInfo?.phone}{data.organization?.businessInfo?.phone && data.organization?.businessInfo?.email ? " | " : ""}{data.organization?.businessInfo?.email}
+                    </p>
+                  </div>
+                  {/* Payment Schedule */}
+                  <div className="p-8">
+                    <p className="text-xs text-gray-400 uppercase tracking-wider mb-4">Payment</p>
+                    {packages.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic text-center py-6">Add packages with payment milestones in the properties panel</p>
+                    ) : (
+                      packages.map(pkg => (
+                        <div key={pkg.id} className="space-y-4">
+                          {pkg.paymentMilestones.length === 0 ? (
+                            <p className="text-sm text-gray-400 italic">No payment milestones configured for {pkg.name}</p>
+                          ) : (
+                            pkg.paymentMilestones.map((ms, idx) => {
+                              const amount = ms.type === "percent" ? (pkg.totalPrice * (ms.percent || 0) / 100) : (ms.fixedAmount || 0);
+                              return (
+                                <div key={ms.id} className="bg-gray-50 rounded-xl p-6">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                      <p className="text-sm font-semibold text-gray-900">Payment {idx + 1} of {pkg.paymentMilestones.length}</p>
+                                      <p className="text-xs text-gray-400">
+                                        {ms.dueType === "at_signing" ? `Due: At signing` : ms.dueType === "relative_days" ? `Due: ${ms.dueDays} days after signing` : `Due: ${ms.dueDate || "TBD"}`}
+                                      </p>
+                                    </div>
+                                    <span className="text-xs text-blue-500 font-medium">View Invoice</span>
+                                  </div>
+                                  <div className="mb-4">
+                                    <p className="text-xs text-gray-400">Amount due</p>
+                                    <p className="text-3xl font-bold text-gray-900 font-mono">${amount.toFixed(2)}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <div className="flex-1 py-2.5 text-center text-sm font-medium border border-gray-300 rounded-lg text-gray-700 bg-white">Debit or credit card</div>
+                                    <div className="flex-1 py-2.5 text-center text-sm font-medium border border-gray-200 rounded-lg text-gray-400 bg-gray-50">Bank account</div>
+                                  </div>
+                                  <div className="mt-6">
+                                    <button className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl text-sm">
+                                      Pay ${amount.toFixed(2)}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
