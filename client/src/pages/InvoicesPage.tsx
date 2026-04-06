@@ -104,7 +104,7 @@ export default function InvoicesPage() {
     if (!selectedClientId || !periodStart || !periodEnd) return [];
     const client = data.clients.find(c => c.id === selectedClientId);
     if (!client) return [];
-    const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd);
+    const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization);
     return draft.lineItems;
   }, [selectedClientId, periodStart, periodEnd, data]);
 
@@ -117,7 +117,7 @@ export default function InvoicesPage() {
 
     setCreating(true);
     try {
-      const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd);
+      const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization);
       await addInvoice(draft);
       toast.success(`Invoice ${draft.invoiceNumber} created`);
       setShowCreate(false);

@@ -2,7 +2,7 @@
 // Invoice building helpers
 // ============================================================
 
-import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem } from "./types";
+import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
 import { getProjectBillableHours, getProjectInvoiceAmount } from "./data";
 
 /** SDub Media company info (placeholder — update with real details) */
@@ -102,6 +102,7 @@ export function buildInvoice(
   existingInvoices: { invoiceNumber: string }[],
   periodStart: string,
   periodEnd: string,
+  org?: Organization | null,
 ): Omit<Invoice, "id" | "createdAt" | "updatedAt"> {
   const lineItems = buildLineItems(projects, client, projectTypes, locations, periodStart, periodEnd, existingInvoices as any);
   const subtotal = lineItems.reduce((s, li) => s + li.amount, 0);
@@ -124,7 +125,16 @@ export function buildInvoice(
     dueDate: today, // Due on receipt
     paidDate: null,
     lineItems,
-    companyInfo: getCompanyInfo(),
+    companyInfo: org?.businessInfo ? {
+      name: org.name || "",
+      address: org.businessInfo.address || "",
+      city: org.businessInfo.city || "",
+      state: org.businessInfo.state || "",
+      zip: org.businessInfo.zip || "",
+      phone: org.businessInfo.phone || "",
+      email: org.businessInfo.email || "",
+      website: org.businessInfo.website || "",
+    } : getCompanyInfo(),
     clientInfo: {
       company: client.company,
       contactName: client.contactName,
