@@ -45,7 +45,7 @@ const MERGE_FIELDS = [
 ];
 
 export default function ContractsPage() {
-  const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
+  const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");
 
@@ -63,6 +63,29 @@ export default function ContractsPage() {
   const [contractTemplateId, setContractTemplateId] = useState("");
   const [contractContent, setContractContent] = useState("");
   const [contractClientEmail, setContractClientEmail] = useState("");
+
+  // Quick-add client
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddEmail, setQuickAddEmail] = useState("");
+
+  async function quickAddClient() {
+    if (!quickAddName.trim() || !quickAddEmail.trim()) { toast.error("Name and email required"); return; }
+    try {
+      const client = await addClient({
+        company: quickAddName.trim(), contactName: quickAddName.trim(), email: quickAddEmail.trim(), phone: "",
+        billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
+        projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
+      });
+      setContractClientId(client.id);
+      setContractClientEmail(quickAddEmail.trim());
+      setQuickAddOpen(false);
+      setQuickAddName(""); setQuickAddEmail("");
+      toast.success(`Client "${client.company}" created`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create client");
+    }
+  }
 
   // View contract
   const [viewContract, setViewContract] = useState<Contract | null>(null);
@@ -492,13 +515,26 @@ export default function ContractsPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Client</Label>
-                <Select value={contractClientId} onValueChange={handleClientChange}>
-                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    {data.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Client</Label>
+                  <button onClick={() => setQuickAddOpen(!quickAddOpen)} className="text-[10px] text-primary hover:text-primary/80">
+                    {quickAddOpen ? "Cancel" : "+ New Client"}
+                  </button>
+                </div>
+                {quickAddOpen ? (
+                  <div className="space-y-2 p-2 bg-secondary/50 rounded-lg border border-border">
+                    <Input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Client name" />
+                    <Input value={quickAddEmail} onChange={e => setQuickAddEmail(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Email" />
+                    <Button size="sm" onClick={quickAddClient} className="w-full text-xs">Create & Select</Button>
+                  </div>
+                ) : (
+                  <Select value={contractClientId} onValueChange={handleClientChange}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {data.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Client Email</Label>
