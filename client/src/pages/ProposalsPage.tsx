@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Proposal, ProposalTemplate, ProposalStatus, ProposalLineItem, ProposalPaymentConfig } from "@/lib/types";
@@ -197,6 +198,7 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
 export default function ProposalsPage() {
   const { data, addClient, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
+  const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"proposals" | "templates">("proposals");
 
   // Template dialog state
@@ -752,7 +754,7 @@ export default function ProposalsPage() {
         ) : (
           /* Templates Tab */
           <div className="space-y-4">
-            <Button onClick={openNewTemplate} className="gap-2">
+            <Button onClick={() => setLocation("/proposals/templates/new/edit")} className="gap-2">
               <Plus className="w-4 h-4" /> New Template
             </Button>
 
@@ -764,7 +766,7 @@ export default function ProposalsPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {data.proposalTemplates.map(tpl => (
-                  <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
+                  <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
                     {/* Cover Image */}
                     <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
                       {tpl.coverImageUrl ? (
@@ -776,7 +778,7 @@ export default function ProposalsPage() {
                       )}
                       {/* Hover overlay with actions */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white"><Edit3 className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
