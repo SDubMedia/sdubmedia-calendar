@@ -173,15 +173,22 @@ export default function ContractsPage() {
     try {
       const token = await getAuthToken();
       const signUrl = `${window.location.origin}/sign/${contract.signToken}`;
-      await fetch("/api/send-email", {
+      const orgName = data.organization?.name || "Your production company";
+      const res = await fetch("/api/send-contract-email", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           to: contract.clientEmail,
-          subject: `Contract: ${contract.title}`,
-          html: `<h2>You have a contract to review and sign</h2><p>${data.organization?.name || "Your production company"} has sent you a contract: <strong>${contract.title}</strong></p><p><a href="${signUrl}" style="display:inline-block;padding:12px 24px;background:#0088ff;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Review & Sign Contract</a></p><p>Or copy this link: ${signUrl}</p>`,
+          subject: `Contract: ${contract.title} — ${orgName}`,
+          signUrl,
+          contractTitle: contract.title,
+          orgName,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to send email");
+      }
       await updateContract(contractId, { status: "sent", sentAt: new Date().toISOString() });
       toast.success("Contract sent to " + contract.clientEmail);
     } catch (e: any) {
