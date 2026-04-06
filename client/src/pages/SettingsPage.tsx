@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig, ServiceItem } from "@/lib/types";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -57,6 +57,7 @@ export default function SettingsPage() {
   const [pipelineStages, setPipelineStages] = useState<PipelineStageConfig[]>(
     org?.pipelineStages?.length ? org.pipelineStages : DEFAULT_PIPELINE_STAGES
   );
+  const [services, setServices] = useState<ServiceItem[]>(org?.services || []);
   const [saving, setSaving] = useState(false);
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
   const [connectingStripe, setConnectingStripe] = useState(false);
@@ -134,6 +135,7 @@ export default function SettingsPage() {
         businessInfo,
         dashboardWidgets,
         pipelineStages,
+        services,
       });
 
       // Auto-create or update office location if business address is set
@@ -406,6 +408,64 @@ export default function SettingsPage() {
                   <FeatureToggleRow key={`all-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* My Services */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Film className="w-4 h-4 text-primary" />
+              My Services
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Define your standard services. These appear as quick-add buttons when building proposals.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {services.length === 0 && (
+                <p className="text-xs text-muted-foreground italic py-2">No services yet. Add your standard offerings below.</p>
+              )}
+              {services.map((svc) => (
+                <div key={svc.id} className="flex items-center gap-2 bg-secondary/30 rounded-lg p-2">
+                  <select
+                    value={svc.category}
+                    onChange={e => setServices(s => s.map(x => x.id === svc.id ? { ...x, category: e.target.value } : x))}
+                    className="w-16 bg-secondary border border-border rounded px-1 py-1.5 text-xs text-foreground"
+                  >
+                    <option value="photo">Photo</option>
+                    <option value="video">Video</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <Input
+                    value={svc.name}
+                    onChange={e => setServices(s => s.map(x => x.id === svc.id ? { ...x, name: e.target.value } : x))}
+                    className="bg-secondary border-border text-sm flex-1"
+                    placeholder="Service name"
+                  />
+                  <Input
+                    type="number"
+                    value={svc.defaultPrice || ""}
+                    onChange={e => setServices(s => s.map(x => x.id === svc.id ? { ...x, defaultPrice: Number(e.target.value) || 0 } : x))}
+                    className="bg-secondary border-border text-sm w-24"
+                    placeholder="Price"
+                    min={0}
+                    step={0.01}
+                  />
+                  <button
+                    onClick={() => setServices(s => s.filter(x => x.id !== svc.id))}
+                    className="p-1.5 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setServices(s => [...s, { id: nanoid(6), name: "", description: "", defaultPrice: 0, category: "photo" }])}
+                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 mt-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Service
+              </button>
             </div>
           </CardContent>
         </Card>

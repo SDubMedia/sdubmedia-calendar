@@ -12,9 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, X } from "lucide-react";
+import { Plus, Users, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { nanoid } from "nanoid";
+import { getAuthToken } from "@/lib/supabase";
 
 const COLOR_MAP: Record<string, string> = {
   blue: "text-blue-400 bg-blue-500/10 border-blue-500/30",
@@ -49,10 +51,16 @@ interface PipelineEntry {
 }
 
 export default function PipelinePage() {
-  const { data, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
+  const { data, addClient, addProposal, updateProposal, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
   const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
   const [activeStage, setActiveStage] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  // Send proposal dialog
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendLeadId, setSendLeadId] = useState<string>("");
+  const [sendTemplateId, setSendTemplateId] = useState<string>("");
+  const [sending, setSending] = useState(false);
 
   // New lead form
   const [newName, setNewName] = useState("");
@@ -163,6 +171,95 @@ export default function PipelinePage() {
     }
   }
 
+  function openSendProposal(leadId: string) {
+    setSendLeadId(leadId);
+    setSendTemplateId("");
+    setSendDialogOpen(true);
+  }
+
+  async function sendProposalToLead() {
+    const lead = data.pipelineLeads.find(l => l.id === sendLeadId);
+    if (!lead) return;
+    if (!lead.email) { toast.error("Lead has no email"); return; }
+    setSending(true);
+
+    try {
+      // Find or create client
+      let clientId = lead.clientId;
+      if (!clientId) {
+        const client = await addClient({
+          company: lead.name, contactName: lead.name, email: lead.email, phone: lead.phone,
+          billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
+          projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
+        });
+        clientId = client.id;
+        await updatePipelineLead(lead.id, { clientId });
+      }
+
+      // Get template data
+      const tpl = sendTemplateId ? data.proposalTemplates.find(t => t.id === sendTemplateId) : null;
+
+      // Create proposal
+      const proposal = await addProposal({
+        clientId,
+        projectId: null,
+        title: tpl?.name || `Proposal for ${lead.name}`,
+        pages: tpl?.pages || [],
+        packages: tpl?.packages || [],
+        selectedPackageId: null,
+        paymentMilestones: [],
+        pipelineStage: "proposal_sent",
+        viewedAt: null,
+        leadSource: lead.leadSource,
+        lineItems: tpl?.lineItems || [],
+        subtotal: 0, taxRate: 0, taxAmount: 0, total: 0,
+        contractContent: tpl?.contractContent || "",
+        paymentConfig: tpl?.paymentConfig || { option: "none", depositPercent: 0, depositAmount: 0 },
+        status: "sent",
+        sentAt: new Date().toISOString(),
+        acceptedAt: null, completedAt: null,
+        clientSignature: null, ownerSignature: null,
+        invoiceId: null, stripeSessionId: null, paidAt: null,
+        clientEmail: lead.email,
+        viewToken: nanoid(32),
+        notes: "",
+      });
+
+      // Send the email
+      const token = await getAuthToken();
+      const proposalUrl = `${window.location.origin}/proposal/${proposal.viewToken}`;
+      const orgName = data.organization?.name || "";
+      await fetch("/api/send-proposal-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to: lead.email,
+          proposalUrl,
+          proposalTitle: proposal.title,
+          total: proposal.total,
+          paymentOption: proposal.paymentConfig.option,
+          depositPercent: proposal.paymentConfig.depositPercent,
+          orgName,
+        }),
+      });
+
+      // Update lead
+      await updatePipelineLead(lead.id, {
+        pipelineStage: "proposal_sent",
+        proposalId: proposal.id,
+        recentActivity: "Proposal sent",
+        recentActivityAt: new Date().toISOString(),
+      });
+
+      toast.success(`Proposal sent to ${lead.email}`);
+      setSendDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send proposal");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -267,6 +364,11 @@ export default function PipelinePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {entry.type === "lead" && !entry.proposalId && (
+                        <button onClick={() => openSendProposal(entry.id)} className="p-1 text-blue-400 hover:text-blue-300" title="Send Proposal">
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       {entry.type === "lead" && (
                         <button onClick={() => deleteLead(entry.id)} className="p-1 text-muted-foreground hover:text-destructive">
                           <X className="w-3.5 h-3.5" />
@@ -322,6 +424,47 @@ export default function PipelinePage() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
             <Button onClick={createLead}>Add Lead</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Proposal Dialog */}
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Send Proposal</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {(() => {
+              const lead = data.pipelineLeads.find(l => l.id === sendLeadId);
+              return lead ? (
+                <div className="bg-secondary/50 rounded-lg p-3">
+                  <p className="text-sm font-medium text-foreground">{lead.name}</p>
+                  <p className="text-xs text-muted-foreground">{lead.email}</p>
+                </div>
+              ) : null;
+            })()}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Template</Label>
+              <Select value={sendTemplateId} onValueChange={setSendTemplateId}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select a template..." /></SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {data.proposalTemplates.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {data.proposalTemplates.length === 0 && (
+                <p className="text-[10px] text-muted-foreground">No templates yet. Create one in Sales → Proposals → Templates.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSendDialogOpen(false)}>Cancel</Button>
+            <Button onClick={sendProposalToLead} disabled={sending} className="gap-2">
+              <Send className="w-4 h-4" />
+              {sending ? "Sending..." : "Send Proposal"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

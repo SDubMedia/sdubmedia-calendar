@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { ProposalTemplate, ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig } from "@/lib/types";
+import type { ProposalTemplate, ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -207,6 +207,15 @@ export default function TemplateEditorPage() {
 
   function addLineItemToPackage(pkgId: string) {
     setPackages(packages.map(pkg => pkg.id === pkgId ? { ...pkg, lineItems: [...pkg.lineItems, emptyLineItem()] } : pkg));
+  }
+
+  function addServiceToPackage(pkgId: string, svc: ServiceItem) {
+    const li: ProposalLineItem = { id: nanoid(6), description: svc.name, details: svc.description, quantity: 1, unitPrice: svc.defaultPrice, amount: svc.defaultPrice };
+    setPackages(packages.map(pkg => {
+      if (pkg.id !== pkgId) return pkg;
+      const newItems = [...pkg.lineItems, li];
+      return { ...pkg, lineItems: newItems, totalPrice: newItems.reduce((s, l) => s + l.quantity * l.unitPrice, 0) };
+    }));
   }
 
   function removeLineItemFromPackage(pkgId: string, liId: string) {
@@ -545,7 +554,14 @@ export default function TemplateEditorPage() {
                           </button>
                         </div>
                       ))}
-                      <button onClick={() => addLineItemToPackage(pkg.id)} className="text-[10px] text-primary hover:text-primary/80">+ Add Service</button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => addLineItemToPackage(pkg.id)} className="text-[10px] text-primary hover:text-primary/80">+ Blank</button>
+                        {(data.organization?.services || []).map(svc => (
+                          <button key={svc.id} onClick={() => addServiceToPackage(pkg.id, svc)} className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
+                            {svc.name} · ${svc.defaultPrice}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="text-xs font-semibold text-foreground text-right font-mono">

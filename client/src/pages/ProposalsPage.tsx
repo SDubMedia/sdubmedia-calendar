@@ -7,7 +7,7 @@ import { useState, useMemo, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Proposal, ProposalTemplate, ProposalStatus, ProposalLineItem, ProposalPaymentConfig } from "@/lib/types";
+import type { Proposal, ProposalTemplate, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,8 +81,11 @@ function removeLineItemFrom(items: ProposalLineItem[], id: string, setter: (item
 }
 
 // ---- Extracted sub-components ----
-function LineItemEditor({ items, setter }: { items: ProposalLineItem[]; setter: (i: ProposalLineItem[]) => void }) {
+function LineItemEditor({ items, setter, services }: { items: ProposalLineItem[]; setter: (i: ProposalLineItem[]) => void; services?: ServiceItem[] }) {
   const total = calcTotal(items);
+  function addFromService(svc: ServiceItem) {
+    setter([...items, { id: nanoid(6), description: svc.name, details: svc.description, quantity: 1, unitPrice: svc.defaultPrice, amount: svc.defaultPrice }]);
+  }
   return (
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">Services / Line Items</Label>
@@ -137,9 +140,16 @@ function LineItemEditor({ items, setter }: { items: ProposalLineItem[]; setter: 
         </div>
       ))}
       <div className="flex items-center justify-between pt-1">
-        <button onClick={() => addLineItemTo(items, setter)} className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
-          <Plus className="w-3 h-3" /> Add Service
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => addLineItemTo(items, setter)} className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
+            <Plus className="w-3 h-3" /> Blank
+          </button>
+          {services?.map(svc => (
+            <button key={svc.id} onClick={() => addFromService(svc)} className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
+              {svc.name} · ${svc.defaultPrice}
+            </button>
+          ))}
+        </div>
         <div className="text-sm font-semibold text-foreground">
           Total: <span className="font-mono">${total.toFixed(2)}</span>
         </div>
@@ -828,7 +838,7 @@ export default function ProposalsPage() {
               </div>
             </div>
 
-            <LineItemEditor items={tplLineItems} setter={setTplLineItems} />
+            <LineItemEditor items={tplLineItems} setter={setTplLineItems} services={data.organization?.services} />
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -917,7 +927,7 @@ export default function ProposalsPage() {
               </Select>
             </div>
 
-            <LineItemEditor items={propLineItems} setter={setPropLineItems} />
+            <LineItemEditor items={propLineItems} setter={setPropLineItems} services={data.organization?.services} />
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">

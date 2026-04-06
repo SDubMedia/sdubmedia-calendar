@@ -428,6 +428,7 @@ function rowToOrg(r: any): Organization {
     businessInfo: r.business_info || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" },
     dashboardWidgets: r.dashboard_widgets || null,
     pipelineStages: Array.isArray(r.pipeline_stages) && r.pipeline_stages.length > 0 ? r.pipeline_stages : DEFAULT_PIPELINE_STAGES,
+    services: Array.isArray(r.services) ? r.services : [],
     createdAt: r.created_at,
   };
 }
@@ -860,6 +861,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.businessInfo !== undefined) patch.business_info = updates.businessInfo;
     if (updates.dashboardWidgets !== undefined) patch.dashboard_widgets = updates.dashboardWidgets;
     if (updates.pipelineStages !== undefined) patch.pipeline_stages = updates.pipelineStages;
+    if (updates.services !== undefined) patch.services = updates.services;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));

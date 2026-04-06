@@ -63,6 +63,14 @@ export interface OrgBusinessInfo {
   ein: string;
 }
 
+export interface ServiceItem {
+  id: string;
+  name: string;
+  description: string;
+  defaultPrice: number;
+  category: string; // e.g. "photo", "video", "other"
+}
+
 export interface PipelineStageConfig {
   id: string;
   label: string;
@@ -95,6 +103,7 @@ export interface Organization {
   businessInfo: OrgBusinessInfo;
   dashboardWidgets: DashboardWidgetConfig[];
   pipelineStages: PipelineStageConfig[];
+  services: ServiceItem[];
   createdAt: string;
 }
 
