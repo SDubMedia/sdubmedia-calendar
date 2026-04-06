@@ -323,7 +323,7 @@ export default function TemplateEditorPage() {
         {/* Left Sidebar — Page Thumbnails */}
         <div className="w-48 border-r border-border bg-card/30 flex flex-col overflow-hidden shrink-0 hidden sm:flex">
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {pages.sort((a, b) => a.sortOrder - b.sortOrder).map((page) => {
+            {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page) => {
               const Icon = PAGE_ICONS[page.type];
               return (
                 <div

@@ -8,14 +8,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  if (!auth?.startsWith("Bearer ") || auth.length < 20) return res.status(401).json({ error: "Unauthorized" });
 
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "Missing url" });
 
-  // Validate it looks like a HoneyBook URL
-  if (!url.includes("honeybook.com")) {
-    return res.status(400).json({ error: "Not a HoneyBook URL" });
+  // Strict URL validation to prevent SSRF
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return res.status(400).json({ error: "Invalid URL" });
+  }
+  if (!parsedUrl.hostname.endsWith("honeybook.com") || !["http:", "https:"].includes(parsedUrl.protocol)) {
+    return res.status(400).json({ error: "Not a valid HoneyBook URL" });
   }
 
   try {

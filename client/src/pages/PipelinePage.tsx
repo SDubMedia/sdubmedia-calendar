@@ -151,8 +151,12 @@ export default function PipelinePage() {
   }
 
   async function deleteLead(id: string) {
-    await deletePipelineLead(id);
-    toast.success("Lead removed");
+    try {
+      await deletePipelineLead(id);
+      toast.success("Lead removed");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete");
+    }
   }
 
   return (

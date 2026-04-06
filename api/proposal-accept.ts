@@ -122,7 +122,8 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (resolvedMilestones.length > 0) updatePayload.payment_milestones = resolvedMilestones;
   if (selectedPkg) updatePayload.total = proposalTotal;
 
-  const { error: updateError } = await supabase.from("proposals").update(updatePayload).eq("id", proposal.id);
+  // Race condition guard: only update if still in "sent" status
+  const { error: updateError, count } = await supabase.from("proposals").update(updatePayload).eq("id", proposal.id).eq("status", "sent");
 
   if (updateError) return res.status(500).json({ error: updateError.message });
 
@@ -165,7 +166,10 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-      const origin = req.headers.origin || req.headers.referer?.replace(/\/[^/]*$/, "") || "";
+      // Validate origin to prevent open redirect
+      const allowedHost = process.env.VERCEL_URL || process.env.VITE_APP_URL || "";
+      const rawOrigin = req.headers.origin || req.headers.referer?.replace(/\/[^/]*$/, "") || "";
+      const origin = (rawOrigin && (rawOrigin.includes("sdubmedia") || rawOrigin.includes("localhost") || rawOrigin.includes("vercel.app"))) ? rawOrigin : `https://${allowedHost}`;
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{
@@ -201,8 +205,8 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         sessionId: session.id,
       });
     } catch (stripeErr: any) {
-      return res.status(200).json({
-        success: true,
+      return res.status(500).json({
+        success: false,
         paymentRequired: true,
         paymentError: stripeErr.message || "Failed to create payment session",
       });

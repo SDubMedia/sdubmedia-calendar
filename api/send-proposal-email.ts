@@ -12,10 +12,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  if (!auth?.startsWith("Bearer ") || auth.length < 20) return res.status(401).json({ error: "Unauthorized" });
 
   const { to, subject, proposalUrl, proposalTitle, total, paymentOption, depositPercent, orgName } = req.body;
   if (!to || !proposalUrl) return res.status(400).json({ error: "Missing to or proposalUrl" });
+
+  // Escape HTML to prevent injection
+  const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const paymentText = paymentOption === "full"
     ? `<p style="color: #1e293b; font-size: 16px; margin: 0 0 8px;"><strong>Total: $${Number(total).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></p><p style="color: #64748b; font-size: 13px; margin: 0 0 24px;">Full payment required at signing</p>`
@@ -32,14 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
           <div style="text-align: center; margin-bottom: 32px;">
             <h1 style="color: #0088ff; font-size: 24px; margin: 0;">SLATE</h1>
-            <p style="color: #64748b; font-size: 12px; margin-top: 4px;">${orgName || ""}</p>
+            <p style="color: #64748b; font-size: 12px; margin-top: 4px;">${esc(orgName)}</p>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; text-align: center;">
             <h2 style="color: #1e293b; font-size: 20px; margin: 0 0 8px;">You have a proposal to review</h2>
             <p style="color: #64748b; font-size: 14px; margin: 0 0 16px;">
-              <strong>${orgName || ""}</strong> has sent you a proposal:<br/>
-              <strong style="color: #1e293b;">${proposalTitle || "Proposal"}</strong>
+              <strong>${esc(orgName)}</strong> has sent you a proposal:<br/>
+              <strong style="color: #1e293b;">${esc(proposalTitle) || "Proposal"}</strong>
             </p>
 
             ${paymentText}
@@ -55,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </div>
 
           <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 24px;">
-            Sent via Slate by ${orgName || ""}
+            Sent via Slate by ${esc(orgName)}
           </p>
         </div>
       `,

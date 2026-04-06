@@ -112,3 +112,4 @@ backups/
 .webdev/
 .vercel
 .env*.local
+.temp

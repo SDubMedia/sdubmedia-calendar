@@ -13,7 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Basic auth check — verify Bearer token exists
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  if (!auth?.startsWith("Bearer ") || auth.length < 20) return res.status(401).json({ error: "Unauthorized" });
+
+  const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const { to, subject, signUrl, contractTitle, orgName } = req.body;
   if (!to || !signUrl) return res.status(400).json({ error: "Missing to or signUrl" });
@@ -22,19 +24,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
-      subject: subject || `Contract: ${contractTitle}`,
+      subject: subject || `Contract: ${esc(contractTitle)}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
           <div style="text-align: center; margin-bottom: 32px;">
             <h1 style="color: #0088ff; font-size: 24px; margin: 0;">SLATE</h1>
-            <p style="color: #64748b; font-size: 12px; margin-top: 4px;">${orgName}</p>
+            <p style="color: #64748b; font-size: 12px; margin-top: 4px;">${esc(orgName)}</p>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; text-align: center;">
             <h2 style="color: #1e293b; font-size: 20px; margin: 0 0 8px;">You have a contract to sign</h2>
             <p style="color: #64748b; font-size: 14px; margin: 0 0 24px;">
-              <strong>${orgName}</strong> has sent you a contract:<br/>
-              <strong style="color: #1e293b;">${contractTitle}</strong>
+              <strong>${esc(orgName)}</strong> has sent you a contract:<br/>
+              <strong style="color: #1e293b;">${esc(contractTitle)}</strong>
             </p>
 
             <a href="${signUrl}" style="display: inline-block; padding: 14px 32px; background: #0088ff; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
@@ -48,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </div>
 
           <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 24px;">
-            Sent via Slate by ${orgName}
+            Sent via Slate by ${esc(orgName)}
           </p>
         </div>
       `,

@@ -246,8 +246,8 @@ export default function ViewProposalPage() {
                   </div>
                   {pkg.description && <p className="text-sm text-gray-500 mb-3">{pkg.description}</p>}
                   <div className="space-y-1 mb-3">
-                    {pkg.lineItems?.map((li: any, idx: number) => (
-                      <p key={idx} className="text-xs text-gray-600">- {li.description}</p>
+                    {pkg.lineItems?.map((li: any) => (
+                      <p key={li.id || li.description} className="text-xs text-gray-600">- {li.description}</p>
                     ))}
                   </div>
                   <p className="text-xl font-bold text-gray-900 font-mono">${pkg.totalPrice?.toFixed(2)}</p>
@@ -272,8 +272,8 @@ export default function ViewProposalPage() {
               <p className="text-sm text-gray-500 mb-4">{selectedPkg.description}</p>
             )}
             <div className="divide-y divide-gray-100">
-              {lineItems.map((li: any, idx: number) => (
-                <div key={idx} className="py-3 flex justify-between items-start">
+              {lineItems.map((li: any) => (
+                <div key={li.id || li.description} className="py-3 flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{li.description}</p>
                     {li.details && <p className="text-xs text-gray-500 mt-0.5">{li.details}</p>}

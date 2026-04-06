@@ -848,7 +848,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ---- Organization ----
   const updateOrganization = useCallback(async (updates: Partial<Organization>) => {
-    if (!data.organization) return;
+    if (!orgId) return;
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.features !== undefined) patch.features = updates.features;
@@ -857,10 +857,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.defaultBillingRate !== undefined) patch.default_billing_rate = updates.defaultBillingRate;
     if (updates.businessInfo !== undefined) patch.business_info = updates.businessInfo;
     if (updates.dashboardWidgets !== undefined) patch.dashboard_widgets = updates.dashboardWidgets;
-    const { error } = await supabase.from("organizations").update(patch).eq("id", data.organization.id);
+    const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
-  }, [data.organization]);
+  }, [orgId]);
 
   // ---- Crew Location Distances ----
   const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
@@ -882,7 +882,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addManualTrip = useCallback(async (t: Omit<ManualTrip, "id" | "createdAt">): Promise<ManualTrip> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("manual_trips").insert({
-      id, crew_member_id: t.crewMemberId, date: t.date, destination: t.destination,
+      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: t.crewMemberId, date: t.date, destination: t.destination,
       location_id: t.locationId || null, purpose: t.purpose, round_trip_miles: t.roundTripMiles,
     }).select().single();
     if (error) throw new Error(error.message);
