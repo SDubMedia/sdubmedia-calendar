@@ -10,7 +10,8 @@ import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
-import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car } from "lucide-react";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users } from "lucide-react";
+import type { PipelineStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -108,6 +109,32 @@ export default function DashboardPage() {
   const recentInvoices = useMemo(() => {
     return data.invoices.slice(0, 5);
   }, [data.invoices]);
+
+  // Pipeline summary
+  const PIPELINE_STAGES: { key: PipelineStage; label: string; color: string }[] = [
+    { key: "inquiry", label: "Inquiry", color: "text-blue-400" },
+    { key: "follow_up", label: "Follow-up", color: "text-cyan-400" },
+    { key: "proposal_sent", label: "Sent", color: "text-indigo-400" },
+    { key: "proposal_signed", label: "Signed", color: "text-amber-400" },
+    { key: "retainer_paid", label: "Retainer", color: "text-green-400" },
+    { key: "in_production", label: "In Prod", color: "text-orange-400" },
+  ];
+  const pipelineCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of PIPELINE_STAGES) counts[s.key] = 0;
+    for (const l of data.pipelineLeads) {
+      if (counts[l.pipelineStage] !== undefined) counts[l.pipelineStage]++;
+    }
+    // Also count proposals not linked to leads
+    const linkedIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
+    for (const p of data.proposals) {
+      if (linkedIds.has(p.id)) continue;
+      const stage = p.pipelineStage || "inquiry";
+      if (counts[stage] !== undefined) counts[stage]++;
+    }
+    return counts;
+  }, [data.pipelineLeads, data.proposals]);
+  const totalPipelineActive = Object.values(pipelineCounts).reduce((s, c) => s + c, 0);
 
   // Revenue chart — last 6 months
   const chartData = useMemo(() => {
@@ -405,6 +432,33 @@ export default function DashboardPage() {
                 })
               )}
             </div>
+          </div>
+          )}
+
+          {/* Pipeline Summary */}
+          {isRealOwner && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                <Users className="w-4 h-4 text-primary" />
+                Pipeline
+              </h3>
+              <Link href="/pipeline" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                View All <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+            {totalPipelineActive === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">No active leads</div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-border">
+                {PIPELINE_STAGES.map(s => (
+                  <div key={s.key} className="p-3 text-center">
+                    <p className={cn("text-xl font-bold", pipelineCounts[s.key] > 0 ? s.color : "text-muted-foreground/30")}>{pipelineCounts[s.key]}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           )}
         </div>
