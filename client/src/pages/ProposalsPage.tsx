@@ -238,6 +238,24 @@ export default function ProposalsPage() {
   const [importing, setImporting] = useState(false);
   const [importTarget, setImportTarget] = useState<"template" | "proposal">("template");
 
+  // Textarea refs for cursor-position insert
+  const tplTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const propTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertAtCursor(ref: React.RefObject<HTMLTextAreaElement | null>, text: string, setter: (val: string) => void, currentVal: string) {
+    const el = ref.current;
+    if (!el) { setter(currentVal + text); return; }
+    const start = el.selectionStart ?? currentVal.length;
+    const end = el.selectionEnd ?? currentVal.length;
+    const newVal = currentVal.slice(0, start) + text + currentVal.slice(end);
+    setter(newVal);
+    // Restore cursor position after React re-render
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + text.length;
+    });
+  }
+
   // PDF upload
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
@@ -731,12 +749,13 @@ export default function ProposalsPage() {
               </div>
               <div className="flex flex-wrap gap-1 mb-1">
                 {MERGE_FIELDS.map(f => (
-                  <button key={f.key} onClick={() => setTplContractContent(c => c + f.key)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
+                  <button key={f.key} onClick={() => insertAtCursor(tplTextareaRef, f.key, setTplContractContent, tplContractContent)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
                     {f.label}
                   </button>
                 ))}
               </div>
               <textarea
+                ref={tplTextareaRef}
                 value={tplContractContent}
                 onChange={e => setTplContractContent(e.target.value)}
                 className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y font-mono"
@@ -804,7 +823,15 @@ export default function ProposalsPage() {
                   </button>
                 </div>
               </div>
+              <div className="flex flex-wrap gap-1 mb-1">
+                {MERGE_FIELDS.map(f => (
+                  <button key={f.key} onClick={() => insertAtCursor(propTextareaRef, f.key, setPropContractContent, propContractContent)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
+                    {f.label}
+                  </button>
+                ))}
+              </div>
               <textarea
+                ref={propTextareaRef}
                 value={propContractContent}
                 onChange={e => setPropContractContent(e.target.value)}
                 className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y"
