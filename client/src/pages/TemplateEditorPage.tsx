@@ -309,7 +309,7 @@ export default function TemplateEditorPage() {
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              className="text-lg font-semibold text-foreground bg-transparent border-none outline-none w-64 sm:w-96"
+              className="text-lg font-semibold text-foreground bg-transparent border-none outline-none w-full max-w-xs sm:max-w-md"
               placeholder="Template name..."
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             />

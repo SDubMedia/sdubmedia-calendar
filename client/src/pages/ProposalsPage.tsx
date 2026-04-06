@@ -92,53 +92,41 @@ function LineItemEditor({ items, setter, services }: { items: ProposalLineItem[]
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">Services / Line Items</Label>
       {items.map((li, idx) => (
-        <div key={li.id} className="flex gap-2 items-start">
-          <div className="flex-1 space-y-1">
+        <div key={li.id} className="bg-secondary/30 rounded-lg p-2 space-y-1.5">
+          <div className="flex gap-2">
             <Input
               value={li.description}
               onChange={e => updateLineItem(items, li.id, "description", e.target.value, setter)}
-              className="bg-secondary border-border text-sm"
+              className="bg-secondary border-border text-sm flex-1"
               placeholder={`Service ${idx + 1} (e.g. Full Day Video Production)`}
             />
-            <Input
-              value={li.details}
-              onChange={e => updateLineItem(items, li.id, "details", e.target.value, setter)}
-              className="bg-secondary border-border text-xs"
-              placeholder="Details (optional)"
-            />
+            <button
+              onClick={() => removeLineItemFrom(items, li.id, setter)}
+              className="p-1.5 text-muted-foreground hover:text-destructive shrink-0"
+              disabled={items.length <= 1}
+            >
+              <X className="w-3 h-3" />
+            </button>
           </div>
-          <div className="w-16">
-            <Input
-              type="number"
-              value={li.quantity}
-              onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)}
-              className="bg-secondary border-border text-sm text-center"
-              min={1}
-            />
-            <span className="text-[10px] text-muted-foreground">Qty</span>
+          <Input
+            value={li.details}
+            onChange={e => updateLineItem(items, li.id, "details", e.target.value, setter)}
+            className="bg-secondary border-border text-xs"
+            placeholder="Details (optional)"
+          />
+          <div className="flex gap-2 items-center">
+            <div className="w-16">
+              <Input type="number" value={li.quantity} onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs text-center" min={1} />
+              <span className="text-[9px] text-muted-foreground">Qty</span>
+            </div>
+            <div className="flex-1">
+              <Input type="number" value={li.unitPrice || ""} onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs" placeholder="0.00" min={0} step={0.01} />
+              <span className="text-[9px] text-muted-foreground">Price</span>
+            </div>
+            <div className="text-right">
+              <span className="text-sm font-mono font-semibold text-foreground">${(li.quantity * li.unitPrice).toFixed(2)}</span>
+            </div>
           </div>
-          <div className="w-28">
-            <Input
-              type="number"
-              value={li.unitPrice || ""}
-              onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)}
-              className="bg-secondary border-border text-sm"
-              placeholder="0.00"
-              min={0}
-              step={0.01}
-            />
-            <span className="text-[10px] text-muted-foreground">Price</span>
-          </div>
-          <div className="w-20 text-right pt-2">
-            <span className="text-sm font-mono text-foreground">${(li.quantity * li.unitPrice).toFixed(2)}</span>
-          </div>
-          <button
-            onClick={() => removeLineItemFrom(items, li.id, setter)}
-            className="p-1.5 mt-1 text-muted-foreground hover:text-destructive"
-            disabled={items.length <= 1}
-          >
-            <X className="w-3 h-3" />
-          </button>
         </div>
       ))}
       <div className="flex items-center justify-between pt-1">
