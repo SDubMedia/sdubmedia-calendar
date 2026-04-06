@@ -207,6 +207,8 @@ export default function ProposalsPage() {
   const [tplContractContent, setTplContractContent] = useState("");
   const [tplPayment, setTplPayment] = useState<ProposalPaymentConfig>(DEFAULT_PAYMENT);
   const [tplNotes, setTplNotes] = useState("");
+  const [tplCoverUrl, setTplCoverUrl] = useState("");
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   // Proposal dialog state
   const [proposalDialogOpen, setProposalDialogOpen] = useState(false);
@@ -300,6 +302,7 @@ export default function ProposalsPage() {
     setTplContractContent("");
     setTplPayment(DEFAULT_PAYMENT);
     setTplNotes("");
+    setTplCoverUrl("");
     setTplDialogOpen(true);
   }
 
@@ -310,14 +313,36 @@ export default function ProposalsPage() {
     setTplContractContent(tpl.contractContent);
     setTplPayment(tpl.paymentConfig);
     setTplNotes(tpl.notes);
+    setTplCoverUrl(tpl.coverImageUrl || "");
     setTplDialogOpen(true);
+  }
+
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingCover(true);
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `covers/${nanoid(10)}.${ext}`;
+      const { error } = await supabase.storage.from("proposal-assets").upload(path, file, { upsert: true });
+      if (error) throw new Error(error.message);
+      const { data: urlData } = supabase.storage.from("proposal-assets").getPublicUrl(path);
+      setTplCoverUrl(urlData.publicUrl);
+      toast.success("Cover image uploaded");
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadingCover(false);
+    }
   }
 
   async function saveTemplate() {
     if (!tplName.trim()) { toast.error("Template name required"); return; }
     const payload = {
       name: tplName.trim(),
-      coverImageUrl: "",
+      coverImageUrl: tplCoverUrl,
       pages: [] as any[],
       packages: [] as any[],
       lineItems: calcLineItems(tplLineItems),
@@ -737,20 +762,31 @@ export default function ProposalsPage() {
                 <p className="text-sm">No templates yet. Create a reusable proposal template.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {data.proposalTemplates.map(tpl => (
-                  <div key={tpl.id} className="bg-card border border-border rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">{tpl.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {tpl.lineItems.length} service{tpl.lineItems.length !== 1 ? "s" : ""}
-                        {tpl.paymentConfig.option !== "none" && ` · ${tpl.paymentConfig.option === "deposit" ? `${tpl.paymentConfig.depositPercent}% deposit` : "Full payment"}`}
-                        {" · "}Updated {new Date(tpl.updatedAt).toLocaleDateString()}
-                      </p>
+                  <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
+                    {/* Cover Image */}
+                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                      {tpl.coverImageUrl ? (
+                        <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                          <FileText className="w-10 h-10 text-primary/30" />
+                        </div>
+                      )}
+                      {/* Hover overlay with actions */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditTemplate(tpl)} className="p-1.5 text-muted-foreground hover:text-foreground"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={async () => { await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                    {/* Info */}
+                    <div className="p-3">
+                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {tpl.packages.length > 0 ? `${tpl.packages.length} package${tpl.packages.length !== 1 ? "s" : ""}` : `${tpl.lineItems.length} service${tpl.lineItems.length !== 1 ? "s" : ""}`}
+                        {" · "}Saved template
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -769,9 +805,25 @@ export default function ProposalsPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-5 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Template Name</Label>
-              <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Full Day Video Production" />
+            <div className="grid grid-cols-[1fr_auto] gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Template Name</Label>
+                <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Full Day Video Production" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Cover Image</Label>
+                <div className="w-24 h-16 rounded-lg border border-border overflow-hidden bg-secondary relative group">
+                  {tplCoverUrl ? (
+                    <img src={tplCoverUrl} alt="Cover" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <Upload className="w-4 h-4" />
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" onChange={handleCoverUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploadingCover} />
+                  {uploadingCover && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
+                </div>
+              </div>
             </div>
 
             <LineItemEditor items={tplLineItems} setter={setTplLineItems} />
