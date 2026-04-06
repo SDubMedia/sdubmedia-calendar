@@ -45,7 +45,7 @@ const MERGE_FIELDS = [
 ];
 
 export default function ContractsPage() {
-  const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract } = useApp();
+  const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");
 
@@ -427,8 +427,9 @@ export default function ContractsPage() {
                       <p className="text-xs text-muted-foreground">Updated {new Date(tpl.updatedAt).toLocaleDateString()}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => openEditTemplate(tpl)} className="p-1.5 text-muted-foreground hover:text-foreground"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={async () => { await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => openEditTemplate(tpl)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={async () => { await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); toast.success("Copied to Proposals"); }} className="p-1.5 text-muted-foreground hover:text-primary" title="Copy to Proposals"><Copy className="w-4 h-4" /></button>
+                      <button onClick={async () => { await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
                 ))}

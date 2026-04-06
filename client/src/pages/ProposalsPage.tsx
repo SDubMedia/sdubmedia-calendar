@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, DollarSign, Link2, ExternalLink } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, DollarSign, Link2, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -206,7 +206,7 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
 }
 
 export default function ProposalsPage() {
-  const { data, addClient, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
+  const { data, addClient, addContractTemplate, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"proposals" | "templates">("templates");
@@ -789,8 +789,9 @@ export default function ProposalsPage() {
                       )}
                       {/* Hover overlay with actions */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: tpl.name, content: tpl.contractContent || tpl.pages?.find((p: any) => p.type === "agreement")?.content || "" }); toast.success("Copied to Contracts"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Copy to Contracts"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                     {/* Info */}
