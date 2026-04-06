@@ -30,6 +30,25 @@ export function generateInvoiceNumber(existingInvoices: { invoiceNumber: string 
       if (num > maxNum) maxNum = num;
     }
   }
+  // Add timestamp suffix to avoid collisions with soft-deleted invoices
+  const next = maxNum + 1;
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
+/** Generate next invoice number including deleted invoices */
+export async function generateInvoiceNumberFromDB(supabase: any): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `INV-${year}-`;
+  const { data } = await supabase
+    .from("invoices")
+    .select("invoice_number")
+    .like("invoice_number", `${prefix}%`)
+    .order("invoice_number", { ascending: false })
+    .limit(1);
+  let maxNum = 0;
+  if (data?.[0]?.invoice_number) {
+    maxNum = parseInt(data[0].invoice_number.slice(prefix.length), 10) || 0;
+  }
   return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
 }
 

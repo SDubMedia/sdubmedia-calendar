@@ -4,7 +4,8 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { buildInvoice } from "@/lib/invoice";
+import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
+import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
@@ -118,6 +119,8 @@ export default function InvoicesPage() {
     setCreating(true);
     try {
       const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization);
+      // Get invoice number from DB to avoid collisions with soft-deleted invoices
+      draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
       await addInvoice(draft);
       toast.success(`Invoice ${draft.invoiceNumber} created`);
       setShowCreate(false);
