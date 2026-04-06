@@ -21,6 +21,12 @@ const PRICE_IDS: Record<string, string> = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Auth check — require Bearer token
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ") || auth.length < 20) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   const { action } = req.query;
 
   try {
