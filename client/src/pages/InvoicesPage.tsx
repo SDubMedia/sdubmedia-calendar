@@ -74,10 +74,15 @@ export default function InvoicesPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to create payment link");
 
-      // Copy to clipboard
       if (result.url) {
-        await navigator.clipboard.writeText(result.url);
-        toast.success("Payment link copied to clipboard!");
+        // Try clipboard first, fall back to prompt
+        try {
+          await navigator.clipboard.writeText(result.url);
+          toast.success("Payment link copied to clipboard!");
+        } catch {
+          // Safari blocks clipboard — show link in prompt
+          prompt("Copy this payment link:", result.url);
+        }
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to create payment link");
