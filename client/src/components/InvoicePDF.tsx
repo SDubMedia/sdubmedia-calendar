@@ -33,13 +33,15 @@ const s = StyleSheet.create({
   table: { marginBottom: 20 },
   tableHeader: { flexDirection: "row", backgroundColor: charcoal, padding: 8, borderRadius: 4 },
   tableHeaderText: { color: "#ffffff", fontSize: 8, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.5 },
-  tableRow: { flexDirection: "row", padding: 8, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  tableRow: { padding: 10, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   tableRowAlt: { backgroundColor: "#f8fafc" },
-  colDate: { width: "15%" },
-  colDesc: { width: "40%" },
-  colQty: { width: "15%", textAlign: "right" },
-  colRate: { width: "15%", textAlign: "right" },
-  colAmount: { width: "15%", textAlign: "right" },
+  tableRowInner: { flexDirection: "row" },
+  tableRowDesc: { fontSize: 9, color: gray, marginTop: 4, lineHeight: 1.4 },
+  colDesc: { width: "45%" },
+  colQty: { width: "10%", textAlign: "center" },
+  colUnit: { width: "10%", textAlign: "center" },
+  colRate: { width: "17%", textAlign: "right" },
+  colAmount: { width: "18%", textAlign: "right" },
   // Totals
   totalsContainer: { alignItems: "flex-end", marginBottom: 30 },
   totalsBox: { width: 220 },
@@ -78,11 +80,13 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.brandName}>{ci.name || "SDub Media"}</Text>
-            <Text style={s.brandTagline}>Video When It Matters Most</Text>
+            <Text style={s.brandName}>{ci.name || "Slate"}</Text>
+            <Text style={s.brandTagline}>{ci.phone}{ci.phone && ci.email ? " | " : ""}{ci.email}</Text>
+            {ci.address && <Text style={s.brandTagline}>{ci.address}{ci.city ? `, ${ci.city}` : ""}{ci.state ? `, ${ci.state}` : ""} {ci.zip}</Text>}
+            {ci.website && <Text style={s.brandTagline}>{ci.website}</Text>}
           </View>
           <View>
-            <Text style={s.invoiceTitle}>INVOICE</Text>
+            <Text style={s.invoiceTitle}>Invoice</Text>
             <Text style={s.invoiceNumber}>{invoice.invoiceNumber}</Text>
           </View>
         </View>
@@ -109,35 +113,40 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
         {/* Dates & Terms */}
         <View style={s.metaRow}>
           <View style={s.metaItem}>
-            <Text style={s.metaLabel}>Issue Date</Text>
+            <Text style={s.metaLabel}>Date Issued</Text>
             <Text style={s.metaValue}>{formatDate(invoice.issueDate)}</Text>
           </View>
           <View style={s.metaItem}>
-            <Text style={s.metaLabel}>Service Period</Text>
-            <Text style={s.metaValue}>{formatDate(invoice.periodStart)} — {formatDate(invoice.periodEnd)}</Text>
+            <Text style={s.metaLabel}>Invoice #</Text>
+            <Text style={s.metaValue}>{invoice.invoiceNumber}</Text>
           </View>
           <View style={s.metaItem}>
-            <Text style={s.metaLabel}>Payment Terms</Text>
-            <Text style={s.metaValue}>Due on Receipt</Text>
+            <Text style={s.metaLabel}>Next Payment Due</Text>
+            <Text style={s.metaValue}>{formatDate(invoice.dueDate)}</Text>
           </View>
         </View>
 
         {/* Line Items Table */}
         <View style={s.table}>
           <View style={s.tableHeader}>
-            <Text style={[s.tableHeaderText, s.colDate]}>Date</Text>
-            <Text style={[s.tableHeaderText, s.colDesc]}>Description</Text>
-            <Text style={[s.tableHeaderText, s.colQty]}>Hrs/Qty</Text>
-            <Text style={[s.tableHeaderText, s.colRate]}>Rate</Text>
-            <Text style={[s.tableHeaderText, s.colAmount]}>Amount</Text>
+            <Text style={[s.tableHeaderText, s.colDesc]}>Service Info</Text>
+            <Text style={[s.tableHeaderText, s.colQty]}>Qty</Text>
+            <Text style={[s.tableHeaderText, s.colUnit]}>Unit</Text>
+            <Text style={[s.tableHeaderText, s.colRate]}>Unit Price</Text>
+            <Text style={[s.tableHeaderText, s.colAmount]}>Total</Text>
           </View>
           {invoice.lineItems.map((li, i) => (
             <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
-              <Text style={s.colDate}>{formatDate(li.date)}</Text>
-              <Text style={s.colDesc}>{li.description}</Text>
-              <Text style={s.colQty}>{li.quantity % 1 === 0 ? li.quantity : li.quantity.toFixed(1)}</Text>
-              <Text style={s.colRate}>{formatCurrency(li.unitPrice)}</Text>
-              <Text style={s.colAmount}>{formatCurrency(li.amount)}</Text>
+              <View style={s.tableRowInner}>
+                <Text style={[s.colDesc, { fontFamily: "Helvetica-Bold" }]}>{li.description}</Text>
+                <Text style={s.colQty}>{li.quantity % 1 === 0 ? li.quantity : li.quantity.toFixed(1)}</Text>
+                <Text style={s.colUnit}>{li.quantity === 1 ? "Unit" : "Units"}</Text>
+                <Text style={s.colRate}>{formatCurrency(li.unitPrice)}</Text>
+                <Text style={[s.colAmount, { fontFamily: "Helvetica-Bold" }]}>{formatCurrency(li.amount)}</Text>
+              </View>
+              {li.date && li.date !== invoice.issueDate && (
+                <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
+              )}
             </View>
           ))}
         </View>
