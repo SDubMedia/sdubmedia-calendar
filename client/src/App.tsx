@@ -45,6 +45,7 @@ const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
+const TrashPage = lazy(() => import("./pages/TrashPage"));
 const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage"));
 
 function LoadingScreen() {
@@ -116,6 +117,7 @@ function Router() {
         {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
         {isOwner && <Route path="/pipeline" component={PipelinePage} />}
         {isOwner && <Route path="/1099" component={ContractorSummaryPage} />}
+        {isOwner && <Route path="/trash" component={TrashPage} />}
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />

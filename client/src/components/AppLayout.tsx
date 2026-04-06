@@ -30,6 +30,7 @@ import {
   HelpCircle,
   Car,
   TrendingUp,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -115,6 +116,7 @@ const navStructure: NavEntry[] = [
 
   // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
+  { label: "Trash", href: "/trash", icon: Trash2, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
 ];

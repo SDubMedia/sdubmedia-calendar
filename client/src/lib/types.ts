@@ -384,6 +384,7 @@ export interface Invoice {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 // ---- Content Series ----
@@ -528,6 +529,7 @@ export interface ContractTemplate {
   content: string; // HTML content
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface ContractSignature {
@@ -557,6 +559,7 @@ export interface Contract {
   pdfUrl?: string; // for uploaded PDF contracts
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 // ---- Proposals ----
@@ -630,6 +633,7 @@ export interface ProposalTemplate {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface Proposal {
@@ -667,6 +671,7 @@ export interface Proposal {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface PipelineLead {
@@ -686,6 +691,7 @@ export interface PipelineLead {
   recentActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface AppData {

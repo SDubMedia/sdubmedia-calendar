@@ -94,6 +94,9 @@ interface AppContextValue {
   addPipelineLead: (l: Omit<PipelineLead, "id" | "createdAt" | "updatedAt">) => Promise<PipelineLead>;
   updatePipelineLead: (id: string, l: Partial<PipelineLead>) => Promise<void>;
   deletePipelineLead: (id: string) => Promise<void>;
+  // Trash
+  restoreItem: (table: string, id: string) => Promise<void>;
+  permanentlyDelete: (table: string, id: string) => Promise<void>;
   // Organization
   updateOrganization: (updates: Partial<Organization>) => Promise<void>;
 }
@@ -159,7 +162,7 @@ function rowToTimeEntry(r: any): TimeEntry {
 }
 
 function rowToContractTemplate(r: any): ContractTemplate {
-  return { id: r.id, name: r.name || "", content: r.content || "", createdAt: r.created_at, updatedAt: r.updated_at };
+  return { id: r.id, name: r.name || "", content: r.content || "", createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null };
 }
 
 function rowToContract(r: any): Contract {
@@ -170,7 +173,7 @@ function rowToContract(r: any): Contract {
     clientSignedAt: r.client_signed_at || null, ownerSignedAt: r.owner_signed_at || null,
     clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
     clientEmail: r.client_email || "", signToken: r.sign_token || "",
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
 
@@ -184,7 +187,7 @@ function rowToProposalTemplate(r: any): ProposalTemplate {
     contractContent: r.contract_content || "",
     paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
     notes: r.notes || "",
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
 
@@ -211,7 +214,7 @@ function rowToProposal(r: any): Proposal {
     paidAt: r.paid_at || null,
     clientEmail: r.client_email || "", viewToken: r.view_token || "",
     notes: r.notes || "",
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
 
@@ -225,7 +228,7 @@ function rowToPipelineLead(r: any): PipelineLead {
     proposalId: r.proposal_id || null,
     recentActivity: r.recent_activity || "",
     recentActivityAt: r.recent_activity_at || null,
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
 
@@ -356,7 +359,7 @@ function rowToInvoice(r: any): Invoice {
     clientInfo: r.client_info || {},
     notes: r.notes || "",
     createdAt: r.created_at,
-    updatedAt: r.updated_at,
+    updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
 
@@ -476,18 +479,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("project_types").select("*").order("name"),
         supabase.from("projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
-        supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+        supabase.from("invoices").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("crew_location_distances").select("*"),
         supabase.from("manual_trips").select("*").order("date", { ascending: false }),
         supabase.from("business_expenses").select("*").order("date", { ascending: false }),
         supabase.from("category_rules").select("*"),
         supabase.from("time_entries").select("*").order("start_time", { ascending: false }),
-        supabase.from("contract_templates").select("*").order("created_at", { ascending: false }),
-        supabase.from("contracts").select("*").order("created_at", { ascending: false }),
-        supabase.from("proposal_templates").select("*").order("created_at", { ascending: false }),
-        supabase.from("proposals").select("*").order("created_at", { ascending: false }),
-        supabase.from("pipeline_leads").select("*").order("created_at", { ascending: false }),
+        supabase.from("contract_templates").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("contracts").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("proposal_templates").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("proposals").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
+        supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -656,7 +659,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteContractTemplate = useCallback(async (id: string) => {
-    const { error } = await supabase.from("contract_templates").delete().eq("id", id);
+    const { error } = await supabase.from("contract_templates").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, contractTemplates: d.contractTemplates.filter(x => x.id !== id) }));
   }, []);
@@ -699,7 +702,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteContract = useCallback(async (id: string) => {
-    const { error } = await supabase.from("contracts").delete().eq("id", id);
+    const { error } = await supabase.from("contracts").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, contracts: d.contracts.filter(x => x.id !== id) }));
   }, []);
@@ -736,7 +739,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteProposalTemplate = useCallback(async (id: string) => {
-    const { error } = await supabase.from("proposal_templates").delete().eq("id", id);
+    const { error } = await supabase.from("proposal_templates").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, proposalTemplates: d.proposalTemplates.filter(x => x.id !== id) }));
   }, []);
@@ -799,7 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteProposal = useCallback(async (id: string) => {
-    const { error } = await supabase.from("proposals").delete().eq("id", id);
+    const { error } = await supabase.from("proposals").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, proposals: d.proposals.filter(x => x.id !== id) }));
   }, []);
@@ -844,9 +847,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deletePipelineLead = useCallback(async (id: string) => {
-    const { error } = await supabase.from("pipeline_leads").delete().eq("id", id);
+    const { error } = await supabase.from("pipeline_leads").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, pipelineLeads: d.pipelineLeads.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Trash ----
+  const restoreItem = useCallback(async (table: string, id: string) => {
+    const { error } = await supabase.from(table).update({ deleted_at: null }).eq("id", id);
+    if (error) throw new Error(error.message);
+    // Trigger a reload by toggling a state — the useEffect on orgId will re-fetch
+    window.location.reload();
+  }, []);
+
+  const permanentlyDelete = useCallback(async (table: string, id: string) => {
+    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (error) throw new Error(error.message);
   }, []);
 
   // ---- Organization ----
@@ -1157,7 +1173,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [data.invoices]);
 
   const deleteInvoice = useCallback(async (id: string) => {
-    const { error } = await supabase.from("invoices").delete().eq("id", id);
+    const { error } = await supabase.from("invoices").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
   }, []);
@@ -1338,6 +1354,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposalTemplate, updateProposalTemplate, deleteProposalTemplate,
       addProposal, updateProposal, deleteProposal,
       addPipelineLead, updatePipelineLead, deletePipelineLead,
+      restoreItem, permanentlyDelete,
       updateOrganization,
     }}>
       {children}
