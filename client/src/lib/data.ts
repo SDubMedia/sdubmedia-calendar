@@ -156,6 +156,7 @@ export const seedData: AppData = {
   contracts: [],
   proposalTemplates: [],
   proposals: [],
+  pipelineLeads: [],
   series: [],
   organization: null,
 };

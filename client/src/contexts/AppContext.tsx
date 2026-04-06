@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -89,6 +89,10 @@ interface AppContextValue {
   addProposal: (p: Omit<Proposal, "id" | "createdAt" | "updatedAt">) => Promise<Proposal>;
   updateProposal: (id: string, p: Partial<Proposal>) => Promise<void>;
   deleteProposal: (id: string) => Promise<void>;
+  // Pipeline Leads
+  addPipelineLead: (l: Omit<PipelineLead, "id" | "createdAt" | "updatedAt">) => Promise<PipelineLead>;
+  updatePipelineLead: (id: string, l: Partial<PipelineLead>) => Promise<void>;
+  deletePipelineLead: (id: string) => Promise<void>;
   // Organization
   updateOrganization: (updates: Partial<Organization>) => Promise<void>;
 }
@@ -172,6 +176,9 @@ function rowToContract(r: any): Contract {
 function rowToProposalTemplate(r: any): ProposalTemplate {
   return {
     id: r.id, name: r.name || "",
+    coverImageUrl: r.cover_image_url || "",
+    pages: Array.isArray(r.pages) ? r.pages : [],
+    packages: Array.isArray(r.packages) ? r.packages : [],
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     contractContent: r.contract_content || "",
     paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
@@ -184,6 +191,13 @@ function rowToProposal(r: any): Proposal {
   return {
     id: r.id, clientId: r.client_id || "", projectId: r.project_id || null,
     title: r.title || "",
+    pages: Array.isArray(r.pages) ? r.pages : [],
+    packages: Array.isArray(r.packages) ? r.packages : [],
+    selectedPackageId: r.selected_package_id || null,
+    paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
+    pipelineStage: r.pipeline_stage || "inquiry",
+    viewedAt: r.viewed_at || null,
+    leadSource: r.lead_source || "",
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     subtotal: Number(r.subtotal ?? 0), taxRate: Number(r.tax_rate ?? 0),
     taxAmount: Number(r.tax_amount ?? 0), total: Number(r.total ?? 0),
@@ -196,6 +210,20 @@ function rowToProposal(r: any): Proposal {
     paidAt: r.paid_at || null,
     clientEmail: r.client_email || "", viewToken: r.view_token || "",
     notes: r.notes || "",
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+function rowToPipelineLead(r: any): PipelineLead {
+  return {
+    id: r.id, clientId: r.client_id || null,
+    name: r.name || "", email: r.email || "", phone: r.phone || "",
+    projectType: r.project_type || "", eventDate: r.event_date || null,
+    location: r.location || "", description: r.description || "",
+    leadSource: r.lead_source || "", pipelineStage: r.pipeline_stage || "inquiry",
+    proposalId: r.proposal_id || null,
+    recentActivity: r.recent_activity || "",
+    recentActivityAt: r.recent_activity_at || null,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -403,7 +431,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -435,6 +463,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: contractsData, error: _e7h },
         { data: proposalTpls, error: _e7j },
         { data: proposalsData, error: _e7k },
+        { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -455,6 +484,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("contracts").select("*").order("created_at", { ascending: false }),
         supabase.from("proposal_templates").select("*").order("created_at", { ascending: false }),
         supabase.from("proposals").select("*").order("created_at", { ascending: false }),
+        supabase.from("pipeline_leads").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -480,6 +510,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
         proposalTemplates: (proposalTpls || []).map(r => { try { return rowToProposalTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
+        pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -676,6 +707,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString();
     const { data: row, error } = await supabase.from("proposal_templates").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: t.name,
+      cover_image_url: t.coverImageUrl || "", pages: t.pages || [], packages: t.packages || [],
       line_items: t.lineItems, contract_content: t.contractContent,
       payment_config: t.paymentConfig, notes: t.notes, updated_at: now,
     }).select().single();
@@ -688,6 +720,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateProposalTemplate = useCallback(async (id: string, t: Partial<ProposalTemplate>) => {
     const patch: any = { updated_at: new Date().toISOString() };
     if (t.name !== undefined) patch.name = t.name;
+    if (t.coverImageUrl !== undefined) patch.cover_image_url = t.coverImageUrl;
+    if (t.pages !== undefined) patch.pages = t.pages;
+    if (t.packages !== undefined) patch.packages = t.packages;
     if (t.lineItems !== undefined) patch.line_items = t.lineItems;
     if (t.contractContent !== undefined) patch.contract_content = t.contractContent;
     if (t.paymentConfig !== undefined) patch.payment_config = t.paymentConfig;
@@ -710,6 +745,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("proposals").insert({
       id, ...(orgId ? { org_id: orgId } : {}),
       client_id: p.clientId, project_id: p.projectId, title: p.title,
+      pages: p.pages || [], packages: p.packages || [],
+      selected_package_id: p.selectedPackageId, payment_milestones: p.paymentMilestones || [],
+      pipeline_stage: p.pipelineStage || "inquiry", lead_source: p.leadSource || "",
       line_items: p.lineItems, subtotal: p.subtotal, tax_rate: p.taxRate,
       tax_amount: p.taxAmount, total: p.total,
       contract_content: p.contractContent, payment_config: p.paymentConfig,
@@ -727,6 +765,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.title !== undefined) patch.title = p.title;
     if (p.clientId !== undefined) patch.client_id = p.clientId;
     if (p.projectId !== undefined) patch.project_id = p.projectId;
+    if (p.pages !== undefined) patch.pages = p.pages;
+    if (p.packages !== undefined) patch.packages = p.packages;
+    if (p.selectedPackageId !== undefined) patch.selected_package_id = p.selectedPackageId;
+    if (p.paymentMilestones !== undefined) patch.payment_milestones = p.paymentMilestones;
+    if (p.pipelineStage !== undefined) patch.pipeline_stage = p.pipelineStage;
+    if (p.viewedAt !== undefined) patch.viewed_at = p.viewedAt;
+    if (p.leadSource !== undefined) patch.lead_source = p.leadSource;
     if (p.lineItems !== undefined) patch.line_items = p.lineItems;
     if (p.subtotal !== undefined) patch.subtotal = p.subtotal;
     if (p.taxRate !== undefined) patch.tax_rate = p.taxRate;
@@ -754,6 +799,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("proposals").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, proposals: d.proposals.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Pipeline Leads ----
+  const addPipelineLead = useCallback(async (l: Omit<PipelineLead, "id" | "createdAt" | "updatedAt">): Promise<PipelineLead> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("pipeline_leads").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      client_id: l.clientId, name: l.name, email: l.email, phone: l.phone,
+      project_type: l.projectType, event_date: l.eventDate,
+      location: l.location, description: l.description,
+      lead_source: l.leadSource, pipeline_stage: l.pipelineStage,
+      proposal_id: l.proposalId, recent_activity: l.recentActivity,
+      recent_activity_at: l.recentActivityAt, updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const lead = rowToPipelineLead(row);
+    setData(d => ({ ...d, pipelineLeads: [lead, ...d.pipelineLeads] }));
+    return lead;
+  }, [orgId]);
+
+  const updatePipelineLead = useCallback(async (id: string, l: Partial<PipelineLead>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (l.name !== undefined) patch.name = l.name;
+    if (l.email !== undefined) patch.email = l.email;
+    if (l.phone !== undefined) patch.phone = l.phone;
+    if (l.clientId !== undefined) patch.client_id = l.clientId;
+    if (l.projectType !== undefined) patch.project_type = l.projectType;
+    if (l.eventDate !== undefined) patch.event_date = l.eventDate;
+    if (l.location !== undefined) patch.location = l.location;
+    if (l.description !== undefined) patch.description = l.description;
+    if (l.leadSource !== undefined) patch.lead_source = l.leadSource;
+    if (l.pipelineStage !== undefined) patch.pipeline_stage = l.pipelineStage;
+    if (l.proposalId !== undefined) patch.proposal_id = l.proposalId;
+    if (l.recentActivity !== undefined) patch.recent_activity = l.recentActivity;
+    if (l.recentActivityAt !== undefined) patch.recent_activity_at = l.recentActivityAt;
+    const { error } = await supabase.from("pipeline_leads").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, pipelineLeads: d.pipelineLeads.map(x => x.id === id ? { ...x, ...l, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deletePipelineLead = useCallback(async (id: string) => {
+    const { error } = await supabase.from("pipeline_leads").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, pipelineLeads: d.pipelineLeads.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Organization ----
@@ -1242,6 +1332,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addContract, updateContract, deleteContract,
       addProposalTemplate, updateProposalTemplate, deleteProposalTemplate,
       addProposal, updateProposal, deleteProposal,
+      addPipelineLead, updatePipelineLead, deletePipelineLead,
       updateOrganization,
     }}>
       {children}

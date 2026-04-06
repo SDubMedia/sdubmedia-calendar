@@ -534,6 +534,14 @@ export interface Contract {
 export type ProposalStatus = "draft" | "sent" | "accepted" | "completed" | "void";
 export type ProposalPaymentOption = "none" | "deposit" | "full";
 
+export type PipelineStage =
+  | "inquiry" | "follow_up" | "proposal_sent" | "proposal_signed"
+  | "retainer_paid" | "final_payment" | "in_production"
+  | "delivered" | "review" | "archived";
+
+export type ProposalPageType = "agreement" | "invoice" | "payment" | "custom";
+export type MilestoneStatus = "pending" | "due" | "paid" | "overdue";
+
 export interface ProposalLineItem {
   id: string;
   description: string;
@@ -549,9 +557,44 @@ export interface ProposalPaymentConfig {
   depositAmount: number;
 }
 
+export interface ProposalPage {
+  id: string;
+  type: ProposalPageType;
+  label: string;
+  content: string;
+  sortOrder: number;
+}
+
+export interface PaymentMilestone {
+  id: string;
+  label: string;
+  type: "percent" | "fixed";
+  percent?: number;
+  fixedAmount?: number;
+  dueType: "at_signing" | "relative_days" | "absolute_date";
+  dueDays?: number;
+  dueDate?: string;
+  status: MilestoneStatus;
+  paidAt?: string | null;
+  stripeSessionId?: string | null;
+}
+
+export interface ProposalPackage {
+  id: string;
+  name: string;
+  description: string;
+  lineItems: ProposalLineItem[];
+  totalPrice: number;
+  paymentMilestones: PaymentMilestone[];
+}
+
 export interface ProposalTemplate {
   id: string;
   name: string;
+  coverImageUrl: string;
+  pages: ProposalPage[];
+  packages: ProposalPackage[];
+  // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   contractContent: string;
   paymentConfig: ProposalPaymentConfig;
@@ -565,6 +608,15 @@ export interface Proposal {
   clientId: string;
   projectId: string | null;
   title: string;
+  // V2 fields
+  pages: ProposalPage[];
+  packages: ProposalPackage[];
+  selectedPackageId: string | null;
+  paymentMilestones: PaymentMilestone[];
+  pipelineStage: PipelineStage;
+  viewedAt: string | null;
+  leadSource: string;
+  // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   subtotal: number;
   taxRate: number;
@@ -588,6 +640,25 @@ export interface Proposal {
   updatedAt: string;
 }
 
+export interface PipelineLead {
+  id: string;
+  clientId: string | null;
+  name: string;
+  email: string;
+  phone: string;
+  projectType: string;
+  eventDate: string | null;
+  location: string;
+  description: string;
+  leadSource: string;
+  pipelineStage: PipelineStage;
+  proposalId: string | null;
+  recentActivity: string;
+  recentActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -606,6 +677,7 @@ export interface AppData {
   contracts: Contract[];
   proposalTemplates: ProposalTemplate[];
   proposals: Proposal[];
+  pipelineLeads: PipelineLead[];
   series: Series[];
   organization: Organization | null;
 }

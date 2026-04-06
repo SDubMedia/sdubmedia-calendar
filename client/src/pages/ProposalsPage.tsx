@@ -285,6 +285,9 @@ export default function ProposalsPage() {
     if (!tplName.trim()) { toast.error("Template name required"); return; }
     const payload = {
       name: tplName.trim(),
+      coverImageUrl: "",
+      pages: [] as any[],
+      packages: [] as any[],
       lineItems: calcLineItems(tplLineItems),
       contractContent: tplContractContent,
       paymentConfig: { ...tplPayment, depositAmount: tplPayment.option === "deposit" ? Math.round(calcTotal(tplLineItems) * (tplPayment.depositPercent / 100) * 100) / 100 : 0 },
@@ -363,6 +366,13 @@ export default function ProposalsPage() {
       clientId: propClientId,
       projectId: propProjectId || null,
       title: propTitle.trim(),
+      pages: [],
+      packages: [],
+      selectedPackageId: null,
+      paymentMilestones: [],
+      pipelineStage: "inquiry",
+      viewedAt: null,
+      leadSource: "",
       lineItems: items,
       subtotal,
       taxRate: 0,
