@@ -3,6 +3,7 @@
 // ============================================================
 
 import { useState, useMemo, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Contract, ContractTemplate, ContractStatus } from "@/lib/types";
@@ -49,6 +50,7 @@ const MERGE_FIELDS = [
 export default function ContractsPage() {
   const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
+  const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");
 
   // Template dialog
@@ -437,38 +439,62 @@ export default function ContractsPage() {
         ) : (
           /* Templates Tab */
           <div className="space-y-4">
-            <Button onClick={openNewTemplate} className="gap-2">
-              <Plus className="w-4 h-4" /> New Template
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setLocation("/proposals/templates/new/edit")} className="gap-2">
+                <Plus className="w-4 h-4" /> New Template
+              </Button>
+              <Button variant="outline" onClick={openNewTemplate} className="gap-2 text-xs">
+                <Plus className="w-4 h-4" /> Quick Template (text only)
+              </Button>
+            </div>
 
-            {data.contractTemplates.length === 0 ? (
+            {data.contractTemplates.length === 0 && data.proposalTemplates.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No templates yet. Create a reusable contract template.</p>
+                <p className="text-sm">No templates yet. Create a reusable template.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {data.contractTemplates.map(tpl => (
-                  <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
-                    {/* Cover / Preview */}
+                {/* Proposal templates (V2 - full editor) */}
+                {data.proposalTemplates.map(tpl => (
+                  <div key={`p-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
                     <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                      <div className="w-full h-full flex flex-col items-start justify-end p-3 bg-gradient-to-br from-primary/10 to-primary/5">
+                      {tpl.coverImageUrl ? (
+                        <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                          <FileText className="w-10 h-10 text-primary/30" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Saved template"}</p>
+                    </div>
+                  </div>
+                ))}
+                {/* Legacy contract templates */}
+                {data.contractTemplates.map(tpl => (
+                  <div key={`c-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
+                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                      <div className="w-full h-full flex flex-col items-start justify-end p-3 bg-gradient-to-br from-zinc-500/10 to-zinc-500/5">
                         <p className="text-[8px] text-muted-foreground/60 line-clamp-6 leading-tight font-mono">
                           {tpl.content?.slice(0, 200) || "Empty template"}
                         </p>
                       </div>
-                      {/* Hover overlay */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: `${tpl.name} (Copy)`, content: tpl.content }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); await deleteContractTemplate(tpl.id); toast.success("Moved to Proposals"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Move to Proposals"><ExternalLink className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </div>
+                      <div className="absolute top-2 right-2 text-[8px] bg-zinc-700/80 text-zinc-300 px-1.5 py-0.5 rounded">Legacy</div>
                     </div>
-                    {/* Info */}
                     <div className="p-3">
                       <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Saved template · Updated {new Date(tpl.updatedAt).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Text-only template</p>
                     </div>
                   </div>
                 ))}
