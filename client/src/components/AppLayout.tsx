@@ -71,11 +71,17 @@ const navStructure: NavEntry[] = [
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
 
+  // Sales
+  { label: "Sales", icon: TrendingUp, roles: ["owner"], items: [
+    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner"] },
+    { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner"] },
+    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner"] },
+  ]},
+
   // Production
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
-    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner"] },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
   ]},
@@ -83,15 +89,12 @@ const navStructure: NavEntry[] = [
   // Team
   { label: "Team", icon: Users2, roles: ["owner", "partner"], items: [
     { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
-    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
     { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
   ]},
 
   // Finance
-  { label: "Finance", icon: FileText, roles: ["owner", "partner"], items: [
-    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner"] },
-    { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner"] },
+  { label: "Finance", icon: Receipt, roles: ["owner", "partner"], items: [
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
@@ -99,11 +102,12 @@ const navStructure: NavEntry[] = [
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   ]},
 
-  // Reports & Tracking
+  // Reports
   { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
     { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
+    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
   ]},
 
   // Staff-specific
