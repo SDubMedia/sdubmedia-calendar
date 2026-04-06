@@ -439,21 +439,17 @@ export default function DashboardPage() {
                 View All <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
-            {totalPipelineActive === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">No active leads</div>
-            ) : (
-              <div className="flex overflow-x-auto divide-x divide-border">
-                {pipelineStages.filter(s => s.id !== "archived").map(s => {
-                  const colorClass = `text-${s.color}-400`;
-                  return (
-                    <div key={s.id} className="p-3 text-center flex-1 min-w-[60px]">
-                      <p className={cn("text-xl font-bold", pipelineCounts[s.id] > 0 ? colorClass : "text-muted-foreground/30")}>{pipelineCounts[s.id] || 0}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex overflow-x-auto divide-x divide-border">
+              {pipelineStages.filter(s => s.id !== "archived").map(s => {
+                const colorClass = `text-${s.color}-400`;
+                return (
+                  <div key={s.id} className="p-3 text-center flex-1 min-w-[60px]">
+                    <p className={cn("text-xl font-bold", pipelineCounts[s.id] > 0 ? colorClass : "text-muted-foreground/30")}>{pipelineCounts[s.id] || 0}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           )}
         </div>
