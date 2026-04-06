@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -455,7 +455,8 @@ export default function ContractsPage() {
                       {/* Hover overlay */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); toast.success("Copied to Proposals"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Copy to Proposals"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: `${tpl.name} (Copy)`, content: tpl.content }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); await deleteContractTemplate(tpl.id); toast.success("Moved to Proposals"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Move to Proposals"><ExternalLink className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
