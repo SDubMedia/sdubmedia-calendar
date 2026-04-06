@@ -439,7 +439,7 @@ export default function ContractsPage() {
 
       {/* Template Dialog */}
       <Dialog open={tplDialogOpen} onOpenChange={setTplDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {editingTplId ? "Edit Template" : "New Template"}
@@ -465,7 +465,7 @@ export default function ContractsPage() {
               <textarea
                 value={tplContent}
                 onChange={e => setTplContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[300px] resize-y font-mono"
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[60vh] resize-y font-mono"
                 placeholder="Enter your contract text here. Use merge fields like {{client_name}} for dynamic content..."
               />
             </div>
@@ -479,7 +479,7 @@ export default function ContractsPage() {
 
       {/* New Contract Dialog */}
       <Dialog open={contractDialogOpen} onOpenChange={setContractDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>New Contract</DialogTitle>
           </DialogHeader>
@@ -530,7 +530,7 @@ export default function ContractsPage() {
               <textarea
                 value={contractContent}
                 onChange={e => setContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[250px] resize-y"
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[50vh] resize-y"
                 placeholder="Enter or paste your contract text, or upload a PDF..."
               />
             </div>
@@ -544,7 +544,7 @@ export default function ContractsPage() {
 
       {/* View Contract Dialog */}
       <Dialog open={!!viewContract} onOpenChange={o => !o && setViewContract(null)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{viewContract?.title}</DialogTitle>
           </DialogHeader>
