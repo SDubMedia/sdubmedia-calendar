@@ -63,6 +63,25 @@ export interface OrgBusinessInfo {
   ein: string;
 }
 
+export interface PipelineStageConfig {
+  id: string;
+  label: string;
+  color: string; // tailwind color class e.g. "blue", "green", "amber"
+}
+
+export const DEFAULT_PIPELINE_STAGES: PipelineStageConfig[] = [
+  { id: "inquiry", label: "Inquiry", color: "blue" },
+  { id: "follow_up", label: "Follow-up", color: "cyan" },
+  { id: "proposal_sent", label: "Proposal Sent", color: "indigo" },
+  { id: "proposal_signed", label: "Proposal Signed", color: "amber" },
+  { id: "retainer_paid", label: "Retainer Paid", color: "green" },
+  { id: "final_payment", label: "Final Payment", color: "emerald" },
+  { id: "in_production", label: "In Production", color: "orange" },
+  { id: "delivered", label: "Delivered", color: "purple" },
+  { id: "review", label: "Review", color: "pink" },
+  { id: "archived", label: "Archived", color: "zinc" },
+];
+
 export interface Organization {
   id: string;
   name: string;
@@ -75,6 +94,7 @@ export interface Organization {
   defaultBillingRate: number;
   businessInfo: OrgBusinessInfo;
   dashboardWidgets: DashboardWidgetConfig[];
+  pipelineStages: PipelineStageConfig[];
   createdAt: string;
 }
 

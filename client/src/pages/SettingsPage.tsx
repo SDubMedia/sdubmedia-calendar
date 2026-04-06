@@ -5,8 +5,8 @@
 
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId } from "@/lib/types";
-import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig } from "@/lib/types";
+import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown } from "lucide-react";
+import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,9 @@ export default function SettingsPage() {
   });
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
     org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
+  );
+  const [pipelineStages, setPipelineStages] = useState<PipelineStageConfig[]>(
+    org?.pipelineStages?.length ? org.pipelineStages : DEFAULT_PIPELINE_STAGES
   );
   const [saving, setSaving] = useState(false);
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
@@ -129,6 +133,7 @@ export default function SettingsPage() {
         features,
         businessInfo,
         dashboardWidgets,
+        pipelineStages,
       });
 
       // Auto-create or update office location if business address is set
@@ -401,6 +406,87 @@ export default function SettingsPage() {
                   <FeatureToggleRow key={`all-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pipeline Stages */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Settings className="w-4 h-4 text-primary" />
+              Pipeline Stages
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Customize the stages in your sales pipeline. Add, remove, rename, or reorder.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pipelineStages.map((stage, idx) => (
+                <div key={stage.id} className="flex items-center gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => {
+                        if (idx === 0) return;
+                        const arr = [...pipelineStages];
+                        [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                        setPipelineStages(arr);
+                      }}
+                      disabled={idx === 0}
+                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (idx === pipelineStages.length - 1) return;
+                        const arr = [...pipelineStages];
+                        [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                        setPipelineStages(arr);
+                      }}
+                      disabled={idx === pipelineStages.length - 1}
+                      className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <select
+                    value={stage.color}
+                    onChange={e => setPipelineStages(s => s.map(st => st.id === stage.id ? { ...st, color: e.target.value } : st))}
+                    className="w-20 bg-secondary border border-border rounded px-1.5 py-1.5 text-xs text-foreground"
+                  >
+                    {["blue","cyan","indigo","amber","green","emerald","orange","purple","pink","zinc","red","yellow"].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <Input
+                    value={stage.label}
+                    onChange={e => setPipelineStages(s => s.map(st => st.id === stage.id ? { ...st, label: e.target.value } : st))}
+                    className="bg-secondary border-border text-sm flex-1"
+                    placeholder="Stage name"
+                  />
+                  <button
+                    onClick={() => {
+                      if (pipelineStages.length <= 2) { toast.error("Need at least 2 stages"); return; }
+                      setPipelineStages(s => s.filter(st => st.id !== stage.id));
+                    }}
+                    className="p-1.5 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setPipelineStages(s => [...s, { id: nanoid(6), label: "New Stage", color: "blue" }])}
+                className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 mt-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Stage
+              </button>
+              <button
+                onClick={() => setPipelineStages(DEFAULT_PIPELINE_STAGES)}
+                className="text-xs text-muted-foreground hover:text-foreground mt-1"
+              >
+                Reset to defaults
+              </button>
             </div>
           </CardContent>
         </Card>

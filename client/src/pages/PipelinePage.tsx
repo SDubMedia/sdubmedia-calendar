@@ -5,28 +5,31 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import type { PipelineLead, PipelineStage, Proposal } from "@/lib/types";
+import type { PipelineLead, PipelineStage, PipelineStageConfig, Proposal } from "@/lib/types";
+import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Eye, Send, CheckCircle, DollarSign, Clapperboard, Package, Star, Archive, X } from "lucide-react";
+import { Plus, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const STAGES: { key: PipelineStage; label: string; icon: any; color: string }[] = [
-  { key: "inquiry", label: "Inquiry", icon: Users, color: "text-blue-400 bg-blue-500/10 border-blue-500/30" },
-  { key: "follow_up", label: "Follow-up", icon: Send, color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30" },
-  { key: "proposal_sent", label: "Proposal Sent", icon: Eye, color: "text-indigo-400 bg-indigo-500/10 border-indigo-500/30" },
-  { key: "proposal_signed", label: "Signed", icon: CheckCircle, color: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
-  { key: "retainer_paid", label: "Retainer Paid", icon: DollarSign, color: "text-green-400 bg-green-500/10 border-green-500/30" },
-  { key: "final_payment", label: "Final Payment", icon: DollarSign, color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
-  { key: "in_production", label: "In Production", icon: Clapperboard, color: "text-orange-400 bg-orange-500/10 border-orange-500/30" },
-  { key: "delivered", label: "Delivered", icon: Package, color: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
-  { key: "review", label: "Review", icon: Star, color: "text-pink-400 bg-pink-500/10 border-pink-500/30" },
-  { key: "archived", label: "Archived", icon: Archive, color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30" },
-];
+const COLOR_MAP: Record<string, string> = {
+  blue: "text-blue-400 bg-blue-500/10 border-blue-500/30",
+  cyan: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
+  indigo: "text-indigo-400 bg-indigo-500/10 border-indigo-500/30",
+  amber: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+  green: "text-green-400 bg-green-500/10 border-green-500/30",
+  emerald: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  orange: "text-orange-400 bg-orange-500/10 border-orange-500/30",
+  purple: "text-purple-400 bg-purple-500/10 border-purple-500/30",
+  pink: "text-pink-400 bg-pink-500/10 border-pink-500/30",
+  zinc: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30",
+  red: "text-red-400 bg-red-500/10 border-red-500/30",
+  yellow: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+};
 
 interface PipelineEntry {
   id: string;
@@ -47,7 +50,8 @@ interface PipelineEntry {
 
 export default function PipelinePage() {
   const { data, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
-  const [activeStage, setActiveStage] = useState<PipelineStage | "all">("all");
+  const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
+  const [activeStage, setActiveStage] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   // New lead form
@@ -109,7 +113,7 @@ export default function PipelinePage() {
   // Stage counts
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const s of STAGES) counts[s.key] = 0;
+    for (const s of stages) counts[s.id] = 0;
     for (const e of entries) counts[e.pipelineStage] = (counts[e.pipelineStage] || 0) + 1;
     return counts;
   }, [entries]);
@@ -147,7 +151,7 @@ export default function PipelinePage() {
       await updatePipelineLead(entry.id, { pipelineStage: newStage, recentActivity: `Moved to ${newStage}`, recentActivityAt: new Date().toISOString() });
     }
     // For proposals, we'd update the proposal's pipelineStage
-    toast.success(`Moved to ${STAGES.find(s => s.key === newStage)?.label}`);
+    toast.success(`Moved to ${stages.find(s => s.id === newStage)?.label}`);
   }
 
   async function deleteLead(id: string) {
@@ -187,16 +191,16 @@ export default function PipelinePage() {
             <div className="text-lg font-bold">{entries.length}</div>
             <div>All</div>
           </button>
-          {STAGES.map(s => (
+          {stages.map(s => (
             <button
-              key={s.key}
-              onClick={() => setActiveStage(s.key)}
+              key={s.id}
+              onClick={() => setActiveStage(s.id)}
               className={cn(
                 "px-3 py-2 rounded-lg border text-xs font-medium transition-colors min-w-[70px] text-center",
-                activeStage === s.key ? `border ${s.color}` : "border-border text-muted-foreground hover:text-foreground"
+                activeStage === s.id ? `border ${COLOR_MAP[s.color] || COLOR_MAP.blue}` : "border-border text-muted-foreground hover:text-foreground"
               )}
             >
-              <div className="text-lg font-bold">{stageCounts[s.key] || 0}</div>
+              <div className="text-lg font-bold">{stageCounts[s.id] || 0}</div>
               <div className="truncate">{s.label}</div>
             </button>
           ))}
@@ -226,7 +230,7 @@ export default function PipelinePage() {
             </thead>
             <tbody>
               {filtered.map(entry => {
-                const stage = STAGES.find(s => s.key === entry.pipelineStage);
+                const stage = stages.find(s => s.id === entry.pipelineStage);
                 return (
                   <tr key={entry.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
                     <td className="px-4 py-3">
@@ -247,12 +251,12 @@ export default function PipelinePage() {
                         <select
                           value={entry.pipelineStage}
                           onChange={e => changeStage(entry, e.target.value as PipelineStage)}
-                          className={cn("text-[10px] font-semibold px-2 py-1 rounded border bg-transparent", stage?.color)}
+                          className={cn("text-[10px] font-semibold px-2 py-1 rounded border bg-transparent", COLOR_MAP[stage?.color || "blue"] || COLOR_MAP.blue)}
                         >
-                          {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          {stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                         </select>
                       ) : (
-                        <span className={cn("text-[10px] font-semibold px-2 py-1 rounded border", stage?.color)}>
+                        <span className={cn("text-[10px] font-semibold px-2 py-1 rounded border", COLOR_MAP[stage?.color || "blue"] || COLOR_MAP.blue)}>
                           {stage?.label}
                         </span>
                       )}

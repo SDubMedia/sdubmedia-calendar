@@ -4,6 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -426,6 +427,7 @@ function rowToOrg(r: any): Organization {
     defaultBillingRate: Number(r.default_billing_rate ?? 0),
     businessInfo: r.business_info || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" },
     dashboardWidgets: r.dashboard_widgets || null,
+    pipelineStages: Array.isArray(r.pipeline_stages) && r.pipeline_stages.length > 0 ? r.pipeline_stages : DEFAULT_PIPELINE_STAGES,
     createdAt: r.created_at,
   };
 }
@@ -857,6 +859,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.defaultBillingRate !== undefined) patch.default_billing_rate = updates.defaultBillingRate;
     if (updates.businessInfo !== undefined) patch.business_info = updates.businessInfo;
     if (updates.dashboardWidgets !== undefined) patch.dashboard_widgets = updates.dashboardWidgets;
+    if (updates.pipelineStages !== undefined) patch.pipeline_stages = updates.pipelineStages;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
