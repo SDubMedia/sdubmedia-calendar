@@ -967,26 +967,30 @@ export default function ProposalsPage() {
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Import from HoneyBook</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">HoneyBook Share Link</Label>
-              <Input value={importUrl} onChange={e => setImportUrl(e.target.value)} className="bg-secondary border-border" placeholder="https://app.honeybook.com/..." />
-              <p className="text-[10px] text-muted-foreground">Paste a HoneyBook share URL to import the contract text automatically</p>
+            <div className="bg-secondary/50 rounded-lg p-3 space-y-2">
+              <p className="text-xs font-semibold text-foreground">How to copy from HoneyBook:</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Open your HoneyBook contract/template</li>
+                <li>Select all the contract text (<kbd className="px-1 py-0.5 bg-secondary rounded text-[10px] font-mono">Cmd+A</kbd>)</li>
+                <li>Copy it (<kbd className="px-1 py-0.5 bg-secondary rounded text-[10px] font-mono">Cmd+C</kbd>)</li>
+                <li>Paste it below</li>
+              </ol>
             </div>
-            <div className="text-center text-xs text-muted-foreground py-1">— or —</div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Paste Contract Text</Label>
               <textarea
                 value={importPasteContent}
                 onChange={e => setImportPasteContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[150px] resize-y"
-                placeholder="Copy the contract text from HoneyBook and paste here..."
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[200px] resize-y"
+                placeholder="Paste your contract text here..."
+                autoFocus
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setImportDialogOpen(false)}>Cancel</Button>
-            <Button onClick={doImport} disabled={importing}>
-              {importing ? "Importing..." : "Import"}
+            <Button onClick={doImport} disabled={importing || !importPasteContent.trim()}>
+              Import
             </Button>
           </DialogFooter>
         </DialogContent>
