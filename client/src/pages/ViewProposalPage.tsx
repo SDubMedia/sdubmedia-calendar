@@ -30,8 +30,11 @@ export default function ViewProposalPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  // Load proposal
+  // Load proposal + track view
   useEffect(() => {
+    // Fire-and-forget view tracking
+    fetch(`/api/proposal-view?token=${token}`).catch(() => {});
+
     fetch(`/api/proposal-accept?action=get&token=${token}`)
       .then(r => r.json())
       .then(data => {
