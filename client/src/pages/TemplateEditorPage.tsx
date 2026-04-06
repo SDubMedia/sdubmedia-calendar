@@ -319,8 +319,8 @@ export default function TemplateEditorPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowProperties(!showProperties)} className="text-xs hidden sm:flex">
-            {showProperties ? "Hide Properties" : "Show Properties"}
+          <Button variant="outline" size="sm" onClick={() => setShowProperties(!showProperties)} className="text-xs">
+            {showProperties ? "Hide" : "Properties"}
           </Button>
           <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">
             <Save className="w-3.5 h-3.5" />
@@ -329,9 +329,36 @@ export default function TemplateEditorPage() {
         </div>
       </div>
 
+      {/* Mobile Page Tabs */}
+      <div className="flex sm:hidden border-b border-border bg-card/30 overflow-x-auto">
+        <div className="flex gap-1 p-2 min-w-max">
+          {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page) => {
+            const Icon = PAGE_ICONS[page.type];
+            return (
+              <button
+                key={page.id}
+                onClick={() => setActivePageId(page.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap",
+                  activePageId === page.id
+                    ? "bg-primary/10 text-primary border border-primary/30"
+                    : "text-muted-foreground"
+                )}
+              >
+                <Icon className="w-3 h-3" />
+                {page.label}
+              </button>
+            );
+          })}
+          <button onClick={() => addPage("agreement")} className="flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Plus className="w-3 h-3" /> Page
+          </button>
+        </div>
+      </div>
+
       {/* 3-Column Layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar — Page Thumbnails */}
+        {/* Left Sidebar — Page Thumbnails (desktop) */}
         <div className="w-48 border-r border-border bg-card/30 flex flex-col overflow-hidden shrink-0 hidden sm:flex">
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page) => {
@@ -564,7 +591,11 @@ export default function TemplateEditorPage() {
 
         {/* Right Sidebar — Properties */}
         {showProperties && (
-          <div className="w-72 border-l border-border bg-card/30 overflow-y-auto shrink-0 hidden md:block">
+          <div className={cn(
+            "border-l border-border bg-card/30 overflow-y-auto shrink-0",
+            "fixed inset-0 top-auto z-50 border-t border-l-0 rounded-t-xl max-h-[70vh] w-full",
+            "md:static md:w-72 md:max-h-none md:rounded-none md:border-t-0 md:border-l md:z-auto",
+          )}>
             <div className="p-4 space-y-6">
               {/* Cover Image */}
               <div className="space-y-2">
