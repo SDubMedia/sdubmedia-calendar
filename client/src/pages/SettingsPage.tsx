@@ -18,6 +18,7 @@ import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDas
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getAuthToken } from "@/lib/supabase";
 
 interface FeatureToggle {
   key: keyof OrgFeatures;
@@ -65,10 +66,14 @@ export default function SettingsPage() {
   // Check Stripe Connect status
   useEffect(() => {
     if (org?.id) {
-      fetch(`/api/stripe-connect?action=status&orgId=${org.id}`)
-        .then(r => r.json())
-        .then(d => setStripeStatus({ connected: d.connected, loading: false }))
-        .catch(() => setStripeStatus({ connected: false, loading: false }));
+      getAuthToken().then(token => {
+        fetch(`/api/stripe-connect?action=status&orgId=${org.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then(r => r.json())
+          .then(d => setStripeStatus({ connected: d.connected, loading: false }))
+          .catch(() => setStripeStatus({ connected: false, loading: false }));
+      });
     }
   }, [org?.id]);
 
@@ -76,9 +81,10 @@ export default function SettingsPage() {
     if (!org?.id) { toast.error("Organization not found"); return; }
     setConnectingStripe(true);
     try {
+      const token = await getAuthToken();
       const res = await fetch("/api/stripe-connect?action=connect", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ orgId: org.id, returnUrl: window.location.href }),
       });
       const result = await res.json();
@@ -96,9 +102,10 @@ export default function SettingsPage() {
 
   async function disconnectStripe() {
     if (!org?.id || !confirm("Disconnect your Stripe account?")) return;
+    const token = await getAuthToken();
     await fetch("/api/stripe-connect?action=disconnect", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ orgId: org.id }),
     });
     setStripeStatus({ connected: false, loading: false });
