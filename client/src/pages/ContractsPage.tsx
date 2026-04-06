@@ -442,17 +442,27 @@ export default function ContractsPage() {
                 <p className="text-sm">No templates yet. Create a reusable contract template.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {data.contractTemplates.map(tpl => (
-                  <div key={tpl.id} className="bg-card border border-border rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">{tpl.name}</p>
-                      <p className="text-xs text-muted-foreground">Updated {new Date(tpl.updatedAt).toLocaleDateString()}</p>
+                  <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
+                    {/* Cover / Preview */}
+                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                      <div className="w-full h-full flex flex-col items-start justify-end p-3 bg-gradient-to-br from-primary/10 to-primary/5">
+                        <p className="text-[8px] text-muted-foreground/60 line-clamp-6 leading-tight font-mono">
+                          {tpl.content?.slice(0, 200) || "Empty template"}
+                        </p>
+                      </div>
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); toast.success("Copied to Proposals"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Copy to Proposals"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditTemplate(tpl)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={async () => { await addProposalTemplate({ name: tpl.name, coverImageUrl: "", pages: [], packages: [], lineItems: [], contractContent: tpl.content, paymentConfig: { option: "none", depositPercent: 0, depositAmount: 0 }, notes: "" }); toast.success("Copied to Proposals"); }} className="p-1.5 text-muted-foreground hover:text-primary" title="Copy to Proposals"><Copy className="w-4 h-4" /></button>
-                      <button onClick={async () => { await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                    {/* Info */}
+                    <div className="p-3">
+                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Saved template · Updated {new Date(tpl.updatedAt).toLocaleDateString()}</p>
                     </div>
                   </div>
                 ))}
