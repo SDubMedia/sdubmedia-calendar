@@ -376,13 +376,19 @@ export default function ContractsPage() {
                         <div className="flex items-center gap-1">
                           <button onClick={() => setViewContract(c)} className="p-1.5 text-muted-foreground hover:text-foreground"><Eye className="w-4 h-4" /></button>
                           {c.status === "draft" && (
-                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300"><Send className="w-4 h-4" /></button>
+                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
+                          )}
+                          {c.status === "sent" && (
+                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
                           )}
                           {c.status === "client_signed" && (
-                            <button onClick={() => openSignDialog(c.id)} className="p-1.5 text-amber-400 hover:text-amber-300"><PenTool className="w-4 h-4" /></button>
+                            <button onClick={() => openSignDialog(c.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
                           )}
-                          {c.status === "draft" && (
-                            <button onClick={async () => { await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                          {c.status !== "completed" && (
+                            <button onClick={async () => { await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>
+                          )}
+                          {(c.status === "draft" || c.status === "void") && (
+                            <button onClick={async () => { await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
                       </div>
