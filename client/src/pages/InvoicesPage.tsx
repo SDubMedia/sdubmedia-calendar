@@ -8,7 +8,7 @@ import { buildInvoice } from "@/lib/invoice";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -247,6 +247,53 @@ export default function InvoicesPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+        {/* Summary Stats */}
+        {data.invoices.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(() => {
+              const outstanding = data.invoices.filter(i => i.status === "sent").reduce((s, i) => s + i.total, 0);
+              const thisMonth = new Date().toISOString().slice(0, 7);
+              const paidThisMonth = data.invoices.filter(i => i.status === "paid" && i.paidDate?.startsWith(thisMonth)).reduce((s, i) => s + i.total, 0);
+              const draftCount = data.invoices.filter(i => i.status === "draft").length;
+              const totalPaid = data.invoices.filter(i => i.status === "paid").reduce((s, i) => s + i.total, 0);
+              return (
+                <>
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs text-muted-foreground">Outstanding</span>
+                    </div>
+                    <p className="text-xl font-bold text-foreground font-mono">{formatCurrency(outstanding)}</p>
+                    <p className="text-[10px] text-muted-foreground">{data.invoices.filter(i => i.status === "sent").length} sent</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <DollarSign className="w-4 h-4 text-green-400" />
+                      <span className="text-xs text-muted-foreground">Paid This Month</span>
+                    </div>
+                    <p className="text-xl font-bold text-foreground font-mono">{formatCurrency(paidThisMonth)}</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs text-muted-foreground">Total Collected</span>
+                    </div>
+                    <p className="text-xl font-bold text-foreground font-mono">{formatCurrency(totalPaid)}</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText className="w-4 h-4 text-zinc-400" />
+                      <span className="text-xs text-muted-foreground">Drafts</span>
+                    </div>
+                    <p className="text-xl font-bold text-foreground">{draftCount}</p>
+                    <p className="text-[10px] text-muted-foreground">{data.invoices.length} total invoices</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Create Invoice Form */}
         {showCreate && (
           <div className="bg-card border border-border rounded-lg p-5 space-y-4">
