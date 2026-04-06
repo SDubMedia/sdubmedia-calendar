@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -82,6 +82,13 @@ interface AppContextValue {
   addContract: (c: Omit<Contract, "id" | "createdAt" | "updatedAt">) => Promise<Contract>;
   updateContract: (id: string, c: Partial<Contract>) => Promise<void>;
   deleteContract: (id: string) => Promise<void>;
+  // Proposals
+  addProposalTemplate: (t: Omit<ProposalTemplate, "id" | "createdAt" | "updatedAt">) => Promise<ProposalTemplate>;
+  updateProposalTemplate: (id: string, t: Partial<ProposalTemplate>) => Promise<void>;
+  deleteProposalTemplate: (id: string) => Promise<void>;
+  addProposal: (p: Omit<Proposal, "id" | "createdAt" | "updatedAt">) => Promise<Proposal>;
+  updateProposal: (id: string, p: Partial<Proposal>) => Promise<void>;
+  deleteProposal: (id: string) => Promise<void>;
   // Organization
   updateOrganization: (updates: Partial<Organization>) => Promise<void>;
 }
@@ -158,6 +165,37 @@ function rowToContract(r: any): Contract {
     clientSignedAt: r.client_signed_at || null, ownerSignedAt: r.owner_signed_at || null,
     clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
     clientEmail: r.client_email || "", signToken: r.sign_token || "",
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+function rowToProposalTemplate(r: any): ProposalTemplate {
+  return {
+    id: r.id, name: r.name || "",
+    lineItems: Array.isArray(r.line_items) ? r.line_items : [],
+    contractContent: r.contract_content || "",
+    paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
+    notes: r.notes || "",
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+function rowToProposal(r: any): Proposal {
+  return {
+    id: r.id, clientId: r.client_id || "", projectId: r.project_id || null,
+    title: r.title || "",
+    lineItems: Array.isArray(r.line_items) ? r.line_items : [],
+    subtotal: Number(r.subtotal ?? 0), taxRate: Number(r.tax_rate ?? 0),
+    taxAmount: Number(r.tax_amount ?? 0), total: Number(r.total ?? 0),
+    contractContent: r.contract_content || "",
+    paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
+    status: r.status || "draft",
+    sentAt: r.sent_at || null, acceptedAt: r.accepted_at || null, completedAt: r.completed_at || null,
+    clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
+    invoiceId: r.invoice_id || null, stripeSessionId: r.stripe_session_id || null,
+    paidAt: r.paid_at || null,
+    clientEmail: r.client_email || "", viewToken: r.view_token || "",
+    notes: r.notes || "",
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -365,7 +403,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], series: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -395,6 +433,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: timeEntriesData, error: _e7i },
         { data: contractTpls, error: _e7g },
         { data: contractsData, error: _e7h },
+        { data: proposalTpls, error: _e7j },
+        { data: proposalsData, error: _e7k },
         { data: seriesData, error: e8 },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
@@ -413,6 +453,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("time_entries").select("*").order("start_time", { ascending: false }),
         supabase.from("contract_templates").select("*").order("created_at", { ascending: false }),
         supabase.from("contracts").select("*").order("created_at", { ascending: false }),
+        supabase.from("proposal_templates").select("*").order("created_at", { ascending: false }),
+        supabase.from("proposals").select("*").order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -436,6 +478,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         timeEntries: (timeEntriesData || []).map(r => { try { return rowToTimeEntry(r); } catch { return null; } }).filter(Boolean) as any[],
         contractTemplates: (contractTpls || []).map(r => { try { return rowToContractTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
+        proposalTemplates: (proposalTpls || []).map(r => { try { return rowToProposalTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
+        proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         organization: orgData ? rowToOrg(orgData) : null,
       });
@@ -624,6 +668,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("contracts").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setData(d => ({ ...d, contracts: d.contracts.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Proposal Templates ----
+  const addProposalTemplate = useCallback(async (t: Omit<ProposalTemplate, "id" | "createdAt" | "updatedAt">): Promise<ProposalTemplate> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("proposal_templates").insert({
+      id, ...(orgId ? { org_id: orgId } : {}), name: t.name,
+      line_items: t.lineItems, contract_content: t.contractContent,
+      payment_config: t.paymentConfig, notes: t.notes, updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const tpl = rowToProposalTemplate(row);
+    setData(d => ({ ...d, proposalTemplates: [tpl, ...d.proposalTemplates] }));
+    return tpl;
+  }, [orgId]);
+
+  const updateProposalTemplate = useCallback(async (id: string, t: Partial<ProposalTemplate>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (t.name !== undefined) patch.name = t.name;
+    if (t.lineItems !== undefined) patch.line_items = t.lineItems;
+    if (t.contractContent !== undefined) patch.contract_content = t.contractContent;
+    if (t.paymentConfig !== undefined) patch.payment_config = t.paymentConfig;
+    if (t.notes !== undefined) patch.notes = t.notes;
+    const { error } = await supabase.from("proposal_templates").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, proposalTemplates: d.proposalTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteProposalTemplate = useCallback(async (id: string) => {
+    const { error } = await supabase.from("proposal_templates").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, proposalTemplates: d.proposalTemplates.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Proposals ----
+  const addProposal = useCallback(async (p: Omit<Proposal, "id" | "createdAt" | "updatedAt">): Promise<Proposal> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("proposals").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      client_id: p.clientId, project_id: p.projectId, title: p.title,
+      line_items: p.lineItems, subtotal: p.subtotal, tax_rate: p.taxRate,
+      tax_amount: p.taxAmount, total: p.total,
+      contract_content: p.contractContent, payment_config: p.paymentConfig,
+      status: p.status, sent_at: p.sentAt, client_email: p.clientEmail,
+      view_token: p.viewToken, notes: p.notes, updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const proposal = rowToProposal(row);
+    setData(d => ({ ...d, proposals: [proposal, ...d.proposals] }));
+    return proposal;
+  }, [orgId]);
+
+  const updateProposal = useCallback(async (id: string, p: Partial<Proposal>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (p.title !== undefined) patch.title = p.title;
+    if (p.clientId !== undefined) patch.client_id = p.clientId;
+    if (p.projectId !== undefined) patch.project_id = p.projectId;
+    if (p.lineItems !== undefined) patch.line_items = p.lineItems;
+    if (p.subtotal !== undefined) patch.subtotal = p.subtotal;
+    if (p.taxRate !== undefined) patch.tax_rate = p.taxRate;
+    if (p.taxAmount !== undefined) patch.tax_amount = p.taxAmount;
+    if (p.total !== undefined) patch.total = p.total;
+    if (p.contractContent !== undefined) patch.contract_content = p.contractContent;
+    if (p.paymentConfig !== undefined) patch.payment_config = p.paymentConfig;
+    if (p.status !== undefined) patch.status = p.status;
+    if (p.sentAt !== undefined) patch.sent_at = p.sentAt;
+    if (p.acceptedAt !== undefined) patch.accepted_at = p.acceptedAt;
+    if (p.completedAt !== undefined) patch.completed_at = p.completedAt;
+    if (p.clientSignature !== undefined) patch.client_signature = p.clientSignature;
+    if (p.ownerSignature !== undefined) patch.owner_signature = p.ownerSignature;
+    if (p.invoiceId !== undefined) patch.invoice_id = p.invoiceId;
+    if (p.stripeSessionId !== undefined) patch.stripe_session_id = p.stripeSessionId;
+    if (p.paidAt !== undefined) patch.paid_at = p.paidAt;
+    if (p.clientEmail !== undefined) patch.client_email = p.clientEmail;
+    if (p.notes !== undefined) patch.notes = p.notes;
+    const { error } = await supabase.from("proposals").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, proposals: d.proposals.map(x => x.id === id ? { ...x, ...p, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteProposal = useCallback(async (id: string) => {
+    const { error } = await supabase.from("proposals").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setData(d => ({ ...d, proposals: d.proposals.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Organization ----
@@ -1110,6 +1240,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addTimeEntry, updateTimeEntry,
       addContractTemplate, updateContractTemplate, deleteContractTemplate,
       addContract, updateContract, deleteContract,
+      addProposalTemplate, updateProposalTemplate, deleteProposalTemplate,
+      addProposal, updateProposal, deleteProposal,
       updateOrganization,
     }}>
       {children}

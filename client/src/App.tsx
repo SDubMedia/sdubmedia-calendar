@@ -41,6 +41,8 @@ const BusinessExpensesPage = lazy(() => import("./pages/BusinessExpensesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ContractsPage = lazy(() => import("./pages/ContractsPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
+const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
+const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage"));
 
 function LoadingScreen() {
@@ -108,6 +110,7 @@ function Router() {
         {(isOwner || isPartner) && <Route path="/profit-loss" component={ProfitLossPage} />}
         {isOwner && <Route path="/expenses" component={BusinessExpensesPage} />}
         {isOwner && <Route path="/contracts" component={ContractsPage} />}
+        {isOwner && <Route path="/proposals" component={ProposalsPage} />}
         {isOwner && <Route path="/1099" component={ContractorSummaryPage} />}
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />
@@ -132,7 +135,7 @@ function AuthGate() {
 }
 
 function App() {
-  // Public signing page — no auth required
+  // Public pages — no auth required
   if (window.location.pathname.startsWith("/sign/")) {
     return (
       <ErrorBoundary>
@@ -140,6 +143,19 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/sign/:token" component={SignContractPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/proposal/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/proposal/:token" component={ViewProposalPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

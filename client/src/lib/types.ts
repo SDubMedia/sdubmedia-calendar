@@ -530,6 +530,64 @@ export interface Contract {
   updatedAt: string;
 }
 
+// ---- Proposals ----
+export type ProposalStatus = "draft" | "sent" | "accepted" | "completed" | "void";
+export type ProposalPaymentOption = "none" | "deposit" | "full";
+
+export interface ProposalLineItem {
+  id: string;
+  description: string;
+  details: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
+export interface ProposalPaymentConfig {
+  option: ProposalPaymentOption;
+  depositPercent: number;
+  depositAmount: number;
+}
+
+export interface ProposalTemplate {
+  id: string;
+  name: string;
+  lineItems: ProposalLineItem[];
+  contractContent: string;
+  paymentConfig: ProposalPaymentConfig;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Proposal {
+  id: string;
+  clientId: string;
+  projectId: string | null;
+  title: string;
+  lineItems: ProposalLineItem[];
+  subtotal: number;
+  taxRate: number;
+  taxAmount: number;
+  total: number;
+  contractContent: string;
+  paymentConfig: ProposalPaymentConfig;
+  status: ProposalStatus;
+  sentAt: string | null;
+  acceptedAt: string | null;
+  completedAt: string | null;
+  clientSignature: ContractSignature | null;
+  ownerSignature: ContractSignature | null;
+  invoiceId: string | null;
+  stripeSessionId: string | null;
+  paidAt: string | null;
+  clientEmail: string;
+  viewToken: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -546,6 +604,8 @@ export interface AppData {
   timeEntries: TimeEntry[];
   contractTemplates: ContractTemplate[];
   contracts: Contract[];
+  proposalTemplates: ProposalTemplate[];
+  proposals: Proposal[];
   series: Series[];
   organization: Organization | null;
 }
