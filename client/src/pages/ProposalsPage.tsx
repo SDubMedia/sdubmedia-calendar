@@ -40,6 +40,8 @@ const MERGE_FIELDS = [
   { key: "{{client_company}}", label: "Client Company" },
   { key: "{{client_email}}", label: "Client Email" },
   { key: "{{project_type}}", label: "Project Type" },
+  { key: "{{project_date}}", label: "Project Date" },
+  { key: "{{project_location}}", label: "Location" },
   { key: "{{date}}", label: "Today's Date" },
   { key: "{{owner_name}}", label: "Your Name" },
   { key: "{{company_name}}", label: "Your Company" },
@@ -407,6 +409,7 @@ export default function ProposalsPage() {
     const client = data.clients.find(c => c.id === propClientId);
     const project = propProjectId ? data.projects.find(p => p.id === propProjectId) : null;
     const projectType = project ? data.projectTypes.find(t => t.id === project.projectTypeId) : null;
+    const location = project ? data.locations.find(l => l.id === project.locationId) : null;
     const total = calcTotal(propLineItems);
     const depositAmt = propPayment.option === "deposit" ? Math.round(total * (propPayment.depositPercent / 100) * 100) / 100 : 0;
     return content
@@ -414,6 +417,8 @@ export default function ProposalsPage() {
       .replace(/\{\{client_company\}\}/g, client?.company || "")
       .replace(/\{\{client_email\}\}/g, client?.email || "")
       .replace(/\{\{project_type\}\}/g, projectType?.name || "")
+      .replace(/\{\{project_date\}\}/g, project?.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "TBD")
+      .replace(/\{\{project_location\}\}/g, location?.name || "TBD")
       .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))
       .replace(/\{\{owner_name\}\}/g, profile?.name || "")
       .replace(/\{\{company_name\}\}/g, data.organization?.name || "")

@@ -20,6 +20,8 @@ const MERGE_FIELDS = [
   { key: "{{client_name}}", label: "Client Name" },
   { key: "{{client_company}}", label: "Client Company" },
   { key: "{{client_email}}", label: "Client Email" },
+  { key: "{{project_date}}", label: "Project Date" },
+  { key: "{{project_location}}", label: "Location" },
   { key: "{{date}}", label: "Today's Date" },
   { key: "{{owner_name}}", label: "Your Name" },
   { key: "{{company_name}}", label: "Your Company" },
