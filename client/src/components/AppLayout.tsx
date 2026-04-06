@@ -90,6 +90,7 @@ const navStructure: NavEntry[] = [
 
   // Finance
   { label: "Finance", icon: FileText, roles: ["owner", "partner"], items: [
+    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner"] },
     { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner"] },
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },

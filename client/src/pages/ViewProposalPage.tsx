@@ -1,12 +1,12 @@
 // ============================================================
 // ViewProposalPage — Public page for client to review, sign, & pay
 // No auth required — accessed via unique token link
-// Unified flow: services → agreement → sign → pay (if required)
+// V2: Package selection → Agreement pages → Sign → Pay milestones
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch } from "wouter";
-import { CheckCircle, AlertCircle, DollarSign } from "lucide-react";
+import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
 
 export default function ViewProposalPage() {
   const params = useParams<{ token: string }>();
@@ -24,6 +24,9 @@ export default function ViewProposalPage() {
   const [paymentVerified, setPaymentVerified] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
 
+  // Package selection (V2)
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
   const [signerEmail, setSignerEmail] = useState("");
@@ -32,7 +35,6 @@ export default function ViewProposalPage() {
 
   // Load proposal + track view
   useEffect(() => {
-    // Fire-and-forget view tracking
     fetch(`/api/proposal-view?token=${token}`).catch(() => {});
 
     fetch(`/api/proposal-accept?action=get&token=${token}`)
@@ -44,6 +46,9 @@ export default function ViewProposalPage() {
           setSignerEmail(data.clientEmail || "");
           if (data.alreadyAccepted) setAccepted(true);
           if (data.paidAt) setPaymentVerified(true);
+          if (data.selectedPackageId) setSelectedPackageId(data.selectedPackageId);
+          // Auto-select if only one package
+          if (data.packages?.length === 1) setSelectedPackageId(data.packages[0].id);
         }
         setLoading(false);
       })
@@ -57,10 +62,7 @@ export default function ViewProposalPage() {
       fetch(`/api/proposal-accept?action=verify-payment&token=${token}&sessionId=${sessionIdParam}`)
         .then(r => r.json())
         .then(data => {
-          if (data.paid) {
-            setPaymentVerified(true);
-            setAccepted(true);
-          }
+          if (data.paid) { setPaymentVerified(true); setAccepted(true); }
           setVerifyingPayment(false);
         })
         .catch(() => setVerifyingPayment(false));
@@ -77,8 +79,7 @@ export default function ViewProposalPage() {
     const rect = canvas.getBoundingClientRect();
     const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
     const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.beginPath(); ctx.moveTo(x, y);
   }, []);
 
   const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -90,11 +91,8 @@ export default function ViewProposalPage() {
     const rect = canvas.getBoundingClientRect();
     const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
     const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#000000";
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#000000";
+    ctx.lineTo(x, y); ctx.stroke();
   }, [isDrawing]);
 
   const stopDraw = useCallback(() => setIsDrawing(false), []);
@@ -119,29 +117,22 @@ export default function ViewProposalPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
-          signature: {
-            name: typedName.trim() || "Client",
-            email: signerEmail,
-            signatureData,
-            signatureType,
-          },
+          selectedPackageId,
+          signature: { name: typedName.trim() || "Client", email: signerEmail, signatureData, signatureType },
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
 
       if (result.paymentRequired && result.checkoutUrl) {
-        // Redirect to Stripe Checkout
         window.location.href = result.checkoutUrl;
         return;
       }
-
       if (result.paymentRequired && result.paymentError) {
         setError(result.paymentError);
         setAccepted(true);
         return;
       }
-
       setAccepted(true);
     } catch (e: any) {
       setError(e.message);
@@ -176,7 +167,6 @@ export default function ViewProposalPage() {
   }
 
   if (accepted || paymentVerified) {
-    const paymentNeeded = proposal?.paymentConfig?.option !== "none";
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
@@ -186,10 +176,8 @@ export default function ViewProposalPage() {
           </h1>
           <p className="text-gray-500">
             {paymentVerified
-              ? "Thank you! Your payment has been received and the proposal owner will countersign shortly."
-              : paymentNeeded
-                ? "Your signature has been recorded. Complete payment to finalize."
-                : "Thank you for accepting. The proposal owner will be notified and will countersign shortly."}
+              ? "Thank you! Your payment has been received."
+              : "Thank you for accepting. We'll be in touch shortly."}
           </p>
           {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
         </div>
@@ -198,13 +186,28 @@ export default function ViewProposalPage() {
   }
 
   // ---- MAIN VIEW ----
-  const lineItems = proposal?.lineItems || [];
-  const total = proposal?.total || 0;
+  const packages = proposal?.packages || [];
+  const hasPackages = packages.length > 0;
+  const selectedPkg = hasPackages ? packages.find((p: any) => p.id === selectedPackageId) : null;
+
+  // Fallback to legacy lineItems if no packages
+  const lineItems = selectedPkg?.lineItems || proposal?.lineItems || [];
+  const total = selectedPkg?.totalPrice || proposal?.total || 0;
+  const milestones = selectedPkg?.paymentMilestones || [];
+
+  // Legacy payment config fallback
   const paymentConfig = proposal?.paymentConfig || { option: "none" };
-  const depositAmount = paymentConfig.option === "deposit"
-    ? Math.round(total * (paymentConfig.depositPercent / 100) * 100) / 100
+  const hasMilestones = milestones.length > 0;
+  const firstMilestone = milestones.find((m: any) => m.dueType === "at_signing");
+  const paymentAmount = hasMilestones && firstMilestone
+    ? (firstMilestone.type === "percent" ? total * (firstMilestone.percent || 0) / 100 : firstMilestone.fixedAmount || 0)
+    : paymentConfig.option === "full" ? total
+    : paymentConfig.option === "deposit" ? Math.round(total * (paymentConfig.depositPercent / 100) * 100) / 100
     : 0;
-  const paymentAmount = paymentConfig.option === "full" ? total : paymentConfig.option === "deposit" ? depositAmount : 0;
+
+  // Agreement pages
+  const agreementPages = (proposal?.pages || []).filter((p: any) => p.type === "agreement" || p.type === "custom");
+  const hasPages = agreementPages.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -218,19 +221,63 @@ export default function ViewProposalPage() {
 
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
 
-        {/* ---- SERVICES ---- */}
-        {lineItems.length > 0 && (
+        {/* ---- PACKAGE SELECTION ---- */}
+        {hasPackages && packages.length > 1 && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Services</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Choose Your Package</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {packages.map((pkg: any) => (
+                <button
+                  key={pkg.id}
+                  onClick={() => setSelectedPackageId(pkg.id)}
+                  className={`text-left p-5 rounded-xl border-2 transition-all ${
+                    selectedPackageId === pkg.id
+                      ? "border-blue-500 bg-blue-50 shadow-md"
+                      : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="text-base font-bold text-gray-900">{pkg.name}</h3>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      selectedPackageId === pkg.id ? "border-blue-500 bg-blue-500" : "border-gray-300"
+                    }`}>
+                      {selectedPackageId === pkg.id && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                  </div>
+                  {pkg.description && <p className="text-sm text-gray-500 mb-3">{pkg.description}</p>}
+                  <div className="space-y-1 mb-3">
+                    {pkg.lineItems?.map((li: any, idx: number) => (
+                      <p key={idx} className="text-xs text-gray-600">- {li.description}</p>
+                    ))}
+                  </div>
+                  <p className="text-xl font-bold text-gray-900 font-mono">${pkg.totalPrice?.toFixed(2)}</p>
+                  {pkg.paymentMilestones?.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {pkg.paymentMilestones.length} payment{pkg.paymentMilestones.length !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Single package or legacy services display */}
+        {(!hasPackages || packages.length === 1) && lineItems.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">
+              {hasPackages && selectedPkg ? selectedPkg.name : "Services"}
+            </h2>
+            {hasPackages && selectedPkg?.description && (
+              <p className="text-sm text-gray-500 mb-4">{selectedPkg.description}</p>
+            )}
             <div className="divide-y divide-gray-100">
               {lineItems.map((li: any, idx: number) => (
                 <div key={idx} className="py-3 flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{li.description}</p>
                     {li.details && <p className="text-xs text-gray-500 mt-0.5">{li.details}</p>}
-                    {li.quantity > 1 && (
-                      <p className="text-xs text-gray-400 mt-0.5">{li.quantity} × ${Number(li.unitPrice).toFixed(2)}</p>
-                    )}
+                    {li.quantity > 1 && <p className="text-xs text-gray-400 mt-0.5">{li.quantity} x ${Number(li.unitPrice).toFixed(2)}</p>}
                   </div>
                   <p className="text-sm font-semibold text-gray-900 font-mono">${(li.quantity * li.unitPrice).toFixed(2)}</p>
                 </div>
@@ -240,22 +287,50 @@ export default function ViewProposalPage() {
               <span className="text-sm font-bold text-gray-900">Total</span>
               <span className="text-lg font-bold text-gray-900 font-mono">${total.toFixed(2)}</span>
             </div>
-            {paymentConfig.option === "deposit" && (
-              <p className="text-xs text-gray-500 mt-2 text-right">
-                {paymentConfig.depositPercent}% deposit (<span className="font-mono font-semibold">${depositAmount.toFixed(2)}</span>) due at signing
-              </p>
-            )}
-            {paymentConfig.option === "full" && (
-              <p className="text-xs text-gray-500 mt-2 text-right">Full payment due at signing</p>
-            )}
           </div>
         )}
 
-        {/* ---- AGREEMENT ---- */}
-        {proposal?.contractContent && (
+        {/* ---- PAYMENT SCHEDULE (milestones) ---- */}
+        {hasMilestones && selectedPackageId && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Payment Schedule</h2>
+            <div className="space-y-3">
+              {milestones.map((ms: any, idx: number) => {
+                const amount = ms.type === "percent" ? total * (ms.percent || 0) / 100 : ms.fixedAmount || 0;
+                return (
+                  <div key={ms.id || idx} className="flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-full border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-gray-400 shrink-0">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{ms.label}</p>
+                      <p className="text-xs text-gray-400">
+                        {ms.dueType === "at_signing" ? "Due at signing" : ms.dueType === "relative_days" ? `Due ${ms.dueDays} days after signing` : ms.dueDate ? `Due ${ms.dueDate}` : ""}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 font-mono">${amount.toFixed(2)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ---- AGREEMENT PAGES (V2 multi-page) ---- */}
+        {hasPages && agreementPages.map((page: any) => (
+          <div key={page.id} className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">{page.label || "Agreement"}</h2>
+            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
+              {page.content}
+            </div>
+          </div>
+        ))}
+
+        {/* Fallback: legacy contractContent */}
+        {!hasPages && proposal?.contractContent && (
           <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Agreement</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto border border-gray-100 rounded-lg p-4 bg-gray-50">
+            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
               {proposal.contractContent}
             </div>
           </div>
@@ -267,25 +342,22 @@ export default function ViewProposalPage() {
             {paymentAmount > 0 ? "Sign & Pay" : "Accept Proposal"}
           </h2>
 
+          {hasPackages && !selectedPackageId && packages.length > 1 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-amber-700">Please select a package above before signing.</p>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div>
               <label className="text-sm text-gray-500 block mb-1">Your Full Name</label>
-              <input
-                value={typedName}
-                onChange={e => setTypedName(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900"
-                placeholder="Full legal name"
-              />
+              <input value={typedName} onChange={e => setTypedName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900" placeholder="Full legal name" />
             </div>
-
             <div>
               <label className="text-sm text-gray-500 block mb-1">Your Email</label>
-              <input
-                value={signerEmail}
-                onChange={e => setSignerEmail(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900"
-                placeholder="email@example.com"
-              />
+              <input value={signerEmail} onChange={e => setSignerEmail(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900" placeholder="email@example.com" />
             </div>
 
             <div className="flex gap-2">
@@ -306,43 +378,29 @@ export default function ViewProposalPage() {
             ) : (
               <div>
                 <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-                  <canvas
-                    ref={canvasRef}
-                    width={600}
-                    height={150}
-                    className="w-full cursor-crosshair touch-none"
-                    onMouseDown={startDraw}
-                    onMouseMove={draw}
-                    onMouseUp={stopDraw}
-                    onMouseLeave={stopDraw}
-                    onTouchStart={startDraw}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDraw}
-                  />
+                  <canvas ref={canvasRef} width={600} height={150} className="w-full cursor-crosshair touch-none"
+                    onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
+                    onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw} />
                 </div>
-                <button onClick={() => { const c = canvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); }} className="text-xs text-gray-400 mt-1 hover:text-gray-600">
-                  Clear
-                </button>
+                <button onClick={() => { const c = canvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); }} className="text-xs text-gray-400 mt-1 hover:text-gray-600">Clear</button>
               </div>
             )}
 
             <p className="text-xs text-gray-400">
-              By clicking below, you agree this constitutes your legal electronic signature and you accept the services and terms above. Your name, email, IP address, and timestamp will be recorded.
+              By clicking below, you agree this constitutes your legal electronic signature and you accept the services and terms above.
             </p>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
             <button
               onClick={handleAccept}
-              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim()}
+              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim() || (hasPackages && packages.length > 1 && !selectedPackageId)}
               className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {submitting ? "Processing..." : (
                 <>
                   {paymentAmount > 0 && <DollarSign className="w-4 h-4" />}
-                  {paymentAmount > 0
-                    ? `Sign & Pay $${paymentAmount.toFixed(2)}`
-                    : "Accept Proposal"}
+                  {paymentAmount > 0 ? `Sign & Pay $${paymentAmount.toFixed(2)}` : "Accept Proposal"}
                 </>
               )}
             </button>
@@ -350,7 +408,6 @@ export default function ViewProposalPage() {
         </div>
       </div>
 
-      {/* Footer */}
       <div className="text-center py-6">
         <p className="text-xs text-gray-300">Powered by Slate</p>
       </div>

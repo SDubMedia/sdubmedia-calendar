@@ -62,6 +62,10 @@ async function getProposal(token: string, res: VercelResponse) {
     total: proposal.total,
     contractContent: proposal.contract_content,
     paymentConfig: proposal.payment_config,
+    pages: proposal.pages || [],
+    packages: proposal.packages || [],
+    selectedPackageId: proposal.selected_package_id || null,
+    paymentMilestones: proposal.payment_milestones || [],
     status: proposal.status,
     clientEmail: proposal.client_email,
     clientSignature: proposal.client_signature,
@@ -76,7 +80,7 @@ async function getProposal(token: string, res: VercelResponse) {
 async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const { token, signature } = req.body;
+  const { token, signature, selectedPackageId } = req.body;
   if (!token || !signature) return res.status(400).json({ error: "Missing token or signature" });
 
   // Verify proposal exists and is in correct status
@@ -100,19 +104,34 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
 
   const now = new Date().toISOString();
 
+  // Resolve selected package and milestones
+  const packages = proposal.packages || [];
+  const selectedPkg = selectedPackageId ? packages.find((p: any) => p.id === selectedPackageId) : packages[0] || null;
+  const resolvedMilestones = selectedPkg?.paymentMilestones || [];
+  const proposalTotal = selectedPkg?.totalPrice || proposal.total;
+
   // Update proposal
-  const { error: updateError } = await supabase.from("proposals").update({
+  const updatePayload: any = {
     client_signature: fullSignature,
     accepted_at: now,
     status: "accepted",
+    pipeline_stage: "proposal_signed",
     updated_at: now,
-  }).eq("id", proposal.id);
+  };
+  if (selectedPackageId) updatePayload.selected_package_id = selectedPackageId;
+  if (resolvedMilestones.length > 0) updatePayload.payment_milestones = resolvedMilestones;
+  if (selectedPkg) updatePayload.total = proposalTotal;
+
+  const { error: updateError } = await supabase.from("proposals").update(updatePayload).eq("id", proposal.id);
 
   if (updateError) return res.status(500).json({ error: updateError.message });
 
-  // If payment required, create Stripe Checkout session
+  // Check if payment required: first via milestones, then legacy paymentConfig
+  const hasAtSigningMilestone = resolvedMilestones.some((m: any) => m.dueType === "at_signing");
   const paymentConfig = proposal.payment_config || { option: "none" };
-  if (paymentConfig.option !== "none") {
+  const needsPayment = hasAtSigningMilestone || paymentConfig.option !== "none";
+
+  if (needsPayment) {
     // Get org's connected Stripe account
     const { data: org } = await supabase
       .from("organizations")
@@ -128,11 +147,20 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Calculate payment amount
-    let paymentAmount = proposal.total;
+    // Calculate payment amount — milestones first, then legacy
+    let paymentAmount = proposalTotal;
     let paymentLabel = "Full Payment";
-    if (paymentConfig.option === "deposit") {
-      paymentAmount = Math.round(proposal.total * (paymentConfig.depositPercent / 100) * 100) / 100;
+    if (hasAtSigningMilestone) {
+      const ms = resolvedMilestones.find((m: any) => m.dueType === "at_signing");
+      if (ms.type === "percent") {
+        paymentAmount = Math.round(proposalTotal * (ms.percent / 100) * 100) / 100;
+        paymentLabel = `${ms.label} (${ms.percent}%)`;
+      } else {
+        paymentAmount = ms.fixedAmount || proposalTotal;
+        paymentLabel = ms.label;
+      }
+    } else if (paymentConfig.option === "deposit") {
+      paymentAmount = Math.round(proposalTotal * (paymentConfig.depositPercent / 100) * 100) / 100;
       paymentLabel = `Deposit (${paymentConfig.depositPercent}%)`;
     }
 
