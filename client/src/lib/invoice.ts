@@ -5,6 +5,13 @@
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
 import { getProjectBillableHours, getProjectInvoiceAmount } from "./data";
 
+function formatPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  if (digits.length === 11 && digits[0] === "1") return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  return phone;
+}
+
 /** SDub Media company info (placeholder — update with real details) */
 export function getCompanyInfo(): Record<string, string> {
   return {
@@ -82,34 +89,89 @@ export function buildLineItems(
     return true;
   });
 
-  return filtered.map(p => {
+  const items: InvoiceLineItem[] = [];
+
+  for (const p of filtered) {
     const typeName = projectTypes.find(t => t.id === p.projectTypeId)?.name ?? "Project";
     const locName = locations.find(l => l.id === p.locationId)?.name;
-    const description = locName ? `${typeName} — ${locName}` : typeName;
+    const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
 
     if (client.billingModel === "per_project") {
       const amount = getProjectInvoiceAmount(p, client);
-      return {
-        projectId: p.id,
-        date: p.date,
-        description,
-        quantity: 1,
-        unitPrice: amount,
-        amount,
-      };
-    }
 
-    const { totalBillable } = getProjectBillableHours(p, client);
-    const rate = Number(client.billingRatePerHour ?? 0);
-    return {
-      projectId: p.id,
-      date: p.date,
-      description,
-      quantity: totalBillable,
-      unitPrice: rate,
-      amount: totalBillable * rate,
-    };
-  });
+      // Break down into production + post-production if we have crew data
+      const hasCrew = p.crew.length > 0;
+      const hasPost = p.postProduction.length > 0;
+
+      if (hasCrew || hasPost) {
+        if (hasCrew) {
+          const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
+          const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Production (${crewRoles})`,
+            quantity: crewHours || 1,
+            unitPrice: hasPost ? Math.round(amount * 0.6 / (crewHours || 1) * 100) / 100 : amount / (crewHours || 1),
+            amount: hasPost ? Math.round(amount * 0.6 * 100) / 100 : amount,
+          });
+        }
+        if (hasPost) {
+          const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
+          const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Editing (${postRoles})`,
+            quantity: postHours || 1,
+            unitPrice: hasCrew ? Math.round(amount * 0.4 / (postHours || 1) * 100) / 100 : amount / (postHours || 1),
+            amount: hasCrew ? Math.round(amount * 0.4 * 100) / 100 : amount,
+          });
+        }
+      } else {
+        items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
+      }
+    } else {
+      // Hourly billing — show crew and editors separately
+      const rate = Number(client.billingRatePerHour ?? 0);
+
+      if (p.crew.length > 0) {
+        const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
+        const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
+        if (crewHours > 0) {
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Production (${crewRoles})`,
+            quantity: crewHours,
+            unitPrice: rate, amount: crewHours * rate,
+          });
+        }
+      }
+
+      if (p.postProduction.length > 0) {
+        const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
+        const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
+        if (postHours > 0) {
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Editing (${postRoles})`,
+            quantity: postHours,
+            unitPrice: rate, amount: postHours * rate,
+          });
+        }
+      }
+
+      // Fallback if no crew/post data
+      if (p.crew.length === 0 && p.postProduction.length === 0) {
+        const { totalBillable } = getProjectBillableHours(p, client);
+        items.push({
+          projectId: p.id, date: p.date,
+          description: projectLabel,
+          quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
+        });
+      }
+    }
+  }
+
+  return items;
 }
 
 /** Build a full invoice object (not yet saved) */
@@ -150,7 +212,7 @@ export function buildInvoice(
       city: org.businessInfo.city || "",
       state: org.businessInfo.state || "",
       zip: org.businessInfo.zip || "",
-      phone: org.businessInfo.phone || "",
+      phone: formatPhone(org.businessInfo.phone || ""),
       email: org.businessInfo.email || "",
       website: org.businessInfo.website || "",
     } : getCompanyInfo(),
