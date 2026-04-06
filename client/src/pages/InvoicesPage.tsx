@@ -58,6 +58,7 @@ export default function InvoicesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all");
   const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
+  const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
 
   async function createPaymentLink(invoiceId: string) {
     const orgId = data.organization?.id;
@@ -75,14 +76,8 @@ export default function InvoicesPage() {
       if (!res.ok) throw new Error(result.error || "Failed to create payment link");
 
       if (result.url) {
-        // Try clipboard first, fall back to prompt
-        try {
-          await navigator.clipboard.writeText(result.url);
-          toast.success("Payment link copied to clipboard!");
-        } catch {
-          // Safari blocks clipboard — show link in prompt
-          prompt("Copy this payment link:", result.url);
-        }
+        setPaymentLinks(prev => ({ ...prev, [invoiceId]: result.url }));
+        toast.success("Payment link created!");
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to create payment link");
@@ -467,7 +462,7 @@ export default function InvoicesPage() {
                         <CheckCircle className="w-3.5 h-3.5" /> Mark Paid
                       </button>
                     )}
-                    {inv.status !== "void" && inv.status !== "paid" && (
+                    {inv.status !== "void" && inv.status !== "paid" && !paymentLinks[inv.id] && (
                       <button
                         onClick={() => createPaymentLink(inv.id)}
                         disabled={creatingPaymentLink === inv.id}
@@ -476,6 +471,27 @@ export default function InvoicesPage() {
                         <CreditCard className="w-3.5 h-3.5" />
                         {creatingPaymentLink === inv.id ? "Creating..." : "Payment Link"}
                       </button>
+                    )}
+                    {paymentLinks[inv.id] && (
+                      <div className="flex items-center gap-1">
+                        <a href={paymentLinks[inv.id]} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors">
+                          <CreditCard className="w-3.5 h-3.5" /> Open Link
+                        </a>
+                        <button
+                          onClick={() => {
+                            const input = document.createElement("textarea");
+                            input.value = paymentLinks[inv.id];
+                            document.body.appendChild(input);
+                            input.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(input);
+                            toast.success("Link copied!");
+                          }}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Copy
+                        </button>
+                      </div>
                     )}
                     {inv.status !== "void" && inv.status !== "paid" && (
                       <button onClick={() => handleVoid(inv.id)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
