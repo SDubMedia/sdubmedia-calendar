@@ -52,6 +52,148 @@ function emptyLineItem(): ProposalLineItem {
   return { id: nanoid(6), description: "", details: "", quantity: 1, unitPrice: 0, amount: 0 };
 }
 
+// ---- Line item helpers (outside component to avoid re-creation) ----
+function calcLineItems(items: ProposalLineItem[]): ProposalLineItem[] {
+  return items.map(li => ({ ...li, amount: li.quantity * li.unitPrice }));
+}
+
+function calcTotal(items: ProposalLineItem[]) {
+  return items.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+}
+
+function updateLineItem(items: ProposalLineItem[], id: string, field: keyof ProposalLineItem, value: any, setter: (items: ProposalLineItem[]) => void) {
+  setter(items.map(li => {
+    if (li.id !== id) return li;
+    const updated = { ...li, [field]: value };
+    updated.amount = updated.quantity * updated.unitPrice;
+    return updated;
+  }));
+}
+
+function addLineItemTo(items: ProposalLineItem[], setter: (items: ProposalLineItem[]) => void) {
+  setter([...items, emptyLineItem()]);
+}
+
+function removeLineItemFrom(items: ProposalLineItem[], id: string, setter: (items: ProposalLineItem[]) => void) {
+  if (items.length <= 1) return;
+  setter(items.filter(li => li.id !== id));
+}
+
+// ---- Extracted sub-components ----
+function LineItemEditor({ items, setter }: { items: ProposalLineItem[]; setter: (i: ProposalLineItem[]) => void }) {
+  const total = calcTotal(items);
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs text-muted-foreground">Services / Line Items</Label>
+      {items.map((li, idx) => (
+        <div key={li.id} className="flex gap-2 items-start">
+          <div className="flex-1 space-y-1">
+            <Input
+              value={li.description}
+              onChange={e => updateLineItem(items, li.id, "description", e.target.value, setter)}
+              className="bg-secondary border-border text-sm"
+              placeholder={`Service ${idx + 1} (e.g. Full Day Video Production)`}
+            />
+            <Input
+              value={li.details}
+              onChange={e => updateLineItem(items, li.id, "details", e.target.value, setter)}
+              className="bg-secondary border-border text-xs"
+              placeholder="Details (optional)"
+            />
+          </div>
+          <div className="w-16">
+            <Input
+              type="number"
+              value={li.quantity}
+              onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)}
+              className="bg-secondary border-border text-sm text-center"
+              min={1}
+            />
+            <span className="text-[10px] text-muted-foreground">Qty</span>
+          </div>
+          <div className="w-28">
+            <Input
+              type="number"
+              value={li.unitPrice || ""}
+              onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)}
+              className="bg-secondary border-border text-sm"
+              placeholder="0.00"
+              min={0}
+              step={0.01}
+            />
+            <span className="text-[10px] text-muted-foreground">Price</span>
+          </div>
+          <div className="w-20 text-right pt-2">
+            <span className="text-sm font-mono text-foreground">${(li.quantity * li.unitPrice).toFixed(2)}</span>
+          </div>
+          <button
+            onClick={() => removeLineItemFrom(items, li.id, setter)}
+            className="p-1.5 mt-1 text-muted-foreground hover:text-destructive"
+            disabled={items.length <= 1}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center justify-between pt-1">
+        <button onClick={() => addLineItemTo(items, setter)} className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
+          <Plus className="w-3 h-3" /> Add Service
+        </button>
+        <div className="text-sm font-semibold text-foreground">
+          Total: <span className="font-mono">${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentConfig; setConfig: (c: ProposalPaymentConfig) => void; total: number }) {
+  const depositAmount = config.option === "deposit" ? Math.round(total * (config.depositPercent / 100) * 100) / 100 : 0;
+  return (
+    <div className="space-y-3">
+      <Label className="text-xs text-muted-foreground">Payment at Signing</Label>
+      <div className="flex gap-2">
+        {(["none", "deposit", "full"] as const).map(opt => (
+          <button
+            key={opt}
+            onClick={() => setConfig({ ...config, option: opt, depositAmount: opt === "deposit" ? depositAmount : 0 })}
+            className={cn(
+              "flex-1 py-2 rounded-lg border text-xs font-medium transition-colors",
+              config.option === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {opt === "none" ? "No Payment" : opt === "deposit" ? "Deposit" : "Full Payment"}
+          </button>
+        ))}
+      </div>
+      {config.option === "deposit" && (
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              value={config.depositPercent}
+              onChange={e => {
+                const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                setConfig({ ...config, depositPercent: pct, depositAmount: Math.round(total * (pct / 100) * 100) / 100 });
+              }}
+              className="bg-secondary border-border w-20 text-sm text-center"
+              min={1} max={100}
+            />
+            <span className="text-xs text-muted-foreground">%</span>
+          </div>
+          <span className="text-sm text-foreground font-mono">= ${depositAmount.toFixed(2)}</span>
+        </div>
+      )}
+      {config.option === "full" && total > 0 && (
+        <p className="text-xs text-muted-foreground">Client will pay <span className="font-mono font-semibold text-foreground">${total.toFixed(2)}</span> at signing via Stripe</p>
+      )}
+      {config.option === "none" && (
+        <p className="text-xs text-muted-foreground">No payment will be collected. You can invoice separately later.</p>
+      )}
+    </div>
+  );
+}
+
 export default function ProposalsPage() {
   const { data, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
@@ -99,149 +241,6 @@ export default function ProposalsPage() {
   // PDF upload
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
-
-  // ---- Line item helpers ----
-  function calcLineItems(items: ProposalLineItem[]): ProposalLineItem[] {
-    return items.map(li => ({ ...li, amount: li.quantity * li.unitPrice }));
-  }
-
-  function calcTotal(items: ProposalLineItem[]) {
-    return items.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  }
-
-  function updateLineItem(items: ProposalLineItem[], id: string, field: keyof ProposalLineItem, value: any, setter: (items: ProposalLineItem[]) => void) {
-    setter(items.map(li => {
-      if (li.id !== id) return li;
-      const updated = { ...li, [field]: value };
-      updated.amount = updated.quantity * updated.unitPrice;
-      return updated;
-    }));
-  }
-
-  function addLineItem(items: ProposalLineItem[], setter: (items: ProposalLineItem[]) => void) {
-    setter([...items, emptyLineItem()]);
-  }
-
-  function removeLineItem(items: ProposalLineItem[], id: string, setter: (items: ProposalLineItem[]) => void) {
-    if (items.length <= 1) return;
-    setter(items.filter(li => li.id !== id));
-  }
-
-  // ---- Line item editor component ----
-  function LineItemEditor({ items, setter }: { items: ProposalLineItem[]; setter: (i: ProposalLineItem[]) => void }) {
-    const total = calcTotal(items);
-    return (
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Services / Line Items</Label>
-        {items.map((li, idx) => (
-          <div key={li.id} className="flex gap-2 items-start">
-            <div className="flex-1 space-y-1">
-              <Input
-                value={li.description}
-                onChange={e => updateLineItem(items, li.id, "description", e.target.value, setter)}
-                className="bg-secondary border-border text-sm"
-                placeholder={`Service ${idx + 1} (e.g. Full Day Video Production)`}
-              />
-              <Input
-                value={li.details}
-                onChange={e => updateLineItem(items, li.id, "details", e.target.value, setter)}
-                className="bg-secondary border-border text-xs"
-                placeholder="Details (optional)"
-              />
-            </div>
-            <div className="w-16">
-              <Input
-                type="number"
-                value={li.quantity}
-                onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)}
-                className="bg-secondary border-border text-sm text-center"
-                min={1}
-              />
-              <span className="text-[10px] text-muted-foreground">Qty</span>
-            </div>
-            <div className="w-28">
-              <Input
-                type="number"
-                value={li.unitPrice || ""}
-                onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)}
-                className="bg-secondary border-border text-sm"
-                placeholder="0.00"
-                min={0}
-                step={0.01}
-              />
-              <span className="text-[10px] text-muted-foreground">Price</span>
-            </div>
-            <div className="w-20 text-right pt-2">
-              <span className="text-sm font-mono text-foreground">${(li.quantity * li.unitPrice).toFixed(2)}</span>
-            </div>
-            <button
-              onClick={() => removeLineItem(items, li.id, setter)}
-              className="p-1.5 mt-1 text-muted-foreground hover:text-destructive"
-              disabled={items.length <= 1}
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        ))}
-        <div className="flex items-center justify-between pt-1">
-          <button onClick={() => addLineItem(items, setter)} className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
-            <Plus className="w-3 h-3" /> Add Service
-          </button>
-          <div className="text-sm font-semibold text-foreground">
-            Total: <span className="font-mono">${total.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- Payment config editor ----
-  function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentConfig; setConfig: (c: ProposalPaymentConfig) => void; total: number }) {
-    const depositAmount = config.option === "deposit" ? Math.round(total * (config.depositPercent / 100) * 100) / 100 : 0;
-    return (
-      <div className="space-y-3">
-        <Label className="text-xs text-muted-foreground">Payment at Signing</Label>
-        <div className="flex gap-2">
-          {(["none", "deposit", "full"] as const).map(opt => (
-            <button
-              key={opt}
-              onClick={() => setConfig({ ...config, option: opt, depositAmount: opt === "deposit" ? depositAmount : 0 })}
-              className={cn(
-                "flex-1 py-2 rounded-lg border text-xs font-medium transition-colors",
-                config.option === opt ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {opt === "none" ? "No Payment" : opt === "deposit" ? "Deposit" : "Full Payment"}
-            </button>
-          ))}
-        </div>
-        {config.option === "deposit" && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="number"
-                value={config.depositPercent}
-                onChange={e => {
-                  const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                  setConfig({ ...config, depositPercent: pct, depositAmount: Math.round(total * (pct / 100) * 100) / 100 });
-                }}
-                className="bg-secondary border-border w-20 text-sm text-center"
-                min={1} max={100}
-              />
-              <span className="text-xs text-muted-foreground">%</span>
-            </div>
-            <span className="text-sm text-foreground font-mono">= ${depositAmount.toFixed(2)}</span>
-          </div>
-        )}
-        {config.option === "full" && total > 0 && (
-          <p className="text-xs text-muted-foreground">Client will pay <span className="font-mono font-semibold text-foreground">${total.toFixed(2)}</span> at signing via Stripe</p>
-        )}
-        {config.option === "none" && (
-          <p className="text-xs text-muted-foreground">No payment will be collected. You can invoice separately later.</p>
-        )}
-      </div>
-    );
-  }
 
   // ---- Template CRUD ----
   function openNewTemplate() {
@@ -740,7 +739,7 @@ export default function ProposalsPage() {
               <textarea
                 value={tplContractContent}
                 onChange={e => setTplContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[200px] resize-y font-mono"
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y font-mono"
                 placeholder="Enter your contract/agreement text here..."
               />
             </div>
@@ -808,7 +807,7 @@ export default function ProposalsPage() {
               <textarea
                 value={propContractContent}
                 onChange={e => setPropContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[200px] resize-y"
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y"
                 placeholder="Enter or paste your contract text, or import from HoneyBook..."
               />
             </div>
@@ -981,7 +980,7 @@ export default function ProposalsPage() {
               <textarea
                 value={importPasteContent}
                 onChange={e => setImportPasteContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[200px] resize-y"
+                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y"
                 placeholder="Paste your contract text here..."
                 autoFocus
               />
