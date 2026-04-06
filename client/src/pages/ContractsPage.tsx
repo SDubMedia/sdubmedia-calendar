@@ -47,7 +47,7 @@ const MERGE_FIELDS = [
 export default function ContractsPage() {
   const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract } = useApp();
   const { profile } = useAuth();
-  const [tab, setTab] = useState<"contracts" | "templates">("contracts");
+  const [tab, setTab] = useState<"contracts" | "templates">("templates");
 
   // Template dialog
   const [tplDialogOpen, setTplDialogOpen] = useState(false);
@@ -179,6 +179,7 @@ export default function ContractsPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           to: contract.clientEmail,
+          cc: profile?.email || "",
           subject: `Contract: ${contract.title} — ${orgName}`,
           signUrl,
           contractTitle: contract.title,

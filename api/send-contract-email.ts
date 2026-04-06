@@ -17,13 +17,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  const { to, subject, signUrl, contractTitle, orgName } = req.body;
+  const { to, cc, subject, signUrl, contractTitle, orgName } = req.body;
   if (!to || !signUrl) return res.status(400).json({ error: "Missing to or signUrl" });
 
   try {
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
+      ...(cc ? { cc } : {}),
       subject: subject || `Contract: ${esc(contractTitle)}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">

@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ") || auth.length < 20) return res.status(401).json({ error: "Unauthorized" });
 
-  const { to, subject, proposalUrl, proposalTitle, total, paymentOption, depositPercent, orgName } = req.body;
+  const { to, cc, subject, proposalUrl, proposalTitle, total, paymentOption, depositPercent, orgName } = req.body;
   if (!to || !proposalUrl) return res.status(400).json({ error: "Missing to or proposalUrl" });
 
   // Escape HTML to prevent injection
@@ -30,6 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
+      ...(cc ? { cc } : {}),
       subject: subject || `Proposal: ${proposalTitle}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">

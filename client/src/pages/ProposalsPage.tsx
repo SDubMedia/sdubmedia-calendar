@@ -209,7 +209,7 @@ export default function ProposalsPage() {
   const { data, addClient, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState<"proposals" | "templates">("proposals");
+  const [tab, setTab] = useState<"proposals" | "templates">("templates");
 
   // Template dialog state
   const [tplDialogOpen, setTplDialogOpen] = useState(false);
@@ -479,6 +479,7 @@ export default function ProposalsPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           to: proposal.clientEmail,
+          cc: profile?.email || "",
           subject: `Proposal: ${proposal.title} — ${orgName}`,
           proposalUrl,
           proposalTitle: proposal.title,

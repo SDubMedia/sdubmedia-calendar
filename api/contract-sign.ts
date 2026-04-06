@@ -5,11 +5,14 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action, token } = req.query;
@@ -83,6 +86,20 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
   }).eq("id", contract.id);
 
   if (error) return res.status(500).json({ error: error.message });
+
+  // Notify owner
+  const { data: fullContract } = await supabase.from("contracts").select("org_id, title").eq("id", contract.id).single();
+  if (fullContract?.org_id) {
+    const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", fullContract.org_id).eq("role", "owner");
+    const ownerEmail = profiles?.[0]?.email;
+    if (ownerEmail) {
+      resend.emails.send({
+        from: FROM_EMAIL, to: ownerEmail,
+        subject: `Contract Signed: ${fullContract.title}`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Contract Signed!</h2><p style="color:#1e293b;"><strong>${signature.name}</strong> has signed your contract: <strong>${fullContract.title}</strong>.</p><p style="color:#64748b;">Log in to Slate to countersign and complete the agreement.</p></div>`,
+      }).catch(() => {});
+    }
+  }
 
   return res.status(200).json({ success: true });
 }

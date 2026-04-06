@@ -7,12 +7,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action, token } = req.query;
@@ -213,6 +216,9 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // Notify owner
+  notifyOwner(proposal.org_id, proposal.title, signature.name || proposal.client_email, "signed").catch(() => {});
+
   return res.status(200).json({ success: true, paymentRequired: false });
 }
 
@@ -251,4 +257,19 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(200).json({ paid: false });
+}
+
+async function notifyOwner(orgId: string, title: string, signerName: string, event: "signed" | "viewed") {
+  if (!orgId) return;
+  const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", orgId).eq("role", "owner");
+  const ownerEmail = profiles?.[0]?.email;
+  if (!ownerEmail) return;
+  const subject = event === "signed" ? `Proposal Signed: ${title}` : `Proposal Viewed: ${title}`;
+  const body = event === "signed"
+    ? `<strong>${signerName}</strong> has signed your proposal: <strong>${title}</strong>. Log in to Slate to countersign.`
+    : `<strong>${signerName}</strong> has viewed your proposal: <strong>${title}</strong>.`;
+  await resend.emails.send({
+    from: FROM_EMAIL, to: ownerEmail, subject,
+    html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Proposal ${event === "signed" ? "Signed" : "Viewed"}!</h2><p style="color:#1e293b;">${body}</p></div>`,
+  });
 }
