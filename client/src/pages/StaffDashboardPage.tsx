@@ -108,7 +108,7 @@ export default function StaffDashboardPage() {
           const imgs = p.editorBilling?.imageCount ?? 0;
           const isFinalized = p.editorBilling?.finalized === true || p.status === "completed";
           const pay = imgs * rate;
-          if (isFinalized && imgs > 0) totalPay += pay;
+          if (imgs > 0) totalPay += pay;
           breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay: isFinalized ? pay : 0 });
         } else {
           const hours = Number(e.hoursWorked ?? 0);

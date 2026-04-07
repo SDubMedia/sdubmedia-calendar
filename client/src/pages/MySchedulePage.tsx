@@ -103,7 +103,7 @@ export default function MySchedulePage() {
           // Finalized if explicitly set OR project is completed
           const isFinalized = project.editorBilling?.finalized === true || project.status === "completed";
           const pay = imgs * rate;
-          if (isFinalized && imgs > 0) {
+          if (imgs > 0) {
             totalPay += pay;
           }
           entries.push({
