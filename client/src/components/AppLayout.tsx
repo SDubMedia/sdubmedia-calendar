@@ -122,7 +122,7 @@ const navStructure: NavEntry[] = [
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole, impersonateUserId, setImpersonateUserId, allProfiles } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { data } = useApp();
@@ -302,7 +302,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
                 <select
                   value={viewAsRole || ""}
-                  onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); window.location.href = "/"; }}
+                  onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); setLocation("/"); }}
                   className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
                 >
                   <option value="">Owner (default)</option>
@@ -315,7 +315,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Impersonate User</label>
                 <select
                   value={impersonateUserId || ""}
-                  onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); window.location.href = "/"; }}
+                  onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); setLocation("/"); }}
                   className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
                 >
                   <option value="">None</option>
@@ -449,7 +449,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
                     <select
                       value={viewAsRole || ""}
-                      onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); window.location.href = "/"; }}
+                      onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); setLocation("/"); }}
                       className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
                     >
                       <option value="">Owner (default)</option>
@@ -462,7 +462,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Impersonate</label>
                     <select
                       value={impersonateUserId || ""}
-                      onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); setMobileMenuOpen(false); window.location.href = "/"; }}
+                      onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); setMobileMenuOpen(false); setLocation("/"); }}
                       className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
                     >
                       <option value="">None</option>
