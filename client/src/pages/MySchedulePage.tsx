@@ -80,6 +80,13 @@ export default function MySchedulePage() {
 
     project.crew.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
+        // If this project has editorBilling and this person is the photo editor,
+        // skip hourly — their pay comes from editorBilling in postProduction
+        const isAlsoPhotoEditor = project.editorBilling && project.postProduction.some(
+          pp => pp.crewMemberId === crewMemberId && pp.role === "Photo Editor"
+        );
+        if (isAlsoPhotoEditor) return; // pay handled in postProduction loop
+
         const hours = Number(c.hoursWorked ?? 0);
         const rate = Number(c.payRatePerHour ?? 0);
         totalHours += hours;
@@ -90,17 +97,18 @@ export default function MySchedulePage() {
 
     project.postProduction.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
-        if (c.role === "Photo Editor") {
+        if (c.role === "Photo Editor" || (project.editorBilling && c.crewMemberId === crewMemberId)) {
           const rate = project.editorBilling?.perImageRate ?? 6;
           const imgs = project.editorBilling?.imageCount ?? 0;
-          const isFinalized = project.editorBilling?.finalized === true;
+          // Finalized if explicitly set OR project is completed
+          const isFinalized = project.editorBilling?.finalized === true || project.status === "completed";
           const pay = imgs * rate;
-          if (isFinalized) {
+          if (isFinalized && imgs > 0) {
             totalPay += pay;
           }
           entries.push({
             role: c.role, hours: imgs, rate, pay,
-            type: isFinalized ? "Post" : "Projected",
+            type: isFinalized && imgs > 0 ? "Post" : "Projected",
             unit: "images",
           });
         } else {
