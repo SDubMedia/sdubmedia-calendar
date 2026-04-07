@@ -141,8 +141,8 @@ export default function MileageReportPage() {
       .filter(p => {
         const d = new Date(p.date + "T00:00:00");
         if (d.getFullYear() !== year) return false;
-        return [...(p.crew || []), ...(p.postProduction || [])]
-          .some(e => e.crewMemberId === crewMemberId);
+        // Only count mileage for on-site crew, not remote post-production editors
+        return (p.crew || []).some(e => e.crewMemberId === crewMemberId);
       })
       .map(p => {
         const client = data.clients.find(c => c.id === p.clientId);
