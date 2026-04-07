@@ -116,6 +116,7 @@ const navStructure: NavEntry[] = [
 
   // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
+  { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "partner", "client", "staff"] },
   { label: "Trash", href: "/trash", icon: Trash2, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },

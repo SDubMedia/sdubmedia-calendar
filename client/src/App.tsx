@@ -46,6 +46,7 @@ const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
+const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
 const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage"));
 
 function LoadingScreen() {
@@ -118,6 +119,7 @@ function Router() {
         {isOwner && <Route path="/pipeline" component={PipelinePage} />}
         {isOwner && <Route path="/1099" component={ContractorSummaryPage} />}
         {isOwner && <Route path="/trash" component={TrashPage} />}
+        <Route path="/calendar-sync" component={CalendarSyncPage} />
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
