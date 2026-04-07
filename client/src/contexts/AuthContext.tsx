@@ -134,6 +134,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    // Clear any stale impersonation from previous session
+    sessionStorage.removeItem("slate_viewAsRole");
+    sessionStorage.removeItem("slate_impersonateUserId");
+    setViewAsRole(null);
+    setImpersonateUserIdRaw(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
   }, []);
