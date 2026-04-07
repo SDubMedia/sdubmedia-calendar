@@ -5,10 +5,11 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { downloadCSV } from "@/lib/csv";
+import ReportPreview from "@/components/ReportPreview";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -29,6 +30,7 @@ export default function ClientReportsPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [view, setView] = useState<"monthly" | "annual">("monthly");
+  const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -135,6 +137,143 @@ export default function ClientReportsPage() {
     }), `annual-report-${year}`);
   };
 
+  function generateReport() {
+    if (!currentClient) return;
+    const monthName = MONTH_NAMES[month];
+    const yr = year;
+    const clientProjects = monthlyProjects;
+
+    const totalProductionHours = clientProjects.reduce((s, p) =>
+      s + getProjectBillableHours(p, currentClient).crewBillable, 0);
+    const totalEditorHours = clientProjects.reduce((s, p) =>
+      s + getProjectBillableHours(p, currentClient).postBillable, 0);
+    const totalHours = totalProductionHours + totalEditorHours;
+    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, currentClient), 0);
+
+    const clientPrefix = currentClient.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);
+    const reportNum = `${clientPrefix}-${yr}-${String(month + 1).padStart(2, "0")}-001`;
+    const lastDay = new Date(yr, month + 1, 0).getDate();
+    const periodStart = `${monthName.slice(0, 3)} 1, ${yr}`;
+    const periodEnd = `${monthName.slice(0, 3)} ${lastDay}, ${yr}`;
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    const filmingDates = clientProjects.map(p =>
+      new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    );
+    const locationSet = new Map<string, string>();
+    clientProjects.forEach(p => {
+      const loc = data.locations.find(l => l.id === p.locationId);
+      if (loc) locationSet.set(loc.id, `${loc.name} ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}`);
+    });
+    const crewSet = new Map<string, string[]>();
+    clientProjects.forEach(p => {
+      [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        if (member && !crewSet.has(member.id)) crewSet.set(member.id, [member.name, e.role]);
+      });
+    });
+    const allDeliverables = new Set<string>();
+    clientProjects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
+
+    const projectCards = clientProjects.map(p => {
+      const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
+      const loc = data.locations.find(l => l.id === p.locationId);
+      const { crewBillable, postBillable, totalBillable } = getProjectBillableHours(p, currentClient);
+      const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      const projRate = getProjectInvoiceAmount(p, currentClient);
+
+      return `
+        <div style="border:1px solid #e5e5e5;border-radius:8px;margin-bottom:16px;overflow:hidden;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:#f8fafc;">
+            <div><div style="font-weight:700;font-size:14px;">${type}</div><div style="color:#666;font-size:12px;">${dateStr}</div></div>
+            <div style="text-align:right;">
+              ${isPerProject
+                ? `<div style="font-weight:700;font-size:14px;">${formatCurrency(projRate)}</div><div style="color:#666;font-size:11px;">Flat Rate</div>`
+                : `<div style="font-weight:700;font-size:14px;">${totalBillable.toFixed(2)} hrs</div><div style="color:#666;font-size:11px;">Production: ${crewBillable.toFixed(2)} · Editing: ${postBillable.toFixed(2)}</div>`
+              }
+            </div>
+          </div>
+          ${loc ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;"><span style="color:#888;">Location: </span>${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+
+    const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
+    const locationsList = Array.from(locationSet.values()).join("; ");
+    const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
+
+    setPreview({ title: `Client Report — ${currentClient.company} ${monthName} ${yr}`, html: `
+      <div class="invoice-header">
+        <h1>${isPerProject ? "Project Activity Report" : "Hourly Activity Report & Project Invoice"}</h1>
+        <div class="meta-grid">
+          <div><div class="meta-label">Report #</div><div class="meta-value">${reportNum}</div></div>
+          <div><div class="meta-label">Report Period</div><div class="meta-value">${periodStart} - ${periodEnd}</div></div>
+          <div><div class="meta-label">Issue Date</div><div class="meta-value">${issueDate}</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">${isPerProject ? "Project Summary" : "Hours Summary"}</div>
+        <div class="section-body">
+          ${isPerProject ? `
+          <div class="hours-row"><span>Projects</span><span>${clientProjects.length}</span></div>
+          <div class="hours-row highlight"><span>Total Billed</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+          ` : `
+          <div class="hours-row"><span>Production Hours Used</span><span>${totalProductionHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row"><span>Editor Hours Used</span><span>${totalEditorHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row total"><span>Total Hours Used</span><span>${totalHours.toFixed(1)} hrs</span></div>
+          <div class="hours-row highlight"><span>Total Value of Hours Used</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+          `}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Payment Summary</div>
+        <div class="payment-box">
+          <div class="amount-due">
+            <span class="label">Amount Due</span>
+            <span class="value">${formatCurrency(totalInvoice)}</span>
+          </div>
+          <div class="calc">${isPerProject
+            ? `${clientProjects.length} project${clientProjects.length !== 1 ? "s" : ""}`
+            : `${totalHours.toFixed(1)} hrs × $${Number(currentClient.billingRatePerHour).toFixed(0)}/hr`
+          }</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Service Provider & Client</div>
+        <div class="section-body">
+          <div class="provider-grid">
+            <div><div class="col-label">Service Provider</div><div class="col-value">${data.organization?.name || "SDub Media"}</div></div>
+            <div><div class="col-label">Client</div><div class="col-value">${currentClient.company}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Project Snapshot</div>
+        <div class="section-body">
+          <div class="snapshot-grid">
+            <div><div class="snapshot-label">Filming Date(s)</div><div class="snapshot-value">${filmingDates.join(", ") || "—"}</div></div>
+            <div><div class="snapshot-label">Location(s)</div><div class="snapshot-value">${locationsList || "—"}</div></div>
+          </div>
+          <div><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
+        </div>
+      </div>
+
+      ${deliverablesList ? `
+      <div class="section">
+        <div class="section-header">Deliverables</div>
+        <div class="section-body"><ul class="deliverables-list">${deliverablesList}</ul></div>
+      </div>
+      ` : ""}
+
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 16px;border:none;">Projects & Activity</h2>
+      ${projectCards || "<p>No projects this period</p>"}
+    ` });
+  }
+
   const STATUS_LABELS: Record<string, string> = {
     upcoming: "Upcoming",
     filming_done: "Filmed",
@@ -217,9 +356,14 @@ export default function ClientReportsPage() {
                 <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                   Projects ({monthlySummary.rows.length})
                 </h3>
-                <button onClick={handleDownloadMonthly} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                  <Download className="w-3.5 h-3.5" /> Download CSV
-                </button>
+                <div className="flex items-center gap-3">
+                  <button onClick={generateReport} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                    <FileText className="w-3.5 h-3.5" /> View Report
+                  </button>
+                  <button onClick={handleDownloadMonthly} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                    <Download className="w-3.5 h-3.5" /> Download CSV
+                  </button>
+                </div>
               </div>
               <div className="divide-y divide-border">
                 {monthlySummary.rows.length === 0 ? (
@@ -325,6 +469,15 @@ export default function ClientReportsPage() {
           </>
         )}
       </div>
+
+      {/* Report Preview Overlay */}
+      {preview && (
+        <ReportPreview
+          title={preview.title}
+          html={preview.html}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
