@@ -64,8 +64,8 @@ interface Props {
 
 export default function ProjectDetailSheet({ project, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
-  const { profile } = useAuth();
-  const isOwner = profile?.role === "owner";
+  const { effectiveProfile } = useAuth();
+  const isOwner = effectiveProfile?.role === "owner";
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -296,7 +296,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                       </div>
                       <div className="text-right">
                         <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                        <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                        {isOwner && <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>}
                       </div>
                     </div>
                   ))}
@@ -323,17 +323,17 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         <div className="text-right">
                           {isPhotoEditorWithBilling ? (
                             <>
-                              <div className="text-sm font-medium tabular-nums">
+                              {isOwner && <div className="text-sm font-medium tabular-nums">
                                 ${(project.editorBilling!.imageCount * editorRate).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                              </div>
+                              </div>}
                               <div className="text-xs text-muted-foreground">
-                                {project.editorBilling!.imageCount} images x ${editorRate}/img
+                                {project.editorBilling!.imageCount} images{isOwner && <> x ${editorRate}/img</>}
                               </div>
                             </>
                           ) : (
                             <>
                               <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                              <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                              {isOwner && <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>}
                             </>
                           )}
                         </div>
