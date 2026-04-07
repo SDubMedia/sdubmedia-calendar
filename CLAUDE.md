@@ -155,6 +155,22 @@ Payments flow through the customer's connected Stripe account, NOT the platform 
 - **Don't over-engineer.** If the user asks for a simple fix, don't refactor the surrounding code.
 - **Plan big features.** Use EnterPlanMode for any feature that touches 3+ files.
 
+## Impersonation — Use effectiveProfile
+
+Pages that show user-specific data (schedule, mileage, invoices, dashboard) MUST use `effectiveProfile` from `useAuth()`, NOT `profile`. Using `profile` ignores impersonation and shows the owner's data instead of the impersonated user's.
+
+```typescript
+// WRONG — breaks impersonation
+const { profile } = useAuth();
+const crewMemberId = profile?.crewMemberId;
+
+// RIGHT — respects impersonation
+const { effectiveProfile } = useAuth();
+const crewMemberId = effectiveProfile?.crewMemberId;
+```
+
+Exception: pages that should always show the real owner's info (merge fields in proposals/contracts use the owner's name/company) can use `profile`.
+
 ## What NOT To Do
 
 - **Don't define components inside components.** Extract them. We've been burned by this (LineItemEditor focus bug).
