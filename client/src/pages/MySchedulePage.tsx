@@ -440,7 +440,7 @@ export default function MySchedulePage() {
                               p.status === "completed" && "bg-green-500/25 text-green-300",
                             )}
                           >
-                            {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · ${totalPay.toFixed(0)}
+                            {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
                           </div>
                         );
                       })}

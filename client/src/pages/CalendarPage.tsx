@@ -246,7 +246,7 @@ export default function CalendarPage() {
                           p.status === "completed" && "bg-green-500/25 text-green-300",
                         )}
                       >
-                        {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"}
+                        {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
                       </div>
                     ))}
                     {dayProjects.length > 3 && (
