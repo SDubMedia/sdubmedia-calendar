@@ -47,8 +47,8 @@ const MONTH_NAMES = [
 
 export default function StaffDashboardPage() {
   const { data, updateCrewMember, upsertDistance } = useApp();
-  const { profile } = useAuth();
-  const crewMemberId = profile?.crewMemberId || "";
+  const { effectiveProfile } = useAuth();
+  const crewMemberId = effectiveProfile?.crewMemberId || "";
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
@@ -89,8 +89,12 @@ export default function StaffDashboardPage() {
 
     thisMonthProjects.forEach(p => {
       const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
-      // Crew entries
+      const isAlsoPhotoEditor = p.editorBilling && p.postProduction.some(
+        pp => pp.crewMemberId === crewMemberId && pp.role === "Photo Editor"
+      );
+      // Crew entries — skip hourly if this person is the photo editor on this project
       p.crew.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
+        if (isAlsoPhotoEditor) return; // pay comes from editorBilling
         const hours = Number(e.hoursWorked ?? 0);
         const pay = hours * Number(e.payRatePerHour ?? 0);
         totalHours += hours;
@@ -99,11 +103,13 @@ export default function StaffDashboardPage() {
       });
       // Post-production entries — use editorBilling for photo editors
       p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
-        if (e.role === "Photo Editor" && p.editorBilling) {
-          const imgs = p.editorBilling.imageCount;
-          const pay = imgs * (p.editorBilling.perImageRate ?? 6);
-          totalPay += pay;
-          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay });
+        if (e.role === "Photo Editor" || (p.editorBilling && e.crewMemberId === crewMemberId)) {
+          const rate = p.editorBilling?.perImageRate ?? 6;
+          const imgs = p.editorBilling?.imageCount ?? 0;
+          const isFinalized = p.editorBilling?.finalized === true || p.status === "completed";
+          const pay = imgs * rate;
+          if (isFinalized && imgs > 0) totalPay += pay;
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay: isFinalized ? pay : 0 });
         } else {
           const hours = Number(e.hoursWorked ?? 0);
           const pay = hours * Number(e.payRatePerHour ?? 0);
