@@ -1107,6 +1107,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
+    // Auto-finalize editor billing when project is completed
+    if (p.status === "completed" && !patch.editor_billing) {
+      const existing = rawData.projects.find(x => x.id === id);
+      if (existing?.editorBilling && !existing.editorBilling.finalized) {
+        patch.editor_billing = { ...existing.editorBilling, finalized: true };
+      }
+    }
     if (p.projectRate != null) patch.project_rate = p.projectRate;
     if (p.paidDate !== undefined) patch.paid_date = p.paidDate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
