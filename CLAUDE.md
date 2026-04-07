@@ -5,7 +5,8 @@ These rules are mandatory. Do not deviate without explicit user approval.
 ## Golden Rules
 
 1. **Run `npx tsc --noEmit` before saying you're done.** Zero type errors allowed.
-2. **Run `npx vite build` before pushing.** Build must succeed. Catch what tsc misses.
+2. **Run `npx vitest run` before pushing.** All tests must pass. If a test breaks, fix the code — not the test.
+3. **Run `npx vite build` before pushing.** Build must succeed. Catch what tsc misses.
 3. **Search before creating files.** This codebase has 37 pages, 21 API routes, and a massive AppContext. The helper, type, or pattern you need probably exists.
 4. **Do not install new dependencies without asking.** State what you want to add and why.
 5. **Do not modify files in `client/src/components/ui/`.** Those are managed by shadcn/ui.
