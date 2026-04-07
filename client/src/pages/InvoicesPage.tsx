@@ -498,7 +498,7 @@ export default function InvoicesPage() {
                         <XCircle className="w-3.5 h-3.5" /> Void
                       </button>
                     )}
-                    {inv.status === "draft" && (
+                    {(inv.status === "draft" || inv.status === "void") && (
                       confirmDelete === inv.id ? (
                         <div className="flex items-center gap-1 ml-auto">
                           <button onClick={() => handleDelete(inv.id)} className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">Confirm</button>
