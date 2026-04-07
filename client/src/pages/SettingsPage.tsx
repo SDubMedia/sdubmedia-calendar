@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -445,6 +445,59 @@ export default function SettingsPage() {
                 Disable All
               </button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Calendar Sync */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <CalendarIcon className="w-4 h-4 text-primary" />
+              Calendar Sync
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Subscribe to your Slate calendar from Google Calendar, Apple Calendar, or any app that supports iCal feeds.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(() => {
+              const feedBase = `${window.location.origin}/api/calendar.ics`;
+              const feedUrl = `${feedBase}?key=${org?.id || ""}&type=all`;
+              const webcalUrl = feedUrl.replace("https://", "webcal://").replace("http://", "webcal://");
+              const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`;
+              return (
+                <>
+                  <div className="bg-secondary/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-1">iCal Feed URL</p>
+                    <div className="flex gap-2">
+                      <input readOnly value={feedUrl} className="flex-1 bg-secondary border border-border rounded px-2 py-1.5 text-xs text-foreground font-mono" />
+                      <button
+                        onClick={() => {
+                          const input = document.createElement("textarea");
+                          input.value = feedUrl;
+                          document.body.appendChild(input);
+                          input.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(input);
+                          toast.success("Feed URL copied!");
+                        }}
+                        className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <a href={googleUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-500 transition-colors">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 100-16 8 8 0 000 16zm1-8h4v2h-6V7h2v5z"/></svg>
+                      Add to Google Calendar
+                    </a>
+                    <a href={webcalUrl} className="flex items-center gap-2 px-4 py-2 bg-secondary border border-border text-foreground rounded-lg text-xs font-medium hover:bg-secondary/80 transition-colors">
+                      Add to Apple Calendar
+                    </a>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Google Calendar syncs every 12-24 hours. Apple Calendar syncs more frequently.</p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
 

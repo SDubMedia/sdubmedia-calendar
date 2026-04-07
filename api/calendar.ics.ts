@@ -26,12 +26,16 @@ function formatICalDate(date: string, time?: string): string {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Auth via query param (calendar apps can't send headers)
   const key = req.query.key as string;
+  if (!key) return res.status(401).send("Unauthorized");
+
+  // Accept either SLATE_API_KEY or a valid org_id
+  const db = createClient(supabaseUrl, supabaseKey);
   if (key !== process.env.SLATE_API_KEY) {
-    return res.status(401).send("Unauthorized");
+    const { data: org } = await db.from("organizations").select("id").eq("id", key).single();
+    if (!org) return res.status(401).send("Unauthorized");
   }
 
   const calType = (req.query.type as string) || "all";
-  const db = createClient(supabaseUrl, supabaseKey);
 
   // Fetch projects
   let projects: any[] = [];
