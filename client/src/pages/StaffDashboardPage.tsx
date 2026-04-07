@@ -82,9 +82,10 @@ export default function StaffDashboardPage() {
   }, [myProjects, currentYear, currentMonth]);
 
   // Hours and pay this month
-  const { totalHours, totalPay, projectBreakdown } = useMemo(() => {
+  const { totalHours, totalPay, totalImages, projectBreakdown } = useMemo(() => {
     let totalHours = 0;
     let totalPay = 0;
+    let totalImages = 0;
     const breakdown: { projectId: string; date: string; typeName: string; role: string; hours: number; unit: string; pay: number }[] = [];
 
     thisMonthProjects.forEach(p => {
@@ -108,7 +109,7 @@ export default function StaffDashboardPage() {
           const imgs = p.editorBilling?.imageCount ?? 0;
           const isFinalized = p.editorBilling?.finalized === true || p.status === "completed";
           const pay = imgs * rate;
-          if (imgs > 0) totalPay += pay;
+          if (imgs > 0) { totalPay += pay; totalImages += imgs; }
           breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay: isFinalized ? pay : 0 });
         } else {
           const hours = Number(e.hoursWorked ?? 0);
@@ -120,8 +121,12 @@ export default function StaffDashboardPage() {
       });
     });
 
-    return { totalHours, totalPay, projectBreakdown: breakdown };
+    return { totalHours, totalPay, totalImages, projectBreakdown: breakdown };
   }, [thisMonthProjects, data.projectTypes, crewMemberId]);
+
+  // Count shoots vs edits this month
+  const shootCount = thisMonthProjects.filter(p => p.crew.some(c => c.crewMemberId === crewMemberId)).length;
+  const editCount = thisMonthProjects.filter(p => p.postProduction.some(c => c.crewMemberId === crewMemberId)).length;
 
   const crewMember = data.crewMembers.find(cm => cm.id === crewMemberId);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
@@ -198,13 +203,13 @@ export default function StaffDashboardPage() {
           <MetricCard icon={Briefcase} iconColor="text-purple-400" iconBg="bg-purple-500/20"
             label="This Month"
             value={String(thisMonthProjects.length)}
-            sub={`Shoots in ${MONTH_NAMES[currentMonth]}`}
+            sub={`${shootCount > 0 ? `${shootCount} shoot${shootCount !== 1 ? "s" : ""}` : ""}${shootCount > 0 && editCount > 0 ? " · " : ""}${editCount > 0 ? `${editCount} edit${editCount !== 1 ? "s" : ""}` : ""}`}
             onClick={() => setExpandedSection(expandedSection === "month" ? null : "month")}
             active={expandedSection === "month"}
           />
           <MetricCard icon={Clock} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
-            label="Hours"
-            value={totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1)}
+            label={totalImages > 0 ? "Hours / Images" : "Hours"}
+            value={totalImages > 0 ? `${totalHours > 0 ? (totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)) + "h · " : ""}${totalImages} imgs` : (totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1))}
             sub="Worked this month"
             onClick={() => setExpandedSection(expandedSection === "hours" ? null : "hours")}
             active={expandedSection === "hours"}
