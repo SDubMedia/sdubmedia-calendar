@@ -408,8 +408,28 @@ export default function SettingsPage() {
 
             {/* All Features (master toggles) */}
             <div className="border-t border-border pt-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">All Features (Master Toggles)</p>
-              <p className="text-[10px] text-muted-foreground mb-2">Turn features on/off globally. Affects all non-owner roles above.</p>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">All Features (Master Toggles)</p>
+                  <p className="text-[10px] text-muted-foreground">Turn features on/off globally for all users including partners.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setFeatures(f => {
+                    const all: any = { ...f };
+                    FEATURE_TOGGLES.forEach(ft => all[ft.key] = true);
+                    return all;
+                  })} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30">
+                    Enable All
+                  </button>
+                  <button onClick={() => setFeatures(f => {
+                    const all: any = { ...f };
+                    FEATURE_TOGGLES.forEach(ft => all[ft.key] = false);
+                    return all;
+                  })} className="text-[10px] px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">
+                    Disable All
+                  </button>
+                </div>
+              </div>
               <div className="space-y-1.5">
                 {FEATURE_TOGGLES.map(ft => (
                   <FeatureToggleRow key={`all-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
