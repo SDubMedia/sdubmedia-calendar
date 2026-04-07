@@ -40,8 +40,19 @@ const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 export default function DashboardPage() {
   const { data } = useApp();
-  const { profile, viewAsRole, setViewAsRole } = useAuth();
+  const { profile, effectiveProfile, viewAsRole, setViewAsRole } = useAuth();
   const isRealOwner = profile?.role === "owner";
+  const role = effectiveProfile?.role || profile?.role || "staff";
+  const features = data.organization?.features;
+  const isFeatureVisible = (key: string) => {
+    if (role === "owner") return true;
+    if (!features) return true;
+    const roleOverrides = role === "staff" ? features.staffFeatures
+      : role === "partner" ? features.partnerFeatures
+      : role === "client" ? features.clientFeatures : undefined;
+    if (roleOverrides && (roleOverrides as any)[key] !== undefined) return (roleOverrides as any)[key];
+    return (features as any)[key] ?? true;
+  };
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const widgetConfig = data.organization?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS;
   const isWidgetEnabled = (id: DashboardWidgetId) => {
@@ -391,7 +402,7 @@ export default function DashboardPage() {
 
           )}
           {/* Recent Invoices */}
-          {isWidgetEnabled("invoices") && (
+          {isWidgetEnabled("invoices") && isFeatureVisible("invoicing") && (
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -428,7 +439,7 @@ export default function DashboardPage() {
           )}
 
           {/* Pipeline Summary */}
-          {isRealOwner && (
+          {isFeatureVisible("pipeline") && (
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -455,7 +466,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Mileage Summary */}
-        {isWidgetEnabled("mileage") && (mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
+        {isWidgetEnabled("mileage") && isFeatureVisible("mileage") && (mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Car className="w-4 h-4 text-primary" />

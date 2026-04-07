@@ -130,9 +130,22 @@ Payments flow through the customer's connected Stripe account, NOT the platform 
 
 ## Feature Flags
 
-`OrgFeatures` on the organization record gates sidebar items and functionality per role. Owner bypasses all flags.
+`OrgFeatures` on the organization record gates sidebar items and functionality per role. Owner bypasses all flags. Features have **per-role overrides** (`staffFeatures`, `partnerFeatures`, `clientFeatures`) stored as JSONB on the org's features field.
 
-New features that should be plan-gated (Basic vs Pro) should use the existing feature flag system rather than hardcoding access.
+**Every feature-gated item must be checked in ALL places it appears:**
+- Sidebar navigation (`AppLayout.tsx` — `feature:` property on nav items)
+- Dashboard widgets (`DashboardPage.tsx` — `isFeatureVisible()` check)
+- Page-level access (route guards if applicable)
+
+**When adding a new feature flag:**
+1. Add it to `OrgFeatures` interface in `types.ts`
+2. Add default value in `DEFAULT_FEATURES`
+3. Add to `FEATURE_TOGGLES` array in `SettingsPage.tsx`
+4. Add `feature:` property to the nav item in `AppLayout.tsx`
+5. Add `isFeatureVisible()` check to any Dashboard widget that shows this feature's data
+6. If the feature has a public page, it does NOT need a feature flag check
+
+**Do not** gate features only in the sidebar and forget the dashboard — users will see data from disabled features on the dashboard.
 
 ## Scope Control
 
