@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { downloadCSV } from "@/lib/csv";
@@ -138,7 +138,8 @@ export default function ClientReportsPage() {
   };
 
   function generateReport() {
-    if (!currentClient) return;
+    if (!currentClient) { console.error("No client found"); return; }
+    try {
     const monthName = MONTH_NAMES[month];
     const yr = year;
     const clientProjects = monthlyProjects;
@@ -272,6 +273,7 @@ export default function ClientReportsPage() {
       <h2 style="font-size:18px;font-weight:700;margin:28px 0 16px;border:none;">Projects & Activity</h2>
       ${projectCards || "<p>No projects this period</p>"}
     ` });
+    } catch (err) { console.error("Report generation failed:", err); }
   }
 
   const STATUS_LABELS: Record<string, string> = {
