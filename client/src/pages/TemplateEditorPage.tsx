@@ -591,11 +591,19 @@ export default function TemplateEditorPage() {
 
         {/* Right Sidebar — Properties */}
         {showProperties && (
+          <>
+          {/* Mobile backdrop */}
+          <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setShowProperties(false)} />
           <div className={cn(
-            "border-l border-border bg-card/30 overflow-y-auto shrink-0",
-            "fixed inset-0 top-auto z-50 border-t border-l-0 rounded-t-xl max-h-[70vh] w-full",
+            "border-l border-border bg-card overflow-y-auto shrink-0",
+            "fixed inset-x-0 bottom-0 z-50 border-t border-l-0 rounded-t-xl max-h-[75vh] w-full",
             "md:static md:w-72 md:max-h-none md:rounded-none md:border-t-0 md:border-l md:z-auto",
           )}>
+            {/* Mobile close handle */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-1 md:hidden">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Properties</span>
+              <button onClick={() => setShowProperties(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+            </div>
             <div className="p-4 space-y-6">
               {/* Cover Image */}
               <div className="space-y-2">
@@ -734,6 +742,7 @@ export default function TemplateEditorPage() {
               </div>
             </div>
           </div>
+          </>
         )}
       </div>
     </div>
