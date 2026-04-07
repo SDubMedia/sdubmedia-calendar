@@ -30,7 +30,7 @@ function formatCurrency(n: number): string {
 
 export default function MyInvoicesPage() {
   const { data, addContractorInvoice, updateContractorInvoice, deleteContractorInvoice, updateCrewMember } = useApp();
-  const { profile } = useAuth();
+  const { effectiveProfile: profile } = useAuth();
 
   const crewMember = data.crewMembers.find(c => c.id === profile?.crewMemberId);
   const myInvoices = useMemo(
