@@ -74,15 +74,15 @@ const navStructure: NavEntry[] = [
 
   // Sales
   { label: "Sales", icon: TrendingUp, roles: ["owner"], items: [
-    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner"] },
-    { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner"] },
-    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner"] },
+    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner", "partner"], feature: "pipeline" },
+    { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner", "partner"], feature: "proposals" },
+    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
   ]},
 
   // Production
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
-    { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"] },
+    { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client"], feature: "contentSeries" },
   ]},
@@ -99,7 +99,7 @@ const navStructure: NavEntry[] = [
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
-    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"] },
+    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   ]},
 
@@ -108,7 +108,7 @@ const navStructure: NavEntry[] = [
     { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
     { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
-    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner"], feature: "crewManagement" },
+    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner"], feature: "contractor1099" },
   ]},
 
   // Staff-specific
@@ -142,12 +142,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }
 
-  // Filter nav structure based on role and features
+  // Filter nav structure based on role and per-role features
   // Owner always sees everything — feature flags only affect staff/partner/client
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
       if (!item.roles.includes(role)) return false;
-      if (role !== "owner" && item.feature && features && !features[item.feature]) return false;
+      if (role !== "owner" && item.feature && features) {
+        // Check per-role override first, then fall back to global feature flag
+        const roleOverrides = role === "staff" ? features.staffFeatures
+          : role === "partner" ? features.partnerFeatures
+          : role === "client" ? features.clientFeatures
+          : undefined;
+        if (roleOverrides && roleOverrides[item.feature] !== undefined) {
+          if (!roleOverrides[item.feature]) return false;
+        } else if (!features[item.feature as keyof typeof features]) {
+          return false;
+        }
+      }
       return true;
     }
     return navStructure

@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig, ServiceItem } from "@/lib/types";
-import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES } from "@/lib/types";
+import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -29,12 +29,18 @@ interface FeatureToggle {
 const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "calendar", label: "Production Calendar", description: "Schedule shoots and track project status" },
   { key: "crewManagement", label: "Crew Management", description: "Manage staff, roles, and pay rates" },
+  { key: "pipeline", label: "Sales Pipeline", description: "CRM pipeline for tracking leads and proposals" },
+  { key: "proposals", label: "Proposals", description: "Create and send proposals with packages and e-signatures" },
+  { key: "contracts", label: "Contracts", description: "Create and send contracts for e-signatures" },
   { key: "invoicing", label: "Invoicing", description: "Create invoices, track payments, contractor invoices" },
+  { key: "clientHealth", label: "Client Health", description: "Client engagement scoring and health dashboard" },
+  { key: "contentSeries", label: "Content Series", description: "Plan multi-episode video series with AI brainstorming" },
   { key: "mileage", label: "Mileage Tracking", description: "Track business miles with Google Maps distance calculation" },
   { key: "expenses", label: "Expense Tracking", description: "Import credit card statements, categorize expenses for CPA" },
-  { key: "clientPortal", label: "Client Portal", description: "Give clients login access to view their projects and reports" },
-  { key: "contentSeries", label: "Content Series", description: "Plan multi-episode video series with AI brainstorming" },
+  { key: "profitLoss", label: "Profit & Loss", description: "Monthly P&L reports with revenue, costs, and margins" },
+  { key: "contractor1099", label: "1099 Summary", description: "Contractor payment summary for tax reporting" },
   { key: "partnerSplits", label: "Partner & Revenue Splits", description: "Split revenue with business partners, track spending budgets" },
+  { key: "clientPortal", label: "Client Portal", description: "Give clients login access to view their projects and reports" },
 ];
 
 export default function SettingsPage() {
@@ -45,10 +51,10 @@ export default function SettingsPage() {
   const [productionType, setProductionType] = useState<ProductionType>(org?.productionType || "both");
   const [billingModel, setBillingModel] = useState<BillingModel>(org?.defaultBillingModel || "hourly");
   const [billingRate, setBillingRate] = useState(org?.defaultBillingRate || 0);
-  const [features, setFeatures] = useState<OrgFeatures>(org?.features || {
-    calendar: true, crewManagement: true, invoicing: true, mileage: false,
-    expenses: false, clientPortal: false, contentSeries: false, partnerSplits: false,
-  });
+  const [features, setFeatures] = useState<OrgFeatures>({ ...DEFAULT_FEATURES, ...(org?.features || {}) });
+  const [staffFeatures, setStaffFeatures] = useState<Record<string, boolean>>((org?.features?.staffFeatures as any) || {});
+  const [partnerFeatures, setPartnerFeatures] = useState<Record<string, boolean>>((org?.features?.partnerFeatures as any) || {});
+  const [clientFeatures, setClientFeatures] = useState<Record<string, boolean>>((org?.features?.clientFeatures as any) || {});
   const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
     address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
   });
@@ -138,7 +144,7 @@ export default function SettingsPage() {
         productionType,
         defaultBillingModel: billingModel,
         defaultBillingRate: billingRate,
-        features,
+        features: { ...features, staffFeatures, partnerFeatures, clientFeatures },
         businessInfo,
         dashboardWidgets,
         pipelineStages,
@@ -375,66 +381,69 @@ export default function SettingsPage() {
             </CardTitle>
             <p className="text-xs text-muted-foreground">You (owner) always have access to everything. These toggles control what your team sees.</p>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Staff & Crew */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Staff & Crew</p>
-              <div className="space-y-1.5">
-                {FEATURE_TOGGLES.filter(ft => ["calendar", "crewManagement", "invoicing", "mileage"].includes(ft.key)).map(ft => (
-                  <FeatureToggleRow key={ft.key} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
-                ))}
-              </div>
+          <CardContent>
+            {/* Feature grid: Feature name | Staff | Partner | Client */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-4 text-xs text-muted-foreground font-medium">Feature</th>
+                    <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">Staff</th>
+                    <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">Partner</th>
+                    <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">Client</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FEATURE_TOGGLES.map(ft => (
+                    <tr key={ft.key} className="border-b border-border/50">
+                      <td className="py-2 pr-4">
+                        <p className="text-sm text-foreground">{ft.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{ft.description}</p>
+                      </td>
+                      <td className="text-center py-2 px-2">
+                        <button
+                          onClick={() => setStaffFeatures(f => ({ ...f, [ft.key]: !(f[ft.key] ?? features[ft.key as keyof OrgFeatures] ?? false) }))}
+                          className={cn("w-8 h-5 rounded-full transition-colors", (staffFeatures[ft.key] ?? features[ft.key as keyof OrgFeatures]) ? "bg-primary" : "bg-secondary border border-border")}
+                        >
+                          <span className={cn("block w-3.5 h-3.5 rounded-full bg-white transition-transform", (staffFeatures[ft.key] ?? features[ft.key as keyof OrgFeatures]) ? "translate-x-3.5" : "translate-x-0.5")} style={{ marginTop: 1 }} />
+                        </button>
+                      </td>
+                      <td className="text-center py-2 px-2">
+                        <button
+                          onClick={() => setPartnerFeatures(f => ({ ...f, [ft.key]: !(f[ft.key] ?? features[ft.key as keyof OrgFeatures] ?? false) }))}
+                          className={cn("w-8 h-5 rounded-full transition-colors", (partnerFeatures[ft.key] ?? features[ft.key as keyof OrgFeatures]) ? "bg-primary" : "bg-secondary border border-border")}
+                        >
+                          <span className={cn("block w-3.5 h-3.5 rounded-full bg-white transition-transform", (partnerFeatures[ft.key] ?? features[ft.key as keyof OrgFeatures]) ? "translate-x-3.5" : "translate-x-0.5")} style={{ marginTop: 1 }} />
+                        </button>
+                      </td>
+                      <td className="text-center py-2 px-2">
+                        <button
+                          onClick={() => setClientFeatures(f => ({ ...f, [ft.key]: !(f[ft.key] ?? false) }))}
+                          className={cn("w-8 h-5 rounded-full transition-colors", (clientFeatures[ft.key] ?? false) ? "bg-primary" : "bg-secondary border border-border")}
+                        >
+                          <span className={cn("block w-3.5 h-3.5 rounded-full bg-white transition-transform", (clientFeatures[ft.key] ?? false) ? "translate-x-3.5" : "translate-x-0.5")} style={{ marginTop: 1 }} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            {/* Partners */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Partners</p>
-              <div className="space-y-1.5">
-                {FEATURE_TOGGLES.filter(ft => ["calendar", "invoicing", "partnerSplits", "contentSeries"].includes(ft.key)).map(ft => (
-                  <FeatureToggleRow key={`partner-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
-                ))}
-              </div>
-            </div>
-
-            {/* Clients */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Clients</p>
-              <div className="space-y-1.5">
-                {FEATURE_TOGGLES.filter(ft => ["clientPortal", "contentSeries", "calendar"].includes(ft.key)).map(ft => (
-                  <FeatureToggleRow key={`client-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
-                ))}
-              </div>
-            </div>
-
-            {/* All Features (master toggles) */}
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">All Features (Master Toggles)</p>
-                  <p className="text-[10px] text-muted-foreground">Turn features on/off globally for all users including partners.</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setFeatures(f => {
-                    const all: any = { ...f };
-                    FEATURE_TOGGLES.forEach(ft => all[ft.key] = true);
-                    return all;
-                  })} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30">
-                    Enable All
-                  </button>
-                  <button onClick={() => setFeatures(f => {
-                    const all: any = { ...f };
-                    FEATURE_TOGGLES.forEach(ft => all[ft.key] = false);
-                    return all;
-                  })} className="text-[10px] px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">
-                    Disable All
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                {FEATURE_TOGGLES.map(ft => (
-                  <FeatureToggleRow key={`all-${ft.key}`} ft={ft} features={features} onToggle={() => toggleFeature(ft.key)} />
-                ))}
-              </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => {
+                const all: Record<string, boolean> = {};
+                FEATURE_TOGGLES.forEach(ft => all[ft.key] = true);
+                setStaffFeatures(all); setPartnerFeatures(all); setClientFeatures(all);
+              }} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30">
+                Enable All
+              </button>
+              <button onClick={() => {
+                const all: Record<string, boolean> = {};
+                FEATURE_TOGGLES.forEach(ft => all[ft.key] = false);
+                setStaffFeatures(all); setPartnerFeatures(all); setClientFeatures(all);
+              }} className="text-[10px] px-2 py-1 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30">
+                Disable All
+              </button>
             </div>
           </CardContent>
         </Card>

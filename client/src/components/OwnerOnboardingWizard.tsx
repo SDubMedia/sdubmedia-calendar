@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { OrgFeatures, ProductionType, BillingModel } from "@/lib/types";
+import { DEFAULT_FEATURES } from "@/lib/types";
 import { Film, ChevronRight, ChevronLeft, CheckCircle, Users, User, Camera, Video, DollarSign, Clock, FileText, Handshake, Car, Receipt, Clapperboard, Monitor } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -44,16 +45,7 @@ export default function OwnerOnboardingWizard() {
   const [billingRate, setBillingRate] = useState(200);
   const [hasPartner, setHasPartner] = useState(false);
   const [partnerName, setPartnerName] = useState("");
-  const [features, setFeatures] = useState<OrgFeatures>({
-    calendar: true,
-    crewManagement: true,
-    invoicing: true,
-    mileage: false,
-    expenses: false,
-    clientPortal: false,
-    contentSeries: false,
-    partnerSplits: false,
-  });
+  const [features, setFeatures] = useState<OrgFeatures>({ ...DEFAULT_FEATURES });
   const [completing, setCompleting] = useState(false);
 
   const stepIndex = STEPS.indexOf(currentStep);

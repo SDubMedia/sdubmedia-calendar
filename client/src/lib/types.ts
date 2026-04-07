@@ -13,6 +13,17 @@ export interface OrgFeatures {
   clientPortal: boolean;
   contentSeries: boolean;
   partnerSplits: boolean;
+  // V2 — per-role visibility (optional, falls back to above flags)
+  pipeline: boolean;
+  proposals: boolean;
+  contracts: boolean;
+  clientHealth: boolean;
+  profitLoss: boolean;
+  contractor1099: boolean;
+  // Per-role overrides: if set, these control what each role sees independently
+  staffFeatures?: Partial<OrgFeatures>;
+  partnerFeatures?: Partial<OrgFeatures>;
+  clientFeatures?: Partial<OrgFeatures>;
 }
 
 export const DEFAULT_FEATURES: OrgFeatures = {
@@ -24,6 +35,12 @@ export const DEFAULT_FEATURES: OrgFeatures = {
   clientPortal: false,
   contentSeries: false,
   partnerSplits: false,
+  pipeline: true,
+  proposals: true,
+  contracts: true,
+  clientHealth: true,
+  profitLoss: true,
+  contractor1099: true,
 };
 
 export type ProductionType = "video" | "photo" | "both";
