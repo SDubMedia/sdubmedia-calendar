@@ -90,11 +90,18 @@ export default function MySchedulePage() {
 
     project.postProduction.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
-        if (c.role === "Photo Editor" && project.editorBilling) {
-          const imgs = project.editorBilling.imageCount;
-          const rate = project.editorBilling.perImageRate ?? 6;
-          totalPay += imgs * rate;
-          entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post", unit: "images" });
+        if (c.role === "Photo Editor") {
+          if (project.editorBilling?.imageCount) {
+            // Editing done — show actual pay
+            const imgs = project.editorBilling.imageCount;
+            const rate = project.editorBilling.perImageRate ?? 6;
+            totalPay += imgs * rate;
+            entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post", unit: "images" });
+          } else {
+            // Not edited yet — show projection
+            const estRate = project.editorBilling?.perImageRate ?? 6;
+            entries.push({ role: c.role, hours: 0, rate: estRate, pay: 0, type: "Projected", unit: "images" });
+          }
         } else {
           const hours = Number(c.hoursWorked ?? 0);
           const rate = Number(c.payRatePerHour ?? 0);
@@ -200,7 +207,11 @@ export default function MySchedulePage() {
                 <span className="ml-1 opacity-60">({entry.type})</span>
               </span>
               <span className="text-foreground tabular-nums">
-                {entry.hours} {entry.unit === "images" ? "imgs" : "h"} × ${entry.rate}/{entry.unit === "images" ? "img" : "hr"} = <span className="text-green-400">${entry.pay.toFixed(0)}</span>
+                {entry.type === "Projected" ? (
+                  <span className="text-amber-400">${entry.rate}/img · Pending edit</span>
+                ) : (
+                  <>{entry.hours} {entry.unit === "images" ? "imgs" : "h"} × ${entry.rate}/{entry.unit === "images" ? "img" : "hr"} = <span className="text-green-400">${entry.pay.toFixed(0)}</span></>
+                )}
               </span>
             </div>
           ))}
