@@ -55,8 +55,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
-  const [impersonateUserId, setImpersonateUserId] = useState<string | null>(null);
+  const [viewAsRole, setViewAsRole] = useState<UserRole | null>(() => {
+    const saved = sessionStorage.getItem("slate_viewAsRole");
+    return saved ? saved as UserRole : null;
+  });
+  const [impersonateUserId, setImpersonateUserIdRaw] = useState<string | null>(() => {
+    return sessionStorage.getItem("slate_impersonateUserId");
+  });
+
+  // Wrap setters to persist to sessionStorage
+  const setViewAsRoleWrapped = useCallback((role: UserRole | null) => {
+    setViewAsRole(role);
+    if (role) sessionStorage.setItem("slate_viewAsRole", role);
+    else sessionStorage.removeItem("slate_viewAsRole");
+  }, []);
+
+  const setImpersonateUserId = useCallback((id: string | null) => {
+    setImpersonateUserIdRaw(id);
+    if (id) sessionStorage.setItem("slate_impersonateUserId", id);
+    else sessionStorage.removeItem("slate_impersonateUserId");
+  }, []);
 
   // Build effective profile: impersonate > viewAs > real profile
   const effectiveProfile = useMemo(() => {
@@ -124,6 +142,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setAllProfiles([]);
+    setViewAsRole(null);
+    setImpersonateUserIdRaw(null);
+    sessionStorage.removeItem("slate_viewAsRole");
+    sessionStorage.removeItem("slate_impersonateUserId");
   }, []);
 
   const createUser = useCallback(async (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => {
@@ -201,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn, signOut, changePassword, completeOnboarding,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
-      viewAsRole, setViewAsRole, impersonateUserId, setImpersonateUserId, effectiveProfile,
+      viewAsRole, setViewAsRole: setViewAsRoleWrapped, impersonateUserId, setImpersonateUserId, effectiveProfile,
     }}>
       {children}
     </AuthContext.Provider>
