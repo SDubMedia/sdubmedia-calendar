@@ -446,24 +446,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [rawData, setRawData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
 
-  // Filter data when impersonating — non-owner roles only see their assigned clients' data
+  // Filter data when impersonating — show only what that user should see
   const data = useMemo(() => {
     if (!impersonateUserId) return rawData;
 
-    // Look up the target user's clientIds directly from allProfiles (not effectiveProfile which may lag)
     const targetUser = allProfiles.find(p => p.id === impersonateUserId);
+    const targetRole = targetUser?.role || effectiveProfile?.role;
     const clientIds = targetUser?.clientIds || effectiveProfile?.clientIds || [];
-    if (clientIds.length === 0) return rawData;
+    const crewMemberId = targetUser?.crewMemberId || effectiveProfile?.crewMemberId || "";
 
-    const allowedClientIds = new Set(clientIds);
-    return {
-      ...rawData,
-      clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
-      projects: rawData.projects.filter(p => allowedClientIds.has(p.clientId)),
-      invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
-      contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
-      proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
-    };
+    // Staff: filter projects by crew assignment
+    if (targetRole === "staff" && crewMemberId) {
+      const staffProjects = rawData.projects.filter(p =>
+        p.crew.some(c => c.crewMemberId === crewMemberId) ||
+        p.postProduction.some(c => c.crewMemberId === crewMemberId)
+      );
+      const staffClientIds = new Set(staffProjects.map(p => p.clientId));
+      return {
+        ...rawData,
+        projects: staffProjects,
+        clients: rawData.clients.filter(c => staffClientIds.has(c.id)),
+        invoices: [],
+        contracts: [],
+        proposals: [],
+      };
+    }
+
+    // Partner/Client: filter by assigned clientIds
+    if (clientIds.length > 0) {
+      const allowedClientIds = new Set(clientIds);
+      return {
+        ...rawData,
+        clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
+        projects: rawData.projects.filter(p => allowedClientIds.has(p.clientId)),
+        invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
+        contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
+        proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
+      };
+    }
+
+    return rawData;
   }, [rawData, impersonateUserId, allProfiles, effectiveProfile]);
   const [error, setError] = useState<string | null>(null);
 
