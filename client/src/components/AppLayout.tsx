@@ -301,7 +301,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
               <select
                 value={viewAsRole || ""}
-                onChange={e => setViewAsRole(e.target.value ? e.target.value as any : null)}
+                onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); window.location.href = "/"; }}
                 className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
               >
                 <option value="">Owner (default)</option>
@@ -428,7 +428,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
                   <select
                     value={viewAsRole || ""}
-                    onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); }}
+                    onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); window.location.href = "/"; }}
                     className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
                   >
                     <option value="">Owner (default)</option>
