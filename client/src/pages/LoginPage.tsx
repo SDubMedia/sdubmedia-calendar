@@ -66,7 +66,7 @@ export default function LoginPage() {
           top: "-10%",
           left: "-5%",
           filter: "blur(80px)",
-          animation: "blob1 20s ease-in-out infinite",
+          animation: "blob1 10s ease-in-out infinite",
         }}
       />
       {/* Blob 2 — Cyan */}
@@ -77,7 +77,7 @@ export default function LoginPage() {
           bottom: "-5%",
           right: "-5%",
           filter: "blur(80px)",
-          animation: "blob2 25s ease-in-out infinite",
+          animation: "blob2 12s ease-in-out infinite",
         }}
       />
       {/* Blob 3 — Purple */}
@@ -88,7 +88,7 @@ export default function LoginPage() {
           top: "40%",
           right: "20%",
           filter: "blur(90px)",
-          animation: "blob3 22s ease-in-out infinite",
+          animation: "blob3 11s ease-in-out infinite",
         }}
       />
       {/* Blob 4 — Deep blue */}
@@ -99,7 +99,7 @@ export default function LoginPage() {
           bottom: "20%",
           left: "15%",
           filter: "blur(70px)",
-          animation: "blob4 18s ease-in-out infinite",
+          animation: "blob4 9s ease-in-out infinite",
         }}
       />
 
