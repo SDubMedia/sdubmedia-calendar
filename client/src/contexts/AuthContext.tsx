@@ -94,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (s?.user) {
         fetchProfile(s.user.id).then(p => {
           setProfile(p);
+          if (p?.role === "owner") refreshProfiles();
           setLoading(false);
         });
       } else {
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        fetchProfile(s.user.id).then(p => setProfile(p));
+        fetchProfile(s.user.id).then(p => { setProfile(p); if (p?.role === "owner") refreshProfiles(); });
       } else {
         setProfile(null);
       }
