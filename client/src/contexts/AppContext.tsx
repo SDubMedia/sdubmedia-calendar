@@ -2,7 +2,7 @@
 // Slate — App Data Context (Supabase)
 // ============================================================
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -441,10 +441,27 @@ const emptyData: AppData = {
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { profile } = useAuth();
+  const { profile, effectiveProfile, impersonateUserId } = useAuth();
   const orgId = profile?.orgId || "";
-  const [data, setData] = useState<AppData>(emptyData);
+  const [rawData, setRawData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
+
+  // Filter data when impersonating — non-owner roles only see their assigned clients' data
+  const data = useMemo(() => {
+    if (!impersonateUserId || !effectiveProfile || effectiveProfile.role === "owner") return rawData;
+    const allowedClientIds = new Set(effectiveProfile.clientIds || []);
+    if (allowedClientIds.size === 0) return rawData; // no filtering if no clientIds set
+
+    return {
+      ...rawData,
+      clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
+      projects: rawData.projects.filter(p => allowedClientIds.has(p.clientId)),
+      invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
+      contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
+      proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
+      // Keep everything else unfiltered (locations, crew, types, etc.)
+    };
+  }, [rawData, impersonateUserId, effectiveProfile]);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
@@ -498,7 +515,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e8;
       if (firstError) throw new Error(firstError.message);
 
-      setData({
+      setRawData({
         clients: (clients || []).map(rowToClient),
         crewMembers: (crew || []).map(rowToCrew),
         locations: (locs || []).map(rowToLocation),
@@ -543,7 +560,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const client = rowToClient(row);
-    setData(d => ({ ...d, clients: [...d.clients, client].sort((a, b) => a.company.localeCompare(b.company)) }));
+    setRawData(d => ({ ...d, clients: [...d.clients, client].sort((a, b) => a.company.localeCompare(b.company)) }));
     return client;
   }, [orgId]);
 
@@ -563,13 +580,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.partnerSplit !== undefined) patch.partner_split = c.partnerSplit;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));
+    setRawData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));
   }, []);
 
   const deleteClient = useCallback(async (id: string) => {
     const { error } = await supabase.from("clients").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, clients: d.clients.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, clients: d.clients.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Crew ----
@@ -581,7 +598,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const member = rowToCrew(row);
-    setData(d => ({ ...d, crewMembers: [...d.crewMembers, member].sort((a, b) => a.name.localeCompare(b.name)) }));
+    setRawData(d => ({ ...d, crewMembers: [...d.crewMembers, member].sort((a, b) => a.name.localeCompare(b.name)) }));
     return member;
   }, [orgId]);
 
@@ -602,13 +619,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.taxIdType !== undefined) patch.tax_id_type = c.taxIdType;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));
+    setRawData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));
   }, []);
 
   const deleteCrewMember = useCallback(async (id: string) => {
     const { error } = await supabase.from("crew_members").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, crewMembers: d.crewMembers.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Time Entries ----
@@ -621,7 +638,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const entry = rowToTimeEntry(row);
-    setData(d => ({ ...d, timeEntries: [entry, ...d.timeEntries] }));
+    setRawData(d => ({ ...d, timeEntries: [entry, ...d.timeEntries] }));
     return entry;
   }, [orgId]);
 
@@ -633,7 +650,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.notes !== undefined) patch.notes = t.notes;
     const { error } = await supabase.from("time_entries").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, timeEntries: d.timeEntries.map(x => x.id === id ? { ...x, ...t } : x) }));
+    setRawData(d => ({ ...d, timeEntries: d.timeEntries.map(x => x.id === id ? { ...x, ...t } : x) }));
   }, []);
 
   // ---- Contract Templates ----
@@ -645,7 +662,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const tpl = rowToContractTemplate(row);
-    setData(d => ({ ...d, contractTemplates: [tpl, ...d.contractTemplates] }));
+    setRawData(d => ({ ...d, contractTemplates: [tpl, ...d.contractTemplates] }));
     return tpl;
   }, [orgId]);
 
@@ -655,13 +672,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.content !== undefined) patch.content = t.content;
     const { error } = await supabase.from("contract_templates").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
+    setRawData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
   }, []);
 
   const deleteContractTemplate = useCallback(async (id: string) => {
     const { error } = await supabase.from("contract_templates").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contractTemplates: d.contractTemplates.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, contractTemplates: d.contractTemplates.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Contracts ----
@@ -678,7 +695,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const contract = rowToContract(row);
-    setData(d => ({ ...d, contracts: [contract, ...d.contracts] }));
+    setRawData(d => ({ ...d, contracts: [contract, ...d.contracts] }));
     return contract;
   }, [orgId]);
 
@@ -698,13 +715,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.projectId !== undefined) patch.project_id = c.projectId;
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
+    setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
   }, []);
 
   const deleteContract = useCallback(async (id: string) => {
     const { error } = await supabase.from("contracts").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contracts: d.contracts.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, contracts: d.contracts.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Proposal Templates ----
@@ -719,7 +736,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const tpl = rowToProposalTemplate(row);
-    setData(d => ({ ...d, proposalTemplates: [tpl, ...d.proposalTemplates] }));
+    setRawData(d => ({ ...d, proposalTemplates: [tpl, ...d.proposalTemplates] }));
     return tpl;
   }, [orgId]);
 
@@ -735,13 +752,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.notes !== undefined) patch.notes = t.notes;
     const { error } = await supabase.from("proposal_templates").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, proposalTemplates: d.proposalTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
+    setRawData(d => ({ ...d, proposalTemplates: d.proposalTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
   }, []);
 
   const deleteProposalTemplate = useCallback(async (id: string) => {
     const { error } = await supabase.from("proposal_templates").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, proposalTemplates: d.proposalTemplates.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, proposalTemplates: d.proposalTemplates.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Proposals ----
@@ -762,7 +779,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const proposal = rowToProposal(row);
-    setData(d => ({ ...d, proposals: [proposal, ...d.proposals] }));
+    setRawData(d => ({ ...d, proposals: [proposal, ...d.proposals] }));
     return proposal;
   }, [orgId]);
 
@@ -798,13 +815,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.notes !== undefined) patch.notes = p.notes;
     const { error } = await supabase.from("proposals").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, proposals: d.proposals.map(x => x.id === id ? { ...x, ...p, updatedAt: patch.updated_at } : x) }));
+    setRawData(d => ({ ...d, proposals: d.proposals.map(x => x.id === id ? { ...x, ...p, updatedAt: patch.updated_at } : x) }));
   }, []);
 
   const deleteProposal = useCallback(async (id: string) => {
     const { error } = await supabase.from("proposals").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, proposals: d.proposals.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, proposals: d.proposals.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Pipeline Leads ----
@@ -822,7 +839,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const lead = rowToPipelineLead(row);
-    setData(d => ({ ...d, pipelineLeads: [lead, ...d.pipelineLeads] }));
+    setRawData(d => ({ ...d, pipelineLeads: [lead, ...d.pipelineLeads] }));
     return lead;
   }, [orgId]);
 
@@ -843,13 +860,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (l.recentActivityAt !== undefined) patch.recent_activity_at = l.recentActivityAt;
     const { error } = await supabase.from("pipeline_leads").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, pipelineLeads: d.pipelineLeads.map(x => x.id === id ? { ...x, ...l, updatedAt: patch.updated_at } : x) }));
+    setRawData(d => ({ ...d, pipelineLeads: d.pipelineLeads.map(x => x.id === id ? { ...x, ...l, updatedAt: patch.updated_at } : x) }));
   }, []);
 
   const deletePipelineLead = useCallback(async (id: string) => {
     const { error } = await supabase.from("pipeline_leads").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, pipelineLeads: d.pipelineLeads.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, pipelineLeads: d.pipelineLeads.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Trash ----
@@ -880,7 +897,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.services !== undefined) patch.services = updates.services;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
+    setRawData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
   }, [orgId]);
 
   // ---- Crew Location Distances ----
@@ -890,7 +907,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
     }, { onConflict: "crew_member_id,location_id" });
     if (error) throw new Error(error.message);
-    setData(d => {
+    setRawData(d => {
       const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.locationId === locationId);
       if (existing) {
         return { ...d, crewLocationDistances: d.crewLocationDistances.map(x => x.id === existing.id ? { ...x, distanceMiles } : x) };
@@ -908,14 +925,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const trip = rowToManualTrip(row);
-    setData(d => ({ ...d, manualTrips: [trip, ...d.manualTrips] }));
+    setRawData(d => ({ ...d, manualTrips: [trip, ...d.manualTrips] }));
     return trip;
   }, []);
 
   const deleteManualTrip = useCallback(async (id: string) => {
     const { error } = await supabase.from("manual_trips").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, manualTrips: d.manualTrips.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, manualTrips: d.manualTrips.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Business Expenses ----
@@ -928,7 +945,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const expense = rowToBusinessExpense(row);
-    setData(d => ({ ...d, businessExpenses: [expense, ...d.businessExpenses] }));
+    setRawData(d => ({ ...d, businessExpenses: [expense, ...d.businessExpenses] }));
     return expense;
   }, [orgId]);
 
@@ -941,7 +958,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: inserted, error } = await supabase.from("business_expenses").insert(rows).select();
     if (error) throw new Error(error.message);
     const newExpenses = (inserted || []).map(rowToBusinessExpense);
-    setData(d => ({ ...d, businessExpenses: [...newExpenses, ...d.businessExpenses] }));
+    setRawData(d => ({ ...d, businessExpenses: [...newExpenses, ...d.businessExpenses] }));
   }, [orgId]);
 
   const updateBusinessExpense = useCallback(async (id: string, e: Partial<BusinessExpense>) => {
@@ -954,13 +971,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (e.notes !== undefined) patch.notes = e.notes;
     const { error } = await supabase.from("business_expenses").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, businessExpenses: d.businessExpenses.map(x => x.id === id ? { ...x, ...e } : x) }));
+    setRawData(d => ({ ...d, businessExpenses: d.businessExpenses.map(x => x.id === id ? { ...x, ...e } : x) }));
   }, []);
 
   const deleteBusinessExpense = useCallback(async (id: string) => {
     const { error } = await supabase.from("business_expenses").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, businessExpenses: d.businessExpenses.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, businessExpenses: d.businessExpenses.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Category Rules ----
@@ -970,7 +987,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, ...(orgId ? { org_id: orgId } : {}), keyword: keyword.toUpperCase(), category,
     }, { onConflict: "org_id,keyword" });
     if (error) throw new Error(error.message);
-    setData(d => {
+    setRawData(d => {
       const existing = d.categoryRules.find(r => r.keyword === keyword.toUpperCase());
       if (existing) {
         return { ...d, categoryRules: d.categoryRules.map(r => r.keyword === keyword.toUpperCase() ? { ...r, category } : r) };
@@ -987,20 +1004,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const loc = rowToLocation(row);
-    setData(d => ({ ...d, locations: [...d.locations, loc].sort((a, b) => a.name.localeCompare(b.name)) }));
+    setRawData(d => ({ ...d, locations: [...d.locations, loc].sort((a, b) => a.name.localeCompare(b.name)) }));
     return loc;
   }, [orgId]);
 
   const updateLocation = useCallback(async (id: string, l: Partial<Location>) => {
     const { error } = await supabase.from("locations").update(l).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, locations: d.locations.map(x => x.id === id ? { ...x, ...l } : x) }));
+    setRawData(d => ({ ...d, locations: d.locations.map(x => x.id === id ? { ...x, ...l } : x) }));
   }, []);
 
   const deleteLocation = useCallback(async (id: string) => {
     const { error } = await supabase.from("locations").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, locations: d.locations.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, locations: d.locations.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Project Types ----
@@ -1009,20 +1026,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToProjectType(row);
-    setData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
+    setRawData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
     return type;
   }, [orgId]);
 
   const updateProjectType = useCallback(async (id: string, pt: Partial<ProjectType>) => {
     const { error } = await supabase.from("project_types").update(pt).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, projectTypes: d.projectTypes.map(x => x.id === id ? { ...x, ...pt } : x) }));
+    setRawData(d => ({ ...d, projectTypes: d.projectTypes.map(x => x.id === id ? { ...x, ...pt } : x) }));
   }, []);
 
   const deleteProjectType = useCallback(async (id: string) => {
     const { error } = await supabase.from("project_types").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, projectTypes: d.projectTypes.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, projectTypes: d.projectTypes.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Projects ----
@@ -1049,7 +1066,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
-    setData(d => ({ ...d, projects: [...d.projects, project].sort((a, b) => a.date.localeCompare(b.date)) }));
+    setRawData(d => ({ ...d, projects: [...d.projects, project].sort((a, b) => a.date.localeCompare(b.date)) }));
     return project;
   }, [orgId]);
 
@@ -1074,14 +1091,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
     if (updated) {
       const normalized = rowToProject(updated);
-      setData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
+      setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
     }
   }, []);
 
   const deleteProject = useCallback(async (id: string) => {
     const { error } = await supabase.from("projects").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, projects: d.projects.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, projects: d.projects.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Marketing Expenses ----
@@ -1093,14 +1110,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const expense = rowToExpense(row);
-    setData(d => ({ ...d, marketingExpenses: [expense, ...d.marketingExpenses].sort((a, b) => b.date.localeCompare(a.date)) }));
+    setRawData(d => ({ ...d, marketingExpenses: [expense, ...d.marketingExpenses].sort((a, b) => b.date.localeCompare(a.date)) }));
     return expense;
   }, [orgId]);
 
   const deleteMarketingExpense = useCallback(async (id: string) => {
     const { error } = await supabase.from("marketing_expenses").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, marketingExpenses: d.marketingExpenses.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, marketingExpenses: d.marketingExpenses.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Invoices ----
@@ -1128,7 +1145,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const invoice = rowToInvoice(row);
-    setData(d => ({ ...d, invoices: [invoice, ...d.invoices] }));
+    setRawData(d => ({ ...d, invoices: [invoice, ...d.invoices] }));
     return invoice;
   }, [orgId]);
 
@@ -1162,20 +1179,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       for (const pid of projectIds) {
         await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
       }
-      setData(d => ({
+      setRawData(d => ({
         ...d,
         invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x),
         projects: d.projects.map(p => projectIds.includes(p.id) ? { ...p, paidDate: today } : p),
       }));
     } else {
-      setData(d => ({ ...d, invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x) }));
+      setRawData(d => ({ ...d, invoices: d.invoices.map(x => x.id === id ? { ...x, ...inv, updatedAt: patch.updated_at } : x) }));
     }
   }, [data.invoices]);
 
   const deleteInvoice = useCallback(async (id: string) => {
     const { error } = await supabase.from("invoices").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, invoices: d.invoices.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Contractor Invoices ----
@@ -1197,7 +1214,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const cinv = rowToContractorInvoice(row);
-    setData(d => ({ ...d, contractorInvoices: [cinv, ...d.contractorInvoices] }));
+    setRawData(d => ({ ...d, contractorInvoices: [cinv, ...d.contractorInvoices] }));
     return cinv;
   }, []);
 
@@ -1209,13 +1226,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.total !== undefined) patch.total = inv.total;
     const { error } = await supabase.from("contractor_invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contractorInvoices: d.contractorInvoices.map(x => x.id === id ? { ...x, ...inv } : x) }));
+    setRawData(d => ({ ...d, contractorInvoices: d.contractorInvoices.map(x => x.id === id ? { ...x, ...inv } : x) }));
   }, []);
 
   const deleteContractorInvoice = useCallback(async (id: string) => {
     const { error } = await supabase.from("contractor_invoices").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, contractorInvoices: d.contractorInvoices.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, contractorInvoices: d.contractorInvoices.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Series ----
@@ -1229,7 +1246,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }).select().single();
     if (error) throw new Error(error.message);
     const series = rowToSeries(row);
-    setData(d => ({ ...d, series: [series, ...d.series] }));
+    setRawData(d => ({ ...d, series: [series, ...d.series] }));
     return series;
   }, [orgId]);
 
@@ -1244,13 +1261,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.tokenResetDate !== undefined) patch.token_reset_date = s.tokenResetDate;
     const { error } = await supabase.from("series").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, series: d.series.map(x => x.id === id ? { ...x, ...s } : x) }));
+    setRawData(d => ({ ...d, series: d.series.map(x => x.id === id ? { ...x, ...s } : x) }));
   }, []);
 
   const deleteSeries = useCallback(async (id: string) => {
     const { error } = await supabase.from("series").delete().eq("id", id);
     if (error) throw new Error(error.message);
-    setData(d => ({ ...d, series: d.series.filter(x => x.id !== id) }));
+    setRawData(d => ({ ...d, series: d.series.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Episodes ----
