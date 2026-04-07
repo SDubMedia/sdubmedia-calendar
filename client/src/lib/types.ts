@@ -261,6 +261,7 @@ export interface EditorBilling {
   billingMode: "standard" | "event"; // standard = 2x cost, event = +1hr
   finalHours: number; // editable — this is what goes on the client invoice
   perImageRate: number; // $ per image — default 6, editable per project
+  finalized?: boolean; // true when actual count is confirmed, false/undefined = projection
 }
 
 // Partner profit split config (stored per-client)

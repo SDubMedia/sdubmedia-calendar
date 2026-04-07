@@ -91,17 +91,18 @@ export default function MySchedulePage() {
     project.postProduction.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
         if (c.role === "Photo Editor") {
-          if (project.editorBilling?.imageCount) {
-            // Editing done — show actual pay
-            const imgs = project.editorBilling.imageCount;
-            const rate = project.editorBilling.perImageRate ?? 6;
-            totalPay += imgs * rate;
-            entries.push({ role: c.role, hours: imgs, rate, pay: imgs * rate, type: "Post", unit: "images" });
-          } else {
-            // Not edited yet — show projection
-            const estRate = project.editorBilling?.perImageRate ?? 6;
-            entries.push({ role: c.role, hours: 0, rate: estRate, pay: 0, type: "Projected", unit: "images" });
+          const rate = project.editorBilling?.perImageRate ?? 6;
+          const imgs = project.editorBilling?.imageCount ?? 0;
+          const isFinalized = project.editorBilling?.finalized === true;
+          const pay = imgs * rate;
+          if (isFinalized) {
+            totalPay += pay;
           }
+          entries.push({
+            role: c.role, hours: imgs, rate, pay,
+            type: isFinalized ? "Post" : "Projected",
+            unit: "images",
+          });
         } else {
           const hours = Number(c.hoursWorked ?? 0);
           const rate = Number(c.payRatePerHour ?? 0);
@@ -207,8 +208,12 @@ export default function MySchedulePage() {
                 <span className="ml-1 opacity-60">({entry.type})</span>
               </span>
               <span className="text-foreground tabular-nums">
-                {entry.type === "Projected" ? (
-                  <span className="text-amber-400">${entry.rate}/img · Pending edit</span>
+                {entry.type === "Projected" && entry.unit === "images" ? (
+                  entry.hours > 0 ? (
+                    <><span className="text-blue-400">~{entry.hours} imgs × ${entry.rate}/img = ~${entry.pay.toFixed(0)}</span> <span className="text-[10px] text-blue-400/60">Projected</span></>
+                  ) : (
+                    <span className="text-blue-400">${entry.rate}/img · Pending</span>
+                  )
                 ) : (
                   <>{entry.hours} {entry.unit === "images" ? "imgs" : "h"} × ${entry.rate}/{entry.unit === "images" ? "img" : "hr"} = <span className="text-green-400">${entry.pay.toFixed(0)}</span></>
                 )}
