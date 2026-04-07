@@ -2,7 +2,7 @@
 // AuthContext — Supabase Auth + User Profile with role-based access
 // ============================================================
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import type { UserProfile, UserRole } from "@/lib/types";
 import type { User, Session } from "@supabase/supabase-js";
@@ -25,7 +25,10 @@ interface AuthContextValue {
   // View As (owner only) — preview the app as another role
   viewAsRole: UserRole | null;
   setViewAsRole: (role: UserRole | null) => void;
-  /** The effective profile — uses viewAs override if set */
+  // Impersonate (owner only) — see exactly what a specific user sees
+  impersonateUserId: string | null;
+  setImpersonateUserId: (id: string | null) => void;
+  /** The effective profile — uses impersonation or viewAs override if set */
   effectiveProfile: UserProfile | null;
 }
 
@@ -53,11 +56,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewAsRole, setViewAsRole] = useState<UserRole | null>(null);
+  const [impersonateUserId, setImpersonateUserId] = useState<string | null>(null);
 
-  // Build effective profile with role override
-  const effectiveProfile = profile && viewAsRole && profile.role === "owner"
-    ? { ...profile, role: viewAsRole }
-    : profile;
+  // Build effective profile: impersonate > viewAs > real profile
+  const effectiveProfile = useMemo(() => {
+    if (!profile) return null;
+    if (profile.role === "owner" && impersonateUserId) {
+      const target = allProfiles.find(p => p.id === impersonateUserId);
+      if (target) return { ...target, id: profile.id }; // keep owner's auth ID but use target's role, clientIds, crewMemberId
+    }
+    if (profile.role === "owner" && viewAsRole) {
+      return { ...profile, role: viewAsRole };
+    }
+    return profile;
+  }, [profile, viewAsRole, impersonateUserId, allProfiles]);
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -188,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn, signOut, changePassword, completeOnboarding,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
-      viewAsRole, setViewAsRole, effectiveProfile,
+      viewAsRole, setViewAsRole, impersonateUserId, setImpersonateUserId, effectiveProfile,
     }}>
       {children}
     </AuthContext.Provider>

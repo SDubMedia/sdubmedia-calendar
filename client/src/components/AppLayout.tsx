@@ -123,7 +123,7 @@ const navStructure: NavEntry[] = [
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole } = useAuth();
+  const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole, impersonateUserId, setImpersonateUserId, allProfiles } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { data } = useApp();
   const orgName = data.organization?.name || "Slate";
@@ -297,18 +297,38 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
           )}
           {isRealOwner && (
-            <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
-              <select
-                value={viewAsRole || ""}
-                onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); window.location.href = "/"; }}
-                className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
-              >
-                <option value="">Owner (default)</option>
-                <option value="partner">Partner</option>
-                <option value="client">Client</option>
-                <option value="staff">Staff</option>
-              </select>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
+                <select
+                  value={viewAsRole || ""}
+                  onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); window.location.href = "/"; }}
+                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
+                >
+                  <option value="">Owner (default)</option>
+                  <option value="partner">Partner</option>
+                  <option value="client">Client</option>
+                  <option value="staff">Staff</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Impersonate User</label>
+                <select
+                  value={impersonateUserId || ""}
+                  onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); window.location.href = "/"; }}
+                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground"
+                >
+                  <option value="">None</option>
+                  {allProfiles.filter(p => p.id !== profile?.id).map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                  ))}
+                </select>
+              </div>
+              {impersonateUserId && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-md px-2 py-1">
+                  <p className="text-[10px] text-amber-300">Impersonating: {allProfiles.find(p => p.id === impersonateUserId)?.name}</p>
+                </div>
+              )}
             </div>
           )}
           <button
@@ -424,18 +444,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </button>
               )}
               {isRealOwner && (
-                <div className="px-3 py-2">
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
-                  <select
-                    value={viewAsRole || ""}
-                    onChange={e => { setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); window.location.href = "/"; }}
-                    className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
-                  >
-                    <option value="">Owner (default)</option>
-                    <option value="partner">Partner</option>
-                    <option value="client">Client</option>
-                    <option value="staff">Staff</option>
-                  </select>
+                <div className="px-3 py-2 space-y-2">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">View As</label>
+                    <select
+                      value={viewAsRole || ""}
+                      onChange={e => { setImpersonateUserId(null); setViewAsRole(e.target.value ? e.target.value as any : null); setMobileMenuOpen(false); window.location.href = "/"; }}
+                      className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
+                    >
+                      <option value="">Owner (default)</option>
+                      <option value="partner">Partner</option>
+                      <option value="client">Client</option>
+                      <option value="staff">Staff</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Impersonate</label>
+                    <select
+                      value={impersonateUserId || ""}
+                      onChange={e => { setViewAsRole(null); setImpersonateUserId(e.target.value || null); setMobileMenuOpen(false); window.location.href = "/"; }}
+                      className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
+                    >
+                      <option value="">None</option>
+                      {allProfiles.filter(p => p.id !== profile?.id).map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
               <button
