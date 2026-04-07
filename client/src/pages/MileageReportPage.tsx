@@ -34,7 +34,7 @@ interface MileageTrip {
 
 export default function MileageReportPage() {
   const { data, upsertDistance, addManualTrip, deleteManualTrip } = useApp();
-  const { profile } = useAuth();
+  const { effectiveProfile: profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
