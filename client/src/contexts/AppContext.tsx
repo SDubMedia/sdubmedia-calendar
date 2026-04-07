@@ -441,17 +441,21 @@ const emptyData: AppData = {
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { profile, effectiveProfile, impersonateUserId } = useAuth();
+  const { profile, effectiveProfile, impersonateUserId, allProfiles } = useAuth();
   const orgId = profile?.orgId || "";
   const [rawData, setRawData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
 
   // Filter data when impersonating — non-owner roles only see their assigned clients' data
   const data = useMemo(() => {
-    if (!impersonateUserId || !effectiveProfile || effectiveProfile.role === "owner") return rawData;
-    const allowedClientIds = new Set(effectiveProfile.clientIds || []);
-    if (allowedClientIds.size === 0) return rawData; // no filtering if no clientIds set
+    if (!impersonateUserId) return rawData;
 
+    // Look up the target user's clientIds directly from allProfiles (not effectiveProfile which may lag)
+    const targetUser = allProfiles.find(p => p.id === impersonateUserId);
+    const clientIds = targetUser?.clientIds || effectiveProfile?.clientIds || [];
+    if (clientIds.length === 0) return rawData;
+
+    const allowedClientIds = new Set(clientIds);
     return {
       ...rawData,
       clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
@@ -459,9 +463,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
       contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
       proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
-      // Keep everything else unfiltered (locations, crew, types, etc.)
     };
-  }, [rawData, impersonateUserId, effectiveProfile]);
+  }, [rawData, impersonateUserId, allProfiles, effectiveProfile]);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
