@@ -27,8 +27,8 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function MySchedulePage() {
   const { data } = useApp();
-  const { profile } = useAuth();
-  const crewMemberId = profile?.crewMemberId || "";
+  const { effectiveProfile } = useAuth();
+  const crewMemberId = effectiveProfile?.crewMemberId || "";
   const today = useMemo(() => new Date(), []);
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
