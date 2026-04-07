@@ -56,7 +56,25 @@ export default function LoginPage() {
           33% { transform: translate(-50px, 50px) scale(1.08); }
           66% { transform: translate(70px, -30px) scale(0.92); }
         }
+        @keyframes blob5 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          25% { transform: translate(-70px, 30px) scale(1.1); }
+          50% { transform: translate(40px, -50px) scale(0.9); }
+          75% { transform: translate(50px, 60px) scale(1.05); }
+        }
       `}</style>
+
+      {/* Blob 5 — Teal (top center) */}
+      <div
+        className="absolute w-[420px] h-[420px] rounded-full opacity-25"
+        style={{
+          background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)",
+          top: "-8%",
+          left: "40%",
+          filter: "blur(85px)",
+          animation: "blob5 11s ease-in-out infinite",
+        }}
+      />
 
       {/* Blob 1 — Blue */}
       <div
