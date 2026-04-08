@@ -59,6 +59,7 @@ export default function MileageReportPage() {
     const homeAddr = crewMember.homeAddress;
     const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
     let count = 0;
+    let failReason = "";
 
     for (const loc of data.locations.filter(l => l.address && l.city)) {
       const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
@@ -73,14 +74,24 @@ export default function MileageReportPage() {
           const { distanceMiles } = await res.json();
           await upsertDistance(crewMemberId, loc.id, distanceMiles);
           count++;
+        } else {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          console.error(`API error for ${loc.name}:`, err.error);
+          failReason = err.error || `HTTP ${res.status}`;
         }
       } catch (err: any) {
           console.error(`Distance calc failed for ${loc.name}:`, err.message || err);
+          failReason = err.message || "Unknown error";
         }
     }
     setRecalculating(false);
-    if (count > 0) toast.success(`Updated distances for ${count} location${count !== 1 ? "s" : ""}`);
-    else toast.error("No distances calculated — check your Google Maps API key");
+    if (count > 0) {
+      toast.success(`Updated distances for ${count} location${count !== 1 ? "s" : ""}`);
+    } else if (data.locations.filter(l => l.address && l.city).length === 0) {
+      toast.error("No locations have addresses — add addresses in Manage → Locations");
+    } else {
+      toast.error(failReason ? `Distance calc failed: ${failReason}` : "No distances calculated — check your Google Maps API key");
+    }
   }
 
   // Log trip dialog

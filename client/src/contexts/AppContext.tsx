@@ -1042,7 +1042,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
     const id = `${crewMemberId}_${locationId}`;
     const { error } = await supabase.from("crew_location_distances").upsert({
-      id, crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
+      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
     }, { onConflict: "crew_member_id,location_id" });
     if (error) throw new Error(error.message);
     setRawData(d => {
@@ -1052,7 +1052,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
     });
-  }, []);
+  }, [orgId]);
 
   // ---- Manual Trips ----
   const addManualTrip = useCallback(async (t: Omit<ManualTrip, "id" | "createdAt">): Promise<ManualTrip> => {
