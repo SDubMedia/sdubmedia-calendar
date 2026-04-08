@@ -4,7 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth } from "./_auth";
+import { verifyAuth, isAllowedUrl, escapeHtml } from "./_auth";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -17,6 +17,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { to, cc, subject, proposalUrl, proposalTitle, total, paymentOption, depositPercent, orgName } = req.body;
   if (!to || !proposalUrl) return res.status(400).json({ error: "Missing to or proposalUrl" });
+  if (!isAllowedUrl(proposalUrl)) return res.status(400).json({ error: "Invalid proposal URL" });
+  const safeProposalUrl = escapeHtml(proposalUrl);
 
   // Escape HTML to prevent injection
   const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -49,13 +51,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             ${paymentText}
 
-            <a href="${proposalUrl}" style="display: inline-block; padding: 14px 32px; background: #0088ff; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+            <a href="${safeProposalUrl}" style="display: inline-block; padding: 14px 32px; background: #0088ff; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
               Review & Accept Proposal
             </a>
 
             <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
               Or open this link in your browser:<br/>
-              <a href="${proposalUrl}" style="color: #0088ff; word-break: break-all;">${proposalUrl}</a>
+              <a href="${safeProposalUrl}" style="color: #0088ff; word-break: break-all;">${safeProposalUrl}</a>
             </p>
           </div>
 

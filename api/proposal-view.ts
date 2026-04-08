@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { escapeHtml } from "./_auth";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -42,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           resend.emails.send({
             from: FROM_EMAIL, to: ownerEmail,
             subject: `Proposal Viewed: ${proposal.title}`,
-            html: `<p style="font-family:sans-serif;color:#1e293b;">Your proposal <strong>${proposal.title}</strong> was just viewed by <strong>${proposal.client_email}</strong>.</p>`,
+            html: `<p style="font-family:sans-serif;color:#1e293b;">Your proposal <strong>${escapeHtml(proposal.title || "")}</strong> was just viewed by <strong>${escapeHtml(proposal.client_email || "")}</strong>.</p>`,
           }).catch(() => {});
         }
       }

@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { verifyAuth } from "./_auth";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "10mb" } },
@@ -12,10 +13,8 @@ export const config = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  const user = await verifyAuth(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   try {
     const { fileData } = req.body;

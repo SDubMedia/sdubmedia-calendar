@@ -6,7 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth } from "./_auth";
+import { verifyAuth, getUserOrgId, isAllowedUrl } from "./_auth";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -24,6 +24,13 @@ const PRICE_IDS: Record<string, string> = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const callerOrgId = await getUserOrgId(user.userId);
+
+  // Verify org ownership
+  const requestOrgId = (req.body?.orgId || req.query.orgId) as string;
+  if (requestOrgId && callerOrgId !== requestOrgId) {
+    return res.status(403).json({ error: "Access denied — org mismatch" });
+  }
 
   const { action } = req.query;
 
@@ -67,8 +74,8 @@ async function createCheckout(req: VercelRequest, res: VercelResponse) {
       trial_period_days: 14,
       metadata: { orgId, plan },
     },
-    success_url: successUrl || `${req.headers.origin}/settings?subscribed=true`,
-    cancel_url: cancelUrl || `${req.headers.origin}/settings`,
+    success_url: (successUrl && isAllowedUrl(successUrl)) ? successUrl : `${req.headers.origin}/settings?subscribed=true`,
+    cancel_url: (cancelUrl && isAllowedUrl(cancelUrl)) ? cancelUrl : `${req.headers.origin}/settings`,
   });
 
   return res.status(200).json({ url: session.url });
@@ -86,7 +93,7 @@ async function createPortal(req: VercelRequest, res: VercelResponse) {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: org.stripe_customer_id,
-    return_url: returnUrl || `${req.headers.origin}/settings`,
+    return_url: (returnUrl && isAllowedUrl(returnUrl)) ? returnUrl : `${req.headers.origin}/settings`,
   });
 
   return res.status(200).json({ url: session.url });

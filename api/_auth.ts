@@ -30,6 +30,33 @@ export async function verifyAuth(req: VercelRequest): Promise<{ userId: string; 
   }
 }
 
+/** Get the caller's org_id from their user profile */
+export async function getUserOrgId(userId: string): Promise<string | null> {
+  if (!supabaseUrl || !supabaseServiceKey) return null;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const { data } = await supabase.from("user_profiles").select("org_id").eq("id", userId).single();
+  return data?.org_id || null;
+}
+
+/** Validate that a URL belongs to an allowed domain */
+const ALLOWED_DOMAINS = ["slate.sdubmedia.com", "localhost", "127.0.0.1"];
+export function isAllowedUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_DOMAINS.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+/** Timing-safe API key comparison */
+export function verifyApiKeyTimingSafe(key: string | undefined, expected: string | undefined): boolean {
+  if (!key || !expected) return false;
+  if (key.length !== expected.length) return false;
+  const { timingSafeEqual } = require("crypto");
+  return timingSafeEqual(Buffer.from(key), Buffer.from(expected));
+}
+
 /** Escape HTML to prevent XSS */
 export function escapeHtml(str: string): string {
   return str

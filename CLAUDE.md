@@ -53,14 +53,15 @@ All serverless functions live in `api/*.ts`. Follow this structure:
 
 ```typescript
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { verifyAuth, getUserOrgId } from "./_auth";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Method check
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  // 2. Auth check (authenticated endpoints)
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  // 2. Auth check — ALWAYS use verifyAuth(), NEVER check Bearer prefix manually
+  const user = await verifyAuth(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   // 3. Validate input
   const { field } = req.body;
@@ -182,3 +183,34 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
+
+## Security — Mandatory Rules
+
+These rules exist because real penetration testing found real vulnerabilities. Do not skip them.
+
+### API Authentication
+- **NEVER check Bearer tokens manually** (`auth.startsWith("Bearer ")`). Always use `verifyAuth(req)` from `_auth.ts`. Manual checks don't validate the JWT.
+- **API key endpoints** must use `crypto.timingSafeEqual()` — never `===` for secret comparison.
+- **MCP endpoint** uses `X-API-Key` header only — never accept Bearer tokens as API keys.
+
+### Org Isolation (IDOR Prevention)
+- **Every endpoint that accepts `orgId`** from the request body/query MUST verify the caller belongs to that org: `const callerOrgId = await getUserOrgId(user.userId); if (callerOrgId !== requestOrgId) return 403`.
+- **Password reset** must verify target user is in the same org as the caller.
+- **Stripe endpoints** (connect, payment, subscribe) all require org ownership verification.
+
+### RLS Policies
+- **Every RLS policy** must include `AND org_id = public.user_org_id()` — not just a role check.
+- **Never** create a table with `USING (true)` or `USING (public.user_role() = 'owner')` alone — that leaks data cross-tenant.
+- **Always enable RLS** on new tables: `ALTER TABLE x ENABLE ROW LEVEL SECURITY`.
+
+### Email Security
+- **All user-supplied values** interpolated into HTML emails must be escaped with `escapeHtml()` from `_auth.ts`. This includes names, titles, emails — anything from the DB that a user could have set.
+- **All URLs in emails** (signUrl, proposalUrl) must be validated with `isAllowedUrl()` before interpolation. Never send emails with arbitrary URLs.
+- **Redirect URLs** passed to Stripe (success_url, cancel_url, return_url) must be validated with `isAllowedUrl()`. Never pass user-supplied URLs to Stripe without validation.
+
+### Shared Helpers (`api/_auth.ts`)
+- `verifyAuth(req)` — JWT validation, returns `{ userId, email }` or `null`
+- `getUserOrgId(userId)` — looks up caller's org_id from user_profiles
+- `escapeHtml(str)` — prevents XSS in HTML emails
+- `isAllowedUrl(url)` — validates URL is on an allowed domain
+- `verifyApiKeyTimingSafe(key, expected)` — timing-safe API key comparison

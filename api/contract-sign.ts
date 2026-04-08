@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { escapeHtml } from "./_auth";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -96,7 +97,7 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
       resend.emails.send({
         from: FROM_EMAIL, to: ownerEmail,
         subject: `Contract Signed: ${fullContract.title}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Contract Signed!</h2><p style="color:#1e293b;"><strong>${signature.name}</strong> has signed your contract: <strong>${fullContract.title}</strong>.</p><p style="color:#64748b;">Log in to Slate to countersign and complete the agreement.</p></div>`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Contract Signed!</h2><p style="color:#1e293b;"><strong>${escapeHtml(signature.name || "")}</strong> has signed your contract: <strong>${escapeHtml(fullContract.title || "")}</strong>.</p><p style="color:#64748b;">Log in to Slate to countersign and complete the agreement.</p></div>`,
       }).catch(() => {});
     }
   }

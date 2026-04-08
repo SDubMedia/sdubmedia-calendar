@@ -9,8 +9,9 @@ import nodemailer from "nodemailer";
 function verifyApiKey(req: VercelRequest): boolean {
   const key = req.headers["x-api-key"] as string | undefined;
   const expected = process.env.SLATE_API_KEY;
-  if (!expected || !key) return false;
-  return key === expected;
+  if (!expected || !key || key.length !== expected.length) return false;
+  const { timingSafeEqual } = require("crypto");
+  return timingSafeEqual(Buffer.from(key), Buffer.from(expected));
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

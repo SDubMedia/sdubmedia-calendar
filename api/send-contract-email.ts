@@ -4,7 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth } from "./_auth";
+import { verifyAuth, isAllowedUrl, escapeHtml } from "./_auth";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -19,6 +19,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { to, cc, subject, signUrl, contractTitle, orgName } = req.body;
   if (!to || !signUrl) return res.status(400).json({ error: "Missing to or signUrl" });
+  if (!isAllowedUrl(signUrl)) return res.status(400).json({ error: "Invalid sign URL" });
+  const safeSignUrl = escapeHtml(signUrl);
 
   try {
     const { error } = await resend.emails.send({
@@ -40,13 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               <strong style="color: #1e293b;">${esc(contractTitle)}</strong>
             </p>
 
-            <a href="${signUrl}" style="display: inline-block; padding: 14px 32px; background: #0088ff; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+            <a href="${safeSignUrl}" style="display: inline-block; padding: 14px 32px; background: #0088ff; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
               Review & Sign Contract
             </a>
 
             <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
               Or open this link in your browser:<br/>
-              <a href="${signUrl}" style="color: #0088ff; word-break: break-all;">${signUrl}</a>
+              <a href="${safeSignUrl}" style="color: #0088ff; word-break: break-all;">${safeSignUrl}</a>
             </p>
           </div>
 

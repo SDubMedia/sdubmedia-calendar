@@ -5,7 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth } from "./_auth";
+import { verifyAuth, getUserOrgId } from "./_auth";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -45,6 +45,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!callerProfile || callerProfile.role !== "owner") {
       return res.status(403).json({ error: "Only owners can reset passwords" });
+    }
+
+    // Verify the target user belongs to the same org
+    const callerOrgId = await getUserOrgId(caller.userId);
+    const targetOrgId = await getUserOrgId(userId);
+    if (!callerOrgId || callerOrgId !== targetOrgId) {
+      return res.status(403).json({ error: "Cannot reset password for users outside your organization" });
     }
 
     // Update the user's password via admin API

@@ -5,7 +5,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth } from "./_auth";
+import { verifyAuth, getUserOrgId, isAllowedUrl } from "./_auth";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -16,8 +16,15 @@ const supabase = createClient(
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const callerOrgId = await getUserOrgId(user.userId);
 
   const { action } = req.query;
+
+  // Verify org ownership for all actions
+  const requestOrgId = (req.body?.orgId || req.query.orgId) as string;
+  if (requestOrgId && callerOrgId !== requestOrgId) {
+    return res.status(403).json({ error: "Access denied — org mismatch" });
+  }
 
   try {
     switch (action) {
@@ -56,11 +63,12 @@ async function createConnectLink(req: VercelRequest, res: VercelResponse) {
     if (updateError) return res.status(500).json({ error: `Failed to save: ${updateError.message}` });
   }
 
-  // Create onboarding link
+  // Create onboarding link — validate returnUrl
+  const safeReturnUrl = (returnUrl && isAllowedUrl(returnUrl)) ? returnUrl : `${req.headers.origin}/settings`;
   const link = await stripe.accountLinks.create({
     account: accountId,
-    refresh_url: returnUrl || `${req.headers.origin}/settings`,
-    return_url: returnUrl || `${req.headers.origin}/settings`,
+    refresh_url: safeReturnUrl,
+    return_url: safeReturnUrl,
     type: "account_onboarding",
   });
 
