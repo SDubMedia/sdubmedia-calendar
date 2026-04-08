@@ -284,16 +284,15 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
             </>)}
 
-            {/* Crew — non-owners see only their own entry */}
-            {(() => {
-              const crewEntries = isOwner ? project.crew : project.crew.filter(c => c.crewMemberId === myCrewMemberId);
-              return crewEntries.length > 0 && (
+            {/* Crew */}
+            {isOwner ? (
+              project.crew.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
-                    <Camera className="w-3.5 h-3.5" /> {isOwner ? "Crew" : "Your Assignment"}
+                    <Camera className="w-3.5 h-3.5" /> Crew
                   </div>
                   <div className="space-y-1.5">
-                    {crewEntries.map((entry, i) => (
+                    {project.crew.map((entry, i) => (
                       <div key={i} className="flex items-center justify-between bg-secondary rounded-md px-3 py-2">
                         <div>
                           <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
@@ -301,57 +300,93 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                          {isOwner && <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>}
+                          <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              );
-            })()}
+              )
+            ) : (
+              (() => {
+                const myCrewEntry = project.crew.find(c => c.crewMemberId === myCrewMemberId);
+                const myPostEntry = project.postProduction.find(c => c.crewMemberId === myCrewMemberId);
+                const isPhotoEditor = myPostEntry?.role === "Photo Editor" && project.editorBilling;
+                const editorRate = project.editorBilling?.perImageRate ?? 6;
 
-            {/* Post Production — non-owners see only their own entry */}
-            {(() => {
-              const postEntries = isOwner ? project.postProduction : project.postProduction.filter(c => c.crewMemberId === myCrewMemberId);
-              return postEntries.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
-                    <Film className="w-3.5 h-3.5" /> {isOwner ? "Post Production" : "Your Assignment"}
-                  </div>
-                  <div className="space-y-1.5">
-                    {postEntries.map((entry, i) => {
-                      const isPhotoEditorWithBilling = entry.role === "Photo Editor" && project.editorBilling;
-                      const editorRate = project.editorBilling?.perImageRate ?? 6;
-                      return (
-                        <div key={i} className="flex items-center justify-between bg-secondary rounded-md px-3 py-2">
-                          <div>
-                            <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
-                            <div className="text-xs text-muted-foreground">{entry.role}</div>
-                          </div>
-                          <div className="text-right">
-                            {isPhotoEditorWithBilling ? (
-                              <>
-                                <div className="text-sm font-medium tabular-nums">
-                                  {project.editorBilling!.imageCount} images
-                                </div>
-                                {isOwner && <div className="text-xs text-muted-foreground">
-                                  ${(project.editorBilling!.imageCount * editorRate).toLocaleString("en-US", { minimumFractionDigits: 2 })} (${editorRate}/img)
-                                </div>}
-                              </>
-                            ) : (
-                              <>
-                                <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                                {isOwner && <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>}
-                              </>
-                            )}
-                          </div>
+                // Calculate projected pay
+                let projectedPay = 0;
+                if (myCrewEntry) projectedPay += Number(myCrewEntry.hoursWorked ?? 0) * Number(myCrewEntry.payRatePerHour ?? 0);
+                if (myPostEntry) {
+                  if (isPhotoEditor) {
+                    projectedPay += project.editorBilling!.imageCount * editorRate;
+                  } else {
+                    projectedPay += Number(myPostEntry.hoursWorked ?? 0) * Number(myPostEntry.payRatePerHour ?? 0);
+                  }
+                }
+
+                return (myCrewEntry || myPostEntry) ? (
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                      <DollarSign className="w-3.5 h-3.5" /> Your Assignment
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">
+                          {myCrewEntry?.role}{myCrewEntry && myPostEntry ? " + " : ""}{myPostEntry?.role}
                         </div>
-                      );
-                    })}
+                        {isPhotoEditor && (
+                          <div className="text-xs text-muted-foreground mt-0.5">{project.editorBilling!.imageCount} images</div>
+                        )}
+                      </div>
+                      <div className="text-xl font-bold text-primary" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(projectedPay)}
+                      </div>
+                    </div>
                   </div>
+                ) : null;
+              })()
+            )}
+
+            {/* Post Production (owner only — staff pay is shown above) */}
+            {isOwner && project.postProduction.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                  <Film className="w-3.5 h-3.5" /> Post Production
                 </div>
-              );
-            })()}
+                <div className="space-y-1.5">
+                  {project.postProduction.map((entry, i) => {
+                    const isPhotoEditorWithBilling = entry.role === "Photo Editor" && project.editorBilling;
+                    const editorRate = project.editorBilling?.perImageRate ?? 6;
+                    return (
+                      <div key={i} className="flex items-center justify-between bg-secondary rounded-md px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
+                          <div className="text-xs text-muted-foreground">{entry.role}</div>
+                        </div>
+                        <div className="text-right">
+                          {isPhotoEditorWithBilling ? (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">
+                                ${(project.editorBilling!.imageCount * editorRate).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {project.editorBilling!.imageCount} images x ${editorRate}/img
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
+                              <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Photo Editor Billing Calculator (owner only) */}
             {isOwner && photoEditorEntry && client && (
