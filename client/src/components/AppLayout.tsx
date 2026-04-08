@@ -81,9 +81,9 @@ const navStructure: NavEntry[] = [
 
   // Production — owner, partner, client (Series), staff (Series)
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
-    { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
+    { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
-    { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
+    { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], feature: "contentSeries" },
   ]},
 
@@ -105,7 +105,7 @@ const navStructure: NavEntry[] = [
 
   // Reports
   { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
-    { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
+    { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"], feature: "reports" },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
     { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
     { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner", "staff"], feature: "contractor1099" },
@@ -143,19 +143,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }
 
-  // Filter nav structure based on role and per-role features
+  // Filter nav structure: user override → role override → global feature
   // Owner always sees everything — feature flags only affect staff/partner/client
+  const userOverrides = effectiveProfile?.featureOverrides;
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
       if (!item.roles.includes(role)) return false;
       if (role !== "owner" && item.feature && features) {
-        // Check per-role override first, then fall back to global feature flag
+        // 1. Per-user override (most specific)
+        if (userOverrides) {
+          const userVal = userOverrides[item.feature];
+          if (userVal !== undefined) return userVal;
+        }
+        // 2. Per-role override
         const roleOverrides = role === "staff" ? features.staffFeatures
           : role === "partner" ? features.partnerFeatures
           : role === "client" ? features.clientFeatures
           : undefined;
         if (roleOverrides) {
-          // If explicitly set for this role, use it; otherwise fall back to global
           const override = (roleOverrides as Record<string, boolean>)[item.feature];
           if (!(override ?? features[item.feature as keyof typeof features])) return false;
         } else if (!features[item.feature as keyof typeof features]) {
@@ -178,7 +183,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
         return entry;
       });
-  }, [role, features]);
+  }, [role, features, userOverrides]);
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);

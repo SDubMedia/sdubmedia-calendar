@@ -44,9 +44,13 @@ export default function DashboardPage() {
   const isRealOwner = profile?.role === "owner";
   const role = effectiveProfile?.role || profile?.role || "staff";
   const features = data.organization?.features;
+  const userOverrides = effectiveProfile?.featureOverrides;
   const isFeatureVisible = (key: string) => {
     if (role === "owner") return true;
     if (!features) return true;
+    // 1. Per-user override (most specific)
+    if (userOverrides?.[key] !== undefined) return userOverrides[key];
+    // 2. Per-role override
     const roleOverrides = role === "staff" ? features.staffFeatures
       : role === "partner" ? features.partnerFeatures
       : role === "client" ? features.clientFeatures : undefined;

@@ -3,8 +3,9 @@
 // Owner-only
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig, ServiceItem } from "@/lib/types";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -41,11 +42,47 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "contractor1099", label: "1099 Summary", description: "Contractor payment summary for tax reporting" },
   { key: "partnerSplits", label: "Partner & Revenue Splits", description: "Split revenue with business partners, track spending budgets" },
   { key: "clientPortal", label: "Client Portal", description: "Give clients login access to view their projects and reports" },
+  { key: "clientManagement", label: "Client Management", description: "View and manage client directory" },
+  { key: "locationManagement", label: "Location Management", description: "View and manage shoot locations" },
+  { key: "reports", label: "Reports", description: "View financial and project reports" },
 ];
 
 export default function SettingsPage() {
   const { data, updateOrganization, addLocation, updateLocation } = useApp();
+  const { allProfiles, updateUserProfile } = useAuth();
   const org = data.organization;
+
+  // Per-user override state
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [userOverrides, setUserOverrides] = useState<Record<string, boolean>>({});
+  const [savingUserOverride, setSavingUserOverride] = useState(false);
+
+  const nonOwnerProfiles = useMemo(() => allProfiles.filter(p => p.role !== "owner"), [allProfiles]);
+  const selectedProfile = nonOwnerProfiles.find(p => p.id === selectedUserId);
+
+  // Load overrides when user selection changes
+  useEffect(() => {
+    if (selectedProfile) {
+      setUserOverrides(selectedProfile.featureOverrides || {});
+    } else {
+      setUserOverrides({});
+    }
+  }, [selectedUserId, selectedProfile]);
+
+  const saveUserOverrides = async () => {
+    if (!selectedUserId) return;
+    setSavingUserOverride(true);
+    try {
+      // Only save keys that differ from "inherit" (remove undefined-like entries)
+      const clean = Object.fromEntries(Object.entries(userOverrides).filter(([, v]) => v !== undefined));
+      await updateUserProfile(selectedUserId, { featureOverrides: Object.keys(clean).length > 0 ? clean : undefined });
+      toast.success(`Saved overrides for ${selectedProfile?.name}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save");
+    } finally {
+      setSavingUserOverride(false);
+    }
+  };
 
   const [name, setName] = useState(org?.name || "");
   const [productionType, setProductionType] = useState<ProductionType>(org?.productionType || "both");
@@ -447,6 +484,88 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Per-User Feature Overrides */}
+        {nonOwnerProfiles.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Per-User Overrides
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Override role-level defaults for a specific team member. User overrides take priority over role settings above.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3 mb-4">
+              <select
+                value={selectedUserId}
+                onChange={e => setSelectedUserId(e.target.value)}
+                className="bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground flex-1"
+              >
+                <option value="">Select a team member...</option>
+                {nonOwnerProfiles.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                ))}
+              </select>
+              {selectedUserId && (
+                <Button size="sm" onClick={saveUserOverrides} disabled={savingUserOverride}>
+                  {savingUserOverride ? "Saving..." : "Save Overrides"}
+                </Button>
+              )}
+            </div>
+            {selectedProfile && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-4 text-xs text-muted-foreground font-medium">Feature</th>
+                      <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-20">Inherit</th>
+                      <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">On</th>
+                      <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">Off</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {FEATURE_TOGGLES.map(ft => {
+                      const val = userOverrides[ft.key];
+                      const inherited = val === undefined;
+                      return (
+                        <tr key={ft.key} className="border-b border-border/50">
+                          <td className="py-2 pr-4">
+                            <p className="text-sm text-foreground">{ft.label}</p>
+                          </td>
+                          <td className="text-center py-2 px-2">
+                            <button
+                              onClick={() => setUserOverrides(o => { const n = { ...o }; delete n[ft.key]; return n; })}
+                              className={cn("text-[10px] px-2 py-0.5 rounded", inherited ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground")}
+                            >
+                              Inherit
+                            </button>
+                          </td>
+                          <td className="text-center py-2 px-2">
+                            <button
+                              onClick={() => setUserOverrides(o => ({ ...o, [ft.key]: true }))}
+                              className={cn("w-8 h-5 rounded-full transition-colors", val === true ? "bg-green-500" : "bg-secondary border border-border")}
+                            >
+                              <span className={cn("block w-3.5 h-3.5 rounded-full bg-white transition-transform", val === true ? "translate-x-3.5" : "translate-x-0.5")} style={{ marginTop: 1 }} />
+                            </button>
+                          </td>
+                          <td className="text-center py-2 px-2">
+                            <button
+                              onClick={() => setUserOverrides(o => ({ ...o, [ft.key]: false }))}
+                              className={cn("w-8 h-5 rounded-full transition-colors", val === false ? "bg-red-500" : "bg-secondary border border-border")}
+                            >
+                              <span className={cn("block w-3.5 h-3.5 rounded-full bg-white transition-transform", val === false ? "translate-x-3.5" : "translate-x-0.5")} style={{ marginTop: 1 }} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        )}
 
         {/* Calendar Sync */}
         <Card className="bg-card border-border">

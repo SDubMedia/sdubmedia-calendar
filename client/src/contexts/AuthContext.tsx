@@ -16,7 +16,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   // User management (owner only)
   createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<void>;
-  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => Promise<void>;
+  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
@@ -45,6 +45,7 @@ function rowToProfile(r: any): UserProfile {
     crewMemberId: r.crew_member_id || "",
     mustChangePassword: r.must_change_password ?? true,
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
+    featureOverrides: r.feature_overrides || undefined,
     createdAt: r.created_at,
   };
 }
@@ -187,12 +188,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshProfiles();
   }, [refreshProfiles, profile?.orgId]);
 
-  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId">>) => {
+  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => {
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.role !== undefined) patch.role = updates.role;
     if (updates.clientIds !== undefined) patch.client_ids = updates.clientIds;
     if (updates.crewMemberId !== undefined) patch.crew_member_id = updates.crewMemberId;
+    if (updates.featureOverrides !== undefined) patch.feature_overrides = updates.featureOverrides;
     const { error } = await supabase.from("user_profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     await refreshProfiles();
