@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useRef } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { BusinessExpenseCategory, BusinessExpense } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

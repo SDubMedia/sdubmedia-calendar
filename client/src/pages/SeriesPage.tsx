@@ -3,7 +3,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { Link } from "wouter";
 import type { SeriesStatus } from "@/lib/types";
 import { Plus, X, Film, ArrowRight } from "lucide-react";

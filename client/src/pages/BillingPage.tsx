@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Project, Client, AppData } from "@/lib/types";
 import { DollarSign, Clock, Users, TrendingUp, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
 import { downloadCSV } from "@/lib/csv";

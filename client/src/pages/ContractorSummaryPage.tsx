@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";

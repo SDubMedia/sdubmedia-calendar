@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import { TrendingUp, TrendingDown, Minus, DollarSign, CalendarDays, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";

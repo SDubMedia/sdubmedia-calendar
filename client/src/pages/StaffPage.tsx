@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { CrewMember, CrewRole, RoleRate, HomeAddress } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectTravelCost } from "@/lib/data";
 import { ChevronLeft, ChevronRight, Printer, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";

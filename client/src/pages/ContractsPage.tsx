@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Contract, ContractTemplate, ContractStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";

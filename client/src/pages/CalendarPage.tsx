@@ -7,7 +7,7 @@ import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";

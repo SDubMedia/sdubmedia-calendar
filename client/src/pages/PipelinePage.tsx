@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { PipelineLead, PipelineStage, PipelineStageConfig, Proposal } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { Button } from "@/components/ui/button";

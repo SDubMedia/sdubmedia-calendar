@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { ExpenseCategory } from "@/lib/types";
 import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank, Printer } from "lucide-react";
 import { toast } from "sonner";
