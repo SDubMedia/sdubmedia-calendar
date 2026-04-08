@@ -114,9 +114,7 @@ export default function BillingPage() {
         });
       });
 
-      const clientInvoiceAmount = client.billingModel === "per_project"
-        ? projects.length * Number(client.perProjectRate ?? 0)
-        : totalBillableHours * client.billingRatePerHour;
+      const clientInvoiceAmount = projects.reduce((sum, p) => sum + getProjectInvoiceAmount(p, client), 0);
       const crewPayBreakdown = Object.entries(crewMap).map(([id, v]) => ({ crewMemberId: id, ...v }));
       const totalCrewCost = crewPayBreakdown.reduce((s, c) => s + c.totalPay, 0);
       const grossMargin = clientInvoiceAmount - totalCrewCost;

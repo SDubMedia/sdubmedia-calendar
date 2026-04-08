@@ -125,8 +125,10 @@ export default function ProfitLossPage() {
           const member = data.crewMembers.find(c => c.id === e.crewMemberId);
           if (!member) return;
           const existing = map.get(e.crewMemberId) || { name: member.name, totalPay: 0, hours: 0, projectCount: 0 };
-          if (e.role === "Photo Editor" && p.editorBilling) {
+          if (e.role === "Photo Editor" && p.editorBilling && (p.editorBilling.finalized || p.status === "completed")) {
             existing.totalPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
+          } else if (e.role === "Photo Editor" && p.editorBilling) {
+            // Not finalized yet — skip
           } else if (e.role !== "Travel") {
             existing.totalPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
           }

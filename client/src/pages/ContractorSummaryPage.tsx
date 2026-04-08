@@ -74,9 +74,11 @@ export default function ContractorSummaryPage() {
             needs1099: false,
           };
 
-          // Calculate pay
-          if (e.role === "Photo Editor" && p.editorBilling) {
+          // Calculate pay (only count photo editor pay when finalized or project completed)
+          if (e.role === "Photo Editor" && p.editorBilling && (p.editorBilling.finalized || p.status === "completed")) {
             existing.totalPaid += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
+          } else if (e.role === "Photo Editor" && p.editorBilling) {
+            // Not finalized yet — skip
           } else if (e.role !== "Travel") {
             existing.totalPaid += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
           }

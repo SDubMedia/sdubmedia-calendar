@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { verifyAuth } from "./_auth";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -14,11 +15,8 @@ const supabase = createClient(
 );
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Auth check — require Bearer token
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ") || auth.length < 20) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  const user = await verifyAuth(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const { action } = req.query;
 

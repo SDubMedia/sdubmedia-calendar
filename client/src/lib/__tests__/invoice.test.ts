@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from "vitest";
-import { generateInvoiceNumber, buildLineItems, buildInvoice } from "../invoice";
+import { generateInvoiceNumber, buildLineItems, buildInvoice, formatPhone } from "../invoice";
 import type { Client, Project, ProjectType, Location, Organization } from "../types";
 
 // ---- Factory helpers ----
@@ -208,5 +208,123 @@ describe("buildInvoice", () => {
     const invoice = buildInvoice(makeClient({ company: "Test Corp", email: "test@corp.com" }), [makeProject({ status: "completed" })], projectTypes, locations, [], "2026-04-01", "2026-04-30");
     expect(invoice.clientInfo.company).toBe("Test Corp");
     expect(invoice.clientInfo.email).toBe("test@corp.com");
+  });
+});
+
+// ============================================================
+// Additional tests — per-project billing, formatPhone, edge cases
+// ============================================================
+
+describe("formatPhone", () => {
+  it("formats 10-digit number", () => {
+    expect(formatPhone("6619169468")).toBe("661-916-9468");
+  });
+
+  it("formats 11-digit number with leading 1", () => {
+    expect(formatPhone("16619169468")).toBe("661-916-9468");
+  });
+
+  it("passes through already-formatted or short numbers", () => {
+    expect(formatPhone("555-1234")).toBe("555-1234");
+  });
+
+  it("strips non-digit characters before formatting", () => {
+    expect(formatPhone("(661) 916-9468")).toBe("661-916-9468");
+  });
+});
+
+describe("buildLineItems per-project billing", () => {
+  it("creates production + editing breakdown for per-project with crew and post", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 1000 });
+    const projects = [makeProject({
+      id: "p1", status: "completed",
+      crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
+      postProduction: [{ crewMemberId: "c2", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
+    })];
+    const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
+    expect(items.length).toBe(2);
+    const prodItem = items.find(i => i.description.includes("Production"));
+    const editItem = items.find(i => i.description.includes("Editing"));
+    expect(prodItem).toBeDefined();
+    expect(editItem).toBeDefined();
+    // 60/40 split
+    expect(prodItem!.amount).toBe(600); // 1000 * 0.6
+    expect(editItem!.amount).toBe(400); // 1000 * 0.4
+  });
+
+  it("uses full amount for production when no post-production", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 800 });
+    const projects = [makeProject({
+      id: "p1", status: "completed",
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
+      postProduction: [],
+    })];
+    const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
+    expect(items.length).toBe(1);
+    expect(items[0].amount).toBe(800);
+    expect(items[0].description).toContain("Production");
+  });
+
+  it("creates single line item when no crew data at all", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 500 });
+    const projects = [makeProject({ id: "p1", status: "completed", crew: [], postProduction: [] })];
+    const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
+    expect(items.length).toBe(1);
+    expect(items[0].amount).toBe(500);
+  });
+
+  it("uses project-type-specific rate for per-project billing", () => {
+    const client = makeClient({
+      billingModel: "per_project",
+      perProjectRate: 500,
+      projectTypeRates: [{ projectTypeId: "pt-podcast", rate: 1200 }],
+    });
+    const projects = [makeProject({ id: "p1", status: "completed", crew: [], postProduction: [] })];
+    const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
+    expect(items[0].amount).toBe(1200);
+  });
+});
+
+describe("buildLineItems hourly with billing multipliers", () => {
+  it("applies role multipliers to hourly line items", () => {
+    const client = makeClient({
+      billingModel: "hourly",
+      billingRatePerHour: 200,
+      roleBillingMultipliers: [{ role: "2nd Videographer", multiplier: 0.5 }],
+    });
+    const projects = [makeProject({
+      id: "p1", status: "completed",
+      crew: [
+        { crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 },
+        { crewMemberId: "c2", role: "2nd Videographer", hoursWorked: 6, payRatePerHour: 50 },
+      ],
+      postProduction: [],
+    })];
+    const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
+    // crewBillable = 3*1.0 + 6*0.5 = 6 hours
+    const prodItem = items.find(i => i.description.includes("Production"));
+    expect(prodItem).toBeDefined();
+    expect(prodItem!.quantity).toBe(6); // 3 + 3 (after multiplier)
+    expect(prodItem!.amount).toBe(1200); // 6 * $200
+  });
+});
+
+describe("buildInvoice edge cases", () => {
+  it("produces zero total when no projects in range", () => {
+    const invoice = buildInvoice(makeClient(), [], projectTypes, locations, [], "2026-04-01", "2026-04-30");
+    expect(invoice.lineItems.length).toBe(0);
+    expect(invoice.total).toBe(0);
+    expect(invoice.subtotal).toBe(0);
+  });
+
+  it("subtotal equals sum of line item amounts", () => {
+    const projects = [
+      makeProject({ id: "p1", date: "2026-04-01", status: "completed" }),
+      makeProject({ id: "p2", date: "2026-04-15", status: "filming_done" }),
+    ];
+    const invoice = buildInvoice(makeClient(), projects, projectTypes, locations, [], "2026-04-01", "2026-04-30");
+    const expectedSubtotal = invoice.lineItems.reduce((s, li) => s + li.amount, 0);
+    expect(invoice.subtotal).toBe(expectedSubtotal);
+    expect(invoice.total).toBe(expectedSubtotal); // no tax
   });
 });

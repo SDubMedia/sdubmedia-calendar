@@ -290,3 +290,130 @@ describe("calcHoursWorked", () => {
     expect(calcHoursWorked([], "c1", 2026, 3)).toBe(0);
   });
 });
+
+// ============================================================
+// Additional edge case tests
+// ============================================================
+
+describe("getProjectWorkedHours edge cases", () => {
+  it("handles null crew/postProduction arrays", () => {
+    const p = makeProject({ crew: null as any, postProduction: null as any });
+    const result = getProjectWorkedHours(p);
+    expect(result).toEqual({ crewHours: 0, postHours: 0, totalHours: 0 });
+  });
+
+  it("handles editorBilling.finalHours = 0 (counts as 0, not fallthrough)", () => {
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Photo Editor", hoursWorked: 10, payRatePerHour: 20 }],
+      editorBilling: { imageCount: 50, perImageRate: 6, finalHours: 0 } as any,
+    });
+    const result = getProjectWorkedHours(p);
+    expect(result.postHours).toBe(0);
+  });
+
+  it("handles mixed Photo Editor + Video Editor in post-production", () => {
+    const p = makeProject({
+      postProduction: [
+        { crewMemberId: "c1", role: "Photo Editor", hoursWorked: 10, payRatePerHour: 20 },
+        { crewMemberId: "c2", role: "Video Editor", hoursWorked: 3, payRatePerHour: 30 },
+      ],
+      editorBilling: { imageCount: 50, perImageRate: 6, finalHours: 2 } as any,
+    });
+    const result = getProjectWorkedHours(p);
+    expect(result.postHours).toBe(5); // 2 (finalHours) + 3 (video editor)
+  });
+});
+
+describe("getProjectCrewCost edge cases", () => {
+  it("calculates regular post-production cost", () => {
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Video Editor", hoursWorked: 4, payRatePerHour: 30 }],
+    });
+    expect(getProjectCrewCost(p)).toBe(120);
+  });
+
+  it("combines crew + post-production costs", () => {
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 2, payRatePerHour: 100 }],
+      postProduction: [{ crewMemberId: "c2", role: "Video Editor", hoursWorked: 3, payRatePerHour: 30 }],
+    });
+    expect(getProjectCrewCost(p)).toBe(290);
+  });
+
+  it("defaults editorBilling.perImageRate to 6", () => {
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Photo Editor", hoursWorked: 5, payRatePerHour: 20 }],
+      editorBilling: { imageCount: 10 } as any,
+    });
+    expect(getProjectCrewCost(p)).toBe(60);
+  });
+});
+
+describe("getProjectBillableHours edge cases", () => {
+  it("uses editorBilling.finalHours and excludes Photo Editor from normal calc", () => {
+    const client = makeClient();
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 3, payRatePerHour: 0 }],
+      postProduction: [
+        { crewMemberId: "c2", role: "Photo Editor", hoursWorked: 10, payRatePerHour: 20 },
+        { crewMemberId: "c3", role: "Video Editor", hoursWorked: 2, payRatePerHour: 0 },
+      ],
+      editorBilling: { imageCount: 50, perImageRate: 6, finalHours: 1.5 } as any,
+    });
+    const result = getProjectBillableHours(p, client);
+    expect(result.crewBillable).toBe(3);
+    expect(result.postBillable).toBe(3.5); // 2 (video editor) + 1.5 (editorBilling)
+    expect(result.totalBillable).toBe(6.5);
+  });
+
+  it("handles editorBilling.finalHours = 0", () => {
+    const client = makeClient();
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Photo Editor", hoursWorked: 10, payRatePerHour: 20 }],
+      editorBilling: { imageCount: 0, perImageRate: 6, finalHours: 0 } as any,
+    });
+    const result = getProjectBillableHours(p, client);
+    expect(result.postBillable).toBe(0);
+  });
+
+  it("applies multipliers to post-production entries", () => {
+    const client = makeClient({
+      roleBillingMultipliers: [{ role: "Video Editor", multiplier: 0.75 }],
+    });
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Video Editor", hoursWorked: 4, payRatePerHour: 0 }],
+    });
+    const result = getProjectBillableHours(p, client);
+    expect(result.postBillable).toBe(3);
+  });
+});
+
+describe("getProjectInvoiceAmount edge cases", () => {
+  it("returns 0 for hourly billing with 0 rate", () => {
+    const client = makeClient({ billingModel: "hourly", billingRatePerHour: 0 });
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 3, payRatePerHour: 50 }],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(0);
+  });
+
+  it("returns 0 for per-project with no rates configured", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 0, projectTypeRates: [] });
+    expect(getProjectInvoiceAmount(makeProject({ projectRate: undefined }), client)).toBe(0);
+  });
+
+  it("applies role billing multipliers in hourly mode", () => {
+    const client = makeClient({
+      billingModel: "hourly",
+      billingRatePerHour: 100,
+      roleBillingMultipliers: [{ role: "2nd Videographer", multiplier: 0.5 }],
+    });
+    const p = makeProject({
+      crew: [
+        { crewMemberId: "c1", role: "Videographer", hoursWorked: 2, payRatePerHour: 0 },
+        { crewMemberId: "c2", role: "2nd Videographer", hoursWorked: 4, payRatePerHour: 0 },
+      ],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(400); // (2*1.0 + 4*0.5) * $100
+  });
+});

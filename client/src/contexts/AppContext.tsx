@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
-import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
+import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
@@ -421,10 +421,9 @@ function rowToComment(r: any): EpisodeComment {
 }
 
 function rowToOrg(r: any): Organization {
-  const defaultFeatures = { calendar: true, crewManagement: true, invoicing: true, mileage: false, expenses: false, clientPortal: false, contentSeries: false, partnerSplits: false };
   return {
     id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
-    features: { ...defaultFeatures, ...(r.features || {}) },
+    features: { ...DEFAULT_FEATURES, ...(r.features || {}) },
     productionType: r.production_type || "both",
     defaultBillingModel: r.default_billing_model || "hourly",
     defaultBillingRate: Number(r.default_billing_rate ?? 0),
@@ -1109,12 +1108,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
     // Auto-finalize editor billing when project is completed
     if (p.status === "completed" && !patch.editor_billing) {
-      const existing = rawData.projects.find(x => x.id === id);
-      if (existing?.editorBilling && !existing.editorBilling.finalized) {
-        patch.editor_billing = { ...existing.editorBilling, finalized: true };
+      const { data: current } = await supabase.from("projects").select("editor_billing").eq("id", id).single();
+      if (current?.editor_billing && !current.editor_billing.finalized) {
+        patch.editor_billing = { ...current.editor_billing, finalized: true };
       }
     }
-    if (p.projectRate != null) patch.project_rate = p.projectRate;
+    if (p.projectRate !== undefined) patch.project_rate = p.projectRate;
     if (p.paidDate !== undefined) patch.paid_date = p.paidDate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
@@ -1232,6 +1231,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("contractor_invoices").insert({
       id,
+      ...(orgId ? { org_id: orgId } : {}),
       crew_member_id: inv.crewMemberId,
       invoice_number: inv.invoiceNumber,
       recipient_type: inv.recipientType,
@@ -1248,7 +1248,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const cinv = rowToContractorInvoice(row);
     setRawData(d => ({ ...d, contractorInvoices: [cinv, ...d.contractorInvoices] }));
     return cinv;
-  }, []);
+  }, [orgId]);
 
   const updateContractorInvoice = useCallback(async (id: string, inv: Partial<ContractorInvoice>) => {
     const patch: any = {};

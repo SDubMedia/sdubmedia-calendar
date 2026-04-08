@@ -169,7 +169,7 @@ export const seedData: AppData = {
 export function getProjectWorkedHours(project: Project): { crewHours: number; postHours: number; totalHours: number } {
   const crewHours = (project.crew || []).reduce((s, c) => s + Number(c.hoursWorked ?? 0), 0);
   const postHours = (project.postProduction || []).reduce((s, c) => {
-    if (c.role === "Photo Editor" && project.editorBilling?.finalHours) {
+    if (c.role === "Photo Editor" && project.editorBilling?.finalHours != null) {
       return s + project.editorBilling.finalHours;
     }
     return s + Number(c.hoursWorked ?? 0);
@@ -233,7 +233,7 @@ export function getProjectBillableHours(project: Project, client: Client): {
 } {
   const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
 
-  if (project.editorBilling?.finalHours) {
+  if (project.editorBilling?.finalHours != null) {
     // Photo editor hours come from the calculator; exclude photo editor entries from normal calculation
     const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor");
     const postBillable = nonPhotoEditorPost.reduce((s, e) => s + getBillableHours(e, client), 0);

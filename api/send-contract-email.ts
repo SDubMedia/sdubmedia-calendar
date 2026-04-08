@@ -4,6 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
+import { verifyAuth } from "./_auth";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -11,9 +12,8 @@ const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  // Basic auth check — verify Bearer token exists
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ") || auth.length < 20) return res.status(401).json({ error: "Unauthorized" });
+  const user = await verifyAuth(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 

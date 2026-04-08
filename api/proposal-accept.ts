@@ -129,6 +129,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const { error: updateError, count } = await supabase.from("proposals").update(updatePayload).eq("id", proposal.id).eq("status", "sent");
 
   if (updateError) return res.status(500).json({ error: updateError.message });
+  if (count === 0) return res.status(409).json({ error: "Proposal already accepted" });
 
   // Check if payment required: first via milestones, then legacy paymentConfig
   const hasAtSigningMilestone = resolvedMilestones.some((m: any) => m.dueType === "at_signing");

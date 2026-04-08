@@ -5,7 +5,7 @@
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
 import { getProjectBillableHours, getProjectInvoiceAmount } from "./data";
 
-function formatPhone(phone: string): string {
+export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   if (digits.length === 11 && digits[0] === "1") return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
@@ -130,33 +130,28 @@ export function buildLineItems(
         items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
       }
     } else {
-      // Hourly billing — show crew and editors separately
+      // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
       const rate = Number(client.billingRatePerHour ?? 0);
+      const { crewBillable, postBillable } = getProjectBillableHours(p, client);
 
-      if (p.crew.length > 0) {
-        const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
+      if (p.crew.length > 0 && crewBillable > 0) {
         const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
-        if (crewHours > 0) {
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Production (${crewRoles})`,
-            quantity: crewHours,
-            unitPrice: rate, amount: crewHours * rate,
-          });
-        }
+        items.push({
+          projectId: p.id, date: p.date,
+          description: `${projectLabel} — Production (${crewRoles})`,
+          quantity: crewBillable,
+          unitPrice: rate, amount: crewBillable * rate,
+        });
       }
 
-      if (p.postProduction.length > 0) {
-        const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
+      if (p.postProduction.length > 0 && postBillable > 0) {
         const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
-        if (postHours > 0) {
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Editing (${postRoles})`,
-            quantity: postHours,
-            unitPrice: rate, amount: postHours * rate,
-          });
-        }
+        items.push({
+          projectId: p.id, date: p.date,
+          description: `${projectLabel} — Editing (${postRoles})`,
+          quantity: postBillable,
+          unitPrice: rate, amount: postBillable * rate,
+        });
       }
 
       // Fallback if no crew/post data

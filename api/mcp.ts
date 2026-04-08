@@ -351,13 +351,24 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
 // ---- MCP Protocol Handler ----
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS for Claude.ai
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const allowedOrigins = ["https://claude.ai", "https://www.claude.ai"];
+  const origin = req.headers.origin || "";
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
   res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Verify API key — MCP clients must send X-API-Key or Authorization: Bearer <key>
+  const apiKey = req.headers["x-api-key"] || (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : "");
+  const expectedKey = process.env.SLATE_API_KEY;
+  if (!expectedKey || apiKey !== expectedKey) {
+    return res.status(401).json({ jsonrpc: "2.0", error: { code: -32600, message: "Unauthorized — invalid or missing API key" }, id: null });
   }
 
   // GET request — Claude.ai may use this to open an SSE stream for notifications

@@ -164,9 +164,9 @@ export default function DashboardPage() {
 
   // Mileage summary for the current user's crew member
   const mileageStats = useMemo(() => {
-    const crewMemberId = profile?.crewMemberId || "";
-    // For owner, find their crew member by matching email or use crew_geoff
-    const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === profile?.email)?.id || "";
+    const crewMemberId = effectiveProfile?.crewMemberId || "";
+    // For owner, find their crew member by matching email
+    const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id || "";
     if (!ownerCrewId) return { monthMiles: 0, yearMiles: 0, tripCount: 0 };
 
     const distances = data.crewLocationDistances.filter(d => d.crewMemberId === ownerCrewId);
@@ -201,7 +201,7 @@ export default function DashboardPage() {
     });
 
     return { monthMiles: Math.round(monthMiles * 10) / 10, yearMiles: Math.round(yearMiles * 10) / 10, tripCount };
-  }, [data.projects, data.crewLocationDistances, data.crewMembers, profile, currentYear, currentMonth]);
+  }, [data.projects, data.crewLocationDistances, data.crewMembers, effectiveProfile, currentYear, currentMonth]);
 
   return (
     <div className="flex flex-col h-full">
@@ -353,6 +353,32 @@ export default function DashboardPage() {
 
         </>)}
 
+        {/* Pipeline Summary — full width */}
+        {isFeatureVisible("pipeline") && (
+        <div className="bg-card border border-border rounded-lg">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Users className="w-4 h-4 text-primary" />
+              Pipeline
+            </h3>
+            <Link href="/pipeline" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+              View All <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="flex overflow-x-auto divide-x divide-border">
+            {pipelineStages.filter(s => s.id !== "archived").map(s => {
+              const colorClass = `text-${s.color}-400`;
+              return (
+                <div key={s.id} className="p-3 text-center flex-1 min-w-[60px]">
+                  <p className={cn("text-xl font-bold", pipelineCounts[s.id] > 0 ? colorClass : "text-muted-foreground/30")}>{pipelineCounts[s.id] || 0}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        )}
+
         {/* Middle Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Upcoming Projects */}
@@ -374,7 +400,7 @@ export default function DashboardPage() {
                   const client = data.clients.find(c => c.id === p.clientId);
                   const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                   const loc = data.locations.find(l => l.id === p.locationId);
-                  const crewNames = p.crew.map(c => data.crewMembers.find(cm => cm.id === c.crewMemberId)?.name ?? "").filter(Boolean);
+                  const crewNames = (p.crew || []).map(c => data.crewMembers.find(cm => cm.id === c.crewMemberId)?.name ?? "").filter(Boolean);
                   return (
                     <div key={p.id} className="px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(p)}>
                       <div className="flex items-start justify-between">
@@ -437,32 +463,6 @@ export default function DashboardPage() {
             </div>
           </div>
           )}
-
-          {/* Pipeline Summary */}
-          {isFeatureVisible("pipeline") && (
-          <div className="bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                <Users className="w-4 h-4 text-primary" />
-                Pipeline
-              </h3>
-              <Link href="/pipeline" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                View All <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-            <div className="flex overflow-x-auto divide-x divide-border">
-              {pipelineStages.filter(s => s.id !== "archived").map(s => {
-                const colorClass = `text-${s.color}-400`;
-                return (
-                  <div key={s.id} className="p-3 text-center flex-1 min-w-[60px]">
-                    <p className={cn("text-xl font-bold", pipelineCounts[s.id] > 0 ? colorClass : "text-muted-foreground/30")}>{pipelineCounts[s.id] || 0}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          )}
         </div>
 
         {/* Mileage Summary */}
@@ -503,9 +503,26 @@ export default function DashboardPage() {
                 <XAxis dataKey="name" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  formatter={(value: number, name: string) => [formatCurrencyFull(value), name === "revenue" ? "Revenue" : "Crew Cost"]}
+                  cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="rounded-lg overflow-hidden shadow-xl" style={{ minWidth: 140 }}>
+                        <div className="px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: "#0088ff" }}>{label}</div>
+                        <div className="bg-zinc-900 px-3 py-2 space-y-1">
+                          {payload.map((entry: any) => (
+                            <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
+                                <span className="text-zinc-400">{entry.dataKey === "revenue" ? "Revenue" : "Crew Cost"}</span>
+                              </span>
+                              <span className="font-semibold text-white">{formatCurrencyFull(entry.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }}
                 />
                 <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
                   {chartData.map((_, i) => (

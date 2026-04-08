@@ -4,15 +4,13 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { verifyAuth } from "./_auth";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  // Verify auth via Bearer token (same as other API endpoints)
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  const user = await verifyAuth(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const { origin, destination } = req.body;
   if (!origin || !destination) {
