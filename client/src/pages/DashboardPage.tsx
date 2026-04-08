@@ -504,19 +504,20 @@ export default function DashboardPage() {
                 <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
                   cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                  wrapperStyle={{ background: "transparent", border: "none", padding: 0, boxShadow: "none" }}
                   content={({ active, payload, label }) => {
                     if (!active || !payload?.length) return null;
                     return (
-                      <div className="rounded-lg overflow-hidden shadow-xl" style={{ minWidth: 140 }}>
-                        <div className="px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: "#0088ff" }}>{label}</div>
-                        <div className="bg-zinc-900 px-3 py-2 space-y-1">
+                      <div style={{ minWidth: 140, borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+                        <div style={{ backgroundColor: "#0088ff", padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#fff" }}>{label}</div>
+                        <div style={{ backgroundColor: "#18181b", padding: "8px 12px" }}>
                           {payload.map((entry: any) => (
-                            <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-xs">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
-                                <span className="text-zinc-400">{entry.dataKey === "revenue" ? "Revenue" : "Crew Cost"}</span>
+                            <div key={entry.dataKey} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, fontSize: 12, marginBottom: 4 }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: entry.color || entry.fill, display: "inline-block" }} />
+                                <span style={{ color: "#a1a1aa" }}>{entry.dataKey === "revenue" ? "Revenue" : "Crew Cost"}</span>
                               </span>
-                              <span className="font-semibold text-white">{formatCurrencyFull(entry.value)}</span>
+                              <span style={{ fontWeight: 600, color: "#fff" }}>{formatCurrencyFull(entry.value)}</span>
                             </div>
                           ))}
                         </div>
