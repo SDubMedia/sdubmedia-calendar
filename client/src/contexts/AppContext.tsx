@@ -2,12 +2,13 @@
 // Slate — App Data Context (Supabase)
 // ============================================================
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
 import { useAuth } from "./AuthContext";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface AppContextValue {
   data: AppData;
@@ -569,6 +570,113 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [orgId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ---- Supabase Realtime — sync changes from other users ----
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    if (!orgId) return;
+
+    // Table → { key in AppData, row converter, sort comparator (optional) }
+    const tableConfig: Record<string, {
+      key: keyof AppData;
+      convert: (r: any) => any;
+      sort?: (a: any, b: any) => number;
+      isSingleton?: boolean;
+      softDelete?: boolean;
+    }> = {
+      clients: { key: "clients", convert: rowToClient, sort: (a, b) => a.company.localeCompare(b.company) },
+      crew_members: { key: "crewMembers", convert: rowToCrew, sort: (a, b) => a.name.localeCompare(b.name) },
+      locations: { key: "locations", convert: rowToLocation, sort: (a, b) => a.name.localeCompare(b.name) },
+      project_types: { key: "projectTypes", convert: rowToProjectType, sort: (a, b) => a.name.localeCompare(b.name) },
+      projects: { key: "projects", convert: rowToProject, sort: (a, b) => a.date.localeCompare(b.date) },
+      marketing_expenses: { key: "marketingExpenses", convert: rowToExpense },
+      invoices: { key: "invoices", convert: rowToInvoice, softDelete: true },
+      contractor_invoices: { key: "contractorInvoices", convert: rowToContractorInvoice },
+      crew_location_distances: { key: "crewLocationDistances", convert: rowToCrewLocationDistance },
+      manual_trips: { key: "manualTrips", convert: rowToManualTrip },
+      business_expenses: { key: "businessExpenses", convert: rowToBusinessExpense },
+      category_rules: { key: "categoryRules", convert: rowToCategoryRule },
+      time_entries: { key: "timeEntries", convert: rowToTimeEntry },
+      contract_templates: { key: "contractTemplates", convert: rowToContractTemplate, softDelete: true },
+      contracts: { key: "contracts", convert: rowToContract, softDelete: true },
+      proposal_templates: { key: "proposalTemplates", convert: rowToProposalTemplate, softDelete: true },
+      proposals: { key: "proposals", convert: rowToProposal, softDelete: true },
+      pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
+      series: { key: "series", convert: rowToSeries },
+      organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
+    };
+
+    const channel = supabase.channel(`realtime-${orgId}`);
+
+    for (const [table, cfg] of Object.entries(tableConfig)) {
+      channel.on(
+        "postgres_changes" as any,
+        { event: "*", schema: "public", table },
+        (payload: any) => {
+          try {
+            const { eventType, new: newRow, old: oldRow } = payload;
+
+            if (cfg.isSingleton) {
+              if (eventType === "UPDATE" && newRow) {
+                setRawData(d => ({ ...d, [cfg.key]: cfg.convert(newRow) }));
+              }
+              return;
+            }
+
+            setRawData(d => {
+              const list = d[cfg.key] as any[];
+
+              if (eventType === "INSERT" && newRow) {
+                // Skip if already exists (our own optimistic add)
+                if (list.some((item: any) => item.id === newRow.id)) return d;
+                // Skip soft-deleted rows
+                if (cfg.softDelete && newRow.deleted_at) return d;
+                let converted: any;
+                try { converted = cfg.convert(newRow); } catch { return d; }
+                const updated = [...list, converted];
+                if (cfg.sort) updated.sort(cfg.sort);
+                return { ...d, [cfg.key]: updated };
+              }
+
+              if (eventType === "UPDATE" && newRow) {
+                // Soft-deleted → remove from list
+                if (cfg.softDelete && newRow.deleted_at) {
+                  return { ...d, [cfg.key]: list.filter((item: any) => item.id !== newRow.id) };
+                }
+                let converted: any;
+                try { converted = cfg.convert(newRow); } catch { return d; }
+                const exists = list.some((item: any) => item.id === newRow.id);
+                if (!exists) {
+                  // Wasn't in our list (e.g. un-soft-deleted) — add it
+                  const updated = [...list, converted];
+                  if (cfg.sort) updated.sort(cfg.sort);
+                  return { ...d, [cfg.key]: updated };
+                }
+                return { ...d, [cfg.key]: list.map((item: any) => item.id === newRow.id ? converted : item) };
+              }
+
+              if (eventType === "DELETE" && oldRow) {
+                return { ...d, [cfg.key]: list.filter((item: any) => item.id !== oldRow.id) };
+              }
+
+              return d;
+            });
+          } catch {
+            // Ignore malformed realtime events
+          }
+        }
+      );
+    }
+
+    channel.subscribe();
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [orgId]);
 
   // ---- Clients ----
   const addClient = useCallback(async (c: Omit<Client, "id" | "createdAt">): Promise<Client> => {
