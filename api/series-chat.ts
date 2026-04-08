@@ -85,6 +85,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Message is required" });
     }
 
+    // Guard against runaway token usage
+    if (typeof message !== "string" || message.length > 10_000) {
+      return res.status(413).json({ error: "Message too long (max 10,000 characters)" });
+    }
+
     const episodeList = (episodes || [])
       .map((e: any) => `  Episode ${e.number}: "${e.title}" — ${e.concept || "No concept yet"} [${e.status}]`)
       .join("\n");
@@ -115,11 +120,12 @@ You have tools to directly create and update episodes on the production board. U
 
 The person you're talking to is ${senderName || "the user"}. Be conversational, creative, and enthusiastic about the project.`;
 
-    // Build message history
+    // Build message history — cap to last 8 turns to prevent token abuse
     const claudeMessages: Anthropic.MessageParam[] = [];
+    const cappedHistory = Array.isArray(history) ? history.slice(-8) : [];
 
     // Add history (simplified — just user/assistant text)
-    for (const m of (history || [])) {
+    for (const m of cappedHistory) {
       if (m.role === "user" || m.role === "assistant") {
         claudeMessages.push({ role: m.role, content: m.content });
       }

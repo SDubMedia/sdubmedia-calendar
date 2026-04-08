@@ -4,7 +4,13 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth, escapeHtml } from "./_auth";
+import { createClient } from "@supabase/supabase-js";
+import { verifyAuth, getUserOrgId, escapeHtml } from "./_auth";
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
+);
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -19,6 +25,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+
+  const callerOrgId = await getUserOrgId(user.userId);
 
   try {
     // Parse multipart form data — Vercel auto-parses with formidable
@@ -97,6 +105,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!recipientEmail || !pdfBuffer) {
       return res.status(400).json({ error: "Missing recipientEmail or PDF attachment" });
+    }
+
+    // Validate recipient is a known client in this org — prevents email relay abuse
+    if (callerOrgId) {
+      const { data: clients } = await supabase
+        .from("clients")
+        .select("email")
+        .eq("org_id", callerOrgId);
+      const knownEmails = (clients || []).map((c: any) => (c.email || "").toLowerCase()).filter(Boolean);
+      if (knownEmails.length > 0 && !knownEmails.includes(recipientEmail.toLowerCase())) {
+        return res.status(403).json({ error: "Recipient is not a known client for this organization" });
+      }
     }
 
     const totalFormatted = `$${Number(total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

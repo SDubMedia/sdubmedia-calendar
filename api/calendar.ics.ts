@@ -28,33 +28,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const key = req.query.key as string;
   if (!key) return res.status(401).send("Unauthorized");
 
-  // Accept either SLATE_API_KEY or a valid org_id
   const db = createClient(supabaseUrl, supabaseKey);
-  if (key !== process.env.SLATE_API_KEY) {
+
+  // Resolve which org's data to show
+  let callerOrgId: string;
+  if (key === process.env.SLATE_API_KEY) {
+    // Platform key — use first org (single-tenant) or require orgId param
+    const { data: firstOrg } = await db.from("organizations").select("id").limit(1).single();
+    if (!firstOrg) return res.status(404).send("No organization found");
+    callerOrgId = firstOrg.id;
+  } else {
+    // Org-id key — verify it exists and use it to scope data
     const { data: org } = await db.from("organizations").select("id").eq("id", key).single();
     if (!org) return res.status(401).send("Unauthorized");
+    callerOrgId = org.id;
   }
 
   const calType = (req.query.type as string) || "all";
 
-  // Fetch projects
+  // Fetch projects — scoped to org
   let projects: any[] = [];
   if (calType === "all" || calType === "production") {
-    const { data } = await db.from("projects").select("*").neq("status", "deleted").order("date");
+    const { data } = await db.from("projects").select("*").eq("org_id", callerOrgId).neq("status", "deleted").order("date");
     projects = data || [];
   }
 
-  // Fetch personal events
+  // Fetch personal events — scoped to org
   let personalEvents: any[] = [];
   if (calType === "all" || calType === "personal") {
-    const { data } = await db.from("personal_events").select("*").order("date");
+    const { data } = await db.from("personal_events").select("*").eq("org_id", callerOrgId).order("date");
     personalEvents = data || [];
   }
 
-  // Fetch reference data for project names
-  const { data: clientsRaw } = await db.from("clients").select("id, company");
-  const { data: typesRaw } = await db.from("project_types").select("id, name");
-  const { data: locsRaw } = await db.from("locations").select("id, name, address, city, state");
+  // Fetch reference data for project names — scoped to org
+  const { data: clientsRaw } = await db.from("clients").select("id, company").eq("org_id", callerOrgId);
+  const { data: typesRaw } = await db.from("project_types").select("id, name").eq("org_id", callerOrgId);
+  const { data: locsRaw } = await db.from("locations").select("id, name, address, city, state").eq("org_id", callerOrgId);
   const clients = Object.fromEntries((clientsRaw || []).map((c: any) => [c.id, c.company]));
   const types = Object.fromEntries((typesRaw || []).map((t: any) => [t.id, t.name]));
   const locs = Object.fromEntries((locsRaw || []).map((l: any) => [l.id, { name: l.name, address: `${l.address}, ${l.city}, ${l.state}` }]));

@@ -515,6 +515,11 @@ export default function InvoicesPage() {
                   {/* Send Email Inline Form */}
                   {sendingId === inv.id && (
                     <div className="mt-3 p-3 bg-secondary/50 rounded-lg space-y-3 border border-border">
+                      {!sendEmail && (
+                        <div className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-md px-3 py-2">
+                          This client has no email on file. Add one on the <a href="/clients" className="underline hover:text-amber-300">Clients page</a> or enter one below.
+                        </div>
+                      )}
                       <div>
                         <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
                         <input
