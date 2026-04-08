@@ -4,7 +4,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyAuth } from "./_auth";
+import { verifyAuth } from "./_auth.js";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "10mb" } },

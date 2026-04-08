@@ -4,11 +4,11 @@
 // ============================================================
 
 import type { VercelRequest } from "@vercel/node";
+import { timingSafeEqual } from "crypto";
 
 export function verifyApiKey(req: VercelRequest): boolean {
   const key = req.headers["x-api-key"] as string | undefined;
   const expected = process.env.SLATE_API_KEY;
   if (!expected || !key || key.length !== expected.length) return false;
-  const { timingSafeEqual } = require("crypto");
   return timingSafeEqual(Buffer.from(key), Buffer.from(expected));
 }

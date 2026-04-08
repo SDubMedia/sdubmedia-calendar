@@ -5,6 +5,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import type { VercelRequest } from "@vercel/node";
+import { timingSafeEqual } from "crypto";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -53,7 +54,6 @@ export function isAllowedUrl(url: string): boolean {
 export function verifyApiKeyTimingSafe(key: string | undefined, expected: string | undefined): boolean {
   if (!key || !expected) return false;
   if (key.length !== expected.length) return false;
-  const { timingSafeEqual } = require("crypto");
   return timingSafeEqual(Buffer.from(key), Buffer.from(expected));
 }
 

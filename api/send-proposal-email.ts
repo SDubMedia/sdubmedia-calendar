@@ -4,7 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth, isAllowedUrl, escapeHtml } from "./_auth";
+import { verifyAuth, isAllowedUrl, escapeHtml } from "./_auth.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";

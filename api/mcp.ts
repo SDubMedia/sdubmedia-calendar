@@ -7,6 +7,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { timingSafeEqual } from "crypto";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -370,7 +371,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!expectedKey || !apiKey || apiKey.length !== expectedKey.length) {
     return res.status(401).json({ jsonrpc: "2.0", error: { code: -32600, message: "Unauthorized — invalid or missing API key" }, id: null });
   }
-  const { timingSafeEqual } = require("crypto");
   if (!timingSafeEqual(Buffer.from(apiKey), Buffer.from(expectedKey))) {
     return res.status(401).json({ jsonrpc: "2.0", error: { code: -32600, message: "Unauthorized — invalid or missing API key" }, id: null });
   }

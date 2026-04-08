@@ -74,7 +74,9 @@ export default function MileageReportPage() {
           await upsertDistance(crewMemberId, loc.id, distanceMiles);
           count++;
         }
-      } catch { /* skip */ }
+      } catch (err: any) {
+          console.error(`Distance calc failed for ${loc.name}:`, err.message || err);
+        }
     }
     setRecalculating(false);
     if (count > 0) toast.success(`Updated distances for ${count} location${count !== 1 ? "s" : ""}`);

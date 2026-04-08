@@ -5,7 +5,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, escapeHtml } from "./_auth";
+import { verifyAuth, getUserOrgId, escapeHtml } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
