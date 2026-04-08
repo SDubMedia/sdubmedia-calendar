@@ -8,7 +8,7 @@ import type { VercelRequest } from "@vercel/node";
 import { timingSafeEqual } from "crypto";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
 
 export async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   if (!supabaseUrl || !supabaseServiceKey) {
