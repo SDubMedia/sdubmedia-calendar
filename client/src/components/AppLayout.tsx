@@ -69,7 +69,7 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 const navStructure: NavEntry[] = [
   // Top-level items (no group)
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"], feature: "calendar" },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
 
   // Sales — owner and partner only
