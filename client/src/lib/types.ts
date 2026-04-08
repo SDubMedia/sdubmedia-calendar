@@ -540,6 +540,8 @@ export interface TimeEntry {
   endTime: string | null;
   durationMinutes: number | null;
   autoStopped: boolean;
+  pausedAt: string | null;
+  totalPausedMs: number;
   notes: string;
   createdAt: string;
 }

@@ -158,7 +158,10 @@ function rowToTimeEntry(r: any): TimeEntry {
     id: r.id, crewMemberId: r.crew_member_id, projectId: r.project_id,
     startTime: r.start_time, endTime: r.end_time || null,
     durationMinutes: r.duration_minutes != null ? Number(r.duration_minutes) : null,
-    autoStopped: r.auto_stopped || false, notes: r.notes || "", createdAt: r.created_at,
+    autoStopped: r.auto_stopped || false,
+    pausedAt: r.paused_at || null,
+    totalPausedMs: Number(r.total_paused_ms ?? 0),
+    notes: r.notes || "", createdAt: r.created_at,
   };
 }
 
@@ -766,7 +769,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("time_entries").insert({
       id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: t.crewMemberId, project_id: t.projectId,
       start_time: t.startTime, end_time: t.endTime, duration_minutes: t.durationMinutes,
-      auto_stopped: t.autoStopped, notes: t.notes,
+      auto_stopped: t.autoStopped, paused_at: t.pausedAt, total_paused_ms: t.totalPausedMs,
+      notes: t.notes,
     }).select().single();
     if (error) throw new Error(error.message);
     const entry = rowToTimeEntry(row);
@@ -779,6 +783,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.endTime !== undefined) patch.end_time = t.endTime;
     if (t.durationMinutes !== undefined) patch.duration_minutes = t.durationMinutes;
     if (t.autoStopped !== undefined) patch.auto_stopped = t.autoStopped;
+    if (t.pausedAt !== undefined) patch.paused_at = t.pausedAt;
+    if (t.totalPausedMs !== undefined) patch.total_paused_ms = t.totalPausedMs;
     if (t.notes !== undefined) patch.notes = t.notes;
     const { error } = await supabase.from("time_entries").update(patch).eq("id", id);
     if (error) throw new Error(error.message);

@@ -1,12 +1,12 @@
 // ============================================================
 // TimerWidget — Persistent timer in header bar
-// Auto-stops at 2 hours if forgotten
+// Supports pause/resume, auto-stops at 2 hours
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { Play, Square, Clock } from "lucide-react";
+import { Play, Square, Clock, Pause } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,12 @@ import { cn } from "@/lib/utils";
 const AUTO_STOP_MINUTES = 120; // 2 hours
 
 function formatElapsed(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const s = Math.max(0, seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 export default function TimerWidget() {
@@ -38,27 +39,35 @@ export default function TimerWidget() {
     return data.timeEntries.find(t => t.crewMemberId === crewMemberId && !t.endTime) || null;
   }, [data.timeEntries, crewMemberId]);
 
+  const isPaused = !!activeTimer?.pausedAt;
+
   // Tick the timer
   useEffect(() => {
     if (!activeTimer) { setElapsed(0); return; }
 
     const startTime = new Date(activeTimer.startTime).getTime();
+    const totalPausedMs = activeTimer.totalPausedMs || 0;
 
     const tick = () => {
       const now = Date.now();
-      const secs = Math.floor((now - startTime) / 1000);
+      let activePauseMs = 0;
+      if (activeTimer.pausedAt) {
+        activePauseMs = now - new Date(activeTimer.pausedAt).getTime();
+      }
+      const secs = Math.floor((now - startTime - totalPausedMs - activePauseMs) / 1000);
       setElapsed(secs);
 
-      // Auto-stop at 2 hours
+      // Auto-stop at 2 hours of active time
       if (secs >= AUTO_STOP_MINUTES * 60) {
         stopTimer(true);
       }
     };
 
     tick();
-    const interval = setInterval(tick, 1000);
+    // Tick every second when running, every 10s when paused (just to stay in sync)
+    const interval = setInterval(tick, activeTimer.pausedAt ? 10000 : 1000);
     return () => clearInterval(interval);
-  }, [activeTimer?.id]);
+  }, [activeTimer?.id, activeTimer?.pausedAt, activeTimer?.totalPausedMs]);
 
   // Get project name for active timer
   const activeProject = useMemo(() => {
@@ -92,6 +101,8 @@ export default function TimerWidget() {
         endTime: null,
         durationMinutes: null,
         autoStopped: false,
+        pausedAt: null,
+        totalPausedMs: 0,
         notes: "",
       });
       toast.success("Timer started");
@@ -102,25 +113,61 @@ export default function TimerWidget() {
     }
   }
 
+  async function pauseTimer() {
+    if (!activeTimer || isPaused) return;
+    try {
+      await updateTimeEntry(activeTimer.id, {
+        pausedAt: new Date().toISOString(),
+      });
+      toast.success("Timer paused");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to pause timer");
+    }
+  }
+
+  async function resumeTimer() {
+    if (!activeTimer || !activeTimer.pausedAt) return;
+    const pausedMs = Date.now() - new Date(activeTimer.pausedAt).getTime();
+    try {
+      await updateTimeEntry(activeTimer.id, {
+        pausedAt: null,
+        totalPausedMs: (activeTimer.totalPausedMs || 0) + pausedMs,
+      });
+      toast.success("Timer resumed");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to resume timer");
+    }
+  }
+
   async function stopTimer(auto = false) {
     if (!activeTimer) return;
 
     const endTime = new Date().toISOString();
     const startMs = new Date(activeTimer.startTime).getTime();
-    let durationMs = new Date(endTime).getTime() - startMs;
+    const endMs = new Date(endTime).getTime();
 
-    // Cap at 2 hours if auto-stopped
-    if (auto && durationMs > AUTO_STOP_MINUTES * 60 * 1000) {
-      durationMs = AUTO_STOP_MINUTES * 60 * 1000;
+    // Account for any active pause at stop time
+    let totalPausedMs = activeTimer.totalPausedMs || 0;
+    if (activeTimer.pausedAt) {
+      totalPausedMs += endMs - new Date(activeTimer.pausedAt).getTime();
     }
 
-    const durationMinutes = Math.round((durationMs / 1000 / 60) * 100) / 100;
+    let activeMs = endMs - startMs - totalPausedMs;
+
+    // Cap at 2 hours if auto-stopped
+    if (auto && activeMs > AUTO_STOP_MINUTES * 60 * 1000) {
+      activeMs = AUTO_STOP_MINUTES * 60 * 1000;
+    }
+
+    const durationMinutes = Math.round((activeMs / 1000 / 60) * 100) / 100;
 
     try {
       await updateTimeEntry(activeTimer.id, {
         endTime,
-        durationMinutes,
+        durationMinutes: Math.max(0, durationMinutes),
         autoStopped: auto,
+        pausedAt: null,
+        totalPausedMs,
       });
 
       const hrs = Math.floor(durationMinutes / 60);
@@ -140,23 +187,43 @@ export default function TimerWidget() {
   return (
     <>
       {activeTimer ? (
-        // Running timer
-        <button
-          onClick={() => stopTimer(false)}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-            elapsed >= (AUTO_STOP_MINUTES - 10) * 60
-              ? "bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse"
-              : "bg-green-500/20 text-green-300 border border-green-500/30"
-          )}
-        >
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="font-mono">{formatElapsed(elapsed)}</span>
-          <span className="hidden sm:inline text-green-400/70">
-            {activeProject?.name}
-          </span>
-          <Square className="w-3 h-3 ml-1" />
-        </button>
+        // Running or paused timer
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => stopTimer(false)}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-l-lg text-xs font-medium transition-colors",
+              isPaused
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                : elapsed >= (AUTO_STOP_MINUTES - 10) * 60
+                  ? "bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse"
+                  : "bg-green-500/20 text-green-300 border border-green-500/30"
+            )}
+          >
+            {isPaused ? (
+              <div className="w-2 h-2 rounded-sm bg-amber-400" />
+            ) : (
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            )}
+            <span className="font-mono">{formatElapsed(elapsed)}</span>
+            <span className="hidden sm:inline text-inherit opacity-70">
+              {activeProject?.name}{isPaused ? " (paused)" : ""}
+            </span>
+            <Square className="w-3 h-3 ml-1" />
+          </button>
+          <button
+            onClick={isPaused ? resumeTimer : pauseTimer}
+            className={cn(
+              "flex items-center justify-center w-8 h-[34px] rounded-r-lg text-xs font-medium transition-colors border",
+              isPaused
+                ? "bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30"
+                : "bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30"
+            )}
+            title={isPaused ? "Resume" : "Pause"}
+          >
+            {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+          </button>
+        </div>
       ) : (
         // Start button
         <button
