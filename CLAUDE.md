@@ -220,3 +220,16 @@ These rules exist because real penetration testing found real vulnerabilities. D
 - `escapeHtml(str)` — prevents XSS in HTML emails
 - `isAllowedUrl(url)` — validates URL is on an allowed domain
 - `verifyApiKeyTimingSafe(key, expected)` — timing-safe API key comparison
+
+## Lessons Learned — Update This File
+
+When a bug or breakage is caused by a missing convention (like the ESM import fix), **add the rule to this file before closing the task.** If you got burned by it, future conversations will too.
+
+Format: add the rule where it belongs (API section, Security section, etc.) and add a "Don't X" line to "What NOT To Do" as a backstop.
+
+## Debugging — Diagnose Before Guessing
+
+- **Check Vercel logs first** (`vercel logs`) when an API function fails. The error message in the UI is often misleading.
+- **Never trust silent catch blocks.** If a catch block swallows errors, fix it — log or surface the error.
+- **Test the actual endpoint** (`curl`) before assuming the problem is in the frontend.
+- **When the user reports a symptom, find the root cause.** Don't fix the surface-level error message — trace it back to what's actually broken.
