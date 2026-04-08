@@ -154,7 +154,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           : role === "partner" ? features.partnerFeatures
           : role === "client" ? features.clientFeatures
           : undefined;
-        if (roleOverrides && roleOverrides[item.feature] !== undefined) {
+        if (roleOverrides) {
           if (!roleOverrides[item.feature]) return false;
         } else if (!features[item.feature as keyof typeof features]) {
           return false;

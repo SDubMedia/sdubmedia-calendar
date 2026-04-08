@@ -50,7 +50,7 @@ export default function DashboardPage() {
     const roleOverrides = role === "staff" ? features.staffFeatures
       : role === "partner" ? features.partnerFeatures
       : role === "client" ? features.clientFeatures : undefined;
-    if (roleOverrides && (roleOverrides as any)[key] !== undefined) return (roleOverrides as any)[key];
+    if (roleOverrides) return (roleOverrides as any)[key] ?? false;
     return (features as any)[key] ?? true;
   };
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
