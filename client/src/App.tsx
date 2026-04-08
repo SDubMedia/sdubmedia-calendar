@@ -92,38 +92,33 @@ function Router() {
         ) : (
           <Route path="/" component={ClientDashboardPage} />
         )}
-        {/* Role-specific routes */}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
         {isStaff && <Route path="/my-invoices" component={MyInvoicesPage} />}
+        {(isOwner || isPartner) && <Route path="/contractor-invoices" component={ContractorInvoicesPage} />}
+        {!isStaff && <Route path="/calendar" component={CalendarPage} />}
+        {(isOwner || isPartner) && <Route path="/billing" component={BillingPage} />}
+        {(isOwner || isPartner) && <Route path="/reports" component={ReportsPage} />}
         {role === "client" && <Route path="/my-reports" component={ClientReportsPage} />}
-
-        {/* Owner-only admin routes */}
+        {(isOwner || isPartner) && <Route path="/clients" component={ClientsPage} />}
+        {(isOwner || isPartner) && <Route path="/staff" component={StaffPage} />}
+        {(isOwner || isPartner) && <Route path="/invoices" component={InvoicesPage} />}
+        <Route path="/series" component={SeriesPage} />
+        <Route path="/series/:id" component={SeriesWorkspacePage} />
+        {(isOwner || isPartner) && <Route path="/marketing-budget" component={MarketingBudgetPage} />}
+        {(isOwner || isPartner) && <Route path="/client-health" component={ClientHealthPage} />}
         {isOwner && <Route path="/locations" component={LocationsPage} />}
         {isOwner && <Route path="/manage" component={ManagePage} />}
         {isOwner && <Route path="/settings" component={SettingsPage} />}
         {isOwner && <Route path="/users" component={UsersPage} />}
-        {isOwner && <Route path="/trash" component={TrashPage} />}
-        {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
-
-        {/* Feature-gated routes — sidebar toggles control visibility */}
-        <Route path="/calendar" component={CalendarPage} />
-        <Route path="/contractor-invoices" component={ContractorInvoicesPage} />
-        <Route path="/billing" component={BillingPage} />
-        <Route path="/reports" component={ReportsPage} />
-        <Route path="/clients" component={ClientsPage} />
-        <Route path="/staff" component={StaffPage} />
-        <Route path="/invoices" component={InvoicesPage} />
-        <Route path="/series" component={SeriesPage} />
-        <Route path="/series/:id" component={SeriesWorkspacePage} />
-        <Route path="/marketing-budget" component={MarketingBudgetPage} />
-        <Route path="/client-health" component={ClientHealthPage} />
         <Route path="/mileage" component={MileageReportPage} />
-        <Route path="/profit-loss" component={ProfitLossPage} />
-        <Route path="/expenses" component={BusinessExpensesPage} />
-        <Route path="/contracts" component={ContractsPage} />
-        <Route path="/proposals" component={ProposalsPage} />
-        <Route path="/pipeline" component={PipelinePage} />
-        <Route path="/1099" component={ContractorSummaryPage} />
+        {(isOwner || isPartner) && <Route path="/profit-loss" component={ProfitLossPage} />}
+        {isOwner && <Route path="/expenses" component={BusinessExpensesPage} />}
+        {(isOwner || isPartner) && <Route path="/contracts" component={ContractsPage} />}
+        {(isOwner || isPartner) && <Route path="/proposals" component={ProposalsPage} />}
+        {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
+        {(isOwner || isPartner) && <Route path="/pipeline" component={PipelinePage} />}
+        {(isOwner || isStaff) && <Route path="/1099" component={ContractorSummaryPage} />}
+        {isOwner && <Route path="/trash" component={TrashPage} />}
         <Route path="/calendar-sync" component={CalendarSyncPage} />
         <Route path="/help" component={HelpPage} />
         <Route path="/404" component={NotFound} />

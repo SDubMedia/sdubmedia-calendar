@@ -66,62 +66,60 @@ function isGroup(entry: NavEntry): entry is NavGroup {
   return "items" in entry;
 }
 
-const allRoles: ("owner" | "partner" | "staff" | "client")[] = ["owner", "partner", "staff", "client"];
-
 const navStructure: NavEntry[] = [
   // Top-level items (no group)
-  { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: allRoles },
+  { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
 
-  // Sales — feature toggles control per-role visibility
-  { label: "Sales", icon: TrendingUp, roles: allRoles, items: [
-    { label: "Pipeline", href: "/pipeline", icon: Users, roles: allRoles, feature: "pipeline" },
-    { label: "Proposals", href: "/proposals", icon: FileText, roles: allRoles, feature: "proposals" },
-    { label: "Contracts", href: "/contracts", icon: FileText, roles: allRoles, feature: "contracts" },
+  // Sales — owner and partner only
+  { label: "Sales", icon: TrendingUp, roles: ["owner", "partner"], items: [
+    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner", "partner"], feature: "pipeline" },
+    { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner", "partner"], feature: "proposals" },
+    { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
   ]},
 
-  // Production
-  { label: "Production", icon: Clapperboard, roles: allRoles, items: [
-    { label: "Clients", href: "/clients", icon: Users, roles: allRoles, feature: "clientHealth" },
-    { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: allRoles, feature: "clientHealth" },
+  // Production — owner, partner, client (Series), staff (Series)
+  { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
+    { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"] },
+    { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"] },
-    { label: "Series", href: "/series", icon: Clapperboard, roles: allRoles, feature: "contentSeries" },
+    { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], feature: "contentSeries" },
   ]},
 
-  // Team
-  { label: "Team", icon: Users2, roles: allRoles, items: [
-    { label: "Staff", href: "/staff", icon: Users2, roles: allRoles, feature: "crewManagement" },
-    { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: allRoles, feature: "invoicing" },
+  // Team — owner and partner only
+  { label: "Team", icon: Users2, roles: ["owner", "partner"], items: [
+    { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
+    { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
   ]},
 
-  // Finance
-  { label: "Finance", icon: Receipt, roles: allRoles, items: [
-    { label: "Billing", href: "/billing", icon: FileText, roles: allRoles, feature: "invoicing" },
-    { label: "Invoices", href: "/invoices", icon: Receipt, roles: allRoles, feature: "invoicing" },
-    { label: "Expenses", href: "/expenses", icon: Receipt, roles: allRoles, feature: "expenses" },
-    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: allRoles, feature: "profitLoss" },
-    { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: allRoles, feature: "partnerSplits" },
+  // Finance — owner and partner only
+  { label: "Finance", icon: Receipt, roles: ["owner", "partner"], items: [
+    { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
+    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
+    { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   ]},
 
   // Reports
-  { label: "Reports", icon: BarChart2, roles: allRoles, items: [
-    { label: "Reports", href: "/reports", icon: BarChart2, roles: allRoles, feature: "profitLoss" },
+  { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
+    { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"] },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
-    { label: "Mileage", href: "/mileage", icon: Car, roles: allRoles, feature: "mileage" },
-    { label: "1099 Summary", href: "/1099", icon: FileText, roles: allRoles, feature: "contractor1099" },
+    { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
+    { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner", "staff"], feature: "contractor1099" },
   ]},
 
   // Staff-specific
   { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"], feature: "invoicing" },
 
-  // Admin — not feature-gated, role-restricted
+  // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
-  { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: allRoles, feature: "calendar" },
+  { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "staff"], feature: "calendar" },
   { label: "Trash", href: "/trash", icon: Trash2, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
-  { label: "Help", href: "/help", icon: HelpCircle, roles: allRoles },
+  { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

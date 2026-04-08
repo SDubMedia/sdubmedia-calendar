@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +33,9 @@ interface ContractorSummary {
 
 export default function ContractorSummaryPage() {
   const { data } = useApp();
+  const { effectiveProfile } = useAuth();
+  const isStaff = effectiveProfile?.role === "staff";
+  const myCrewMemberId = effectiveProfile?.crewMemberId;
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
 
@@ -94,10 +98,17 @@ export default function ContractorSummaryPage() {
         });
       });
 
-    return Array.from(map.values())
+    let results = Array.from(map.values())
       .filter(c => c.totalPaid > 0)
       .sort((a, b) => b.totalPaid - a.totalPaid);
-  }, [data.projects, data.crewMembers, year]);
+
+    // Staff only sees their own summary
+    if (isStaff && myCrewMemberId) {
+      results = results.filter(c => c.id === myCrewMemberId);
+    }
+
+    return results;
+  }, [data.projects, data.crewMembers, year, isStaff, myCrewMemberId]);
 
   const needs1099 = contractors.filter(c => c.needs1099);
   const under600 = contractors.filter(c => !c.needs1099);
@@ -108,9 +119,9 @@ export default function ContractorSummaryPage() {
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 print:hidden">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            1099 Contractor Summary
+            {isStaff ? "My 1099 Summary" : "1099 Contractor Summary"}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Year-end contractor pay for tax filing</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{isStaff ? "Your year-end pay summary" : "Year-end contractor pay for tax filing"}</p>
         </div>
         <Button size="sm" onClick={() => window.print()} className="gap-2">
           <Download className="w-4 h-4" /> Save as PDF
