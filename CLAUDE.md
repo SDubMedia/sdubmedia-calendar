@@ -49,11 +49,16 @@ All data flows through `client/src/contexts/AppContext.tsx`. This is the single 
 
 ## API Endpoints — Mandatory Pattern
 
-All serverless functions live in `api/*.ts`. Follow this structure:
+All serverless functions live in `api/*.ts`. This project uses `"type": "module"` (ESM). Follow this structure:
+
+**ESM rules for API functions:**
+- **All local imports MUST use `.js` extensions** — `from "./_auth.js"`, NOT `from "./_auth"`. Node.js ESM requires this even though the source files are `.ts`.
+- **Never use `require()`** — use `import` instead. `require` is not available in ESM.
+- Built-in Node modules use bare specifiers: `import { timingSafeEqual } from "crypto"` (no `.js` needed).
 
 ```typescript
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyAuth, getUserOrgId } from "./_auth";
+import { verifyAuth, getUserOrgId } from "./_auth.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Method check
@@ -183,6 +188,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
+- **Don't use bare local imports in `api/` files.** Always use `.js` extensions: `from "./_auth.js"`. Never use `require()` — this is ESM.
 
 ## Security — Mandatory Rules
 
