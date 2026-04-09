@@ -68,7 +68,7 @@ export default function MarketingBudgetPage() {
   const totalBilling = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => matchingClientIds.has(p.clientId))
+      .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return sum;
@@ -80,11 +80,12 @@ export default function MarketingBudgetPage() {
   const totalBudget = totalBilling * 0.10;
 
   // Expenses for selected year (filtered by partner + client)
+  const showAllExpenses = selectedPartner === "all" && selectedClientId === "all";
   const yearExpenses = useMemo(() => {
     return data.marketingExpenses
       .filter(e => e.date.startsWith(String(selectedYear)))
-      .filter(e => matchingClientIds.has(e.clientId));
-  }, [data.marketingExpenses, selectedYear, matchingClientIds]);
+      .filter(e => showAllExpenses || matchingClientIds.has(e.clientId));
+  }, [data.marketingExpenses, selectedYear, matchingClientIds, showAllExpenses]);
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
 
@@ -92,7 +93,7 @@ export default function MarketingBudgetPage() {
   const totalTravelCost = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => matchingClientIds.has(p.clientId))
+      .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
   }, [data.projects, selectedYear, matchingClientIds]);
 
@@ -106,7 +107,7 @@ export default function MarketingBudgetPage() {
 
       const monthBilling = data.projects
         .filter(p => p.date.startsWith(monthStr))
-        .filter(p => matchingClientIds.has(p.clientId))
+        .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
         .reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
           if (!client) return sum;
