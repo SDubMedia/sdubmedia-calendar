@@ -529,12 +529,13 @@ export default function ReportsPage() {
       </div>
       ${split ? (() => {
         const geoffCrewPay = personList.find(p => p.name === "Geoff Southworth")?.totalPay ?? 0;
-        const geoffTotal = geoffCrewPay + adminCut + travelReimbursement;
+        const geoffFromRevenue = geoffCrewPay + adminCut;
+        const geoffTotal = geoffFromRevenue + travelReimbursement;
         return `<div class="earnings-card" style="border-top: 3px solid #3b82f6; margin-bottom: 16px;">
           <div class="card-label" style="color: #3b82f6; font-weight: 600;">Geoff Southworth — Total Payout</div>
           <div class="card-value">${formatCurrency(geoffTotal)}</div>
           <div class="card-note" style="margin-top:6px;font-size:12px;color:#555">
-            Crew: ${formatCurrency(geoffCrewPay)} · Admin: ${formatCurrency(adminCut)} · Travel: ${formatCurrency(travelReimbursement)}
+            Crew: ${formatCurrency(geoffCrewPay)} · Admin: ${formatCurrency(adminCut)}${travelReimbursement > 0 ? ` · Travel: ${formatCurrency(travelReimbursement)} (from spending budget)` : ""}
           </div>
         </div>`;
       })() : ""}
@@ -548,11 +549,18 @@ export default function ReportsPage() {
             <tbody>${payTableRows}
               ${partnerName ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
               ${split ? `<tr><td>Geoff Southworth (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
-              ${split ? `<tr><td>Geoff Southworth (Travel Expense)</td><td style="text-align:right">${formatCurrency(travelReimbursement)}</td></tr>` : ""}
+              ${split && marketingBudget + travelReimbursement > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(marketingBudget + travelReimbursement)}</td></tr>` : ""}
             </tbody>
-            <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalCrewCost + adminCut + (partnerName ? ownerCut : 0) + travelReimbursement)}</td></tr></tfoot>
+            <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalBilling)}</td></tr></tfoot>
           </table>
-          <p style="font-size: 11px; color: #888;">Reference: Earnings Breakdown Report for ${monthName} ${yr}</p>
+          ${travelReimbursement > 0 ? `<table class="pay-table" style="margin-top:12px">
+            <thead><tr><th>Spending Budget Deductions</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>
+              <tr><td>Geoff Southworth (Travel Expense)</td><td style="text-align:right">${formatCurrency(travelReimbursement)}</td></tr>
+            </tbody>
+            <tfoot><tr class="pay-total"><td><strong>Net Added to Budget</strong></td><td style="text-align:right;color:${marketingBudget >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(marketingBudget)}</td></tr></tfoot>
+          </table>` : ""}
+          <p style="font-size: 11px; color: #888; margin-top: 8px;">Reference: Earnings Breakdown Report for ${monthName} ${yr}</p>
         </div>
       </div>
 
