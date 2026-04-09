@@ -918,7 +918,7 @@ export default function ReportsPage() {
 
         {/* ---- Client Reports ---- */}
         <TabsContent value="client" className="mt-4 space-y-4">
-          {data.clients.map(client => {
+          {data.clients.filter(c => selectedClientId === "all" || c.id === selectedClientId).map(client => {
             const stat = clientBillingStats.find(s => s.client.id === client.id);
             if (!stat) return null;
             return (
