@@ -29,7 +29,29 @@ function formatCurrency(n: number) {
 export default function MarketingBudgetPage() {
   const { data, addMarketingExpense, deleteMarketingExpense } = useApp();
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [selectedPartner, setSelectedPartner] = useState("all");
   const [selectedClientId, setSelectedClientId] = useState("all");
+
+  // Get unique partner names from clients with partner splits
+  const partners = useMemo(() => {
+    const names = new Set<string>();
+    data.clients.forEach(c => {
+      if (c.partnerSplit?.partnerName) names.add(c.partnerSplit.partnerName);
+    });
+    return Array.from(names).sort();
+  }, [data.clients]);
+
+  // Clients filtered by selected partner
+  const filteredClients = useMemo(() => {
+    if (selectedPartner === "all") return data.clients;
+    return data.clients.filter(c => c.partnerSplit?.partnerName === selectedPartner);
+  }, [data.clients, selectedPartner]);
+
+  // Client IDs that match the current partner + client filter
+  const matchingClientIds = useMemo(() => {
+    if (selectedClientId !== "all") return new Set([selectedClientId]);
+    return new Set(filteredClients.map(c => c.id));
+  }, [filteredClients, selectedClientId]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     clientId: "",
@@ -42,27 +64,27 @@ export default function MarketingBudgetPage() {
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
-  // Calculate total billing for the year (filtered by client)
+  // Calculate total billing for the year (filtered by partner + client)
   const totalBilling = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
+      .filter(p => matchingClientIds.has(p.clientId))
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return sum;
         return sum + getProjectInvoiceAmount(p, client);
       }, 0);
-  }, [data.projects, data.clients, selectedYear, selectedClientId]);
+  }, [data.projects, data.clients, selectedYear, matchingClientIds]);
 
   // Budget = 10% of total billing
   const totalBudget = totalBilling * 0.10;
 
-  // Expenses for selected year (filtered by client)
+  // Expenses for selected year (filtered by partner + client)
   const yearExpenses = useMemo(() => {
     return data.marketingExpenses
       .filter(e => e.date.startsWith(String(selectedYear)))
-      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId || (!e.clientId && selectedClientId === "all"));
-  }, [data.marketingExpenses, selectedYear, selectedClientId]);
+      .filter(e => matchingClientIds.has(e.clientId));
+  }, [data.marketingExpenses, selectedYear, matchingClientIds]);
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
 
@@ -70,9 +92,9 @@ export default function MarketingBudgetPage() {
   const totalTravelCost = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
+      .filter(p => matchingClientIds.has(p.clientId))
       .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
-  }, [data.projects, selectedYear, selectedClientId]);
+  }, [data.projects, selectedYear, matchingClientIds]);
 
   const remaining = totalBudget - totalExpenses - totalTravelCost;
 
@@ -84,7 +106,7 @@ export default function MarketingBudgetPage() {
 
       const monthBilling = data.projects
         .filter(p => p.date.startsWith(monthStr))
-        .filter(p => selectedClientId === "all" || p.clientId === selectedClientId)
+        .filter(p => matchingClientIds.has(p.clientId))
         .reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
           if (!client) return sum;
@@ -98,7 +120,7 @@ export default function MarketingBudgetPage() {
 
       return { name, budgetAdded, monthExpenses, net: budgetAdded - monthExpenses };
     });
-  }, [data.projects, data.clients, yearExpenses, selectedYear, selectedClientId]);
+  }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds]);
 
   const handleSubmit = async () => {
     if (!formData.clientId) { toast.error("Select a client"); return; }
@@ -271,8 +293,8 @@ export default function MarketingBudgetPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
-        {/* Year + Client selector */}
-        <div className="flex items-center gap-3">
+        {/* Year + Partner + Client selector */}
+        <div className="flex items-center gap-3 flex-wrap">
           <select
             value={selectedYear}
             onChange={e => setSelectedYear(Number(e.target.value))}
@@ -280,13 +302,23 @@ export default function MarketingBudgetPage() {
           >
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          {partners.length > 0 && (
+            <select
+              value={selectedPartner}
+              onChange={e => { setSelectedPartner(e.target.value); setSelectedClientId("all"); }}
+              className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">All Partners</option>
+              {partners.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
           <select
             value={selectedClientId}
             onChange={e => setSelectedClientId(e.target.value)}
             className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            <option value="all">All Clients</option>
-            {data.clients.map(c => <option key={c.id} value={c.id}>{c.company}</option>)}
+            <option value="all">{selectedPartner === "all" ? "All Clients" : `All ${selectedPartner} Clients`}</option>
+            {filteredClients.map(c => <option key={c.id} value={c.id}>{c.company}</option>)}
           </select>
         </div>
 
