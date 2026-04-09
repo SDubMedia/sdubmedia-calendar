@@ -1234,10 +1234,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     const { data: updated, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
     if (error) throw new Error(error.message);
-    if (updated) {
-      const normalized = rowToProject(updated);
-      setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
-    }
+    if (!updated) throw new Error("Update failed — row not returned (possible RLS restriction)");
+    const normalized = rowToProject(updated);
+    setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
   }, []);
 
   const deleteProject = useCallback(async (id: string) => {
