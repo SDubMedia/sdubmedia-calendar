@@ -174,8 +174,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   };
 
   const handleSave = async () => {
-    if (!clientId || !date) {
-      toast.error("Please fill in client and date");
+    if (!clientId || !date || !projectTypeId) {
+      toast.error("Please fill in client, project type, and date");
       return;
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
