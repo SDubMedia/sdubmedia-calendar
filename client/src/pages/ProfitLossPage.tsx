@@ -5,7 +5,9 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectTravelCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectTravelCost, getMonthlyEarningsBreakdown } from "@/lib/data";
+import type { MonthlyEarnings } from "@/lib/data";
+import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -27,85 +29,18 @@ function formatPercent(n: number) {
   return `${n.toFixed(1)}%`;
 }
 
-interface MonthlyPL {
-  month: string;
-  monthIndex: number;
-  projectCount: number;
-  revenue: number;
-  crewCost: number;
-  travelCost: number;
-  marketingExpenses: number;
-  partnerPayout: number;
-  grossProfit: number;
-  netProfit: number;
-  grossMargin: number;
-  netMargin: number;
-}
-
 export default function ProfitLossPage() {
   const { data } = useApp();
+  const { effectiveProfile } = useAuth();
+  const ownerCrewMemberId = effectiveProfile?.crewMemberId || "";
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
 
-  const monthlyData = useMemo((): MonthlyPL[] => {
-    const months: MonthlyPL[] = [];
-
-    for (let m = 0; m < 12; m++) {
-      const monthProjects = data.projects.filter(p => {
-        const d = new Date(p.date + "T00:00:00");
-        return d.getFullYear() === year && d.getMonth() === m;
-      });
-
-      let revenue = 0;
-      let crewCost = 0;
-      let travelCost = 0;
-      let partnerPayout = 0;
-
-      monthProjects.forEach(p => {
-        const client = data.clients.find(c => c.id === p.clientId);
-        if (client) {
-          revenue += getProjectInvoiceAmount(p, client);
-          // Calculate partner split
-          if (client.partnerSplit) {
-            const projRevenue = getProjectInvoiceAmount(p, client);
-            const projCrewCost = getProjectCrewCost(p);
-            const projProfit = projRevenue - projCrewCost;
-            if (projProfit > 0) {
-              partnerPayout += projProfit * (client.partnerSplit.partnerPercent ?? 0);
-            }
-          }
-        }
-        crewCost += getProjectCrewCost(p);
-        travelCost += getProjectTravelCost(p);
-      });
-
-      const monthStr = `${year}-${String(m + 1).padStart(2, "0")}`;
-      const marketingExpenses = data.marketingExpenses
-        .filter(e => e.date.startsWith(monthStr))
-        .reduce((s, e) => s + e.amount, 0);
-
-      const grossProfit = revenue - crewCost;
-      const netProfit = grossProfit - travelCost - marketingExpenses - partnerPayout;
-      const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-      const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
-
-      months.push({
-        month: MONTH_NAMES[m],
-        monthIndex: m,
-        projectCount: monthProjects.length,
-        revenue,
-        crewCost,
-        travelCost,
-        marketingExpenses,
-        partnerPayout,
-        grossProfit,
-        netProfit,
-        grossMargin,
-        netMargin,
-      });
-    }
-    return months;
-  }, [data.projects, data.clients, data.marketingExpenses, year]);
+  const monthlyData = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) =>
+      getMonthlyEarningsBreakdown(data.projects, data.clients, data.marketingExpenses, ownerCrewMemberId, year, m + 1)
+    );
+  }, [data.projects, data.clients, data.marketingExpenses, ownerCrewMemberId, year]);
 
   // Revenue by client for the year
   const clientBreakdown = useMemo(() => {
@@ -185,12 +120,15 @@ export default function ProfitLossPage() {
       projectCount: acc.projectCount + m.projectCount,
       revenue: acc.revenue + m.revenue,
       crewCost: acc.crewCost + m.crewCost,
+      ownerCrewPay: acc.ownerCrewPay + m.ownerCrewPay,
       travelCost: acc.travelCost + m.travelCost,
       marketingExpenses: acc.marketingExpenses + m.marketingExpenses,
       partnerPayout: acc.partnerPayout + m.partnerPayout,
+      adminSplit: acc.adminSplit + m.adminSplit,
+      nonPartnerProfit: acc.nonPartnerProfit + m.nonPartnerProfit,
       grossProfit: acc.grossProfit + m.grossProfit,
       netProfit: acc.netProfit + m.netProfit,
-    }), { projectCount: 0, revenue: 0, crewCost: 0, travelCost: 0, marketingExpenses: 0, partnerPayout: 0, grossProfit: 0, netProfit: 0 });
+    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, grossProfit: 0, netProfit: 0 });
   }, [monthlyData]);
 
   const annualGrossMargin = annualTotals.revenue > 0 ? (annualTotals.grossProfit / annualTotals.revenue) * 100 : 0;
@@ -278,8 +216,8 @@ export default function ProfitLossPage() {
               </thead>
               <tbody>
                 {monthlyData.map(m => (
-                  <tr key={m.monthIndex} className={`border-b border-border/50 print:border-gray-200 ${m.projectCount === 0 ? "text-muted-foreground" : ""}`}>
-                    <td className="px-4 py-2 font-medium">{MONTH_SHORT[m.monthIndex]}</td>
+                  <tr key={m.month} className={`border-b border-border/50 print:border-gray-200 ${m.projectCount === 0 ? "text-muted-foreground" : ""}`}>
+                    <td className="px-4 py-2 font-medium">{MONTH_SHORT[m.month - 1]}</td>
                     <td className="text-right px-3 py-2">{m.projectCount || "—"}</td>
                     <td className="text-right px-3 py-2">{m.revenue ? formatCurrency(m.revenue) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.crewCost ? formatCurrency(m.crewCost) : "—"}</td>
@@ -425,6 +363,35 @@ export default function ProfitLossPage() {
             </div>
           </div>
         )}
+
+        {/* Owner Earnings Breakdown */}
+        <div className="bg-card border-2 border-primary/50 rounded-lg print:border-gray-400">
+          <div className="px-4 py-3 border-b border-primary/30 print:border-gray-300">
+            <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Your Earnings — {effectiveProfile?.name || "Owner"}
+            </h3>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Crew Pay (labor)</span>
+              <span className="text-sm font-medium text-foreground">{formatCurrencyFull(annualTotals.ownerCrewPay)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Admin Split (partner projects)</span>
+              <span className="text-sm font-medium text-foreground">{formatCurrencyFull(annualTotals.adminSplit)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Non-Partner Profit (own clients)</span>
+              <span className="text-sm font-medium text-foreground">{formatCurrencyFull(annualTotals.nonPartnerProfit)}</span>
+            </div>
+            <div className="border-t border-border pt-3 flex items-center justify-between">
+              <span className="text-sm font-bold text-foreground">Total to Owner</span>
+              <span className="text-lg font-bold text-primary" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {formatCurrencyFull(annualTotals.ownerCrewPay + annualTotals.adminSplit + annualTotals.nonPartnerProfit)}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewMember } from "./types";
 
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
@@ -280,6 +280,167 @@ export function calcHoursWorked(
       return d.getFullYear() === year && d.getMonth() === month;
     })
     .reduce((sum, p) => sum + getProjectWorkedHours(p).totalHours, 0);
+}
+
+// ---- Monthly Earnings Breakdown (shared by P&L and Reports) ----
+
+export interface MonthlyEarnings {
+  year: number;
+  month: number;
+  projectCount: number;
+  revenue: number;
+  crewCost: number;
+  ownerCrewPay: number;
+  travelCost: number;
+  marketingExpenses: number;
+  partnerPayout: number;
+  adminSplit: number;
+  nonPartnerProfit: number;
+  grossProfit: number;
+  netProfit: number;
+}
+
+export function getMonthlyEarningsBreakdown(
+  projects: Project[],
+  clients: Client[],
+  marketingExpenses: MarketingExpense[],
+  ownerCrewMemberId: string,
+  year: number,
+  month: number,
+): MonthlyEarnings {
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+  const monthProjects = projects.filter(p => p.date.startsWith(monthStr));
+
+  let revenue = 0;
+  let totalCrewCost = 0;
+  let ownerCrewPay = 0;
+  let travelCost = 0;
+  let partnerPayout = 0;
+  let adminSplit = 0;
+  let nonPartnerProfit = 0;
+
+  // Use new split logic for March 2026+
+  const useNewSplitLogic = year > 2026 || (year === 2026 && month >= 3);
+
+  monthProjects.forEach(p => {
+    const client = clients.find(c => c.id === p.clientId);
+    if (!client) return;
+
+    const projRevenue = getProjectInvoiceAmount(p, client);
+    const projCrewCost = getProjectCrewCost(p);
+    const projTravelCost = getProjectTravelCost(p);
+
+    revenue += projRevenue;
+    totalCrewCost += projCrewCost;
+    travelCost += projTravelCost;
+
+    // Owner's crew pay (separate from other crew)
+    [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
+      if (e.crewMemberId !== ownerCrewMemberId) return;
+      if (e.role === "Travel") return;
+      if (e.role === "Photo Editor" && p.editorBilling) {
+        ownerCrewPay += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
+      } else {
+        ownerCrewPay += Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+      }
+    });
+
+    const clientSplit = client.partnerSplit;
+
+    if (!clientSplit) {
+      // Non-partner client: profit goes to owner
+      nonPartnerProfit += projRevenue - projCrewCost - projTravelCost;
+      return;
+    }
+
+    if (!useNewSplitLogic) {
+      // Legacy split (Jan/Feb 2026)
+      const pPct = clientSplit.partnerPercent ?? 0;
+      const aPct = clientSplit.adminPercent ?? 0.45;
+      partnerPayout += projRevenue * pPct;
+      adminSplit += projRevenue * aPct;
+      return;
+    }
+
+    if (client.billingModel === "per_project") {
+      // Per-project with partner
+      const projProfit = projRevenue - projCrewCost;
+      if (projProfit > 0) {
+        partnerPayout += projProfit * (clientSplit.partnerPercent ?? 0);
+        adminSplit += projProfit * (clientSplit.adminPercent ?? 0.45);
+      }
+      return;
+    }
+
+    // Hourly billing with partner — detailed crew/editor split
+    const rate = Number(client.billingRatePerHour ?? 0);
+    if (rate === 0) return;
+
+    const { crewBillable, postBillable } = getProjectBillableHours(p, client);
+    const hasPhotoEditor = p.editorBilling?.finalHours != null;
+    const editorBillableHours = hasPhotoEditor ? p.editorBilling!.finalHours : 0;
+    const nonEditorPostBillable = postBillable - editorBillableHours;
+
+    const crewBillingAmt = (crewBillable + nonEditorPostBillable) * rate;
+    const editorBillingAmt = editorBillableHours * rate;
+
+    // Crew costs (excluding photo editor and travel)
+    const crewPayCost = (p.crew || []).filter(e => e.role !== "Travel").reduce((s, e) =>
+      s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+    const nonEditorPostCost = (p.postProduction || [])
+      .filter(e => e.role !== "Photo Editor" && e.role !== "Travel")
+      .reduce((s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0);
+    const crewCost = crewPayCost + nonEditorPostCost;
+
+    // Crew split
+    const threshold = clientSplit.crewSplitThreshold ?? 0.5;
+    const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
+    const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
+    if (crewBillingAmt > 0) {
+      if (crewCost <= crewBillingAmt * threshold) {
+        const mktg = crewBillingAmt * crewMktgPct;
+        const remainder = crewBillingAmt - crewCost - mktg;
+        partnerPayout += remainder * remainderSplit;
+        adminSplit += remainder * (1 - remainderSplit);
+      } else {
+        const remainder = crewBillingAmt - crewCost;
+        partnerPayout += remainder * remainderSplit;
+        adminSplit += remainder * (1 - remainderSplit);
+      }
+    }
+
+    // Editor split
+    if (editorBillingAmt > 0 && hasPhotoEditor) {
+      const editorCost = p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
+      const editorProfit = editorBillingAmt - editorCost;
+      const ePtnr = clientSplit.editorPartnerPercent ?? 0.45;
+      const eAdmin = clientSplit.editorAdminPercent ?? 0.45;
+      partnerPayout += editorProfit * ePtnr;
+      adminSplit += editorProfit * eAdmin;
+    }
+  });
+
+  const mktgExp = marketingExpenses
+    .filter(e => e.date.startsWith(monthStr))
+    .reduce((s, e) => s + e.amount, 0);
+
+  const grossProfit = revenue - totalCrewCost;
+  const netProfit = revenue - totalCrewCost - travelCost - mktgExp - partnerPayout;
+
+  return {
+    year, month,
+    projectCount: monthProjects.length,
+    revenue,
+    crewCost: totalCrewCost,
+    ownerCrewPay,
+    travelCost,
+    marketingExpenses: mktgExp,
+    partnerPayout,
+    adminSplit,
+    nonPartnerProfit,
+    grossProfit,
+    netProfit,
+  };
 }
 
 // ---- CRUD helpers ----
