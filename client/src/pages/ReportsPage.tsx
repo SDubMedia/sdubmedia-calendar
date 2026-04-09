@@ -103,18 +103,20 @@ export default function ReportsPage() {
 
     // March 2026+: use billable hours with image tracking; before: use worked hours
     const useNewHoursDisplay = yr > 2026 || (yr === 2026 && monthNum >= 3);
+    // Use getProjectBillableHours for totals — same path as client report
     const totalProductionHours = useNewHoursDisplay
       ? projects.reduce((s, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
           if (!client) return s + (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
-          const crewBillable = (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + getBillableHours(e, client), 0);
-          const nonEditorPost = (p.postProduction || []).filter(e => e.role !== "Photo Editor" && e.role !== "Travel");
-          const postBillable = nonEditorPost.reduce((h, e) => h + getBillableHours(e, client), 0);
-          return s + crewBillable + postBillable;
+          return s + getProjectBillableHours(p, client).crewBillable;
         }, 0)
       : projects.reduce((s, p) => s + (p.crew || []).filter(e => e.role !== "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0), 0);
     const totalEditorHours = useNewHoursDisplay
-      ? projects.reduce((s, p) => s + (p.editorBilling?.finalHours ?? 0), 0)
+      ? projects.reduce((s, p) => {
+          const client = data.clients.find(c => c.id === p.clientId);
+          if (!client) return s + (p.editorBilling?.finalHours ?? 0);
+          return s + getProjectBillableHours(p, client).postBillable;
+        }, 0)
       : projects.reduce((s, p) => s + getProjectWorkedHours(p).postHours, 0);
     const totalImages = useNewHoursDisplay
       ? projects.reduce((s, p) => s + (p.editorBilling?.imageCount ?? 0), 0)
