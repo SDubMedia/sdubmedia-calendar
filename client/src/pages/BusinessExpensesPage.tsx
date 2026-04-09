@@ -99,6 +99,7 @@ export default function BusinessExpensesPage() {
   const { data, addBusinessExpenses, addBusinessExpense, updateBusinessExpense, deleteBusinessExpense, upsertCategoryRule } = useApp();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [view, setView] = useState<"list" | "report">("list");
 
   // CSV upload state
@@ -173,14 +174,31 @@ export default function BusinessExpensesPage() {
   const [editForm, setEditForm] = useState({ category: "Other" as BusinessExpenseCategory, serialNumber: "", notes: "" });
 
   // Filter expenses for selected year
-  const yearExpenses = useMemo(() =>
+  const allYearExpenses = useMemo(() =>
     data.businessExpenses
       .filter(e => e.date.startsWith(String(year)))
       .sort((a, b) => a.date.localeCompare(b.date)),
     [data.businessExpenses, year]
   );
 
-  const yearTotal = yearExpenses.reduce((s, e) => s + e.amount, 0);
+  // Monthly stats for the 12 cards
+  const monthlyStats = useMemo(() =>
+    MONTH_NAMES.map((name, idx) => {
+      const monthStr = `${year}-${String(idx + 1).padStart(2, "0")}`;
+      const expenses = allYearExpenses.filter(e => e.date.startsWith(monthStr));
+      return { name, month: idx + 1, total: expenses.reduce((s, e) => s + e.amount, 0), count: expenses.length };
+    }),
+    [allYearExpenses, year]
+  );
+
+  // Filter by selected month
+  const yearExpenses = useMemo(() => {
+    if (selectedMonth === "all") return allYearExpenses;
+    const monthStr = `${year}-${String(selectedMonth).padStart(2, "0")}`;
+    return allYearExpenses.filter(e => e.date.startsWith(monthStr));
+  }, [allYearExpenses, selectedMonth, year]);
+
+  const yearTotal = allYearExpenses.reduce((s, e) => s + e.amount, 0);
 
   // Auto-categorize a description using saved rules
   function autoCategory(description: string): BusinessExpenseCategory {
@@ -417,6 +435,44 @@ export default function BusinessExpensesPage() {
         <button onClick={() => setYear(y => y + 1)} className="p-2 text-muted-foreground hover:text-foreground">
           <ChevronRight className="w-5 h-5" />
         </button>
+      </div>
+
+      {/* Monthly breakdown cards */}
+      <div className="px-3 sm:px-6 print:hidden">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+          <button
+            onClick={() => setSelectedMonth("all")}
+            className={cn(
+              "rounded-lg p-2 text-left border transition-colors col-span-3 sm:col-span-4 md:col-span-6 lg:col-span-12",
+              selectedMonth === "all" ? "bg-primary/10 border-primary/50" : "bg-card border-border hover:border-primary/30"
+            )}
+          >
+            <p className="text-xs text-muted-foreground font-medium">All Months</p>
+            <p className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(yearTotal)}</p>
+            <p className="text-xs text-muted-foreground">{allYearExpenses.length} transactions</p>
+          </button>
+          {monthlyStats.map(m => {
+            const isSelected = selectedMonth === String(m.month);
+            return (
+              <button
+                key={m.name}
+                onClick={() => setSelectedMonth(String(m.month))}
+                className={cn(
+                  "rounded-lg p-2 text-left border transition-colors",
+                  isSelected ? "bg-primary/10 border-primary/50" : "bg-card border-border hover:border-primary/30"
+                )}
+              >
+                <p className="text-xs text-muted-foreground font-medium">{m.name.slice(0, 3)}</p>
+                <p className={cn("text-sm font-bold tabular-nums", m.total > 0 ? "text-foreground" : "text-muted-foreground/40")}>
+                  {m.total > 0 ? formatCurrency(m.total) : "—"}
+                </p>
+                <p className={cn("text-[10px]", m.count > 0 ? "text-muted-foreground" : "text-muted-foreground/40")}>
+                  {m.count > 0 ? `${m.count} txn${m.count !== 1 ? "s" : ""}` : "—"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6">
