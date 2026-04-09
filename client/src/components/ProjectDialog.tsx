@@ -4,7 +4,7 @@
 // Billing Model: Hourly — crew entries track hours worked + pay rate per hour
 // ============================================================
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,8 +63,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
 
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    // Only reset form state when dialog transitions from closed → open
+    if (open && !wasOpen.current) {
       setClientId(project?.clientId ?? data.clients[0]?.id ?? "");
       setProjectTypeId(project?.projectTypeId ?? "");
       setLocationId(project?.locationId ?? "");
@@ -91,6 +93,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         setProjectRate(null);
       }
     }
+    wasOpen.current = open;
   }, [open, project, defaultDate, defaultClientId, data.clients]);
 
   const toggleEditType = (et: EditType) => {
