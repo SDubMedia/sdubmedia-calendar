@@ -189,6 +189,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
 - **Don't use bare local imports in `api/` files.** Always use `.js` extensions: `from "./_auth.js"`. Never use `require()` — this is ESM.
+- **Don't reset form state in useEffect based on context data props.** With Supabase Realtime, any DB change gives props new references, which re-triggers the effect and wipes the form mid-edit. Use a `wasOpen` ref to only reset on open transition, or use event handlers (`openEdit()`/`openAdd()`) to populate forms instead.
 
 ## Security — Mandatory Rules
 
