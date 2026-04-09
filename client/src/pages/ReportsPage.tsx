@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
+import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -913,6 +914,43 @@ export default function ReportsPage() {
             <p className="text-2xl font-bold text-foreground">{formatCurrency(ytdInvoice)}</p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Monthly breakdown cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        {MONTHS.map((month, idx) => {
+          const monthStr = `${selectedYear}-${String(idx + 1).padStart(2, "0")}`;
+          const monthProjects = filteredProjects.filter(p => p.date.startsWith(monthStr));
+          const hours = monthProjects.reduce((s, p) => {
+            const client = data.clients.find(c => c.id === p.clientId);
+            if (!client) return s + getProjectHours(p).totalHours;
+            return s + getProjectBillableHours(p, client).totalBillable;
+          }, 0);
+          const revenue = monthProjects.reduce((s, p) => {
+            const client = data.clients.find(c => c.id === p.clientId);
+            if (!client) return s;
+            return s + getProjectInvoiceAmount(p, client);
+          }, 0);
+          const isSelected = String(idx + 1) === selectedMonth;
+          return (
+            <button
+              key={month}
+              onClick={() => setSelectedMonth(String(idx + 1))}
+              className={cn(
+                "rounded-lg p-3 text-left border transition-colors",
+                isSelected ? "bg-primary/10 border-primary/50" : "bg-card border-border hover:border-primary/30"
+              )}
+            >
+              <p className="text-xs text-muted-foreground font-medium">{month.slice(0, 3)}</p>
+              <p className={cn("text-sm font-bold tabular-nums", hours > 0 ? "text-foreground" : "text-muted-foreground/40")}>
+                {hours > 0 ? formatHours(hours) : "—"}
+              </p>
+              <p className={cn("text-xs tabular-nums", revenue > 0 ? "text-primary" : "text-muted-foreground/40")}>
+                {revenue > 0 ? formatCurrency(revenue) : "—"}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Report tabs */}
