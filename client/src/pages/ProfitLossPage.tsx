@@ -35,6 +35,7 @@ interface MonthlyPL {
   crewCost: number;
   travelCost: number;
   marketingExpenses: number;
+  partnerPayout: number;
   grossProfit: number;
   netProfit: number;
   grossMargin: number;
@@ -58,10 +59,22 @@ export default function ProfitLossPage() {
       let revenue = 0;
       let crewCost = 0;
       let travelCost = 0;
+      let partnerPayout = 0;
 
       monthProjects.forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
-        if (client) revenue += getProjectInvoiceAmount(p, client);
+        if (client) {
+          revenue += getProjectInvoiceAmount(p, client);
+          // Calculate partner split
+          if (client.partnerSplit) {
+            const projRevenue = getProjectInvoiceAmount(p, client);
+            const projCrewCost = getProjectCrewCost(p);
+            const projProfit = projRevenue - projCrewCost;
+            if (projProfit > 0) {
+              partnerPayout += projProfit * (client.partnerSplit.partnerPercent ?? 0);
+            }
+          }
+        }
         crewCost += getProjectCrewCost(p);
         travelCost += getProjectTravelCost(p);
       });
@@ -72,7 +85,7 @@ export default function ProfitLossPage() {
         .reduce((s, e) => s + e.amount, 0);
 
       const grossProfit = revenue - crewCost;
-      const netProfit = grossProfit - travelCost - marketingExpenses;
+      const netProfit = grossProfit - travelCost - marketingExpenses - partnerPayout;
       const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
       const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
@@ -84,6 +97,7 @@ export default function ProfitLossPage() {
         crewCost,
         travelCost,
         marketingExpenses,
+        partnerPayout,
         grossProfit,
         netProfit,
         grossMargin,
@@ -173,9 +187,10 @@ export default function ProfitLossPage() {
       crewCost: acc.crewCost + m.crewCost,
       travelCost: acc.travelCost + m.travelCost,
       marketingExpenses: acc.marketingExpenses + m.marketingExpenses,
+      partnerPayout: acc.partnerPayout + m.partnerPayout,
       grossProfit: acc.grossProfit + m.grossProfit,
       netProfit: acc.netProfit + m.netProfit,
-    }), { projectCount: 0, revenue: 0, crewCost: 0, travelCost: 0, marketingExpenses: 0, grossProfit: 0, netProfit: 0 });
+    }), { projectCount: 0, revenue: 0, crewCost: 0, travelCost: 0, marketingExpenses: 0, partnerPayout: 0, grossProfit: 0, netProfit: 0 });
   }, [monthlyData]);
 
   const annualGrossMargin = annualTotals.revenue > 0 ? (annualTotals.grossProfit / annualTotals.revenue) * 100 : 0;
@@ -256,6 +271,7 @@ export default function ProfitLossPage() {
                   <th className="text-right px-3 py-2">Crew</th>
                   <th className="text-right px-3 py-2">Travel</th>
                   <th className="text-right px-3 py-2">Marketing</th>
+                  <th className="text-right px-3 py-2">Partner</th>
                   <th className="text-right px-3 py-2">Gross Profit</th>
                   <th className="text-right px-4 py-2">Net Profit</th>
                 </tr>
@@ -269,6 +285,7 @@ export default function ProfitLossPage() {
                     <td className="text-right px-3 py-2 text-red-300/70">{m.crewCost ? formatCurrency(m.crewCost) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.travelCost ? formatCurrency(m.travelCost) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.marketingExpenses ? formatCurrency(m.marketingExpenses) : "—"}</td>
+                    <td className="text-right px-3 py-2 text-red-300/70">{m.partnerPayout ? formatCurrency(m.partnerPayout) : "—"}</td>
                     <td className={`text-right px-3 py-2 font-medium ${m.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {m.revenue ? formatCurrency(m.grossProfit) : "—"}
                     </td>
@@ -286,6 +303,7 @@ export default function ProfitLossPage() {
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.crewCost)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.travelCost)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.marketingExpenses)}</td>
+                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>
                   <td className={`text-right px-3 py-3 ${annualTotals.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {formatCurrency(annualTotals.grossProfit)}
                   </td>
