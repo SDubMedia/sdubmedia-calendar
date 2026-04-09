@@ -77,10 +77,18 @@ export default function ReportsPage() {
     });
   }, [filteredProjects, selectedMonth]);
 
-  // ---- Billing stats per client (scoped to selected month) ----
+  // ---- Billing stats per client (scoped to selected year + month, NOT client filter) ----
+  const allMonthlyProjects = useMemo(() => {
+    return data.projects.filter(p => {
+      const [y] = p.date.split("-");
+      const m = parseInt(p.date.split("-")[1]);
+      return y === selectedYear && m === parseInt(selectedMonth);
+    });
+  }, [data.projects, selectedYear, selectedMonth]);
+
   const clientBillingStats = useMemo((): ClientBillingStat[] => {
     return data.clients.map(client => {
-      const clientProjects = monthlyProjects.filter(p => p.clientId === client.id);
+      const clientProjects = allMonthlyProjects.filter(p => p.clientId === client.id);
       const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
       const crewCost = clientProjects.reduce((s, p) => s + getProjectCrewCost(p), 0);
       const invoiceAmount = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
