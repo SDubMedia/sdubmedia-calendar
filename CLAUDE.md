@@ -153,9 +153,12 @@ Payments flow through the customer's connected Stripe account, NOT the platform 
 
 **Do not** gate features only in the sidebar and forget the dashboard — users will see data from disabled features on the dashboard.
 
+**Per-user overrides bypass role gates.** In `AppLayout.tsx`, per-user feature overrides are checked BEFORE the `item.roles.includes(role)` gate. This means an override can grant a client access to nav items normally restricted to owner/partner. Do not reorder these checks — the override must come first.
+
 ## Scope Control
 
 - **One feature per commit.** Don't bundle 3 features into one massive commit. Easier to revert.
+- **Push after every fix.** Commit and push immediately after each fix so changes deploy. Report the push status to the user.
 - **Test before building more.** If 3+ features have shipped without being tested in production, pause and test.
 - **Don't rebuild what exists.** 37 pages, 21 API routes — search first.
 - **Don't over-engineer.** If the user asks for a simple fix, don't refactor the surrounding code.
