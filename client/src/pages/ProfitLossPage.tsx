@@ -208,8 +208,9 @@ export default function ProfitLossPage() {
                   <th className="text-right px-3 py-2">Revenue</th>
                   <th className="text-right px-3 py-2">Crew</th>
                   <th className="text-right px-3 py-2">Travel</th>
-                  <th className="text-right px-3 py-2">Marketing</th>
+                  <th className="text-right px-3 py-2">Spending</th>
                   <th className="text-right px-3 py-2">Partner</th>
+                  <th className="text-right px-3 py-2">Admin</th>
                   <th className="text-right px-3 py-2">Gross Profit</th>
                   <th className="text-right px-4 py-2">Net Profit</th>
                 </tr>
@@ -224,6 +225,7 @@ export default function ProfitLossPage() {
                     <td className="text-right px-3 py-2 text-red-300/70">{m.travelCost ? formatCurrency(m.travelCost) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.marketingExpenses ? formatCurrency(m.marketingExpenses) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.partnerPayout ? formatCurrency(m.partnerPayout) : "—"}</td>
+                    <td className="text-right px-3 py-2 text-green-400/70">{m.adminSplit ? formatCurrency(m.adminSplit) : "—"}</td>
                     <td className={`text-right px-3 py-2 font-medium ${m.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {m.revenue ? formatCurrency(m.grossProfit) : "—"}
                     </td>
@@ -242,6 +244,7 @@ export default function ProfitLossPage() {
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.travelCost)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.marketingExpenses)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>
+                  <td className="text-right px-3 py-3 text-green-400">{formatCurrency(annualTotals.adminSplit)}</td>
                   <td className={`text-right px-3 py-3 ${annualTotals.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {formatCurrency(annualTotals.grossProfit)}
                   </td>
