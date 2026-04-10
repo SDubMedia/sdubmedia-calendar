@@ -148,14 +148,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const userOverrides = effectiveProfile?.featureOverrides;
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
+      const roleAllowed = item.roles.includes(role);
       if (role !== "owner" && item.feature && features) {
-        // 1. Per-user override (most specific) — can grant access beyond default role
+        // 1. Per-user override — can grant access to role-restricted features
         if (userOverrides) {
           const userVal = userOverrides[item.feature];
-          if (userVal !== undefined) return userVal;
+          if (userVal !== undefined) {
+            if (!userVal) return false; // explicitly disabled
+            // Override grants feature access, but skip role-specific views
+            // (e.g. "My Schedule" is staff-only even if calendar override is on)
+            if (!roleAllowed && item.href?.startsWith("/my-")) return false;
+            return true;
+          }
         }
         // 2. Role gate — only applies when no per-user override exists
-        if (!item.roles.includes(role)) return false;
+        if (!roleAllowed) return false;
         // 3. Per-role override
         const roleOverrides = role === "staff" ? features.staffFeatures
           : role === "partner" ? features.partnerFeatures
@@ -167,7 +174,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         } else if (!features[item.feature as keyof typeof features]) {
           return false;
         }
-      } else if (!item.roles.includes(role)) {
+      } else if (!roleAllowed) {
         return false;
       }
       return true;
