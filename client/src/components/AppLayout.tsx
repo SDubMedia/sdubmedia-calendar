@@ -99,13 +99,13 @@ const navStructure: NavEntry[] = [
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
-    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "partnerSplits" },
   ]},
 
   // Reports
   { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"], feature: "reports" },
+    { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
     { label: "Mileage", href: "/mileage", icon: Car, roles: ["owner", "partner", "staff"], feature: "mileage" },
     { label: "1099 Summary", href: "/1099", icon: FileText, roles: ["owner", "staff"], feature: "contractor1099" },
