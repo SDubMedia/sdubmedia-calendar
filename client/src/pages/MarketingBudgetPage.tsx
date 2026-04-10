@@ -107,8 +107,9 @@ export default function MarketingBudgetPage() {
 
   const remaining = totalBudget - totalExpenses - totalTravelCost;
 
-  // Monthly breakdown: billing earned and expenses per month
+  // Monthly breakdown: billing earned, expenses, and running balance per month
   const monthlyBreakdown = useMemo(() => {
+    let runningBalance = 0;
     return MONTHS.map((name, idx) => {
       const monthNum = idx + 1;
       const monthStr = `${selectedYear}-${String(monthNum).padStart(2, "0")}`;
@@ -127,8 +128,17 @@ export default function MarketingBudgetPage() {
       const monthExpenses = yearExpenses
         .filter(e => e.date.startsWith(monthStr))
         .reduce((s, e) => s + e.amount, 0);
+      const monthTravel = data.projects
+        .filter(p => p.date.startsWith(monthStr))
+        .filter(p => budgetClientIds.has(p.clientId))
+        .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
+        .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
 
-      return { name, budgetAdded, monthExpenses, net: budgetAdded - monthExpenses };
+      const net = budgetAdded - monthExpenses - monthTravel;
+      runningBalance += net;
+      const hasActivity = budgetAdded > 0 || monthExpenses > 0 || monthTravel > 0;
+
+      return { name, budgetAdded, monthExpenses, monthTravel, net, balance: runningBalance, hasActivity };
     });
   }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
@@ -171,14 +181,15 @@ export default function MarketingBudgetPage() {
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
     const monthRows = monthlyBreakdown.map(m => {
-      if (m.budgetAdded === 0 && m.monthExpenses === 0) {
-        return `<tr><td>${m.name}</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td></tr>`;
+      if (!m.hasActivity) {
+        return `<tr><td>${m.name}</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td><td style="text-align:right;color:#888">—</td></tr>`;
       }
       return `<tr>
         <td>${m.name}</td>
         <td style="text-align:right;color:#3b82f6;font-weight:600">${formatCurrency(m.budgetAdded)}</td>
         <td style="text-align:right;color:#ef4444;font-weight:600">${m.monthExpenses > 0 ? formatCurrency(m.monthExpenses) : "—"}</td>
         <td style="text-align:right;font-weight:600;color:${m.net >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(m.net)}</td>
+        <td style="text-align:right;font-weight:700;color:${m.balance >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(m.balance)}</td>
       </tr>`;
     }).join("");
 
@@ -229,12 +240,14 @@ export default function MarketingBudgetPage() {
                 <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Budget Added</th>
                 <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Expenses</th>
                 <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Net</th>
+                <th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Balance</th>
               </tr></thead>
               <tbody>${monthRows}</tbody>
               <tfoot><tr style="border-top:2px solid #1e293b;background:#f8fafc">
                 <td style="padding:8px 12px;font-weight:700">Total</td>
                 <td style="text-align:right;padding:8px 12px;font-weight:700;color:#3b82f6">${formatCurrency(totalBudget)}</td>
                 <td style="text-align:right;padding:8px 12px;font-weight:700;color:#ef4444">${formatCurrency(totalExpenses)}</td>
+                <td style="text-align:right;padding:8px 12px;font-weight:700;color:${remaining >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(remaining)}</td>
                 <td style="text-align:right;padding:8px 12px;font-weight:700;color:${remaining >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(remaining)}</td>
               </tr></tfoot>
             </table>
@@ -389,6 +402,7 @@ export default function MarketingBudgetPage() {
                   <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Budget Added</th>
                   <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Expenses</th>
                   <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Net</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -398,7 +412,10 @@ export default function MarketingBudgetPage() {
                     <td className="px-4 py-2 text-right text-blue-400 tabular-nums">{m.budgetAdded > 0 ? formatCurrency(m.budgetAdded) : "—"}</td>
                     <td className="px-4 py-2 text-right text-red-400 tabular-nums">{m.monthExpenses > 0 ? formatCurrency(m.monthExpenses) : "—"}</td>
                     <td className={cn("px-4 py-2 text-right font-medium tabular-nums", m.net >= 0 ? "text-green-400" : "text-red-400")}>
-                      {(m.budgetAdded > 0 || m.monthExpenses > 0) ? formatCurrency(m.net) : "—"}
+                      {m.hasActivity ? formatCurrency(m.net) : "—"}
+                    </td>
+                    <td className={cn("px-4 py-2 text-right font-bold tabular-nums", m.balance >= 0 ? "text-green-400" : "text-red-400")}>
+                      {m.hasActivity ? formatCurrency(m.balance) : "—"}
                     </td>
                   </tr>
                 ))}
@@ -408,6 +425,7 @@ export default function MarketingBudgetPage() {
                   <td className="px-4 py-2 font-bold text-foreground">Total</td>
                   <td className="px-4 py-2 text-right font-bold text-blue-400 tabular-nums">{formatCurrency(totalBudget)}</td>
                   <td className="px-4 py-2 text-right font-bold text-red-400 tabular-nums">{formatCurrency(totalExpenses)}</td>
+                  <td className={cn("px-4 py-2 text-right font-bold tabular-nums", remaining >= 0 ? "text-green-400" : "text-red-400")}>{formatCurrency(remaining)}</td>
                   <td className={cn("px-4 py-2 text-right font-bold tabular-nums", remaining >= 0 ? "text-green-400" : "text-red-400")}>{formatCurrency(remaining)}</td>
                 </tr>
               </tfoot>
