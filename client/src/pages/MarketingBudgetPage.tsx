@@ -67,17 +67,23 @@ export default function MarketingBudgetPage() {
   // Show all when no filter is active
   const showAllExpenses = selectedPartner === "all" && selectedClientId === "all";
 
-  // Calculate total billing for the year (filtered by partner + client)
+  // Only clients with spending budget enabled contribute to the budget
+  const budgetClientIds = useMemo(() => {
+    return new Set(data.clients.filter(c => c.partnerSplit?.spendingBudgetEnabled !== false && c.partnerSplit).map(c => c.id));
+  }, [data.clients]);
+
+  // Calculate total billing for the year (only from budget-eligible clients)
   const totalBilling = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
+      .filter(p => budgetClientIds.has(p.clientId))
       .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return sum;
         return sum + getProjectInvoiceAmount(p, client);
       }, 0);
-  }, [data.projects, data.clients, selectedYear, matchingClientIds]);
+  }, [data.projects, data.clients, selectedYear, matchingClientIds, budgetClientIds]);
 
   // Budget = 10% of total billing
   const totalBudget = totalBilling * 0.10;
@@ -91,13 +97,14 @@ export default function MarketingBudgetPage() {
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
 
-  // Travel costs from projects (deducted from marketing budget)
+  // Travel costs from projects (deducted from marketing budget, budget clients only)
   const totalTravelCost = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
+      .filter(p => budgetClientIds.has(p.clientId))
       .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
-  }, [data.projects, selectedYear, matchingClientIds]);
+  }, [data.projects, selectedYear, matchingClientIds, budgetClientIds]);
 
   const remaining = totalBudget - totalExpenses - totalTravelCost;
 
@@ -109,6 +116,7 @@ export default function MarketingBudgetPage() {
 
       const monthBilling = data.projects
         .filter(p => p.date.startsWith(monthStr))
+        .filter(p => budgetClientIds.has(p.clientId))
         .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
         .reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
