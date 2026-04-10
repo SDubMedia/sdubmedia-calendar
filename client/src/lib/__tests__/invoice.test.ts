@@ -48,8 +48,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 }
 
 const projectTypes: ProjectType[] = [
-  { id: "pt-podcast", name: "Podcast" },
-  { id: "pt-headshot", name: "Headshot Photography" },
+  { id: "pt-podcast", name: "Podcast", lightweight: false },
+  { id: "pt-headshot", name: "Headshot Photography", lightweight: false },
 ];
 
 const locations: Location[] = [

@@ -243,6 +243,7 @@ export interface Location {
 export interface ProjectType {
   id: string;
   name: string;
+  lightweight: boolean;
 }
 
 // A crew member assigned to a project (filming/shoot)

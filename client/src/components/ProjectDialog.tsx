@@ -113,8 +113,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
   };
 
-  // Get the selected client and filter project types based on client settings
+  // Get the selected client and check if selected type is lightweight
   const selectedClient = useMemo(() => data.clients.find(c => c.id === clientId), [data.clients, clientId]);
+  const isLightweight = useMemo(() => data.projectTypes.find(pt => pt.id === projectTypeId)?.lightweight || false, [data.projectTypes, projectTypeId]);
 
   const availableProjectTypes = useMemo(() => {
     if (selectedClient?.allowedProjectTypeIds?.length) {
@@ -160,7 +161,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const handleSaveNewType = async () => {
     if (!newTypeName.trim()) return;
     try {
-      const pt = await addProjectType({ name: newTypeName.trim() });
+      const pt = await addProjectType({ name: newTypeName.trim(), lightweight: false });
       handleProjectTypeChange(pt.id);
       setShowNewType(false);
       setNewTypeName("");
@@ -242,7 +243,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       return;
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime, status,
+      clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime,
+      status: isLightweight ? "completed" : status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
       editorBilling: project?.editorBilling ?? null,
@@ -358,7 +360,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
 
           {/* Row 3: Location + Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 ${isLightweight ? "" : "sm:grid-cols-2"} gap-4`}>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Location</Label>
               {showNewLocation ? (
@@ -430,7 +432,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </div>
               )}
             </div>
-            <div className="space-y-1.5">
+            {!isLightweight && <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Status</Label>
               <Select value={status} onValueChange={(v) => setStatus(v as ProjectStatus)}>
                 <SelectTrigger className="bg-secondary border-border">
@@ -443,11 +445,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <SelectItem value="completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div>}
           </div>
 
           {/* Project Rate (per-project billing clients only) */}
-          {selectedClient?.billingModel === "per_project" && (
+          {!isLightweight && selectedClient?.billingModel === "per_project" && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Rate ($)</Label>
               <Input
@@ -466,7 +468,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           )}
 
           {/* Crew (Filming) */}
-          <div className="space-y-2">
+          {!isLightweight && <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground uppercase tracking-wider">Crew — Filming</Label>
               <Button variant="ghost" size="sm" onClick={() => setCrew((p) => [...p, emptyCrewEntry()])} className="h-7 text-xs gap-1 text-primary hover:text-primary">
@@ -530,10 +532,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </span>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Post Production */}
-          <div className="space-y-2">
+          {!isLightweight && <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground uppercase tracking-wider">Post Production</Label>
               <Button variant="ghost" size="sm" onClick={() => setPostProduction((p) => [...p, emptyPostEntry()])} className="h-7 text-xs gap-1 text-primary hover:text-primary">
@@ -596,10 +598,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </span>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Edit Types */}
-          <div className="space-y-2">
+          {!isLightweight && <div className="space-y-2">
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Edit Types</Label>
             <div className="flex flex-wrap gap-2">
               {EDIT_TYPES.map((et) => (
@@ -616,7 +618,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Notes */}
           <div className="space-y-1.5">
@@ -624,10 +626,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes about this project..." className="bg-secondary border-border resize-none" rows={3} />
           </div>
 
-          <div className="space-y-1.5">
+          {!isLightweight && <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Deliverable Link</Label>
             <Input value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} placeholder="Google Drive link to final deliverables..." className="bg-secondary border-border" />
-          </div>
+          </div>}
         </div>
 
         <DialogFooter className="sticky bottom-0 bg-card pt-4 pb-2 -mx-6 px-6 border-t border-border sm:relative sm:border-0 sm:mx-0 sm:px-0 sm:pt-0 sm:pb-0">

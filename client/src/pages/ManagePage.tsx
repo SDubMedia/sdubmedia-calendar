@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Plus, Edit3, Trash2, Users, Briefcase } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useApp } from "@/contexts/AppContext";
 import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
@@ -166,17 +167,18 @@ function ProjectTypesTab() {
   const [editing, setEditing] = useState<ProjectType | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectType | null>(null);
   const [name, setName] = useState("");
+  const [lightweight, setLightweight] = useState(false);
 
-  const openAdd = () => { setEditing(null); setName(""); setDialogOpen(true); };
-  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setDialogOpen(true); };
+  const openAdd = () => { setEditing(null); setName(""); setLightweight(false); setDialogOpen(true); };
+  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setLightweight(pt.lightweight); setDialogOpen(true); };
 
   const handleSave = () => {
     if (!name) { toast.error("Name is required"); return; }
     if (editing) {
-      updateProjectType(editing.id, { name });
+      updateProjectType(editing.id, { name, lightweight });
       toast.success("Project type updated");
     } else {
-      addProjectType({ name });
+      addProjectType({ name, lightweight });
       toast.success("Project type added");
     }
     setDialogOpen(false);
@@ -195,7 +197,10 @@ function ProjectTypesTab() {
             <div className="w-7 h-7 rounded bg-primary/15 flex items-center justify-center flex-shrink-0">
               <Briefcase className="w-3.5 h-3.5 text-primary" />
             </div>
-            <span className="flex-1 text-sm text-foreground">{pt.name}</span>
+            <span className="flex-1 text-sm text-foreground">
+              {pt.name}
+              {pt.lightweight && <span className="ml-2 text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">Lightweight</span>}
+            </span>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEdit(pt)}>
                 <Edit3 className="w-3.5 h-3.5" />
@@ -213,9 +218,15 @@ function ProjectTypesTab() {
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{editing ? "Edit Project Type" : "Add Project Type"}</DialogTitle>
           </DialogHeader>
-          <div className="py-2">
-            <Label className="text-xs text-muted-foreground">Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-secondary border-border mt-1.5" placeholder="e.g. Headshot Photography" />
+          <div className="py-2 space-y-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">Name *</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-secondary border-border mt-1.5" placeholder="e.g. Headshot Photography" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="lightweight" checked={lightweight} onCheckedChange={(v) => setLightweight(!!v)} />
+              <label htmlFor="lightweight" className="text-sm text-muted-foreground cursor-pointer">Lightweight (mileage tracking only)</label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>

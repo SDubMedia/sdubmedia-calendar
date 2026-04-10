@@ -295,7 +295,7 @@ function rowToLocation(r: any): Location {
 }
 
 function rowToProjectType(r: any): ProjectType {
-  return { id: r.id, name: r.name };
+  return { id: r.id, name: r.name, lightweight: r.lightweight || false };
 }
 
 function normalizeCrewEntry(c: any) {
@@ -1169,7 +1169,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---- Project Types ----
   const addProjectType = useCallback(async (pt: Omit<ProjectType, "id">): Promise<ProjectType> => {
     const id = nanoid(10);
-    const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name }).select().single();
+    const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name, lightweight: pt.lightweight || false }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToProjectType(row);
     setRawData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -1177,7 +1177,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [orgId]);
 
   const updateProjectType = useCallback(async (id: string, pt: Partial<ProjectType>) => {
-    const { error } = await supabase.from("project_types").update(pt).eq("id", id);
+    const dbFields: Record<string, any> = {};
+    if (pt.name !== undefined) dbFields.name = pt.name;
+    if (pt.lightweight !== undefined) dbFields.lightweight = pt.lightweight;
+    const { error } = await supabase.from("project_types").update(dbFields).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, projectTypes: d.projectTypes.map(x => x.id === id ? { ...x, ...pt } : x) }));
   }, []);
