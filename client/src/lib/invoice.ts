@@ -20,7 +20,7 @@ export function getCompanyInfo(): Record<string, string> {
     city: "Nolensville",
     state: "TN",
     zip: "37135",
-    phone: "(629) 206-1799",
+    phone: "661-916-9468",
     email: "Geoff@SDubMedia.com",
     website: "sdubmedia.com",
   };

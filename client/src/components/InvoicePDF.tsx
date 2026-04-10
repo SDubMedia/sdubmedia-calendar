@@ -2,7 +2,7 @@
 // InvoicePDF — React-PDF document for professional invoices
 // ============================================================
 
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Svg, Circle, Polygon } from "@react-pdf/renderer";
 import type { Invoice } from "@/lib/types";
 
 const brandBlue = "#0088ff";
@@ -80,7 +80,14 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.brandName}>{ci.name || "Slate"}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
+              <Svg width={28} height={28} viewBox="0 0 28 28">
+                <Circle cx="14" cy="14" r="14" fill={brandBlue} />
+                <Polygon points="11,8 11,20 22,14" fill="#ffffff" />
+              </Svg>
+              <Text style={[s.brandName, { marginLeft: 8 }]}>Slate</Text>
+            </View>
+            <Text style={{ fontSize: 9, color: gray, marginBottom: 4 }}>By SDub Media LLC</Text>
             <Text style={s.brandTagline}>{ci.phone}{ci.phone && ci.email ? " | " : ""}{ci.email}</Text>
             {ci.address && <Text style={s.brandTagline}>{ci.address}{ci.city ? `, ${ci.city}` : ""}{ci.state ? `, ${ci.state}` : ""} {ci.zip}</Text>}
             {ci.website && <Text style={s.brandTagline}>{ci.website}</Text>}
@@ -182,7 +189,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
         {/* Footer */}
         <View style={s.footer}>
           <View style={s.footerLine}>
-            <Text style={s.footerText}>{ci.name} — {ci.website}</Text>
+            <Text style={s.footerText}>Slate — By SDub Media LLC{ci.website ? ` — ${ci.website}` : ""}</Text>
             <Text style={s.footerText}>Thank you for your business!</Text>
           </View>
         </View>
