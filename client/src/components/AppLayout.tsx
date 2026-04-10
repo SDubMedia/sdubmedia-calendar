@@ -148,14 +148,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const userOverrides = effectiveProfile?.featureOverrides;
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
-      if (!item.roles.includes(role)) return false;
       if (role !== "owner" && item.feature && features) {
-        // 1. Per-user override (most specific)
+        // 1. Per-user override (most specific) — can grant access beyond default role
         if (userOverrides) {
           const userVal = userOverrides[item.feature];
           if (userVal !== undefined) return userVal;
         }
-        // 2. Per-role override
+        // 2. Role gate — only applies when no per-user override exists
+        if (!item.roles.includes(role)) return false;
+        // 3. Per-role override
         const roleOverrides = role === "staff" ? features.staffFeatures
           : role === "partner" ? features.partnerFeatures
           : role === "client" ? features.clientFeatures
@@ -166,13 +167,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         } else if (!features[item.feature as keyof typeof features]) {
           return false;
         }
+      } else if (!item.roles.includes(role)) {
+        return false;
       }
       return true;
     }
     return navStructure
       .filter(entry => {
         if (isGroup(entry)) {
-          if (!entry.roles.some(r => r === role)) return false;
+          // Don't gate groups by role — let child filterItem decide (per-user overrides can grant access)
           return entry.items.some(filterItem);
         }
         return filterItem(entry);
