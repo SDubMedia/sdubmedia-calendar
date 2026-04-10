@@ -393,19 +393,30 @@ export function getMonthlyEarningsBreakdown(
     const crewCost = crewPayCost + nonEditorPostCost;
 
     // Crew split
-    const threshold = clientSplit.crewSplitThreshold ?? 0.5;
-    const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
-    const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
+    const useSimpleSplit = year > 2026 || (year === 2026 && month >= 4); // April 2026+
     if (crewBillingAmt > 0) {
-      if (crewCost <= crewBillingAmt * threshold) {
-        const mktg = crewBillingAmt * crewMktgPct;
-        const remainder = crewBillingAmt - crewCost - mktg;
-        partnerPayout += remainder * remainderSplit;
-        adminSplit += remainder * (1 - remainderSplit);
+      if (useSimpleSplit) {
+        // April 2026+: profit × 10/45/45 (budget/admin/partner)
+        const crewProfit = crewBillingAmt - crewCost;
+        if (crewProfit > 0) {
+          partnerPayout += crewProfit * 0.45;
+          adminSplit += crewProfit * 0.45;
+        }
       } else {
-        const remainder = crewBillingAmt - crewCost;
-        partnerPayout += remainder * remainderSplit;
-        adminSplit += remainder * (1 - remainderSplit);
+        // March 2026 and earlier: threshold-based split
+        const threshold = clientSplit.crewSplitThreshold ?? 0.5;
+        const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
+        const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
+        if (crewCost <= crewBillingAmt * threshold) {
+          const mktg = crewBillingAmt * crewMktgPct;
+          const remainder = crewBillingAmt - crewCost - mktg;
+          partnerPayout += remainder * remainderSplit;
+          adminSplit += remainder * (1 - remainderSplit);
+        } else {
+          const remainder = crewBillingAmt - crewCost;
+          partnerPayout += remainder * remainderSplit;
+          adminSplit += remainder * (1 - remainderSplit);
+        }
       }
     }
 

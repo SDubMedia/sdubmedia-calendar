@@ -207,26 +207,38 @@ export default function ReportsPage() {
         const crewCost = crewPayCost + nonEditorPostCost;
         const travelCost = getProjectTravelCost(p);
 
-        // CREW SPLIT: use client's configurable settings
-        const threshold = clientSplit.crewSplitThreshold ?? 0.5;
-        const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
-        const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
+        // CREW SPLIT
+        const useSimpleSplit = yr > 2026 || (yr === 2026 && monthNum >= 4); // April 2026+
         if (crewBillingAmt > 0) {
-          if (crewCost <= crewBillingAmt * threshold) {
-            const mktg = crewBillingAmt * crewMktgPct;
-            const remainder = crewBillingAmt - crewCost - mktg;
-            if (clientSplit.spendingBudgetEnabled !== false) marketingBudget += mktg;
-            ownerCut += remainder * remainderSplit;
-            adminCut += remainder * (1 - remainderSplit);
+          if (useSimpleSplit) {
+            // April 2026+: profit × 10/45/45 (budget/admin/partner)
+            const crewProfit = crewBillingAmt - crewCost;
+            if (crewProfit > 0) {
+              marketingBudget += crewProfit * 0.10;
+              adminCut += crewProfit * 0.45;
+              ownerCut += crewProfit * 0.45;
+            }
           } else {
-            const remainder = crewBillingAmt - crewCost;
-            ownerCut += remainder * remainderSplit;
-            adminCut += remainder * (1 - remainderSplit);
+            // March 2026 and earlier: threshold-based split
+            const threshold = clientSplit.crewSplitThreshold ?? 0.5;
+            const crewMktgPct = clientSplit.crewMarketingPercent ?? 0.10;
+            const remainderSplit = clientSplit.crewRemainderSplit ?? 0.5;
+            if (crewCost <= crewBillingAmt * threshold) {
+              const mktg = crewBillingAmt * crewMktgPct;
+              const remainder = crewBillingAmt - crewCost - mktg;
+              if (clientSplit.spendingBudgetEnabled !== false) marketingBudget += mktg;
+              ownerCut += remainder * remainderSplit;
+              adminCut += remainder * (1 - remainderSplit);
+            } else {
+              const remainder = crewBillingAmt - crewCost;
+              ownerCut += remainder * remainderSplit;
+              adminCut += remainder * (1 - remainderSplit);
+            }
           }
         }
 
         // Travel deducted from marketing budget
-        if (clientSplit.spendingBudgetEnabled !== false) marketingBudget -= travelCost;
+        marketingBudget -= travelCost;
 
         // EDITOR SPLIT: use client's configurable settings
         if (editorBillingAmt > 0 && hasPhotoEditor) {
