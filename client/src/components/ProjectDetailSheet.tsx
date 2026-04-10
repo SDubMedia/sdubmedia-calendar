@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,6 +87,11 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
   // Invoice amount
   const invoiceAmount = client ? getProjectInvoiceAmount(project, client) : 0;
+
+  // Mileage to location
+  const myDistance = project.locationId && myCrewMemberId
+    ? data.crewLocationDistances.find(d => d.crewMemberId === myCrewMemberId && d.locationId === project.locationId)
+    : null;
 
   // Detect photo editor in post-production for the billing calculator
   const photoEditorEntry = project.postProduction.find(
@@ -209,11 +214,18 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   <MapPin className="w-3.5 h-3.5" /> Location
                 </div>
                 <div className="text-sm font-medium truncate">{location?.name ?? "—"}</div>
-                {mapsUrl && (
-                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
-                    Open in Maps <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
+                <div className="flex items-center gap-3">
+                  {mapsUrl && (
+                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
+                      Open in Maps <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {myDistance && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Car className="w-3 h-3" /> {myDistance.distanceMiles} mi ({(myDistance.distanceMiles * 2).toFixed(1)} mi round trip)
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
