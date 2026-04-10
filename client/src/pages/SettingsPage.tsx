@@ -209,6 +209,7 @@ export default function SettingsPage() {
               city: businessInfo.city,
               state: businessInfo.state,
               zip: businessInfo.zip,
+              oneTimeUse: false,
             });
           }
         }

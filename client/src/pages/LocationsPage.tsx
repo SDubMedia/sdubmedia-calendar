@@ -4,7 +4,8 @@
 // ============================================================
 
 import { useState } from "react";
-import { Plus, MapPin, Edit3, Trash2, ExternalLink, RefreshCw, Car } from "lucide-react";
+import { Plus, MapPin, Edit3, Trash2, ExternalLink, RefreshCw, Car, Save } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -21,10 +22,11 @@ interface LocationFormData {
   city: string;
   state: string;
   zip: string;
+  oneTimeUse: boolean;
 }
 
-const emptyForm = (): LocationFormData => ({
-  name: "", address: "", city: "", state: "TN", zip: "",
+const emptyForm = (oneTimeUse = false): LocationFormData => ({
+  name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse,
 });
 
 export default function LocationsPage() {
@@ -34,6 +36,11 @@ export default function LocationsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Location | null>(null);
   const [form, setForm] = useState<LocationFormData>(emptyForm());
   const [recalculating, setRecalculating] = useState(false);
+  const [activeTab, setActiveTab] = useState<"saved" | "one-time">("saved");
+
+  const savedLocations = data.locations.filter(l => !l.oneTimeUse);
+  const oneTimeLocations = data.locations.filter(l => l.oneTimeUse);
+  const displayedLocations = activeTab === "saved" ? savedLocations : oneTimeLocations;
 
   async function recalculateAllDistances() {
     const crewWithAddress = data.crewMembers.filter(c => c.homeAddress?.address && c.homeAddress?.city);
@@ -69,10 +76,19 @@ export default function LocationsPage() {
     else toast.error("No distances calculated — check your Google Maps API key");
   }
 
-  const openAdd = () => { setEditingLocation(null); setForm(emptyForm()); setDialogOpen(true); };
+  const openAdd = () => { setEditingLocation(null); setForm(emptyForm(activeTab === "one-time")); setDialogOpen(true); };
+
+  const handlePromote = async (loc: Location) => {
+    try {
+      await updateLocation(loc.id, { oneTimeUse: false });
+      toast.success(`"${loc.name}" moved to saved locations`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update location");
+    }
+  };
   const openEdit = (loc: Location) => {
     setEditingLocation(loc);
-    setForm({ name: loc.name, address: loc.address, city: loc.city, state: loc.state, zip: loc.zip });
+    setForm({ name: loc.name, address: loc.address, city: loc.city, state: loc.state, zip: loc.zip, oneTimeUse: loc.oneTimeUse });
     setDialogOpen(true);
   };
 
@@ -124,7 +140,20 @@ export default function LocationsPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Locations</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data.locations.length} saved location{data.locations.length !== 1 ? "s" : ""}</p>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => setActiveTab("saved")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "saved" ? "bg-primary/20 text-primary border border-primary/50" : "text-muted-foreground border border-border hover:border-primary/30"}`}
+            >
+              Locations ({savedLocations.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("one-time")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "one-time" ? "bg-primary/20 text-primary border border-primary/50" : "text-muted-foreground border border-border hover:border-primary/30"}`}
+            >
+              One-Time ({oneTimeLocations.length})
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={recalculateAllDistances} disabled={recalculating} className="gap-2">
@@ -138,20 +167,25 @@ export default function LocationsPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-6">
-        {data.locations.length === 0 ? (
+        {displayedLocations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <MapPin className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm">No locations saved yet.</p>
+            <p className="text-sm">{activeTab === "saved" ? "No saved locations yet." : "No one-time locations."}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.locations.map((loc) => (
+            {displayedLocations.map((loc) => (
               <div key={loc.id} className="bg-card border border-border rounded-lg p-4 hover:border-border/80 transition-colors">
                 <div className="flex items-start justify-between mb-2">
                   <div className="w-8 h-8 rounded-md bg-primary/15 flex items-center justify-center flex-shrink-0">
                     <MapPin className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex items-center gap-1">
+                    {loc.oneTimeUse && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => handlePromote(loc)} title="Save to Locations">
+                        <Save className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEdit(loc)}>
                       <Edit3 className="w-3.5 h-3.5" />
                     </Button>
@@ -219,6 +253,10 @@ export default function LocationsPage() {
                 <Label className="text-xs text-muted-foreground">ZIP</Label>
                 <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} className="bg-secondary border-border" placeholder="37201" />
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="oneTimeUse" checked={form.oneTimeUse} onCheckedChange={(v) => setForm({ ...form, oneTimeUse: !!v })} />
+              <label htmlFor="oneTimeUse" className="text-sm text-muted-foreground cursor-pointer">One-time use location</label>
             </div>
           </div>
           <DialogFooter>

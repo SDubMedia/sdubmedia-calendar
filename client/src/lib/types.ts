@@ -237,6 +237,7 @@ export interface Location {
   city: string;
   state: string;
   zip: string;
+  oneTimeUse: boolean;
 }
 
 export interface ProjectType {

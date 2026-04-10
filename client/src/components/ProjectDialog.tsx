@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus, Client } from "@/lib/types";
 import { toast } from "sonner";
@@ -46,7 +47,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
-  const { data, addProject, updateProject } = useApp();
+  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -62,6 +63,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
+
+  // Inline creation state
+  const [showNewType, setShowNewType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [showNewLocation, setShowNewLocation] = useState(false);
+  const [newLocForm, setNewLocForm] = useState({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
+  const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -92,6 +100,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       } else {
         setProjectRate(null);
       }
+      setShowNewType(false);
+      setNewTypeName("");
+      setShowNewLocation(false);
+      setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
+      setLocationTab("saved");
     }
     wasOpen.current = open;
   }, [open, project, defaultDate, defaultClientId, data.clients]);
@@ -136,6 +149,53 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       } else if (!isEdit) {
         setProjectRate(selectedClient.perProjectRate || 0);
       }
+    }
+  };
+
+  // Filtered location lists for tabs
+  const savedLocations = useMemo(() => data.locations.filter(l => !l.oneTimeUse), [data.locations]);
+  const oneTimeLocations = useMemo(() => data.locations.filter(l => l.oneTimeUse), [data.locations]);
+
+  // Inline create: save new project type
+  const handleSaveNewType = async () => {
+    if (!newTypeName.trim()) return;
+    try {
+      const pt = await addProjectType({ name: newTypeName.trim() });
+      handleProjectTypeChange(pt.id);
+      setShowNewType(false);
+      setNewTypeName("");
+      toast.success("Project type created");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create type");
+    }
+  };
+
+  // Inline create: save new location
+  const handleSaveNewLocation = async () => {
+    if (!newLocForm.name.trim() || !newLocForm.address.trim()) {
+      toast.error("Name and address are required");
+      return;
+    }
+    try {
+      const loc = await addLocation(newLocForm);
+      setLocationId(loc.id);
+      if (loc.oneTimeUse) setLocationTab("one-time");
+      setShowNewLocation(false);
+      setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
+      toast.success("Location created");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create location");
+    }
+  };
+
+  // Promote one-time location to saved
+  const handlePromoteLocation = async (locId: string) => {
+    try {
+      await updateLocation(locId, { oneTimeUse: false });
+      setLocationTab("saved");
+      toast.success("Moved to saved locations");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update location");
     }
   };
 
@@ -250,16 +310,34 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Type</Label>
-              <Select value={projectTypeId} onValueChange={handleProjectTypeChange}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {availableProjectTypes.map((pt) => (
-                    <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {showNewType ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveNewType()}
+                    className="bg-secondary border-border"
+                    placeholder="Type name"
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={handleSaveNewType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowNewType(false); setNewTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+                </div>
+              ) : (
+                <Select value={projectTypeId} onValueChange={(v) => { if (v === "__new__") { setShowNewType(true); } else { handleProjectTypeChange(v); } }}>
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {availableProjectTypes.map((pt) => (
+                      <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium">
+                      <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Type</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
@@ -283,16 +361,74 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Location</Label>
-              <Select value={locationId} onValueChange={setLocationId}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {data.locations.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {showNewLocation ? (
+                <div className="space-y-2 rounded-md border border-border p-3 bg-secondary/30">
+                  <Input value={newLocForm.name} onChange={(e) => setNewLocForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary border-border" placeholder="Location name *" autoFocus />
+                  <Input value={newLocForm.address} onChange={(e) => setNewLocForm(f => ({ ...f, address: e.target.value }))} className="bg-secondary border-border" placeholder="Street address *" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input value={newLocForm.city} onChange={(e) => setNewLocForm(f => ({ ...f, city: e.target.value }))} className="bg-secondary border-border" placeholder="City" />
+                    <Input value={newLocForm.state} onChange={(e) => setNewLocForm(f => ({ ...f, state: e.target.value }))} className="bg-secondary border-border" placeholder="State" />
+                    <Input value={newLocForm.zip} onChange={(e) => setNewLocForm(f => ({ ...f, zip: e.target.value }))} className="bg-secondary border-border" placeholder="ZIP" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="oneTimeUse" checked={newLocForm.oneTimeUse} onCheckedChange={(v) => setNewLocForm(f => ({ ...f, oneTimeUse: !!v }))} />
+                    <label htmlFor="oneTimeUse" className="text-xs text-muted-foreground cursor-pointer">One-time use</label>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => { setShowNewLocation(false); setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false }); }}>Cancel</Button>
+                    <Button size="sm" onClick={handleSaveNewLocation} className="bg-primary text-primary-foreground">Save Location</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1 mb-1">
+                    <button
+                      onClick={() => setLocationTab("saved")}
+                      className={`px-2.5 py-1 rounded text-xs border transition-colors ${locationTab === "saved" ? "bg-primary/20 border-primary/50 text-primary" : "border-border text-muted-foreground hover:border-primary/30"}`}
+                    >
+                      Saved ({savedLocations.length})
+                    </button>
+                    <button
+                      onClick={() => setLocationTab("one-time")}
+                      className={`px-2.5 py-1 rounded text-xs border transition-colors ${locationTab === "one-time" ? "bg-primary/20 border-primary/50 text-primary" : "border-border text-muted-foreground hover:border-primary/30"}`}
+                    >
+                      One-Time ({oneTimeLocations.length})
+                    </button>
+                  </div>
+                  <Select value={locationId} onValueChange={(v) => { if (v === "__new__") { setShowNewLocation(true); } else { setLocationId(v); } }}>
+                    <SelectTrigger className="bg-secondary border-border">
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {(locationTab === "saved" ? savedLocations : oneTimeLocations).map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          <span className="flex items-center gap-2">
+                            {l.name}
+                            {l.oneTimeUse && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handlePromoteLocation(l.id); }}
+                                className="text-primary hover:text-primary/80 ml-auto"
+                                title="Save to Locations"
+                              >
+                                <Save className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                      {locationTab === "saved" && savedLocations.length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">No saved locations</div>
+                      )}
+                      {locationTab === "one-time" && oneTimeLocations.length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">No one-time locations</div>
+                      )}
+                      <SelectItem value="__new__" className="text-primary font-medium">
+                        <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Location</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Status</Label>

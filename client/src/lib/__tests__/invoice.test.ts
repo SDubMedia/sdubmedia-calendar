@@ -53,7 +53,7 @@ const projectTypes: ProjectType[] = [
 ];
 
 const locations: Location[] = [
-  { id: "loc-1", name: "CBSR Nashville", address: "915 Rep John Lewis Way", city: "Nashville", state: "TN", zip: "37203" },
+  { id: "loc-1", name: "CBSR Nashville", address: "915 Rep John Lewis Way", city: "Nashville", state: "TN", zip: "37203", oneTimeUse: false },
 ];
 
 // ---- generateInvoiceNumber ----

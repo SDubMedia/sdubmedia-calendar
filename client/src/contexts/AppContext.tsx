@@ -291,7 +291,7 @@ function rowToContractorInvoice(r: any): ContractorInvoice {
 }
 
 function rowToLocation(r: any): Location {
-  return { id: r.id, name: r.name, address: r.address, city: r.city, state: r.state, zip: r.zip };
+  return { id: r.id, name: r.name, address: r.address, city: r.city, state: r.state, zip: r.zip, oneTimeUse: r.one_time_use || false };
 }
 
 function rowToProjectType(r: any): ProjectType {
@@ -1138,7 +1138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addLocation = useCallback(async (l: Omit<Location, "id">): Promise<Location> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("locations").insert({
-      id, ...(orgId ? { org_id: orgId } : {}), name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip,
+      id, ...(orgId ? { org_id: orgId } : {}), name: l.name, address: l.address, city: l.city, state: l.state, zip: l.zip, one_time_use: l.oneTimeUse || false,
     }).select().single();
     if (error) throw new Error(error.message);
     const loc = rowToLocation(row);
@@ -1147,7 +1147,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [orgId]);
 
   const updateLocation = useCallback(async (id: string, l: Partial<Location>) => {
-    const { error } = await supabase.from("locations").update(l).eq("id", id);
+    // Map camelCase to snake_case for Supabase
+    const dbFields: Record<string, any> = {};
+    if (l.name !== undefined) dbFields.name = l.name;
+    if (l.address !== undefined) dbFields.address = l.address;
+    if (l.city !== undefined) dbFields.city = l.city;
+    if (l.state !== undefined) dbFields.state = l.state;
+    if (l.zip !== undefined) dbFields.zip = l.zip;
+    if (l.oneTimeUse !== undefined) dbFields.one_time_use = l.oneTimeUse;
+    const { error } = await supabase.from("locations").update(dbFields).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, locations: d.locations.map(x => x.id === id ? { ...x, ...l } : x) }));
   }, []);
