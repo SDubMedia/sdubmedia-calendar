@@ -201,9 +201,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshProfiles]);
 
   const deleteUser = useCallback(async (id: string) => {
-    // Delete profile (auth user deletion requires admin API)
-    const { error } = await supabase.from("user_profiles").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    // Delete both auth user and profile via admin API
+    const { data: { session: s } } = await supabase.auth.getSession();
+    const token = s?.access_token;
+    if (!token) throw new Error("Not authenticated");
+    const res = await fetch("/api/delete-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ userId: id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Failed" }));
+      throw new Error(err.error || "Failed to delete user");
+    }
     await refreshProfiles();
   }, [refreshProfiles]);
 

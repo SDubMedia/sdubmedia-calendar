@@ -158,7 +158,7 @@ Payments flow through the customer's connected Stripe account, NOT the platform 
 ## Scope Control
 
 - **One feature per commit.** Don't bundle 3 features into one massive commit. Easier to revert.
-- **Push after every fix.** Commit and push immediately after each fix so changes deploy. Report the push status to the user.
+- **Don't push without asking.** Commit locally, then tell the user whether changes are pushed or not pushed. Only push when the user explicitly says to.
 - **Test before building more.** If 3+ features have shipped without being tested in production, pause and test.
 - **Don't rebuild what exists.** 37 pages, 21 API routes — search first.
 - **Don't over-engineer.** If the user asks for a simple fix, don't refactor the surrounding code.

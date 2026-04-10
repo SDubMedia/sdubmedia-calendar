@@ -94,7 +94,7 @@ function Router() {
         )}
         {/* Role-specific views */}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
-        {isStaff && <Route path="/my-invoices" component={MyInvoicesPage} />}
+        {(isStaff || effectiveProfile?.featureOverrides?.invoicing) && <Route path="/my-invoices" component={MyInvoicesPage} />}
         {role === "client" && <Route path="/my-reports" component={ClientReportsPage} />}
 
         {/* Owner-only admin (no feature toggle) */}

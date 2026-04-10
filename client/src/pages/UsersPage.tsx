@@ -37,6 +37,8 @@ export default function UsersPage() {
   const [editClientIds, setEditClientIds] = useState<string[]>([]);
   const [editRole, setEditRole] = useState<UserRole>("client");
   const [editCrewMemberId, setEditCrewMemberId] = useState<string>("");
+  const [editEmail, setEditEmail] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
   const [editPassword, setEditPassword] = useState("");
   const [editForceChange, setEditForceChange] = useState(true);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -97,8 +99,36 @@ export default function UsersPage() {
     setEditClientIds(u.clientIds);
     setEditRole(u.role);
     setEditCrewMemberId(u.crewMemberId || "");
+    setEditEmail(u.email);
     setEditPassword("");
     setEditForceChange(true);
+  };
+
+  const handleUpdateEmail = async (userId: string, originalEmail: string) => {
+    if (!editEmail || editEmail === originalEmail) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail)) {
+      toast.error("Invalid email format");
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/update-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ userId, newEmail: editEmail }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to update email");
+      }
+      await refreshProfiles();
+      toast.success("Email updated");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update email");
+    } finally {
+      setSavingEmail(false);
+    }
   };
 
   const handleResetPassword = async (userId: string) => {
@@ -376,6 +406,26 @@ export default function UsersPage() {
                             </div>
                           </div>
                         )}
+                        {/* Email */}
+                        <div className="border-t border-border pt-3">
+                          <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Email</label>
+                          <div className="flex gap-2 items-end">
+                            <input
+                              type="email"
+                              value={editEmail}
+                              onChange={e => setEditEmail(e.target.value)}
+                              className="flex-1 bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground"
+                            />
+                            <button
+                              onClick={() => handleUpdateEmail(u.id, u.email)}
+                              disabled={savingEmail || editEmail === u.email}
+                              className="px-3 py-1.5 rounded text-xs bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-50"
+                            >
+                              {savingEmail ? "Saving..." : "Update"}
+                            </button>
+                          </div>
+                        </div>
+
                         {/* Password Reset */}
                         <div className="border-t border-border pt-3">
                           <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1 flex items-center gap-1">
