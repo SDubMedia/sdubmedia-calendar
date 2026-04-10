@@ -282,6 +282,25 @@ export default function ReportsPage() {
       .reduce((s, e) => s + e.amount, 0);
     const ytdMarketingBalance = ytdMarketingEarned - ytdExpenses - ytdTravelCost;
 
+    // Previous month's budget balance (for running total display)
+    const prevMonthProjects = data.projects
+      .filter(p => p.date.startsWith(String(yr)) && parseInt(p.date.split("-")[1]) < monthNum)
+      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId);
+    const prevBudgetEarned = prevMonthProjects.reduce((s, p) => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      if (!client) return s;
+      return s + getProjectInvoiceAmount(p, client) * 0.10;
+    }, 0);
+    const prevTravelCost = prevMonthProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
+    const prevExpenses = data.marketingExpenses
+      .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) < monthNum)
+      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId)
+      .reduce((s, e) => s + e.amount, 0);
+    const prevMonthBalance = prevBudgetEarned - prevExpenses - prevTravelCost;
+
+    // This month's gross budget contribution (before travel)
+    const thisMonthBudgetContribution = totalBilling - totalCrewCost - adminCut - (partnerName ? ownerCut : 0);
+
     // Per-person pay breakdown
     const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; editorBilledHours: number; travelHours: number; travelCost: number; totalPay: number }> = {};
     const emptyPerson = () => ({ name: "", prodHours: 0, editHours: 0, editImages: 0, editorBilledHours: 0, travelHours: 0, travelCost: 0, totalPay: 0 });
@@ -549,16 +568,18 @@ export default function ReportsPage() {
             <tbody>${payTableRows}
               ${partnerName ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
               ${split ? `<tr><td>Geoff Southworth (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
-              ${split && marketingBudget + travelReimbursement > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(marketingBudget + travelReimbursement)}</td></tr>` : ""}
+              ${split && thisMonthBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(thisMonthBudgetContribution)}</td></tr>` : ""}
             </tbody>
             <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalBilling)}</td></tr></tfoot>
           </table>
-          ${travelReimbursement > 0 ? `<table class="pay-table" style="margin-top:12px">
-            <thead><tr><th>Spending Budget Deductions</th><th style="text-align:right">Amount</th></tr></thead>
+          ${split ? `<table class="pay-table" style="margin-top:12px">
+            <thead><tr><th>Spending Budget</th><th style="text-align:right">Amount</th></tr></thead>
             <tbody>
-              <tr><td>Geoff Southworth (Travel Expense)</td><td style="text-align:right">${formatCurrency(travelReimbursement)}</td></tr>
+              <tr><td>Balance from previous months</td><td style="text-align:right">${formatCurrency(prevMonthBalance)}</td></tr>
+              <tr><td>Added in ${monthName}</td><td style="text-align:right;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
+              ${travelReimbursement > 0 ? `<tr><td>Travel Expense (Geoff Southworth)</td><td style="text-align:right;color:#ef4444">-${formatCurrency(travelReimbursement)}</td></tr>` : ""}
             </tbody>
-            <tfoot><tr class="pay-total"><td><strong>Net Added to Budget</strong></td><td style="text-align:right;color:${marketingBudget >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(marketingBudget)}</td></tr></tfoot>
+            <tfoot><tr class="pay-total"><td><strong>Budget Balance</strong></td><td style="text-align:right;color:${ytdMarketingBalance >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(ytdMarketingBalance)}</td></tr></tfoot>
           </table>` : ""}
           <p style="font-size: 11px; color: #888; margin-top: 8px;">Reference: Earnings Breakdown Report for ${monthName} ${yr}</p>
         </div>
