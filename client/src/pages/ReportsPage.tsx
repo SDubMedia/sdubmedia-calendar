@@ -298,8 +298,13 @@ export default function ReportsPage() {
       .reduce((s, e) => s + e.amount, 0);
     const prevMonthBalance = prevBudgetEarned - prevExpenses - prevTravelCost;
 
-    // This month's gross budget contribution (before travel)
-    const thisMonthBudgetContribution = totalBilling - totalCrewCost - adminCut - (partnerName ? ownerCut : 0);
+    // This month's budget contribution = 10% of billing (matches spending budget page)
+    const thisMonthBudgetContribution = totalBilling * 0.10;
+    const thisMonthTravelCost = projects.reduce((s, p) => s + getProjectTravelCost(p), 0);
+    const thisMonthMktgExpenses = data.marketingExpenses
+      .filter(e => e.date.startsWith(monthStr))
+      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId)
+      .reduce((s, e) => s + e.amount, 0);
 
     // Per-person pay breakdown
     const personPay: Record<string, { name: string; prodHours: number; editHours: number; editImages: number; editorBilledHours: number; travelHours: number; travelCost: number; totalPay: number }> = {};
@@ -523,7 +528,7 @@ export default function ReportsPage() {
         <div class="section-body" style="padding: 0;">
           <table style="width:100%;border-collapse:collapse">
             <tbody>
-              <tr><td style="padding:10px 16px;font-size:13px">Added in ${monthName}</td><td style="text-align:right;padding:10px 16px;font-size:13px;font-weight:600;color:#22c55e">+${formatCurrency(marketingBudget)}</td></tr>
+              <tr><td style="padding:10px 16px;font-size:13px">Added in ${monthName}</td><td style="text-align:right;padding:10px 16px;font-size:13px;font-weight:600;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -576,8 +581,9 @@ export default function ReportsPage() {
             <thead><tr><th>Spending Budget</th><th style="text-align:right">Amount</th></tr></thead>
             <tbody>
               <tr><td>Balance from previous months</td><td style="text-align:right">${formatCurrency(prevMonthBalance)}</td></tr>
-              <tr><td>Added in ${monthName}</td><td style="text-align:right;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
-              ${travelReimbursement > 0 ? `<tr><td>Travel Expense (Geoff Southworth)</td><td style="text-align:right;color:#ef4444">-${formatCurrency(travelReimbursement)}</td></tr>` : ""}
+              <tr><td>Added in ${monthName} (10% of ${formatCurrency(totalBilling)})</td><td style="text-align:right;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
+              ${thisMonthTravelCost > 0 ? `<tr><td>Travel Expense (Geoff Southworth)</td><td style="text-align:right;color:#ef4444">-${formatCurrency(thisMonthTravelCost)}</td></tr>` : ""}
+              ${thisMonthMktgExpenses > 0 ? `<tr><td>Marketing Expenses</td><td style="text-align:right;color:#ef4444">-${formatCurrency(thisMonthMktgExpenses)}</td></tr>` : ""}
             </tbody>
             <tfoot><tr class="pay-total"><td><strong>Budget Balance</strong></td><td style="text-align:right;color:${ytdMarketingBalance >= 0 ? "#22c55e" : "#ef4444"}">${formatCurrency(ytdMarketingBalance)}</td></tr></tfoot>
           </table>` : ""}
