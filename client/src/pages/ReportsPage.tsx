@@ -278,10 +278,13 @@ export default function ReportsPage() {
     const monthlyTravelExpenses = monthlyExpensesList.filter(e => e.category === "Travel").reduce((s, e) => s + e.amount, 0);
     const travelReimbursement = totalTravelCost + monthlyTravelExpenses;
 
-    // YTD marketing balance (filtered by selected client if applicable, through selected month)
+    // Budget-eligible clients only (those with partnerSplit + spendingBudgetEnabled)
+    const budgetClientIds = new Set(data.clients.filter(c => c.partnerSplit?.spendingBudgetEnabled !== false && c.partnerSplit).map(c => c.id));
+
+    // YTD marketing balance (budget-eligible clients only, through selected month)
     const ytdProjects = data.projects
       .filter(p => p.date.startsWith(String(yr)) && parseInt(p.date.split("-")[1]) <= monthNum)
-      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId);
+      .filter(p => budgetClientIds.has(p.clientId));
     const ytdMarketingEarned = ytdProjects.reduce((s, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return s;
@@ -290,14 +293,14 @@ export default function ReportsPage() {
     const ytdTravelCost = ytdProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const ytdExpenses = data.marketingExpenses
       .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) <= monthNum)
-      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId)
+      .filter(e => budgetClientIds.has(e.clientId))
       .reduce((s, e) => s + e.amount, 0);
     const ytdMarketingBalance = ytdMarketingEarned - ytdExpenses - ytdTravelCost;
 
     // Previous month's budget balance (for running total display)
     const prevMonthProjects = data.projects
       .filter(p => p.date.startsWith(String(yr)) && parseInt(p.date.split("-")[1]) < monthNum)
-      .filter(p => selectedClientId === "all" || p.clientId === selectedClientId);
+      .filter(p => budgetClientIds.has(p.clientId));
     const prevBudgetEarned = prevMonthProjects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
       if (!client) return s;
@@ -306,7 +309,7 @@ export default function ReportsPage() {
     const prevTravelCost = prevMonthProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const prevExpenses = data.marketingExpenses
       .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) < monthNum)
-      .filter(e => selectedClientId === "all" || e.clientId === selectedClientId)
+      .filter(e => budgetClientIds.has(e.clientId))
       .reduce((s, e) => s + e.amount, 0);
     const prevMonthBalance = prevBudgetEarned - prevExpenses - prevTravelCost;
 
