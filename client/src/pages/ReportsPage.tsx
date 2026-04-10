@@ -288,7 +288,16 @@ export default function ReportsPage() {
     const ytdMarketingEarned = ytdProjects.reduce((s, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return s;
-        return s + getProjectInvoiceAmount(p, client) * 0.10;
+        const billing = getProjectInvoiceAmount(p, client);
+        const pMonth = parseInt(p.date.split("-")[1]);
+        const pYear = parseInt(p.date.split("-")[0]);
+        const isAprilPlus = pYear > 2026 || (pYear === 2026 && pMonth >= 4);
+        if (isAprilPlus) {
+          const crewCost = getProjectCrewCostHelper(p);
+          const profit = billing - crewCost;
+          return s + (profit > 0 ? profit * 0.10 : 0);
+        }
+        return s + billing * 0.10;
       }, 0);
     const ytdTravelCost = ytdProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const ytdExpenses = data.marketingExpenses
@@ -303,7 +312,16 @@ export default function ReportsPage() {
     const prevBudgetEarned = prevMonthProjects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
       if (!client) return s;
-      return s + getProjectInvoiceAmount(p, client) * 0.10;
+      const billing = getProjectInvoiceAmount(p, client);
+      const pMonth = parseInt(p.date.split("-")[1]);
+      const pYear = parseInt(p.date.split("-")[0]);
+      const isAprilPlus = pYear > 2026 || (pYear === 2026 && pMonth >= 4);
+      if (isAprilPlus) {
+        const crewCost = getProjectCrewCostHelper(p);
+        const profit = billing - crewCost;
+        return s + (profit > 0 ? profit * 0.10 : 0);
+      }
+      return s + billing * 0.10;
     }, 0);
     const prevTravelCost = prevMonthProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const prevExpenses = data.marketingExpenses
@@ -311,8 +329,8 @@ export default function ReportsPage() {
       .reduce((s, e) => s + e.amount, 0);
     const prevMonthBalance = prevBudgetEarned - prevExpenses - prevTravelCost;
 
-    // This month's budget contribution = 10% of billing (matches spending budget page)
-    const thisMonthBudgetContribution = totalBilling * 0.10;
+    // This month's budget contribution = actual amount from profit split (gross, before travel)
+    const grossBudgetContribution = marketingBudget + (projects.reduce((s, p) => s + getProjectTravelCost(p), 0));
     const thisMonthTravelCost = projects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const thisMonthMktgExpenses = data.marketingExpenses
       .filter(e => e.date.startsWith(monthStr))
@@ -541,7 +559,7 @@ export default function ReportsPage() {
         <div class="section-body" style="padding: 0;">
           <table style="width:100%;border-collapse:collapse">
             <tbody>
-              <tr><td style="padding:10px 16px;font-size:13px">Added in ${monthName}</td><td style="text-align:right;padding:10px 16px;font-size:13px;font-weight:600;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
+              <tr><td style="padding:10px 16px;font-size:13px">Added in ${monthName}</td><td style="text-align:right;padding:10px 16px;font-size:13px;font-weight:600;color:#22c55e">+${formatCurrency(grossBudgetContribution)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -586,7 +604,7 @@ export default function ReportsPage() {
             <tbody>${payTableRows}
               ${partnerName ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
               ${split ? `<tr><td>Geoff Southworth (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
-              ${split && thisMonthBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(thisMonthBudgetContribution)}</td></tr>` : ""}
+              ${split && grossBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(grossBudgetContribution)}</td></tr>` : ""}
             </tbody>
             <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalBilling)}</td></tr></tfoot>
           </table>
@@ -594,7 +612,7 @@ export default function ReportsPage() {
             <thead><tr><th>Spending Budget</th><th style="text-align:right">Amount</th></tr></thead>
             <tbody>
               <tr><td>Balance from previous months</td><td style="text-align:right">${formatCurrency(prevMonthBalance)}</td></tr>
-              <tr><td>Added in ${monthName} (10% of ${formatCurrency(totalBilling)})</td><td style="text-align:right;color:#22c55e">+${formatCurrency(thisMonthBudgetContribution)}</td></tr>
+              <tr><td>Added in ${monthName}${(yr > 2026 || (yr === 2026 && monthNum >= 4)) ? ` (10% of profit)` : ` (10% of ${formatCurrency(totalBilling)})`}</td><td style="text-align:right;color:#22c55e">+${formatCurrency(grossBudgetContribution)}</td></tr>
               ${thisMonthTravelCost > 0 ? `<tr><td>Travel Expense (Geoff Southworth)</td><td style="text-align:right;color:#ef4444">-${formatCurrency(thisMonthTravelCost)}</td></tr>` : ""}
               ${thisMonthMktgExpenses > 0 ? `<tr><td>Marketing Expenses</td><td style="text-align:right;color:#ef4444">-${formatCurrency(thisMonthMktgExpenses)}</td></tr>` : ""}
             </tbody>

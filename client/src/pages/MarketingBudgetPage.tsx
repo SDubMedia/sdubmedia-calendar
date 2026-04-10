@@ -9,7 +9,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { ExpenseCategory } from "@/lib/types";
 import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { getProjectInvoiceAmount, getProjectTravelCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectTravelCost, getProjectCrewCost } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import ReportPreview from "@/components/ReportPreview";
 
@@ -85,9 +85,6 @@ export default function MarketingBudgetPage() {
       }, 0);
   }, [data.projects, data.clients, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
-  // Budget = 10% of total billing
-  const totalBudget = totalBilling * 0.10;
-
   // Expenses for selected year — all marketing expenses come from the shared spending budget pool
   const yearExpenses = useMemo(() => {
     return data.marketingExpenses
@@ -96,43 +93,45 @@ export default function MarketingBudgetPage() {
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
 
-  // Travel costs from projects (deducted from marketing budget, budget clients only)
-  const totalTravelCost = useMemo(() => {
-    return data.projects
-      .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => budgetClientIds.has(p.clientId))
-      .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
-      .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
-  }, [data.projects, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
-
-  const remaining = totalBudget - totalExpenses - totalTravelCost;
-
   // Monthly breakdown: billing earned, expenses, and running balance per month
   const monthlyBreakdown = useMemo(() => {
     let runningBalance = 0;
     return MONTHS.map((name, idx) => {
       const monthNum = idx + 1;
       const monthStr = `${selectedYear}-${String(monthNum).padStart(2, "0")}`;
+      const isAprilPlus = selectedYear > 2026 || (selectedYear === 2026 && monthNum >= 4);
 
-      const monthBilling = data.projects
+      const monthProjects = data.projects
         .filter(p => p.date.startsWith(monthStr))
         .filter(p => budgetClientIds.has(p.clientId))
-        .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
-        .reduce((sum, p) => {
+        .filter(p => showAllExpenses || matchingClientIds.has(p.clientId));
+
+      const monthBilling = monthProjects.reduce((sum, p) => {
+        const client = data.clients.find(c => c.id === p.clientId);
+        if (!client) return sum;
+        return sum + getProjectInvoiceAmount(p, client);
+      }, 0);
+
+      // April 2026+: budget = 10% of PROFIT (billing - crew cost)
+      // Before April 2026: budget = 10% of BILLING
+      let budgetAdded: number;
+      if (isAprilPlus) {
+        budgetAdded = monthProjects.reduce((sum, p) => {
           const client = data.clients.find(c => c.id === p.clientId);
           if (!client) return sum;
-          return sum + getProjectInvoiceAmount(p, client);
+          const billing = getProjectInvoiceAmount(p, client);
+          const crewCost = getProjectCrewCost(p);
+          const profit = billing - crewCost;
+          return sum + (profit > 0 ? profit * 0.10 : 0);
         }, 0);
+      } else {
+        budgetAdded = monthBilling * 0.10;
+      }
 
-      const budgetAdded = monthBilling * 0.10;
       const monthExpenses = yearExpenses
         .filter(e => e.date.startsWith(monthStr))
         .reduce((s, e) => s + e.amount, 0);
-      const monthTravel = data.projects
-        .filter(p => p.date.startsWith(monthStr))
-        .filter(p => budgetClientIds.has(p.clientId))
-        .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
-        .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
+      const monthTravel = monthProjects.reduce((sum, p) => sum + getProjectTravelCost(p), 0);
 
       const net = budgetAdded - monthExpenses - monthTravel;
       runningBalance += net;
@@ -141,6 +140,11 @@ export default function MarketingBudgetPage() {
       return { name, budgetAdded, monthExpenses, monthTravel, net, balance: runningBalance, hasActivity };
     });
   }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
+
+  // Budget = sum of monthly contributions (10% of billing pre-April 2026, 10% of profit April 2026+)
+  const totalBudget = monthlyBreakdown.reduce((s, m) => s + m.budgetAdded, 0);
+  const totalTravelCost = monthlyBreakdown.reduce((s, m) => s + m.monthTravel, 0);
+  const remaining = totalBudget - totalExpenses - totalTravelCost;
 
   const handleSubmit = async () => {
     if (!formData.clientId) { toast.error("Select a client"); return; }
@@ -357,7 +361,7 @@ export default function MarketingBudgetPage() {
             <p className="text-2xl font-bold text-blue-400 tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {formatCurrency(totalBudget)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">10% of {formatCurrency(totalBilling)} billed</p>
+            <p className="text-xs text-muted-foreground mt-1">10% of earnings from {formatCurrency(totalBilling)} billed</p>
           </div>
 
           <div className="bg-card border border-border rounded-lg p-5">
