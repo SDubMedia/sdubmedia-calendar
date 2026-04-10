@@ -66,6 +66,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
+  const isClient = effectiveProfile?.role === "client";
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -451,7 +452,7 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
 
             {/* Actions */}
             <div className="flex flex-col gap-2">
-              {STATUS_NEXT[project.status] && (
+              {!isClient && STATUS_NEXT[project.status] && (
                 <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
                   <CheckCircle2 className="w-4 h-4" />
                   {STATUS_NEXT_LABEL[project.status]}

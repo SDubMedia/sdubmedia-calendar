@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";
@@ -30,6 +31,8 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarPage() {
   const { data } = useApp();
+  const { effectiveProfile } = useAuth();
+  const isClient = effectiveProfile?.role === "client";
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -125,13 +128,15 @@ export default function CalendarPage() {
             {monthProjects.length} projects · {monthlyHoursTotals.worked.toFixed(1)} worked · {monthlyHoursTotals.billed.toFixed(1)} billed
           </p>
         </div>
-        <Button
-          onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          New Project
-        </Button>
+        {!isClient && (
+          <Button
+            onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Project
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -189,7 +194,7 @@ export default function CalendarPage() {
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
                   )}
                   onClick={() => {
-                    if (isCurrentMonth && dateStr) {
+                    if (isCurrentMonth && dateStr && !isClient) {
                       setSelectedDate(dateStr);
                       setNewProjectOpen(true);
                     }
