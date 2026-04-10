@@ -64,6 +64,9 @@ export default function MarketingBudgetPage() {
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<{ title: string; html: string } | null>(null);
 
+  // Show all when no filter is active
+  const showAllExpenses = selectedPartner === "all" && selectedClientId === "all";
+
   // Calculate total billing for the year (filtered by partner + client)
   const totalBilling = useMemo(() => {
     return data.projects
@@ -80,7 +83,6 @@ export default function MarketingBudgetPage() {
   const totalBudget = totalBilling * 0.10;
 
   // Expenses for selected year (filtered by partner + client)
-  const showAllExpenses = selectedPartner === "all" && selectedClientId === "all";
   const yearExpenses = useMemo(() => {
     return data.marketingExpenses
       .filter(e => e.date.startsWith(String(selectedYear)))
