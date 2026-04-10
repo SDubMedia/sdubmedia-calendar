@@ -83,7 +83,7 @@ export default function MarketingBudgetPage() {
         if (!client) return sum;
         return sum + getProjectInvoiceAmount(p, client);
       }, 0);
-  }, [data.projects, data.clients, selectedYear, matchingClientIds, budgetClientIds]);
+  }, [data.projects, data.clients, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
   // Budget = 10% of total billing
   const totalBudget = totalBilling * 0.10;
@@ -104,7 +104,7 @@ export default function MarketingBudgetPage() {
       .filter(p => budgetClientIds.has(p.clientId))
       .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => sum + getProjectTravelCost(p), 0);
-  }, [data.projects, selectedYear, matchingClientIds, budgetClientIds]);
+  }, [data.projects, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
   const remaining = totalBudget - totalExpenses - totalTravelCost;
 
@@ -131,7 +131,7 @@ export default function MarketingBudgetPage() {
 
       return { name, budgetAdded, monthExpenses, net: budgetAdded - monthExpenses };
     });
-  }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds]);
+  }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
   const handleSubmit = async () => {
     if (!formData.clientId) { toast.error("Select a client"); return; }
