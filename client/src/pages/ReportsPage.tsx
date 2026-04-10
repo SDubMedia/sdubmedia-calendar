@@ -293,7 +293,6 @@ export default function ReportsPage() {
     const ytdTravelCost = ytdProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const ytdExpenses = data.marketingExpenses
       .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) <= monthNum)
-      .filter(e => budgetClientIds.has(e.clientId))
       .reduce((s, e) => s + e.amount, 0);
     const ytdMarketingBalance = ytdMarketingEarned - ytdExpenses - ytdTravelCost;
 
@@ -309,7 +308,6 @@ export default function ReportsPage() {
     const prevTravelCost = prevMonthProjects.reduce((s, p) => s + getProjectTravelCost(p), 0);
     const prevExpenses = data.marketingExpenses
       .filter(e => e.date.startsWith(String(yr)) && parseInt(e.date.split("-")[1]) < monthNum)
-      .filter(e => budgetClientIds.has(e.clientId))
       .reduce((s, e) => s + e.amount, 0);
     const prevMonthBalance = prevBudgetEarned - prevExpenses - prevTravelCost;
 

@@ -88,12 +88,11 @@ export default function MarketingBudgetPage() {
   // Budget = 10% of total billing
   const totalBudget = totalBilling * 0.10;
 
-  // Expenses for selected year (always from budget-eligible clients — shared pool)
+  // Expenses for selected year — all marketing expenses come from the shared spending budget pool
   const yearExpenses = useMemo(() => {
     return data.marketingExpenses
-      .filter(e => e.date.startsWith(String(selectedYear)))
-      .filter(e => budgetClientIds.has(e.clientId));
-  }, [data.marketingExpenses, selectedYear, budgetClientIds]);
+      .filter(e => e.date.startsWith(String(selectedYear)));
+  }, [data.marketingExpenses, selectedYear]);
 
   const totalExpenses = yearExpenses.reduce((s, e) => s + e.amount, 0);
 
