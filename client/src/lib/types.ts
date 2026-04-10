@@ -186,6 +186,10 @@ export interface Client {
   contactName: string;
   phone: string;
   email: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
   // Billing settings
   billingModel: BillingModel; // "hourly" or "per_project"
   billingRatePerHour: number; // $ per hour (for hourly model)

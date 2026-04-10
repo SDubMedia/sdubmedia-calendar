@@ -255,6 +255,7 @@ export default function ProposalsPage() {
         contactName: quickAddName.trim(),
         email: quickAddEmail.trim(),
         phone: "",
+        address: "", city: "", state: "", zip: "",
         billingModel: "per_project" as any,
         billingRatePerHour: 0,
         perProjectRate: 0,

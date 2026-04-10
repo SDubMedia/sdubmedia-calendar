@@ -24,6 +24,7 @@ function makeClient(overrides: Partial<Client> = {}): Client {
     contactName: "John Doe",
     phone: "555-1234",
     email: "john@test.com",
+    address: "", city: "", state: "", zip: "",
     billingModel: "hourly",
     billingRatePerHour: 200,
     perProjectRate: 500,

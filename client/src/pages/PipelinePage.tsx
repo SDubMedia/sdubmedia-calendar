@@ -189,6 +189,7 @@ export default function PipelinePage() {
       if (!clientId) {
         const client = await addClient({
           company: lead.name, contactName: lead.name, email: lead.email, phone: lead.phone,
+          address: "", city: "", state: "", zip: "",
           billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
           projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
         });

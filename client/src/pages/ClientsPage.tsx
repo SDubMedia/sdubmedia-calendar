@@ -20,6 +20,10 @@ interface ClientFormData {
   contactName: string;
   phone: string;
   email: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
   billingModel: BillingModel;
   billingRatePerHour: number;
   perProjectRate: number;
@@ -49,6 +53,10 @@ const emptyForm = (): ClientFormData => ({
   contactName: "",
   phone: "",
   email: "",
+  address: "",
+  city: "",
+  state: "",
+  zip: "",
   billingModel: "hourly",
   billingRatePerHour: 200,
   perProjectRate: 0,
@@ -79,6 +87,10 @@ export default function ClientsPage() {
       contactName: client.contactName,
       phone: client.phone,
       email: client.email,
+      address: client.address || "",
+      city: client.city || "",
+      state: client.state || "",
+      zip: client.zip || "",
       billingModel: client.billingModel || "hourly",
       billingRatePerHour: client.billingRatePerHour,
       perProjectRate: client.perProjectRate || 0,
@@ -205,6 +217,24 @@ export default function ClientsPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Email</Label>
                 <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-secondary border-border" placeholder="email@example.com" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Street Address</Label>
+              <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="bg-secondary border-border" placeholder="123 Main St" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">City</Label>
+                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="bg-secondary border-border" placeholder="Nashville" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">State</Label>
+                <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} className="bg-secondary border-border" placeholder="TN" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">ZIP</Label>
+                <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} className="bg-secondary border-border" placeholder="37201" />
               </div>
             </div>
             <div className="space-y-1.5">

@@ -78,6 +78,7 @@ export default function ContractsPage() {
     try {
       const client = await addClient({
         company: quickAddName.trim(), contactName: quickAddName.trim(), email: quickAddEmail.trim(), phone: "",
+        address: "", city: "", state: "", zip: "",
         billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
         projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
       });

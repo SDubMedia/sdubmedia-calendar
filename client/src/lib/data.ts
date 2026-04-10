@@ -16,6 +16,7 @@ export const seedData: AppData = {
       contactName: "Sam Sizemore",
       phone: "864-494-6909",
       email: "sam.cbsouthernrealty@gmail.com",
+      address: "", city: "", state: "", zip: "",
       billingModel: "hourly",
       billingRatePerHour: 200,
       perProjectRate: 0,
