@@ -4,9 +4,9 @@
 // ============================================================
 
 import { useState } from "react";
-import { Plus, Building2, Phone, Mail, Edit3, Trash2, Calendar, DollarSign } from "lucide-react";
+import { Plus, Building2, Phone, Mail, Edit3, Trash2, Calendar, DollarSign, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -152,9 +152,13 @@ export default function ClientsPage() {
                   <Building2 className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-foreground truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <button
+                    onClick={() => openEdit(client)}
+                    className="font-medium text-foreground truncate hover:text-primary cursor-pointer text-left block w-full transition-colors"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                  >
                     {client.company}
-                  </div>
+                  </button>
                   <div className="text-sm text-muted-foreground">{client.contactName}</div>
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                     {client.phone && (
@@ -192,15 +196,15 @@ export default function ClientsPage() {
         )}
       </div>
 
-      {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              {editingClient ? "Edit Client" : "Add Client"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {/* Client Profile Panel */}
+      <Sheet open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
+        <SheetContent className="w-full sm:w-[560px] sm:max-w-[560px] bg-card border-border text-foreground overflow-y-auto overflow-x-hidden max-h-[100dvh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="text-lg" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {editingClient ? (form.company || "Edit Client") : "Add Client"}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-5 py-2">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Company Name *</Label>
               <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Coldwell Banker Southern Realty" />
@@ -209,6 +213,56 @@ export default function ClientsPage() {
               <Label className="text-xs text-muted-foreground">Contact Name</Label>
               <Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Sam Sizemore" />
             </div>
+
+            {/* Project Types — prominent, at the top for quick setup */}
+            <div className="space-y-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="flex items-center gap-2">
+                <Film className="w-4 h-4 text-primary" />
+                <Label className="text-xs font-semibold text-foreground uppercase tracking-wider">Project Types</Label>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Click to toggle which project types this client uses. Leave empty to allow all types.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {data.projectTypes.map(pt => (
+                  <button
+                    key={pt.id}
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      allowedProjectTypeIds: f.allowedProjectTypeIds.includes(pt.id)
+                        ? f.allowedProjectTypeIds.filter(id => id !== pt.id)
+                        : [...f.allowedProjectTypeIds, pt.id],
+                    }))}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-xs border-2 transition-colors",
+                      form.allowedProjectTypeIds.includes(pt.id)
+                        ? "bg-primary/20 border-primary text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    )}
+                  >
+                    {pt.name}
+                  </button>
+                ))}
+              </div>
+              {form.allowedProjectTypeIds.length > 0 && (
+                <div className="space-y-1.5 pt-2">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Default Project Type</Label>
+                  <select
+                    value={form.defaultProjectTypeId}
+                    onChange={e => setForm(f => ({ ...f, defaultProjectTypeId: e.target.value }))}
+                    className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">None</option>
+                    {data.projectTypes
+                      .filter(pt => form.allowedProjectTypeIds.includes(pt.id))
+                      .map(pt => (
+                        <option key={pt.id} value={pt.id}>{pt.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Phone</Label>
@@ -328,54 +382,6 @@ export default function ClientsPage() {
               </div>
               </>
             )}
-            {/* Allowed Project Types */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Allowed Project Types</Label>
-              <p className="text-[10px] text-muted-foreground">
-                Select which project types are available for this client. Leave empty to allow all.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {data.projectTypes.map(pt => (
-                  <button
-                    key={pt.id}
-                    onClick={() => setForm(f => ({
-                      ...f,
-                      allowedProjectTypeIds: f.allowedProjectTypeIds.includes(pt.id)
-                        ? f.allowedProjectTypeIds.filter(id => id !== pt.id)
-                        : [...f.allowedProjectTypeIds, pt.id],
-                    }))}
-                    className={cn(
-                      "px-2.5 py-1 rounded text-xs border transition-colors",
-                      form.allowedProjectTypeIds.includes(pt.id)
-                        ? "bg-primary/20 border-primary/50 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/30"
-                    )}
-                  >
-                    {pt.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Default Project Type */}
-            {form.allowedProjectTypeIds.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Default Project Type</Label>
-                <select
-                  value={form.defaultProjectTypeId}
-                  onChange={e => setForm(f => ({ ...f, defaultProjectTypeId: e.target.value }))}
-                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="">None</option>
-                  {data.projectTypes
-                    .filter(pt => form.allowedProjectTypeIds.includes(pt.id))
-                    .map(pt => (
-                      <option key={pt.id} value={pt.id}>{pt.name}</option>
-                    ))}
-                </select>
-              </div>
-            )}
-
             {/* Role Billing Multipliers */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -571,14 +577,14 @@ export default function ClientsPage() {
                 </div>
               )}
             </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-border">
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {editingClient ? "Save Changes" : "Add Client"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
