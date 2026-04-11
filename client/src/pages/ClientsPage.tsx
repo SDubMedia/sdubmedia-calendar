@@ -199,12 +199,12 @@ export default function ClientsPage() {
       {/* Client Profile Panel */}
       <Sheet open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
         <SheetContent className="w-full sm:w-[560px] sm:max-w-[560px] bg-card border-border text-foreground overflow-y-auto overflow-x-hidden max-h-[100dvh]">
-          <SheetHeader className="pb-4">
+          <SheetHeader className="px-4 sm:px-6 pt-4 pb-4">
             <SheetTitle className="text-lg" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {editingClient ? (form.company || "Edit Client") : "Add Client"}
             </SheetTitle>
           </SheetHeader>
-          <div className="space-y-5 py-2">
+          <div className="space-y-5 px-4 sm:px-6 py-2">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Company Name *</Label>
               <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Coldwell Banker Southern Realty" />
@@ -577,7 +577,7 @@ export default function ClientsPage() {
                 </div>
               )}
             </div>
-          <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-border">
+          <div className="flex justify-end gap-2 px-4 sm:px-6 pt-4 mt-4 border-t border-border">
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {editingClient ? "Save Changes" : "Add Client"}
