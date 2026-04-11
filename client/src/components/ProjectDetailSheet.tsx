@@ -156,15 +156,29 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const formatMoney = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
-  // Build invoice draft for just this project (one-day period)
+  // Build invoice draft for just this project (one-day period).
+  // Pass empty existingInvoices so we always generate line items — we'll warn about duplicates on click.
   const invoiceDraft = client
-    ? buildInvoice(client, [project], data.projectTypes, data.locations, data.invoices, project.date, project.date, data.organization)
+    ? buildInvoice(client, [project], data.projectTypes, data.locations, [], project.date, project.date, data.organization)
     : null;
+
+  // Find any existing invoice that already contains this project
+  const existingInvoice = data.invoices.find(inv =>
+    inv.status !== "void" && inv.lineItems.some(li => li.projectId === project.id)
+  );
 
   const openInvoiceDialog = () => {
     if (!client) { toast.error("Project has no client"); return; }
+    if (project.status === "upcoming") {
+      toast.error("Can't invoice upcoming projects — mark filming done first");
+      return;
+    }
+    if (existingInvoice) {
+      toast.error(`Already on invoice ${existingInvoice.invoiceNumber} (${existingInvoice.status})`);
+      return;
+    }
     if (!invoiceDraft || invoiceDraft.lineItems.length === 0) {
-      toast.error("Nothing to bill — project may already be on an invoice or status is upcoming");
+      toast.error("No billable hours or flat rate on this project");
       return;
     }
     setInvoiceEmail(client.email || "");
@@ -536,14 +550,18 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
                 </Button>
               )}
-              {isOwner && !project.paidDate && invoiceDraft && invoiceDraft.lineItems.length > 0 && (
+              {isOwner && !project.paidDate && (
                 <Button
                   variant="outline"
                   onClick={openInvoiceDialog}
                   className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10"
                 >
                   <Send className="w-4 h-4" />
-                  Create &amp; Send Invoice ({formatMoney(invoiceDraft.total)})
+                  {existingInvoice
+                    ? `Already on ${existingInvoice.invoiceNumber}`
+                    : invoiceDraft && invoiceDraft.lineItems.length > 0
+                      ? `Create & Send Invoice (${formatMoney(invoiceDraft.total)})`
+                      : "Create & Send Invoice"}
                 </Button>
               )}
               {isOwner && (
