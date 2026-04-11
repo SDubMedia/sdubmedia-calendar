@@ -3,13 +3,14 @@
 // Design: Dark Cinematic Studio
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -217,6 +218,20 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
   };
+
+  // Close the preview with Escape key
+  useEffect(() => {
+    if (!previewUrl) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closePreview();
+      }
+    };
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewUrl]);
 
   const handleCreateAndSendInvoice = async () => {
     if (!client || !invoiceDraft) return;
@@ -687,19 +702,30 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* PDF Preview Modal — rendered on top of the invoice dialog */}
-      {previewUrl && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-lg w-full max-w-4xl h-[90vh] flex flex-col">
+      {/* PDF Preview Modal — portalled to body so it escapes the Sheet/AlertDialog focus traps */}
+      {previewUrl && createPortal(
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+          onClick={closePreview}
+        >
+          <div
+            className="bg-card border border-border rounded-lg w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground">Invoice Preview</h3>
-              <button onClick={closePreview} className="text-muted-foreground hover:text-foreground p-1">
-                Close
+              <button
+                onClick={closePreview}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-secondary transition-colors"
+                aria-label="Close preview"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
             <iframe src={previewUrl} className="flex-1 w-full rounded-b-lg" title="Invoice Preview" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit dialog */}
