@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
 import PhotoEditorCalculator from "./PhotoEditorCalculator";
 import InvoicePDF from "./InvoicePDF";
+import ClientProfileSheet from "./ClientProfileSheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,6 +80,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [clientSheetOpen, setClientSheetOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
 
   const client = data.clients.find((c) => c.id === project.clientId);
   const location = data.locations.find((l) => l.id === project.locationId);
@@ -186,6 +190,34 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     setInvoiceOpen(true);
   };
 
+  const handlePreviewInvoice = async () => {
+    if (!invoiceDraft) return;
+    setGeneratingPreview(true);
+    try {
+      // Generate a fake invoice object for preview (real number assigned on send)
+      const previewInvoice = {
+        ...invoiceDraft,
+        id: "preview",
+        invoiceNumber: "INV-PREVIEW",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const blob = await pdf(<InvoicePDF invoice={previewInvoice} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(url);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate preview");
+    } finally {
+      setGeneratingPreview(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  };
+
   const handleCreateAndSendInvoice = async () => {
     if (!client || !invoiceDraft) return;
     if (!invoiceEmail) { toast.error("Recipient email required"); return; }
@@ -289,7 +321,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <User className="w-3.5 h-3.5" /> Client
                 </div>
-                <div className="text-sm font-medium truncate">{client?.company ?? "—"}</div>
+                {client ? (
+                  <button
+                    onClick={() => setClientSheetOpen(true)}
+                    className="text-sm font-medium truncate block w-full text-left hover:text-primary transition-colors cursor-pointer"
+                  >
+                    {client.company}
+                  </button>
+                ) : (
+                  <div className="text-sm font-medium truncate">—</div>
+                )}
                 {client?.contactName && <div className="text-xs text-muted-foreground">{client.contactName}</div>}
               </div>
               <div className="bg-secondary rounded-lg p-3 space-y-1">
@@ -625,8 +666,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
             </div>
           )}
 
-          <AlertDialogFooter>
+          <AlertDialogFooter className="gap-2 flex-col sm:flex-row">
             <AlertDialogCancel className="border-border" disabled={sendingInvoice}>Cancel</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={handlePreviewInvoice}
+              disabled={generatingPreview || sendingInvoice}
+              className="gap-2 border-border"
+            >
+              {generatingPreview ? "Generating..." : "Preview PDF"}
+            </Button>
             <AlertDialogAction
               onClick={handleCreateAndSendInvoice}
               disabled={sendingInvoice || !invoiceEmail}
@@ -638,8 +687,26 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* PDF Preview Modal — rendered on top of the invoice dialog */}
+      {previewUrl && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-lg w-full max-w-4xl h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground">Invoice Preview</h3>
+              <button onClick={closePreview} className="text-muted-foreground hover:text-foreground p-1">
+                Close
+              </button>
+            </div>
+            <iframe src={previewUrl} className="flex-1 w-full rounded-b-lg" title="Invoice Preview" />
+          </div>
+        </div>
+      )}
+
       {/* Edit dialog */}
       <ProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} />
+
+      {/* Client profile panel — opened from the client field */}
+      <ClientProfileSheet client={client || null} open={clientSheetOpen} onOpenChange={setClientSheetOpen} />
 
       {/* Delete confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
