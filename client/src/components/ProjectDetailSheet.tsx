@@ -9,16 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
+import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
+import { supabase, getAuthToken } from "@/lib/supabase";
+import { pdf } from "@react-pdf/renderer";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
 import PhotoEditorCalculator from "./PhotoEditorCalculator";
+import InvoicePDF from "./InvoicePDF";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,13 +66,19 @@ interface Props {
   onClose: () => void;
 }
 
-export default function ProjectDetailSheet({ project, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes } = useApp();
+export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice } = useApp();
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const isClient = effectiveProfile?.role === "client";
+  // Always read the latest project from context so status updates reflect immediately
+  const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoiceEmail, setInvoiceEmail] = useState("");
+  const [invoiceMessage, setInvoiceMessage] = useState("");
+  const [sendingInvoice, setSendingInvoice] = useState(false);
 
   const client = data.clients.find((c) => c.id === project.clientId);
   const location = data.locations.find((l) => l.id === project.locationId);
@@ -141,6 +151,64 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
     const newPaidDate = project.paidDate ? null : new Date().toISOString().slice(0, 10);
     await updateProject(project.id, { paidDate: newPaidDate });
     toast.success(newPaidDate ? "Marked as paid" : "Marked as unpaid");
+  };
+
+  const formatMoney = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+  // Build invoice draft for just this project (one-day period)
+  const invoiceDraft = client
+    ? buildInvoice(client, [project], data.projectTypes, data.locations, data.invoices, project.date, project.date, data.organization)
+    : null;
+
+  const openInvoiceDialog = () => {
+    if (!client) { toast.error("Project has no client"); return; }
+    if (!invoiceDraft || invoiceDraft.lineItems.length === 0) {
+      toast.error("Nothing to bill — project may already be on an invoice or status is upcoming");
+      return;
+    }
+    setInvoiceEmail(client.email || "");
+    setInvoiceMessage("");
+    setInvoiceOpen(true);
+  };
+
+  const handleCreateAndSendInvoice = async () => {
+    if (!client || !invoiceDraft) return;
+    if (!invoiceEmail) { toast.error("Recipient email required"); return; }
+
+    setSendingInvoice(true);
+    try {
+      const draft = { ...invoiceDraft };
+      draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
+      const created = await addInvoice(draft);
+
+      // Generate PDF and send
+      const blob = await pdf(<InvoicePDF invoice={created} />).toBlob();
+      const formData = new FormData();
+      formData.append("pdf", blob, `${created.invoiceNumber}.pdf`);
+      formData.append("invoiceId", created.id);
+      formData.append("recipientEmail", invoiceEmail);
+      formData.append("subject", `Invoice ${created.invoiceNumber} from Slate by SDub Media`);
+      formData.append("message", invoiceMessage);
+      formData.append("invoiceNumber", created.invoiceNumber);
+      formData.append("total", String(created.total));
+      formData.append("clientName", created.clientInfo.contactName || created.clientInfo.company || "");
+
+      const token = await getAuthToken();
+      const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to send" }));
+        throw new Error(err.error || "Failed to send");
+      }
+
+      await updateInvoice(created.id, { status: "sent" });
+      toast.success(`Invoice ${created.invoiceNumber} sent to ${invoiceEmail}`);
+      setInvoiceOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send invoice");
+    } finally {
+      setSendingInvoice(false);
+    }
   };
 
   const mapsUrl = location
@@ -468,6 +536,16 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
                   {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
                 </Button>
               )}
+              {isOwner && !project.paidDate && invoiceDraft && invoiceDraft.lineItems.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={openInvoiceDialog}
+                  className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <Send className="w-4 h-4" />
+                  Create &amp; Send Invoice ({formatMoney(invoiceDraft.total)})
+                </Button>
+              )}
               {isOwner && (
                 <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
                   Edit Project
@@ -477,6 +555,70 @@ export default function ProjectDetailSheet({ project, onClose }: Props) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Create & Send Invoice dialog */}
+      <AlertDialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create &amp; Send Invoice</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              A new invoice will be created for this project and emailed to the client.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {invoiceDraft && (
+            <div className="space-y-4 my-2">
+              {/* Line items preview */}
+              <div className="bg-secondary/30 border border-border rounded-md p-3 space-y-2">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Line Items</div>
+                {invoiceDraft.lineItems.map((li, i) => (
+                  <div key={i} className="flex justify-between text-sm">
+                    <span className="text-foreground">{li.description}</span>
+                    <span className="text-foreground font-mono">{formatMoney(li.amount)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-border pt-2 flex justify-between text-sm font-semibold">
+                  <span>Total</span>
+                  <span className="font-mono">{formatMoney(invoiceDraft.total)}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
+                <input
+                  type="email"
+                  value={invoiceEmail}
+                  onChange={e => setInvoiceEmail(e.target.value)}
+                  placeholder="client@example.com"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Optional Message</label>
+                <textarea
+                  value={invoiceMessage}
+                  onChange={e => setInvoiceMessage(e.target.value)}
+                  placeholder="Add a personal note..."
+                  rows={3}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-border" disabled={sendingInvoice}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCreateAndSendInvoice}
+              disabled={sendingInvoice || !invoiceEmail}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+            >
+              {sendingInvoice ? "Sending..." : <><Send className="w-4 h-4" /> Create &amp; Send</>}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit dialog */}
       <ProjectDialog open={editOpen} onClose={() => setEditOpen(false)} project={project} />

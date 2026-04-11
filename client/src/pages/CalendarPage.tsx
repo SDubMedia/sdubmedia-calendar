@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -393,6 +393,11 @@ export default function CalendarPage() {
                       <div className="text-xs text-amber-400 flex items-center gap-1 justify-end mt-0.5">
                         <Clock className="w-3 h-3" />
                         {totalBilled.toFixed(1)} billed
+                        {project.paidDate && (
+                          <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
+                            <DollarSign className="w-2.5 h-2.5 text-green-400" />
+                          </span>
+                        )}
                       </div>
                       {totalWorked !== totalBilled && (
                         <div className="text-[10px] text-muted-foreground text-right">
