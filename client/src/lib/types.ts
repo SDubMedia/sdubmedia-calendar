@@ -13,6 +13,7 @@ export interface OrgFeatures {
   clientPortal: boolean;
   contentSeries: boolean;
   partnerSplits: boolean;
+  budget: boolean;
   pipeline: boolean;
   proposals: boolean;
   contracts: boolean;
@@ -37,6 +38,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
   clientPortal: false,
   contentSeries: false,
   partnerSplits: false,
+  budget: true,
   pipeline: true,
   proposals: true,
   contracts: true,

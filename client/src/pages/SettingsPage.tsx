@@ -40,7 +40,8 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "expenses", label: "Expense Tracking", description: "Import credit card statements, categorize expenses for CPA" },
   { key: "profitLoss", label: "Profit & Loss", description: "Monthly P&L reports with revenue, costs, and margins" },
   { key: "contractor1099", label: "1099 Summary", description: "Contractor payment summary for tax reporting" },
-  { key: "partnerSplits", label: "Partner & Revenue Splits", description: "Split revenue with business partners, track spending budgets" },
+  { key: "partnerSplits", label: "Partner & Revenue Splits", description: "Split revenue with business partners" },
+  { key: "budget", label: "Spending Budget", description: "Track marketing/spending budgets per client" },
   { key: "clientPortal", label: "Client Portal", description: "Give clients login access to view their projects and reports" },
   { key: "clientManagement", label: "Client Management", description: "View and manage client directory" },
   { key: "locationManagement", label: "Location Management", description: "View and manage shoot locations" },
@@ -191,9 +192,12 @@ export default function SettingsPage() {
       // Auto-create or update office location if business address is set
       if (businessInfo.address && businessInfo.city) {
         const officeName = `${name || "Company"} Office`;
-        const existingOffice = data.locations.find(l => l.name.includes("Office") && l.address === businessInfo.address);
+        const normalizedAddress = businessInfo.address.trim().toLowerCase();
+        const existingOffice = data.locations.find(l =>
+          l.name.toLowerCase().includes("office") && l.address.trim().toLowerCase() === normalizedAddress
+        );
         if (!existingOffice) {
-          const officeByName = data.locations.find(l => l.name.includes("Office"));
+          const officeByName = data.locations.find(l => l.name.toLowerCase().includes("office"));
           if (officeByName) {
             await updateLocation(officeByName.id, {
               name: officeName,
