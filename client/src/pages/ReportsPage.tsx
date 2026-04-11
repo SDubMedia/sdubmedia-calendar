@@ -1046,12 +1046,18 @@ export default function ReportsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className={`grid ${client.billingModel === "per_project" ? "grid-cols-2" : "grid-cols-3"} gap-3 mb-4`}>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
                     <div className="text-center p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Projects</p>
                       <p className="text-xl font-bold text-foreground">{stat.projectCount}</p>
                     </div>
-                    {client.billingModel !== "per_project" && (
+                    {client.billingModel === "per_project" ? (
+                      <div className="text-center p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Flat Rate</p>
+                        <p className="text-xl font-bold text-foreground">{formatCurrency(Number(client.perProjectRate))}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">per project</p>
+                      </div>
+                    ) : (
                       <div className="text-center p-3 rounded-lg bg-muted/30">
                         <p className="text-xs text-muted-foreground mb-1">Hours</p>
                         <p className="text-xl font-bold text-foreground">{formatHours(stat.totalHours)}</p>
