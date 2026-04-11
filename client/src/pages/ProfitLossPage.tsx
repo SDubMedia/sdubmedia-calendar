@@ -35,12 +35,24 @@ export default function ProfitLossPage() {
   const ownerCrewMemberId = effectiveProfile?.crewMemberId || "";
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
+  const [clientFilter, setClientFilter] = useState<string>("all"); // "all" or a client id
+
+  // Projects and marketing expenses scoped to the selected client
+  const scopedProjects = useMemo(() => {
+    if (clientFilter === "all") return data.projects;
+    return data.projects.filter(p => p.clientId === clientFilter);
+  }, [data.projects, clientFilter]);
+
+  const scopedMarketingExpenses = useMemo(() => {
+    if (clientFilter === "all") return data.marketingExpenses;
+    return data.marketingExpenses.filter(e => e.clientId === clientFilter);
+  }, [data.marketingExpenses, clientFilter]);
 
   const monthlyData = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) =>
-      getMonthlyEarningsBreakdown(data.projects, data.clients, data.marketingExpenses, ownerCrewMemberId, year, m + 1)
+      getMonthlyEarningsBreakdown(scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, m + 1)
     );
-  }, [data.projects, data.clients, data.marketingExpenses, ownerCrewMemberId, year]);
+  }, [scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year]);
 
   // Revenue by client for the year
   const clientBreakdown = useMemo(() => {
@@ -105,7 +117,7 @@ export default function ProfitLossPage() {
     // so we can allocate the authoritative monthly total by partner.
     const partnerWeights = new Map<string, number>();
     let totalWeight = 0;
-    data.projects
+    scopedProjects
       .filter(p => new Date(p.date + "T00:00:00").getFullYear() === year)
       .forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
@@ -127,7 +139,7 @@ export default function ProfitLossPage() {
     }
 
     return Array.from(map.values()).sort((a, b) => b.totalPayout - a.totalPayout);
-  }, [data.projects, data.clients, year, monthlyData]);
+  }, [scopedProjects, data.clients, year, monthlyData]);
 
   const annualTotals = useMemo(() => {
     return monthlyData.reduce((acc, m) => ({
@@ -216,10 +228,23 @@ export default function ProfitLossPage() {
 
         {/* Monthly P&L Table */}
         <div className="bg-card border border-border rounded-lg print:border-gray-300">
-          <div className="px-4 py-3 border-b border-border print:border-gray-300">
+          <div className="px-4 py-3 border-b border-border print:border-gray-300 flex items-center justify-between gap-3 flex-wrap">
             <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               Monthly Breakdown
             </h3>
+            <select
+              value={clientFilter}
+              onChange={e => setClientFilter(e.target.value)}
+              className="bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary print:hidden"
+            >
+              <option value="all">All Clients</option>
+              {data.clients
+                .slice()
+                .sort((a, b) => a.company.localeCompare(b.company))
+                .map(c => (
+                  <option key={c.id} value={c.id}>{c.company}</option>
+                ))}
+            </select>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
