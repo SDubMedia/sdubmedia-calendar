@@ -2,7 +2,7 @@
 // InvoicePDF — React-PDF document for professional invoices
 // ============================================================
 
-import { Document, Page, Text, View, StyleSheet, Svg, Circle, Polygon } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import type { Invoice } from "@/lib/types";
 
 const brandBlue = "#0088ff";
@@ -81,10 +81,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
         <View style={s.header}>
           <View>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
-              <Svg width={28} height={28} viewBox="0 0 28 28">
-                <Circle cx="14" cy="14" r="14" fill={brandBlue} />
-                <Polygon points="11,8 11,20 22,14" fill="#ffffff" />
-              </Svg>
+              <Image src="/pwa-192x192.png" style={{ width: 28, height: 28, borderRadius: 4 }} />
               <Text style={[s.brandName, { marginLeft: 8 }]}>Slate</Text>
             </View>
             <Text style={{ fontSize: 9, color: gray, marginBottom: 4 }}>By SDub Media LLC</Text>
