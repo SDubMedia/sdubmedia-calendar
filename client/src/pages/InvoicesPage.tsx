@@ -39,10 +39,10 @@ function formatCurrency(n: number): string {
 }
 
 /** Get first and last day of previous month as YYYY-MM-DD */
-function getLastMonthRange(): [string, string] {
+function getCurrentMonthRange(): [string, string] {
   const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const last = new Date(now.getFullYear(), now.getMonth(), 0);
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   return [fmt(first), fmt(last)];
 }
@@ -51,8 +51,8 @@ export default function InvoicesPage() {
   const { data, addInvoice, updateInvoice, deleteInvoice } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [periodStart, setPeriodStart] = useState(() => getLastMonthRange()[0]);
-  const [periodEnd, setPeriodEnd] = useState(() => getLastMonthRange()[1]);
+  const [periodStart, setPeriodStart] = useState(() => getCurrentMonthRange()[0]);
+  const [periodEnd, setPeriodEnd] = useState(() => getCurrentMonthRange()[1]);
   const [creating, setCreating] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
