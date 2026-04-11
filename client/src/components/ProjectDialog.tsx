@@ -47,7 +47,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
-  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation } = useApp();
+  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation, addClient } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -70,6 +70,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [showNewLocation, setShowNewLocation] = useState(false);
   const [newLocForm, setNewLocForm] = useState({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
   const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -105,6 +107,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setShowNewLocation(false);
       setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
       setLocationTab("saved");
+      setShowNewClient(false);
+      setNewClientName("");
     }
     wasOpen.current = open;
   }, [open, project, defaultDate, defaultClientId, data.clients]);
@@ -156,6 +160,38 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // Filtered location lists for tabs
   const savedLocations = useMemo(() => data.locations.filter(l => !l.oneTimeUse), [data.locations]);
   const oneTimeLocations = useMemo(() => data.locations.filter(l => l.oneTimeUse), [data.locations]);
+
+  // Inline create: save new client
+  const handleSaveNewClient = async () => {
+    if (!newClientName.trim()) return;
+    try {
+      const newClient = await addClient({
+        company: newClientName.trim(),
+        contactName: "",
+        phone: "",
+        email: "",
+        address: "",
+        city: "",
+        state: "",
+        zip: "",
+        billingModel: "hourly",
+        billingRatePerHour: 0,
+        perProjectRate: 0,
+        projectTypeRates: [],
+        allowedProjectTypeIds: [],
+        defaultProjectTypeId: "",
+        roleBillingMultipliers: [],
+      });
+      setClientId(newClient.id);
+      setProjectTypeId("");
+      setProjectRate(null);
+      setShowNewClient(false);
+      setNewClientName("");
+      toast.success("Client created");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create client");
+    }
+  };
 
   // Inline create: save new project type
   const handleSaveNewType = async () => {
@@ -299,16 +335,34 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Client</Label>
-              <Select value={clientId} onValueChange={handleClientChange}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue placeholder="Select client" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {data.clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {showNewClient ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveNewClient()}
+                    className="bg-secondary border-border"
+                    placeholder="Client name"
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={handleSaveNewClient} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowNewClient(false); setNewClientName(""); }} className="shrink-0 h-9">Cancel</Button>
+                </div>
+              ) : (
+                <Select value={clientId} onValueChange={(v) => { if (v === "__new__") { setShowNewClient(true); } else { handleClientChange(v); } }}>
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    {data.clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium">
+                      <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Client</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Type</Label>
