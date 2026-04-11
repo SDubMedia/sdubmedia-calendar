@@ -15,7 +15,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   // User management (owner only)
-  createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<void>;
+  createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<string>;
   updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
@@ -186,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (profileError) throw new Error(profileError.message);
 
     await refreshProfiles();
+    return authData.user.id;
   }, [refreshProfiles, profile?.orgId]);
 
   const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => {

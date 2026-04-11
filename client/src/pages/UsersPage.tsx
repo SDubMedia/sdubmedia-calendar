@@ -31,6 +31,7 @@ export default function UsersPage() {
   const { data } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[], crewMemberId: "" });
+  const [sendInvite, setSendInvite] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -64,9 +65,29 @@ export default function UsersPage() {
     }
     setSubmitting(true);
     try {
-      await createUser(form.email, form.password, form.name, form.role, form.clientIds, form.crewMemberId);
+      const newUserId = await createUser(form.email, form.password, form.name, form.role, form.clientIds, form.crewMemberId);
       toast.success(`User "${form.name}" created`);
+
+      if (sendInvite) {
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/invite-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ userId: newUserId, tempPassword: form.password }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed" }));
+            throw new Error(err.error || "Failed to send invite");
+          }
+          toast.success(`Invite email sent to ${form.email}`);
+        } catch (inviteErr: any) {
+          toast.error(`User created but invite failed: ${inviteErr.message}`);
+        }
+      }
+
       setForm({ email: "", password: "", name: "", role: "client", clientIds: [], crewMemberId: "" });
+      setSendInvite(false);
       setShowForm(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to create user");
@@ -291,7 +312,16 @@ export default function UsersPage() {
               </div>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendInvite}
+                  onChange={e => setSendInvite(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Send invite email with login details
+              </label>
               <button
                 onClick={handleCreate}
                 disabled={submitting}
