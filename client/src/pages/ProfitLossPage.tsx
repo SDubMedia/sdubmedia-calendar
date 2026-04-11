@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectTravelCost, getMonthlyEarningsBreakdown } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown } from "@/lib/data";
 import type { MonthlyEarnings } from "@/lib/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
@@ -92,28 +92,42 @@ export default function ProfitLossPage() {
     return Array.from(map.values()).sort((a, b) => b.totalPay - a.totalPay);
   }, [data.projects, data.crewMembers, year]);
 
-  // Partner payouts for the year
+  // Partner payouts grouped by partner name.
+  // Sums month-level partnerPayout values (which come from getMonthlyEarningsBreakdown)
+  // and allocates them by partner, so this total matches the Monthly Breakdown Partner column.
   const partnerPayouts = useMemo(() => {
+    // Build a per-partner share of the year's total partner payout using each project's
+    // contribution to partner payout inside its own month. We don't recompute the split —
+    // we take the canonical month totals and divide by each partner's share of eligible revenue.
     const map = new Map<string, { name: string; totalPayout: number }>();
+
+    // First, work out each partner's share of projects by revenue × partnerPercent weight
+    // so we can allocate the authoritative monthly total by partner.
+    const partnerWeights = new Map<string, number>();
+    let totalWeight = 0;
     data.projects
       .filter(p => new Date(p.date + "T00:00:00").getFullYear() === year)
       .forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client?.partnerSplit) return;
-        const split = client.partnerSplit;
         const revenue = getProjectInvoiceAmount(p, client);
         const crewCost = getProjectCrewCost(p);
-        const profit = revenue - crewCost;
-        if (profit <= 0) return;
-        const partnerCut = profit * (split.partnerPercent ?? 0);
-        if (partnerCut > 0) {
-          const existing = map.get(split.partnerName) || { name: split.partnerName, totalPayout: 0 };
-          existing.totalPayout += partnerCut;
-          map.set(split.partnerName, existing);
-        }
+        const profit = Math.max(0, revenue - crewCost);
+        const weight = profit * (client.partnerSplit.partnerPercent ?? 0);
+        if (weight <= 0) return;
+        partnerWeights.set(client.partnerSplit.partnerName, (partnerWeights.get(client.partnerSplit.partnerName) || 0) + weight);
+        totalWeight += weight;
       });
+
+    const yearPartnerPayout = monthlyData.reduce((s, m) => s + m.partnerPayout, 0);
+    if (totalWeight > 0 && yearPartnerPayout > 0) {
+      partnerWeights.forEach((weight, name) => {
+        map.set(name, { name, totalPayout: yearPartnerPayout * (weight / totalWeight) });
+      });
+    }
+
     return Array.from(map.values()).sort((a, b) => b.totalPayout - a.totalPayout);
-  }, [data.projects, data.clients, year]);
+  }, [data.projects, data.clients, year, monthlyData]);
 
   const annualTotals = useMemo(() => {
     return monthlyData.reduce((acc, m) => ({
@@ -192,6 +206,14 @@ export default function ProfitLossPage() {
           </div>
         </div>
 
+        {/* Net Profit formula explanation */}
+        <div className="bg-secondary/30 border border-border rounded-lg px-4 py-3 text-xs text-muted-foreground print:border-gray-300">
+          <p>
+            <span className="font-semibold text-foreground">Gross Profit</span> = Revenue − Crew Costs.{" "}
+            <span className="font-semibold text-foreground">Net Profit</span> = Gross Profit − Spending Budget − Partner Payout. Admin Split is your personal income and is not subtracted from Net Profit.
+          </p>
+        </div>
+
         {/* Monthly P&L Table */}
         <div className="bg-card border border-border rounded-lg print:border-gray-300">
           <div className="px-4 py-3 border-b border-border print:border-gray-300">
@@ -207,7 +229,6 @@ export default function ProfitLossPage() {
                   <th className="text-right px-3 py-2">Projects</th>
                   <th className="text-right px-3 py-2">Revenue</th>
                   <th className="text-right px-3 py-2">Crew</th>
-                  <th className="text-right px-3 py-2">Travel</th>
                   <th className="text-right px-3 py-2">Spending</th>
                   <th className="text-right px-3 py-2">Partner</th>
                   <th className="text-right px-3 py-2">Admin</th>
@@ -222,7 +243,6 @@ export default function ProfitLossPage() {
                     <td className="text-right px-3 py-2">{m.projectCount || "—"}</td>
                     <td className="text-right px-3 py-2">{m.revenue ? formatCurrency(m.revenue) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.crewCost ? formatCurrency(m.crewCost) : "—"}</td>
-                    <td className="text-right px-3 py-2 text-red-300/70">{m.travelCost ? formatCurrency(m.travelCost) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.marketingExpenses ? formatCurrency(m.marketingExpenses) : "—"}</td>
                     <td className="text-right px-3 py-2 text-red-300/70">{m.partnerPayout ? formatCurrency(m.partnerPayout) : "—"}</td>
                     <td className="text-right px-3 py-2 text-green-400/70">{m.adminSplit ? formatCurrency(m.adminSplit) : "—"}</td>
@@ -241,7 +261,6 @@ export default function ProfitLossPage() {
                   <td className="text-right px-3 py-3">{annualTotals.projectCount}</td>
                   <td className="text-right px-3 py-3">{formatCurrency(annualTotals.revenue)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.crewCost)}</td>
-                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.travelCost)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.marketingExpenses)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>
                   <td className="text-right px-3 py-3 text-green-400">{formatCurrency(annualTotals.adminSplit)}</td>
