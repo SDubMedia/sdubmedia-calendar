@@ -702,10 +702,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* PDF Preview Modal — portalled to body so it escapes the Sheet/AlertDialog focus traps */}
+      {/* PDF Preview Modal — portalled to body so it escapes the Sheet/AlertDialog focus traps.
+          pointer-events-auto is required because Radix AlertDialog sets pointer-events: none on body. */}
       {previewUrl && createPortal(
         <div
-          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 pointer-events-auto"
           onClick={closePreview}
         >
           <div
