@@ -110,6 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - Headings use `fontFamily: "'Space Grotesk', sans-serif"`
 - Dark theme is the default — all components must look correct in dark mode first
 - Mobile responsive — every page must work at 375px width
+- **When portalling to `document.body` from inside an open Radix Dialog/AlertDialog/Sheet, you MUST add `pointer-events-auto` on the portalled overlay.** Radix's modal isolation sets `pointer-events: none` on `<body>`, so any sibling portal inherits it and becomes inert (X buttons, backdrop clicks, and Escape are all swallowed at the DOM level — symptoms look like "the button does nothing"). The focus trap is only half the story; the other half is the body-level pointer-events lock.
 
 ## Public Pages — Outside AuthGate
 
@@ -193,6 +194,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
 - **Don't use bare local imports in `api/` files.** Always use `.js` extensions: `from "./_auth.js"`. Never use `require()` — this is ESM.
 - **Don't reset form state in useEffect based on context data props.** With Supabase Realtime, any DB change gives props new references, which re-triggers the effect and wipes the form mid-edit. Use a `wasOpen` ref to only reset on open transition, or use event handlers (`openEdit()`/`openAdd()`) to populate forms instead.
+- **Don't portal to `document.body` from inside an open Radix Dialog/AlertDialog/Sheet without `pointer-events-auto`.** Radix locks `pointer-events: none` on body while a modal is open, so sibling portals are inert until you re-enable pointer events on the overlay. We've been burned by this twice on the invoice preview.
 
 ## Security — Mandatory Rules
 
