@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,7 @@ interface Props {
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice } = useApp();
+  const [, setLocation] = useLocation();
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const isClient = effectiveProfile?.role === "client";
@@ -606,18 +608,26 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   {project.paidDate ? "Paid — Click to Undo" : "Mark as Paid"}
                 </Button>
               )}
-              {isOwner && !project.paidDate && (
+              {isOwner && !project.paidDate && existingInvoice && (
+                <Button
+                  variant="outline"
+                  onClick={() => { onClose(); setLocation("/invoices"); }}
+                  className="w-full gap-2 border-green-500/40 text-green-300 hover:bg-green-500/10"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {`Already on ${existingInvoice.invoiceNumber}`}
+                </Button>
+              )}
+              {isOwner && !project.paidDate && !existingInvoice && (
                 <Button
                   variant="outline"
                   onClick={openInvoiceDialog}
                   className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10"
                 >
                   <Send className="w-4 h-4" />
-                  {existingInvoice
-                    ? `Already on ${existingInvoice.invoiceNumber}`
-                    : invoiceDraft && invoiceDraft.lineItems.length > 0
-                      ? `Create & Send Invoice (${formatMoney(invoiceDraft.total)})`
-                      : "Create & Send Invoice"}
+                  {invoiceDraft && invoiceDraft.lineItems.length > 0
+                    ? `Create & Send Invoice (${formatMoney(invoiceDraft.total)})`
+                    : "Create & Send Invoice"}
                 </Button>
               )}
               {isOwner && (

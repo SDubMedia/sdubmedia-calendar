@@ -109,7 +109,7 @@ export function buildLineItems(
           const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
           items.push({
             projectId: p.id, date: p.date,
-            description: `${projectLabel} — Production (${crewRoles})`,
+            description: `${projectLabel} — Production`,
             quantity: crewHours || 1,
             unitPrice: hasPost ? Math.round(amount * 0.6 / (crewHours || 1) * 100) / 100 : amount / (crewHours || 1),
             amount: hasPost ? Math.round(amount * 0.6 * 100) / 100 : amount,
@@ -120,7 +120,7 @@ export function buildLineItems(
           const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
           items.push({
             projectId: p.id, date: p.date,
-            description: `${projectLabel} — Editing (${postRoles})`,
+            description: `${projectLabel} — Editing`,
             quantity: postHours || 1,
             unitPrice: hasCrew ? Math.round(amount * 0.4 / (postHours || 1) * 100) / 100 : amount / (postHours || 1),
             amount: hasCrew ? Math.round(amount * 0.4 * 100) / 100 : amount,
@@ -138,7 +138,7 @@ export function buildLineItems(
         const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
-          description: `${projectLabel} — Production (${crewRoles})`,
+          description: `${projectLabel} — Production`,
           quantity: crewBillable,
           unitPrice: rate, amount: crewBillable * rate,
         });
@@ -148,7 +148,7 @@ export function buildLineItems(
         const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
-          description: `${projectLabel} — Editing (${postRoles})`,
+          description: `${projectLabel} — Editing`,
           quantity: postBillable,
           unitPrice: rate, amount: postBillable * rate,
         });
