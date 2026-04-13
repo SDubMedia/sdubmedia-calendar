@@ -1,17 +1,21 @@
 // ============================================================
-// LoginPage — Email + Password login
+// LoginPage — Email + Password login + Sign Up
 // Animated gradient mesh background (TradingView-inspired)
 // ============================================================
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,9 +25,24 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await signIn(email, password);
+      if (mode === "signup") {
+        if (!companyName.trim()) {
+          toast.error("Please enter your company name");
+          setLoading(false);
+          return;
+        }
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { name: companyName.trim(), org_name: companyName.trim() } },
+        });
+        if (error) throw error;
+        setSignupSuccess(true);
+      } else {
+        await signIn(email, password);
+      }
     } catch (err: any) {
-      toast.error(err.message || "Login failed");
+      toast.error(err.message || "Failed");
     } finally {
       setLoading(false);
     }
@@ -74,21 +93,9 @@ export default function LoginPage() {
           0% { transform: translateY(0); }
           100% { transform: translateY(4px); }
         }
-        @keyframes grainShift {
-          0%, 100% { transform: translate(0, 0); }
-          10% { transform: translate(-2px, -3px); }
-          20% { transform: translate(3px, 1px); }
-          30% { transform: translate(-1px, 2px); }
-          40% { transform: translate(2px, -2px); }
-          50% { transform: translate(-3px, 1px); }
-          60% { transform: translate(1px, 3px); }
-          70% { transform: translate(-2px, -1px); }
-          80% { transform: translate(3px, -3px); }
-          90% { transform: translate(-1px, 2px); }
-        }
       `}</style>
 
-      {/* === Bokeh Dots (scattered) === */}
+      {/* Bokeh Dots */}
       {[
         { size: 12, x: "75%", y: "30%", delay: "1s", dur: "5s" },
         { size: 10, x: "30%", y: "80%", delay: "2s", dur: "4.5s" },
@@ -103,7 +110,7 @@ export default function LoginPage() {
         }} />
       ))}
 
-      {/* === EFFECT 3: Lens Flare === */}
+      {/* Lens Flare */}
       <div className="absolute z-[1] pointer-events-none" style={{
         width: 300, height: 120,
         top: "25%", left: "55%",
@@ -112,84 +119,44 @@ export default function LoginPage() {
         animation: "flare 15s ease-in-out infinite",
       }} />
 
-      {/* === EFFECT 4: Scan Lines === */}
+      {/* Scan Lines */}
       <div className="absolute inset-0 z-[1] opacity-[0.03] pointer-events-none" style={{
         backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px)",
         backgroundSize: "100% 4px",
         animation: "scanMove 0.3s linear infinite",
       }} />
 
-      {/* === EFFECT 5: Film Strip Perforations (left & right edges) === */}
-      <div className="absolute left-2 top-0 bottom-0 w-4 z-[1] opacity-[0.06] pointer-events-none" style={{
-        backgroundImage: "repeating-linear-gradient(180deg, transparent 0px, transparent 14px, rgba(255,255,255,0.4) 14px, rgba(255,255,255,0.4) 22px, transparent 22px, transparent 30px)",
-        backgroundSize: "100% 30px",
+      {/* Blobs */}
+      <div className="absolute w-[420px] h-[420px] rounded-full opacity-25" style={{
+        background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)",
+        top: "-8%", left: "40%", filter: "blur(85px)",
+        animation: "blob5 11s ease-in-out infinite",
       }} />
-      <div className="absolute right-2 top-0 bottom-0 w-4 z-[1] opacity-[0.06] pointer-events-none" style={{
-        backgroundImage: "repeating-linear-gradient(180deg, transparent 0px, transparent 14px, rgba(255,255,255,0.4) 14px, rgba(255,255,255,0.4) 22px, transparent 22px, transparent 30px)",
-        backgroundSize: "100% 30px",
+      <div className="absolute w-[500px] h-[500px] rounded-full opacity-30" style={{
+        background: "radial-gradient(circle, #0088ff 0%, transparent 70%)",
+        top: "-10%", left: "-5%", filter: "blur(80px)",
+        animation: "blob1 10s ease-in-out infinite",
       }} />
-
-      {/* Blob 5 — Teal (top center) */}
-      <div
-        className="absolute w-[420px] h-[420px] rounded-full opacity-25"
-        style={{
-          background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)",
-          top: "-8%",
-          left: "40%",
-          filter: "blur(85px)",
-          animation: "blob5 11s ease-in-out infinite",
-        }}
-      />
-
-      {/* Blob 1 — Blue */}
-      <div
-        className="absolute w-[500px] h-[500px] rounded-full opacity-30"
-        style={{
-          background: "radial-gradient(circle, #0088ff 0%, transparent 70%)",
-          top: "-10%",
-          left: "-5%",
-          filter: "blur(80px)",
-          animation: "blob1 10s ease-in-out infinite",
-        }}
-      />
-      {/* Blob 2 — Cyan */}
-      <div
-        className="absolute w-[400px] h-[400px] rounded-full opacity-25"
-        style={{
-          background: "radial-gradient(circle, #00d4ff 0%, transparent 70%)",
-          bottom: "-5%",
-          right: "-5%",
-          filter: "blur(80px)",
-          animation: "blob2 12s ease-in-out infinite",
-        }}
-      />
-      {/* Blob 3 — Purple */}
-      <div
-        className="absolute w-[450px] h-[450px] rounded-full opacity-20"
-        style={{
-          background: "radial-gradient(circle, #7c3aed 0%, transparent 70%)",
-          top: "40%",
-          right: "20%",
-          filter: "blur(90px)",
-          animation: "blob3 11s ease-in-out infinite",
-        }}
-      />
-      {/* Blob 4 — Deep blue */}
-      <div
-        className="absolute w-[350px] h-[350px] rounded-full opacity-20"
-        style={{
-          background: "radial-gradient(circle, #0044cc 0%, transparent 70%)",
-          bottom: "20%",
-          left: "15%",
-          filter: "blur(70px)",
-          animation: "blob4 9s ease-in-out infinite",
-        }}
-      />
+      <div className="absolute w-[400px] h-[400px] rounded-full opacity-25" style={{
+        background: "radial-gradient(circle, #00d4ff 0%, transparent 70%)",
+        bottom: "-5%", right: "-5%", filter: "blur(80px)",
+        animation: "blob2 12s ease-in-out infinite",
+      }} />
+      <div className="absolute w-[450px] h-[450px] rounded-full opacity-20" style={{
+        background: "radial-gradient(circle, #7c3aed 0%, transparent 70%)",
+        top: "40%", right: "20%", filter: "blur(90px)",
+        animation: "blob3 11s ease-in-out infinite",
+      }} />
+      <div className="absolute w-[350px] h-[350px] rounded-full opacity-20" style={{
+        background: "radial-gradient(circle, #0044cc 0%, transparent 70%)",
+        bottom: "20%", left: "15%", filter: "blur(70px)",
+        animation: "blob4 9s ease-in-out infinite",
+      }} />
 
       {/* Login card */}
       <div className="relative z-10 w-full max-w-sm mx-4">
         <div className="text-center mb-8">
-          <img src="/pwa-192x192.png" alt="SDub Media" className="w-20 h-20 mx-auto mb-4" />
+          <img src="/pwa-192x192.png" alt="Slate" className="w-20 h-20 mx-auto mb-4" />
           <h1 className="font-bold bg-clip-text text-transparent" style={{
             fontFamily: "'Outfit', sans-serif",
             textTransform: "uppercase",
@@ -202,37 +169,94 @@ export default function LoginPage() {
           <p className="text-sm text-zinc-500 mt-1">by SDub Media</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[#111127]/80 backdrop-blur-xl border border-white/10 rounded-xl p-6 space-y-4 shadow-2xl">
-          <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              autoComplete="current-password"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 transition-all text-sm font-semibold disabled:opacity-50 shadow-lg shadow-blue-500/20"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+        <div className="bg-[#111127]/80 backdrop-blur-xl border border-white/10 rounded-xl p-6 space-y-4 shadow-2xl">
+          {signupSuccess ? (
+            <div className="text-center space-y-3 py-2">
+              <p className="text-sm text-white font-medium">Check your email</p>
+              <p className="text-xs text-zinc-400">
+                We sent a confirmation link to <span className="text-white">{email}</span>. Click it to activate your account, then sign in.
+              </p>
+              <button
+                onClick={() => { setSignupSuccess(false); setMode("signin"); }}
+                className="w-full py-2.5 rounded-lg border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Sign In / Sign Up toggle */}
+              <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+                <button
+                  onClick={() => setMode("signin")}
+                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-all ${mode === "signin" ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/20" : "text-zinc-400 hover:text-white"}`}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => setMode("signup")}
+                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-all ${mode === "signup" ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/20" : "text-zinc-400 hover:text-white"}`}
+                >
+                  Sign Up
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {mode === "signup" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Company Name</label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={e => setCompanyName(e.target.value)}
+                      placeholder="Your Production Company"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder={mode === "signup" ? "Create a password (min 6 chars)" : "Enter your password"}
+                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                    minLength={6}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 transition-all text-sm font-semibold disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                >
+                  {loading
+                    ? (mode === "signup" ? "Creating account..." : "Signing in...")
+                    : (mode === "signup" ? "Create Account" : "Sign In")
+                  }
+                </button>
+              </form>
+
+              {mode === "signup" && (
+                <p className="text-[10px] text-zinc-500 text-center">
+                  14-day free trial. No credit card required.
+                </p>
+              )}
+            </>
+          )}
+        </div>
         <p className="text-center text-[10px] text-zinc-600 mt-6">getslate.net</p>
       </div>
     </div>
