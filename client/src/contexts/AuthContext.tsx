@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name, org_id: profile?.orgId || "" } },
+      options: { data: { name, org_id: profile?.orgId || "", _invited: true } },
     });
     if (authError) throw new Error(authError.message);
     if (!authData.user) throw new Error("Failed to create user");
