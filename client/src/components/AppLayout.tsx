@@ -31,7 +31,9 @@ import {
   Car,
   TrendingUp,
   Trash2,
+  MessageSquare,
 } from "lucide-react";
+import FeedbackDialog from "@/components/FeedbackDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -129,6 +131,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data } = useApp();
   const orgName = data.organization?.name || "Slate";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
 
@@ -350,6 +353,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <button
+            onClick={() => setFeedbackOpen(true)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Send Feedback
+          </button>
+          <button
             onClick={() => signOut()}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
           >
@@ -492,6 +502,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
               <button
+                onClick={() => { setMobileMenuOpen(false); setFeedbackOpen(true); }}
+                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Send Feedback</span>
+              </button>
+              <button
                 onClick={() => { setMobileMenuOpen(false); signOut(); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
               >
@@ -507,6 +524,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }
