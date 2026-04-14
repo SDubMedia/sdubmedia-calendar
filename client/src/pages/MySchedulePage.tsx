@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
   filming_done: "Filmed",
   in_editing: "Editing",
   completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 const MONTH_NAMES = [

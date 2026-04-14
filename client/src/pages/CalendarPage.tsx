@@ -20,6 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
   filming_done: "Filmed",
   in_editing: "Editing",
   completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 const MONTH_NAMES = [
@@ -356,6 +357,7 @@ export default function CalendarPage() {
                       project.status === "filming_done" && "bg-purple-500",
                       project.status === "in_editing" && "bg-amber-500",
                       project.status === "completed" && "bg-green-500",
+                      project.status === "cancelled" && "bg-red-500",
                     )} />
 
                     {/* Main info */}
@@ -369,6 +371,7 @@ export default function CalendarPage() {
                           project.status === "filming_done" && "border-purple-500/40 text-purple-300",
                           project.status === "in_editing" && "border-amber-500/40 text-amber-300",
                           project.status === "completed" && "border-green-500/40 text-green-300",
+                          project.status === "cancelled" && "border-red-500/40 text-red-300",
                         )}>
                           {STATUS_LABELS[project.status]}
                         </Badge>

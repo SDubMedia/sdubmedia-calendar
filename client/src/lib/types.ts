@@ -148,7 +148,7 @@ export interface UserProfile {
   createdAt: string;
 }
 
-export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed";
+export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed" | "cancelled";
 
 export type CrewRole =
   | "Main Videographer"

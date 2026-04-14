@@ -42,6 +42,7 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   filming_done: "Filming Done",
   in_editing: "In Editing",
   completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 const STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {

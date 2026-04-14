@@ -106,7 +106,7 @@ export function buildLineItems(
       if (hasCrew || hasPost) {
         if (hasCrew) {
           const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
-          const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
+
           items.push({
             projectId: p.id, date: p.date,
             description: `${projectLabel} — Production`,
@@ -117,7 +117,7 @@ export function buildLineItems(
         }
         if (hasPost) {
           const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
-          const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
+
           items.push({
             projectId: p.id, date: p.date,
             description: `${projectLabel} — Editing`,

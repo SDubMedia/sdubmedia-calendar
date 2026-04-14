@@ -497,6 +497,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <SelectItem value="filming_done">Filming Done</SelectItem>
                   <SelectItem value="in_editing">In Editing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>}
