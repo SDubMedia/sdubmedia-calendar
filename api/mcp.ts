@@ -309,18 +309,19 @@ const TOOLS = [
   },
   {
     name: "log_mileage",
-    description: "Log a manual mileage trip. For office visits, gear pickups, or ad-hoc trips. Use list_crew to find crew member IDs and list_locations for location IDs.",
+    description: "Log a manual mileage trip. For office visits, gear pickups, or ad-hoc trips. You can provide round_trip_miles manually, OR provide destination_address and the system will auto-calculate the distance from the crew member's home address using Google Maps. Use list_crew to find crew member IDs.",
     inputSchema: {
       type: "object",
       properties: {
         crew_member_id: { type: "string", description: "Crew member ID" },
         date: { type: "string", description: "Trip date (YYYY-MM-DD)" },
-        destination: { type: "string", description: "Where you went" },
+        destination: { type: "string", description: "Where you went (name/label for the trip)" },
+        destination_address: { type: "string", description: "Full street address of destination — if provided, round-trip miles will be auto-calculated from crew member's home address via Google Maps" },
         location_id: { type: "string", description: "Optional: Slate location ID if it's a known location" },
         purpose: { type: "string", description: "Business purpose of the trip" },
-        round_trip_miles: { type: "number", description: "Round-trip distance in miles" },
+        round_trip_miles: { type: "number", description: "Round-trip distance in miles — omit if providing destination_address for auto-calculation" },
       },
-      required: ["crew_member_id", "date", "destination", "purpose", "round_trip_miles"],
+      required: ["crew_member_id", "date", "destination", "purpose"],
     },
   },
   // ---- Business Expenses ----
@@ -619,6 +620,41 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
     }
 
     case "log_mileage": {
+      let roundTripMiles = args.round_trip_miles;
+
+      // Auto-calculate distance if destination_address is provided
+      if (!roundTripMiles && args.destination_address) {
+        // Look up crew member's home address
+        const { data: crew, error: crewErr } = await db.from("crew_members")
+          .select("home_address").eq("id", args.crew_member_id).single();
+        if (crewErr) throw new Error(crewErr.message);
+        const home = crew?.home_address;
+        if (!home || !home.address) throw new Error("Crew member has no home address set — cannot auto-calculate distance. Set it in Staff page or provide round_trip_miles manually.");
+
+        const origin = `${home.address}, ${home.city}, ${home.state} ${home.zip}`;
+        const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+        if (!apiKey) throw new Error("Google Maps API key not configured");
+
+        const params = new URLSearchParams({
+          origins: origin,
+          destinations: args.destination_address,
+          units: "imperial",
+          key: apiKey,
+        });
+        const resp = await fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?${params}`);
+        const distData = await resp.json();
+
+        const element = distData.rows?.[0]?.elements?.[0];
+        if (!element || element.status !== "OK") {
+          throw new Error(`Could not calculate distance: ${element?.status || distData.status || "unknown"}. Provide round_trip_miles manually.`);
+        }
+
+        const oneWayMiles = Math.round((element.distance.value / 1609.344) * 10) / 10;
+        roundTripMiles = Math.round(oneWayMiles * 2 * 10) / 10;
+      }
+
+      if (!roundTripMiles) throw new Error("Provide either round_trip_miles or destination_address for auto-calculation");
+
       const { data, error } = await db.from("manual_trips").insert({
         id: `trip_${Date.now()}`,
         crew_member_id: args.crew_member_id,
@@ -626,10 +662,10 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
         destination: args.destination,
         location_id: args.location_id || null,
         purpose: args.purpose,
-        round_trip_miles: args.round_trip_miles,
+        round_trip_miles: roundTripMiles,
       }).select().single();
       if (error) throw new Error(error.message);
-      return data;
+      return { ...data, calculatedDistance: args.destination_address ? true : false };
     }
 
     // ---- Business Expenses ----
