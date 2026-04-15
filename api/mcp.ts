@@ -217,6 +217,175 @@ const TOOLS = [
       required: ["to", "subject"],
     },
   },
+  // ---- Invoices ----
+  {
+    name: "list_invoices",
+    description: "List invoices. Filter by status (draft, sent, paid, void), client, or date range. Returns invoice number, client, total, status, dates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by status: draft, sent, paid, void" },
+        client_id: { type: "string", description: "Filter by client ID" },
+        from: { type: "string", description: "Issue date from (YYYY-MM-DD)" },
+        to: { type: "string", description: "Issue date to (YYYY-MM-DD)" },
+      },
+    },
+  },
+  {
+    name: "get_invoice",
+    description: "Get full details of a single invoice by ID, including line items, company/client info, and payment dates.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Invoice ID" } },
+      required: ["id"],
+    },
+  },
+  // ---- Proposals ----
+  {
+    name: "list_proposals",
+    description: "List proposals. Filter by status (draft, sent, accepted, completed, void), pipeline stage, or client. Returns title, client, total, status, pipeline stage.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by status: draft, sent, accepted, completed, void" },
+        pipeline_stage: { type: "string", description: "Filter by pipeline stage: inquiry, follow_up, proposal_sent, proposal_signed, retainer_paid, final_payment, in_production, delivered, review, archived" },
+        client_id: { type: "string", description: "Filter by client ID" },
+      },
+    },
+  },
+  {
+    name: "get_proposal",
+    description: "Get full details of a single proposal by ID, including pages, packages, line items, payment milestones, and signatures.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Proposal ID" } },
+      required: ["id"],
+    },
+  },
+  // ---- Contracts ----
+  {
+    name: "list_contracts",
+    description: "List contracts. Filter by status (draft, sent, client_signed, completed, void) or client. Returns title, client, status, sent/signed dates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by status: draft, sent, client_signed, completed, void" },
+        client_id: { type: "string", description: "Filter by client ID" },
+      },
+    },
+  },
+  {
+    name: "get_contract",
+    description: "Get full details of a single contract by ID, including content, signatures, and dates.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Contract ID" } },
+      required: ["id"],
+    },
+  },
+  // ---- Pipeline ----
+  {
+    name: "list_pipeline_leads",
+    description: "List pipeline leads. Filter by stage (inquiry, follow_up, proposal_sent, proposal_signed, retainer_paid, final_payment, in_production, delivered, review, archived). Returns lead name, stage, event date, recent activity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline_stage: { type: "string", description: "Filter by stage" },
+      },
+    },
+  },
+  // ---- Mileage ----
+  {
+    name: "list_mileage",
+    description: "List manual mileage trips. Filter by date range or crew member. Returns date, destination, purpose, round-trip miles.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        to: { type: "string", description: "End date (YYYY-MM-DD)" },
+        crew_member_id: { type: "string", description: "Filter by crew member ID" },
+      },
+    },
+  },
+  {
+    name: "log_mileage",
+    description: "Log a manual mileage trip. For office visits, gear pickups, or ad-hoc trips. Use list_crew to find crew member IDs and list_locations for location IDs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        crew_member_id: { type: "string", description: "Crew member ID" },
+        date: { type: "string", description: "Trip date (YYYY-MM-DD)" },
+        destination: { type: "string", description: "Where you went" },
+        location_id: { type: "string", description: "Optional: Slate location ID if it's a known location" },
+        purpose: { type: "string", description: "Business purpose of the trip" },
+        round_trip_miles: { type: "number", description: "Round-trip distance in miles" },
+      },
+      required: ["crew_member_id", "date", "destination", "purpose", "round_trip_miles"],
+    },
+  },
+  // ---- Business Expenses ----
+  {
+    name: "list_expenses",
+    description: "List business expenses. Filter by date range or category (Equipment, Software, Travel, Meals, Advertising, Office, Insurance, Vehicle, Education, Subscriptions, Personal, Other).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        to: { type: "string", description: "End date (YYYY-MM-DD)" },
+        category: { type: "string", description: "Filter by category" },
+      },
+    },
+  },
+  // ---- Contractor Invoices ----
+  {
+    name: "list_contractor_invoices",
+    description: "List contractor (1099) invoices from crew members. Filter by crew member or status (draft, sent).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        crew_member_id: { type: "string", description: "Filter by crew member ID" },
+        status: { type: "string", description: "Filter by status: draft, sent" },
+      },
+    },
+  },
+  // ---- Crew Availability ----
+  {
+    name: "crew_availability",
+    description: "Check which crew members are available (not already booked) on a specific date. Returns available and booked crew with their project assignments.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "Date to check (YYYY-MM-DD)" },
+      },
+      required: ["date"],
+    },
+  },
+  // ---- Financial Summary ----
+  {
+    name: "financial_summary",
+    description: "Get a financial summary for a date range. Returns total revenue (paid invoices), total expenses (business expenses), total crew costs (from projects), and net profit. Also breaks down revenue by client and expenses by category.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        to: { type: "string", description: "End date (YYYY-MM-DD)" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  // ---- Client Profitability ----
+  {
+    name: "client_profitability",
+    description: "Analyze profitability per client. Returns revenue, crew costs, marketing expenses, and net profit for each client in a date range. Helps answer 'which clients are most profitable?'",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        to: { type: "string", description: "End date (YYYY-MM-DD)" },
+      },
+      required: ["from", "to"],
+    },
+  },
 ];
 
 // ---- Tool Handlers ----
@@ -368,6 +537,287 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       });
 
       return { success: true, messageId: info.messageId, from: user, to: args.to };
+    }
+
+    // ---- Invoices ----
+    case "list_invoices": {
+      let query = db.from("invoices").select("id, invoice_number, client_id, total, status, issue_date, due_date, paid_date, period_start, period_end, created_at")
+        .is("deleted_at", null)
+        .order("issue_date", { ascending: false });
+      if (args.status) query = query.eq("status", args.status);
+      if (args.client_id) query = query.eq("client_id", args.client_id);
+      if (args.from) query = query.gte("issue_date", args.from);
+      if (args.to) query = query.lte("issue_date", args.to);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "get_invoice": {
+      const { data, error } = await db.from("invoices").select("*").eq("id", args.id).single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Proposals ----
+    case "list_proposals": {
+      let query = db.from("proposals").select("id, title, client_id, total, status, pipeline_stage, sent_at, accepted_at, paid_at, client_email, lead_source, created_at")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      if (args.status) query = query.eq("status", args.status);
+      if (args.pipeline_stage) query = query.eq("pipeline_stage", args.pipeline_stage);
+      if (args.client_id) query = query.eq("client_id", args.client_id);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "get_proposal": {
+      const { data, error } = await db.from("proposals").select("*").eq("id", args.id).single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Contracts ----
+    case "list_contracts": {
+      let query = db.from("contracts").select("id, title, client_id, status, sent_at, client_signed_at, owner_signed_at, client_email, created_at")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      if (args.status) query = query.eq("status", args.status);
+      if (args.client_id) query = query.eq("client_id", args.client_id);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "get_contract": {
+      const { data, error } = await db.from("contracts").select("*").eq("id", args.id).single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Pipeline Leads ----
+    case "list_pipeline_leads": {
+      let query = db.from("pipeline_leads").select("id, name, email, phone, project_type, event_date, location, description, lead_source, pipeline_stage, proposal_id, client_id, recent_activity, recent_activity_at, created_at")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      if (args.pipeline_stage) query = query.eq("pipeline_stage", args.pipeline_stage);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Mileage ----
+    case "list_mileage": {
+      let query = db.from("manual_trips").select("*").order("date", { ascending: false });
+      if (args.from) query = query.gte("date", args.from);
+      if (args.to) query = query.lte("date", args.to);
+      if (args.crew_member_id) query = query.eq("crew_member_id", args.crew_member_id);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "log_mileage": {
+      const { data, error } = await db.from("manual_trips").insert({
+        id: `trip_${Date.now()}`,
+        crew_member_id: args.crew_member_id,
+        date: args.date,
+        destination: args.destination,
+        location_id: args.location_id || null,
+        purpose: args.purpose,
+        round_trip_miles: args.round_trip_miles,
+      }).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Business Expenses ----
+    case "list_expenses": {
+      let query = db.from("business_expenses").select("*").order("date", { ascending: false });
+      if (args.from) query = query.gte("date", args.from);
+      if (args.to) query = query.lte("date", args.to);
+      if (args.category) query = query.eq("category", args.category);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Contractor Invoices ----
+    case "list_contractor_invoices": {
+      let query = db.from("contractor_invoices").select("id, crew_member_id, invoice_number, recipient_type, recipient_name, period_start, period_end, total, status, created_at")
+        .order("created_at", { ascending: false });
+      if (args.crew_member_id) query = query.eq("crew_member_id", args.crew_member_id);
+      if (args.status) query = query.eq("status", args.status);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    // ---- Crew Availability ----
+    case "crew_availability": {
+      const [crewResult, projectResult] = await Promise.all([
+        db.from("crew_members").select("id, name, role_rates, phone, email").order("name"),
+        db.from("projects").select("id, client_id, date, start_time, end_time, status, crew, post_production")
+          .eq("date", args.date)
+          .neq("status", "deleted")
+          .neq("status", "cancelled"),
+      ]);
+      if (crewResult.error) throw new Error(crewResult.error.message);
+      if (projectResult.error) throw new Error(projectResult.error.message);
+
+      const bookedIds = new Set<string>();
+      const assignments: Record<string, { projectId: string; role: string; time: string }[]> = {};
+
+      for (const proj of projectResult.data || []) {
+        const allCrew = [...(Array.isArray(proj.crew) ? proj.crew : []), ...(Array.isArray(proj.post_production) ? proj.post_production : [])];
+        for (const entry of allCrew) {
+          const cmId = entry.crewMemberId || entry.crew_member_id;
+          if (!cmId) continue;
+          bookedIds.add(cmId);
+          if (!assignments[cmId]) assignments[cmId] = [];
+          assignments[cmId].push({
+            projectId: proj.id,
+            role: entry.role || "crew",
+            time: `${proj.start_time || "?"}-${proj.end_time || "?"}`,
+          });
+        }
+      }
+
+      const available = (crewResult.data || []).filter((c: any) => !bookedIds.has(c.id));
+      const booked = (crewResult.data || []).filter((c: any) => bookedIds.has(c.id)).map((c: any) => ({
+        ...c,
+        assignments: assignments[c.id] || [],
+      }));
+
+      return { date: args.date, available, booked };
+    }
+
+    // ---- Financial Summary ----
+    case "financial_summary": {
+      const [invoicesResult, expensesResult, projectsResult, clientsResult, mktExpResult] = await Promise.all([
+        db.from("invoices").select("id, client_id, total, status, paid_date, issue_date").is("deleted_at", null),
+        db.from("business_expenses").select("id, amount, category, date"),
+        db.from("projects").select("id, client_id, date, crew, post_production, status").neq("status", "deleted"),
+        db.from("clients").select("id, company"),
+        db.from("marketing_expenses").select("id, client_id, amount, date"),
+      ]);
+      if (invoicesResult.error) throw new Error(invoicesResult.error.message);
+      if (expensesResult.error) throw new Error(expensesResult.error.message);
+      if (projectsResult.error) throw new Error(projectsResult.error.message);
+      if (clientsResult.error) throw new Error(clientsResult.error.message);
+      if (mktExpResult.error) throw new Error(mktExpResult.error.message);
+
+      const clientMap: Record<string, string> = {};
+      for (const c of clientsResult.data || []) clientMap[c.id] = c.company;
+
+      // Revenue from paid invoices in the date range
+      const paidInvoices = (invoicesResult.data || []).filter((inv: any) =>
+        inv.status === "paid" && inv.paid_date && inv.paid_date >= args.from && inv.paid_date <= args.to
+      );
+      const totalRevenue = paidInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+
+      const revenueByClient: Record<string, number> = {};
+      for (const inv of paidInvoices) {
+        const name = clientMap[inv.client_id] || inv.client_id;
+        revenueByClient[name] = (revenueByClient[name] || 0) + (inv.total || 0);
+      }
+
+      // Business expenses in date range
+      const periodExpenses = (expensesResult.data || []).filter((exp: any) =>
+        exp.date >= args.from && exp.date <= args.to
+      );
+      const totalExpenses = periodExpenses.reduce((sum: number, exp: any) => sum + (exp.amount || 0), 0);
+
+      const expensesByCategory: Record<string, number> = {};
+      for (const exp of periodExpenses) {
+        expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + (exp.amount || 0);
+      }
+
+      // Marketing expenses in date range
+      const periodMktExp = (mktExpResult.data || []).filter((exp: any) =>
+        exp.date >= args.from && exp.date <= args.to
+      );
+      const totalMarketingExpenses = periodMktExp.reduce((sum: number, exp: any) => sum + (exp.amount || 0), 0);
+
+      // Crew costs from projects in date range
+      const periodProjects = (projectsResult.data || []).filter((p: any) =>
+        p.date >= args.from && p.date <= args.to
+      );
+      let totalCrewCosts = 0;
+      for (const proj of periodProjects) {
+        const allCrew = [...(Array.isArray(proj.crew) ? proj.crew : []), ...(Array.isArray(proj.post_production) ? proj.post_production : [])];
+        for (const entry of allCrew) {
+          totalCrewCosts += (entry.hoursWorked || entry.hours_worked || 0) * (entry.payRatePerHour || entry.pay_rate_per_hour || 0);
+        }
+      }
+
+      return {
+        period: { from: args.from, to: args.to },
+        revenue: { total: totalRevenue, byClient: revenueByClient, paidInvoiceCount: paidInvoices.length },
+        expenses: { total: totalExpenses, byCategory: expensesByCategory },
+        marketingExpenses: { total: totalMarketingExpenses },
+        crewCosts: { total: totalCrewCosts, projectCount: periodProjects.length },
+        netProfit: totalRevenue - totalExpenses - totalMarketingExpenses - totalCrewCosts,
+      };
+    }
+
+    // ---- Client Profitability ----
+    case "client_profitability": {
+      const [invoicesRes, projectsRes, clientsRes, mktExpRes] = await Promise.all([
+        db.from("invoices").select("id, client_id, total, status, paid_date").is("deleted_at", null),
+        db.from("projects").select("id, client_id, date, crew, post_production, status").neq("status", "deleted"),
+        db.from("clients").select("id, company"),
+        db.from("marketing_expenses").select("id, client_id, amount, date"),
+      ]);
+      if (invoicesRes.error) throw new Error(invoicesRes.error.message);
+      if (projectsRes.error) throw new Error(projectsRes.error.message);
+      if (clientsRes.error) throw new Error(clientsRes.error.message);
+      if (mktExpRes.error) throw new Error(mktExpRes.error.message);
+
+      const clients: Record<string, { company: string; revenue: number; crewCosts: number; marketingExpenses: number; projectCount: number }> = {};
+      for (const c of clientsRes.data || []) {
+        clients[c.id] = { company: c.company, revenue: 0, crewCosts: 0, marketingExpenses: 0, projectCount: 0 };
+      }
+
+      // Revenue from paid invoices
+      for (const inv of invoicesRes.data || []) {
+        if (inv.status !== "paid" || !inv.paid_date || inv.paid_date < args.from || inv.paid_date > args.to) continue;
+        if (clients[inv.client_id]) clients[inv.client_id].revenue += inv.total || 0;
+      }
+
+      // Crew costs from projects
+      for (const proj of projectsRes.data || []) {
+        if (proj.date < args.from || proj.date > args.to) continue;
+        if (!clients[proj.client_id]) continue;
+        clients[proj.client_id].projectCount++;
+        const allCrew = [...(Array.isArray(proj.crew) ? proj.crew : []), ...(Array.isArray(proj.post_production) ? proj.post_production : [])];
+        for (const entry of allCrew) {
+          clients[proj.client_id].crewCosts += (entry.hoursWorked || entry.hours_worked || 0) * (entry.payRatePerHour || entry.pay_rate_per_hour || 0);
+        }
+      }
+
+      // Marketing expenses
+      for (const exp of mktExpRes.data || []) {
+        if (exp.date < args.from || exp.date > args.to) continue;
+        if (clients[exp.client_id]) clients[exp.client_id].marketingExpenses += exp.amount || 0;
+      }
+
+      // Build result sorted by profit
+      const result = Object.entries(clients)
+        .map(([id, c]) => ({
+          clientId: id,
+          company: c.company,
+          revenue: c.revenue,
+          crewCosts: c.crewCosts,
+          marketingExpenses: c.marketingExpenses,
+          netProfit: c.revenue - c.crewCosts - c.marketingExpenses,
+          projectCount: c.projectCount,
+        }))
+        .filter(c => c.revenue > 0 || c.projectCount > 0)
+        .sort((a, b) => b.netProfit - a.netProfit);
+
+      return { period: { from: args.from, to: args.to }, clients: result };
     }
 
     default:
