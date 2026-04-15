@@ -365,8 +365,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  // Verify API key — MCP clients must send X-API-Key header
-  const apiKey = req.headers["x-api-key"] as string | undefined;
+  // Verify API key — accept X-API-Key header OR Authorization: Bearer <key>
+  const xApiKey = req.headers["x-api-key"] as string | undefined;
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const bearerKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const apiKey = xApiKey || bearerKey;
   const expectedKey = process.env.SLATE_API_KEY;
   if (!expectedKey || !apiKey || apiKey.length !== expectedKey.length) {
     return res.status(401).json({ jsonrpc: "2.0", error: { code: -32600, message: "Unauthorized — invalid or missing API key" }, id: null });
