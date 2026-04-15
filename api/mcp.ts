@@ -44,7 +44,7 @@ const TOOLS = [
   },
   {
     name: "create_project",
-    description: "Create a new project/event on the Slate production calendar. Requires at minimum a client_id and date.",
+    description: "Create a new project/event on the Slate production calendar. Requires at minimum a client_id and date. IMPORTANT: Before creating, always check for conflicts by calling list_projects and list_personal_events for the same date to make sure nothing overlaps. If there is a conflict, tell the user before proceeding.",
     inputSchema: {
       type: "object",
       properties: {
@@ -161,7 +161,7 @@ const TOOLS = [
   },
   {
     name: "create_personal_event",
-    description: "Create a personal event on the My Life calendar. For personal appointments, reminders, and non-work events.",
+    description: "Create a personal event on the My Life calendar. For personal appointments, reminders, and non-work events. IMPORTANT: Before creating, always check for conflicts by calling list_projects and list_personal_events for the same date to make sure nothing overlaps. If there is a conflict, tell the user before proceeding.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,6 +174,24 @@ const TOOLS = [
         category: { type: "string", description: "Category: personal, appointment, reminder" },
       },
       required: ["title", "date"],
+    },
+  },
+  {
+    name: "update_personal_event",
+    description: "Update an existing personal event. Only include fields you want to change.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Event ID to update" },
+        title: { type: "string", description: "Event title" },
+        date: { type: "string", description: "Date (YYYY-MM-DD)" },
+        start_time: { type: "string", description: "Start time (HH:MM)" },
+        end_time: { type: "string", description: "End time (HH:MM)" },
+        location: { type: "string", description: "Location/address" },
+        notes: { type: "string", description: "Notes" },
+        category: { type: "string", description: "Category: personal, appointment, reminder" },
+      },
+      required: ["id"],
     },
   },
   {
@@ -302,6 +320,14 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
         notes: args.notes || "",
         category: args.category || "personal",
       }).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    case "update_personal_event": {
+      const { id, ...patch } = args;
+      if (patch.start_time !== undefined) patch.all_day = !patch.start_time;
+      const { data, error } = await db.from("personal_events").update(patch).eq("id", id).select().single();
       if (error) throw new Error(error.message);
       return data;
     }
