@@ -17,6 +17,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   client: "Client",
   partner: "Partner",
   staff: "Staff",
+  family: "Family",
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -24,6 +25,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   client: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   partner: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   staff: "bg-green-500/20 text-green-300 border-green-500/30",
+  family: "bg-rose-500/20 text-rose-300 border-rose-500/30",
 };
 
 export default function UsersPage() {
@@ -268,6 +270,7 @@ export default function UsersPage() {
                   <option value="partner">Partner — Financial view for attached clients</option>
                   <option value="client">Client — View-only for their own data</option>
                   <option value="staff">Staff — View own schedule & pay</option>
+                  <option value="family">Family — Personal calendar only</option>
                 </select>
               </div>
             </div>
@@ -396,6 +399,7 @@ export default function UsersPage() {
                             <option value="partner">Partner</option>
                             <option value="client">Client</option>
                             <option value="staff">Staff</option>
+                            <option value="family">Family</option>
                           </select>
                         </div>
                         {(editRole === "staff" || editRole === "owner" || editRole === "partner") && (

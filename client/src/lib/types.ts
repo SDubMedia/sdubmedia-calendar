@@ -27,6 +27,7 @@ export interface OrgFeatures {
   staffFeatures?: Partial<OrgFeatures>;
   partnerFeatures?: Partial<OrgFeatures>;
   clientFeatures?: Partial<OrgFeatures>;
+  familyFeatures?: Partial<OrgFeatures>;
 }
 
 export const DEFAULT_FEATURES: OrgFeatures = {
@@ -132,7 +133,7 @@ export interface Organization {
 }
 
 // ---- Auth & Roles ----
-export type UserRole = "owner" | "client" | "partner" | "staff";
+export type UserRole = "owner" | "client" | "partner" | "staff" | "family";
 
 export interface UserProfile {
   id: string;           // matches Supabase Auth user ID
@@ -728,6 +729,22 @@ export interface PipelineLead {
   deletedAt?: string | null;
 }
 
+export interface PersonalEvent {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  location: string;
+  notes: string;
+  category: string;
+  color: string;
+  priority: boolean;
+  orgId: string;
+  createdAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -748,5 +765,6 @@ export interface AppData {
   proposals: Proposal[];
   pipelineLeads: PipelineLead[];
   series: Series[];
+  personalEvents: PersonalEvent[];
   organization: Organization | null;
 }

@@ -4,16 +4,17 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project } from "@/lib/types";
+import type { Project, PersonalEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
+import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
 
 const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
@@ -33,15 +34,21 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function CalendarPage() {
   const { data } = useApp();
   const { effectiveProfile } = useAuth();
-  const isClient = effectiveProfile?.role === "client";
+  const role = effectiveProfile?.role;
+  const isClient = role === "client";
+  const isFamily = role === "family";
+  const canSeePersonal = role === "owner" || role === "family";
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [viewScope, setViewScope] = useState<"month" | "all">("month");
+  const [calendarMode, setCalendarMode] = useState<"production" | "personal" | "both">(isFamily ? "personal" : "production");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [personalEventOpen, setPersonalEventOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
 
   // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
@@ -70,6 +77,19 @@ export default function CalendarPage() {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     return data.projects.filter((p) => p.date.startsWith(prefix));
   }, [data.projects, year, month]);
+
+  // Personal events for this month
+  const monthPersonalEvents = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return data.personalEvents.filter((e) => e.date.startsWith(prefix));
+  }, [data.personalEvents, year, month]);
+
+  const getPersonalEventsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return monthPersonalEvents
+      .filter((e) => e.date === dateStr)
+      .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
+  };
 
   // Projects filtered by scope (month or all) and status for the list below
   const filteredProjects = useMemo(() => {
@@ -121,15 +141,60 @@ export default function CalendarPage() {
     <div className="flex flex-col h-full">
       {/* Page header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Production Calendar
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {monthProjects.length} projects · {monthlyHoursTotals.worked.toFixed(1)} worked · {monthlyHoursTotals.billed.toFixed(1)} billed
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {calendarMode === "production"
+                ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
+                : calendarMode === "personal"
+                ? `${monthPersonalEvents.length} events this month`
+                : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
+            </p>
+          </div>
+          {/* Calendar mode toggle — only for owner (family is locked to personal) */}
+          {canSeePersonal && !isFamily && <div className="flex gap-1 bg-background/50 rounded-lg p-1 border border-border">
+            <button
+              onClick={() => setCalendarMode("production")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                calendarMode === "production"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              )}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Production</span>
+            </button>
+            <button
+              onClick={() => setCalendarMode("personal")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                calendarMode === "personal"
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              )}
+            >
+              <Heart className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">My Life</span>
+            </button>
+            <button
+              onClick={() => setCalendarMode("both")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                calendarMode === "both"
+                  ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Both</span>
+            </button>
+          </div>}
         </div>
-        {!isClient && (
+        {!isClient && calendarMode !== "personal" && (
           <Button
             onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
             className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
@@ -180,6 +245,7 @@ export default function CalendarPage() {
               const isCurrentMonth = day >= 1 && day <= daysInMonth;
               const isToday = isCurrentMonth && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
               const dayProjects = isCurrentMonth ? getProjectsForDay(day) : [];
+              const dayEvents = isCurrentMonth ? getPersonalEventsForDay(day) : [];
               const dateStr = isCurrentMonth
                 ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                 : null;
@@ -197,7 +263,12 @@ export default function CalendarPage() {
                   onClick={() => {
                     if (isCurrentMonth && dateStr && !isClient) {
                       setSelectedDate(dateStr);
-                      setNewProjectOpen(true);
+                      if (calendarMode === "personal") {
+                        setEditingEvent(null);
+                        setPersonalEventOpen(true);
+                      } else {
+                        setNewProjectOpen(true);
+                      }
                     }
                   }}
                 >
@@ -209,7 +280,7 @@ export default function CalendarPage() {
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
-                    {dayHours !== null && dayHours.billed > 0 && (
+                    {calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
                         <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-400 bg-amber-500/10">
                           {dayHours.billed.toFixed(1)}h billed
@@ -223,197 +294,307 @@ export default function CalendarPage() {
                     )}
                   </div>
 
-                  {/* Mobile dot indicator for days with projects */}
-                  {dayProjects.length > 0 && (
-                    <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
-                      {dayProjects.slice(0, 3).map((p) => (
-                        <div key={p.id} className={cn(
-                          "w-1.5 h-1.5 rounded-full",
-                          p.status === "upcoming" && "bg-blue-400",
-                          p.status === "filming_done" && "bg-purple-400",
-                          p.status === "in_editing" && "bg-amber-400",
-                          p.status === "completed" && "bg-green-400",
-                        )} />
-                      ))}
-                    </div>
+                  {/* Production chips */}
+                  {(calendarMode === "production" || calendarMode === "both") && (
+                    <>
+                      {dayProjects.length > 0 && (
+                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
+                          {dayProjects.slice(0, 3).map((p) => (
+                            <div key={p.id} className={cn(
+                              "w-1.5 h-1.5 rounded-full",
+                              p.status === "upcoming" && "bg-blue-400",
+                              p.status === "filming_done" && "bg-purple-400",
+                              p.status === "in_editing" && "bg-amber-400",
+                              p.status === "completed" && "bg-green-400",
+                            )} />
+                          ))}
+                        </div>
+                      )}
+                      <div className="space-y-0.5 hidden sm:block">
+                        {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
+                              p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
+                              p.status === "in_editing" && "bg-amber-500/25 text-amber-300",
+                              p.status === "completed" && "bg-green-500/25 text-green-300",
+                            )}
+                          >
+                            {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
+                          </div>
+                        ))}
+                        {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
+                          <div className="text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)} more</div>
+                        )}
+                      </div>
+                    </>
                   )}
 
-                  {/* Project chips — hidden on very small screens */}
-                  <div className="space-y-0.5 hidden sm:block">
-                    {dayProjects.slice(0, 3).map((p) => (
-                      <div
-                        key={p.id}
-                        onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
-                        className={cn(
-                          "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                          p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
-                          p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
-                          p.status === "in_editing" && "bg-amber-500/25 text-amber-300",
-                          p.status === "completed" && "bg-green-500/25 text-green-300",
+                  {/* Personal event chips */}
+                  {(calendarMode === "personal" || calendarMode === "both") && (
+                    <>
+                      {dayEvents.length > 0 && calendarMode !== "both" && (
+                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
+                          {dayEvents.slice(0, 3).map((e) => (
+                            <div key={e.id} className={cn("w-1.5 h-1.5 rounded-full", getEventColor(e.color).dot)} />
+                          ))}
+                        </div>
+                      )}
+                      <div className="space-y-0.5 hidden sm:block">
+                        {dayEvents.slice(0, calendarMode === "both" ? 2 : 3).map((e) => {
+                          const ec = getEventColor(e.color);
+                          return (
+                            <div
+                              key={e.id}
+                              onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
+                              className={cn(
+                                "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                                ec.bg, ec.text,
+                              )}
+                            >
+                              {e.priority && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 inline-block flex-shrink-0 mr-0.5" />}
+                              {e.startTime ? `${e.startTime} ` : ""}{e.title}
+                            </div>
+                          );
+                        })}
+                        {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
+                          <div className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)} more</div>
                         )}
-                      >
-                        {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
                       </div>
-                    ))}
-                    {dayProjects.length > 3 && (
-                      <div className="text-[10px] text-muted-foreground px-1">+{dayProjects.length - 3} more</div>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Filter tabs + project list */}
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
-            {/* Scope toggle */}
-            <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
-              <button
-                onClick={() => setViewScope("month")}
-                className={cn(
-                  "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
-                  viewScope === "month"
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                )}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setViewScope("all")}
-                className={cn(
-                  "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
-                  viewScope === "all"
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                )}
-              >
-                All Projects
-              </button>
-            </div>
-            {/* Status filters */}
-            <div className="flex gap-1 overflow-x-auto">
-            {[
-              { key: "all", label: "All" },
-              { key: "upcoming", label: "Upcoming" },
-              { key: "filming_done", label: "Filmed" },
-              { key: "in_editing", label: "In Editing" },
-              { key: "completed", label: "Completed" },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setFilterStatus(tab.key)}
-                className={cn(
-                  "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
-                  filterStatus === tab.key
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                )}
-              >
-                {tab.label}
-                <span className="ml-1.5 opacity-70">{statusCounts[tab.key] ?? 0}</span>
-              </button>
-            ))}
-            </div>
-          </div>
-
-          {/* Project list */}
-          <div className="divide-y divide-border">
-            {filteredProjects.length === 0 ? (
-              <div className="py-12 text-center text-muted-foreground text-sm">
-                No projects found
-              </div>
-            ) : (
-              filteredProjects.map((project) => {
-                const client = getClient(project.clientId);
-                const location = getLocation(project.locationId);
-                const pType = getProjectType(project.projectTypeId);
-                const totalWorked = getProjectWorkedHours(project).totalHours;
-                const totalBilled = client
-                  ? getProjectBillableHours(project, client).totalBillable
-                  : totalWorked;
-
-                return (
-                  <div
-                    key={project.id}
-                    onClick={() => setSelectedProject(project)}
-                    className="flex items-center gap-4 px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors"
+        {calendarMode !== "personal" ? (
+          <>
+            {/* Filter tabs + project list */}
+            <div className="bg-card rounded-lg border border-border overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
+                {/* Scope toggle */}
+                <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
+                  <button
+                    onClick={() => setViewScope("month")}
+                    className={cn(
+                      "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
+                      viewScope === "month"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
                   >
-                    {/* Date */}
-                    <div className="w-14 flex-shrink-0 text-center">
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "short" })}
-                      </div>
-                      <div className="text-lg font-bold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {new Date(project.date + "T00:00:00").getDate()}
-                      </div>
-                    </div>
+                    This Month
+                  </button>
+                  <button
+                    onClick={() => setViewScope("all")}
+                    className={cn(
+                      "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
+                      viewScope === "all"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
+                  >
+                    All Projects
+                  </button>
+                </div>
+                {/* Status filters */}
+                <div className="flex gap-1 overflow-x-auto">
+                {[
+                  { key: "all", label: "All" },
+                  { key: "upcoming", label: "Upcoming" },
+                  { key: "filming_done", label: "Filmed" },
+                  { key: "in_editing", label: "In Editing" },
+                  { key: "completed", label: "Completed" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setFilterStatus(tab.key)}
+                    className={cn(
+                      "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
+                      filterStatus === tab.key
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
+                  >
+                    {tab.label}
+                    <span className="ml-1.5 opacity-70">{statusCounts[tab.key] ?? 0}</span>
+                  </button>
+                ))}
+                </div>
+              </div>
 
-                    {/* Status bar */}
-                    <div className={cn("w-1 self-stretch rounded-full flex-shrink-0",
-                      project.status === "upcoming" && "bg-blue-500",
-                      project.status === "filming_done" && "bg-purple-500",
-                      project.status === "in_editing" && "bg-amber-500",
-                      project.status === "completed" && "bg-green-500",
-                      project.status === "cancelled" && "bg-red-500",
-                    )} />
-
-                    {/* Main info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-sm font-medium text-foreground truncate">
-                          {pType?.name ?? "Unknown Project"}
-                        </span>
-                        <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border",
-                          project.status === "upcoming" && "border-blue-500/40 text-blue-300",
-                          project.status === "filming_done" && "border-purple-500/40 text-purple-300",
-                          project.status === "in_editing" && "border-amber-500/40 text-amber-300",
-                          project.status === "completed" && "border-green-500/40 text-green-300",
-                          project.status === "cancelled" && "border-red-500/40 text-red-300",
-                        )}>
-                          {STATUS_LABELS[project.status]}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {client?.company ?? "Unknown Client"}
-                        </span>
-                        {location && (
-                          <span className="flex items-center gap-1 truncate">
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            {location.name}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Time + hours */}
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                      <div className="text-xs text-amber-400 flex items-center gap-1 justify-end mt-0.5">
-                        <Clock className="w-3 h-3" />
-                        {totalBilled.toFixed(1)} billed
-                        {project.paidDate && (
-                          <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
-                            <DollarSign className="w-2.5 h-2.5 text-green-400" />
-                          </span>
-                        )}
-                      </div>
-                      {totalWorked !== totalBilled && (
-                        <div className="text-[10px] text-muted-foreground text-right">
-                          {totalWorked.toFixed(1)} worked
-                        </div>
-                      )}
-                    </div>
+              {/* Project list */}
+              <div className="divide-y divide-border">
+                {filteredProjects.length === 0 ? (
+                  <div className="py-12 text-center text-muted-foreground text-sm">
+                    No projects found
                   </div>
-                );
-              })
-            )}
+                ) : (
+                  filteredProjects.map((project) => {
+                    const client = getClient(project.clientId);
+                    const location = getLocation(project.locationId);
+                    const pType = getProjectType(project.projectTypeId);
+                    const totalWorked = getProjectWorkedHours(project).totalHours;
+                    const totalBilled = client
+                      ? getProjectBillableHours(project, client).totalBillable
+                      : totalWorked;
+
+                    return (
+                      <div
+                        key={project.id}
+                        onClick={() => setSelectedProject(project)}
+                        className="flex items-center gap-4 px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors"
+                      >
+                        {/* Date */}
+                        <div className="w-14 flex-shrink-0 text-center">
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "short" })}
+                          </div>
+                          <div className="text-lg font-bold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                            {new Date(project.date + "T00:00:00").getDate()}
+                          </div>
+                        </div>
+
+                        {/* Status bar */}
+                        <div className={cn("w-1 self-stretch rounded-full flex-shrink-0",
+                          project.status === "upcoming" && "bg-blue-500",
+                          project.status === "filming_done" && "bg-purple-500",
+                          project.status === "in_editing" && "bg-amber-500",
+                          project.status === "completed" && "bg-green-500",
+                          project.status === "cancelled" && "bg-red-500",
+                        )} />
+
+                        {/* Main info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {pType?.name ?? "Unknown Project"}
+                            </span>
+                            <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border",
+                              project.status === "upcoming" && "border-blue-500/40 text-blue-300",
+                              project.status === "filming_done" && "border-purple-500/40 text-purple-300",
+                              project.status === "in_editing" && "border-amber-500/40 text-amber-300",
+                              project.status === "completed" && "border-green-500/40 text-green-300",
+                              project.status === "cancelled" && "border-red-500/40 text-red-300",
+                            )}>
+                              {STATUS_LABELS[project.status]}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {client?.company ?? "Unknown Client"}
+                            </span>
+                            {location && (
+                              <span className="flex items-center gap-1 truncate">
+                                <MapPin className="w-3 h-3 flex-shrink-0" />
+                                {location.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Time + hours */}
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
+                          <div className="text-xs text-amber-400 flex items-center gap-1 justify-end mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            {totalBilled.toFixed(1)} billed
+                            {project.paidDate && (
+                              <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
+                                <DollarSign className="w-2.5 h-2.5 text-green-400" />
+                              </span>
+                            )}
+                          </div>
+                          {totalWorked !== totalBilled && (
+                            <div className="text-[10px] text-muted-foreground text-right">
+                              {totalWorked.toFixed(1)} worked
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Personal events list */
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <span className="text-sm font-medium text-foreground">Upcoming Events</span>
+            </div>
+            <div className="divide-y divide-border">
+              {monthPersonalEvents.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground text-sm">
+                  No personal events this month. Click a date to add one!
+                </div>
+              ) : (
+                [...monthPersonalEvents].sort((a, b) => a.priority === b.priority ? a.date.localeCompare(b.date) : a.priority ? -1 : 1).map((evt) => {
+                  const ec = getEventColor(evt.color);
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => { setEditingEvent(evt); setPersonalEventOpen(true); }}
+                      className="flex items-center gap-4 px-4 py-3 hover:bg-white/3 cursor-pointer transition-colors"
+                    >
+                      {/* Date */}
+                      <div className="w-14 flex-shrink-0 text-center">
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(evt.date + "T00:00:00").toLocaleDateString("en-US", { month: "short" })}
+                        </div>
+                        <div className="text-lg font-bold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                          {new Date(evt.date + "T00:00:00").getDate()}
+                        </div>
+                      </div>
+
+                      {/* Color bar */}
+                      <div className={cn("w-1 self-stretch rounded-full flex-shrink-0", ec.dot)} />
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-sm font-medium text-foreground truncate">
+                          {evt.priority && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                          {evt.title}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          {evt.location && (
+                            <span className="flex items-center gap-1 truncate">
+                              <MapPin className="w-3 h-3 flex-shrink-0" />
+                              {evt.location}
+                            </span>
+                          )}
+                          {evt.category !== "personal" && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border">
+                              {evt.category}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Time */}
+                      <div className="text-right flex-shrink-0">
+                        {evt.allDay ? (
+                          <div className="text-xs text-muted-foreground">All day</div>
+                        ) : (
+                          <div className="text-xs text-foreground">
+                            {evt.startTime}{evt.endTime ? ` – ${evt.endTime}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* New Project Dialog */}
@@ -430,6 +611,14 @@ export default function CalendarPage() {
           onClose={() => setSelectedProject(null)}
         />
       )}
+
+      {/* Personal Event Dialog */}
+      <PersonalEventDialog
+        open={personalEventOpen}
+        onClose={() => { setPersonalEventOpen(false); setEditingEvent(null); setSelectedDate(null); }}
+        defaultDate={selectedDate ?? undefined}
+        editEvent={editingEvent}
+      />
     </div>
   );
 }

@@ -41,6 +41,25 @@ export function useScopedData() {
       };
     }
 
+    // Family: only personal events, no production data
+    if (role === "family") {
+      return {
+        ...data,
+        projects: [],
+        clients: [],
+        crewMembers: [],
+        invoices: [],
+        contractorInvoices: [],
+        proposals: [],
+        contracts: [],
+        series: [],
+        pipelineLeads: [],
+        businessExpenses: [],
+        manualTrips: [],
+        timeEntries: [],
+      };
+    }
+
     // Client: filter to their own projects/invoices/proposals/contracts
     if (role === "client" && clientIds.length > 0) {
       return {

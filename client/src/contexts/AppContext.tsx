@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures, PersonalEvent } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -95,6 +95,10 @@ interface AppContextValue {
   addPipelineLead: (l: Omit<PipelineLead, "id" | "createdAt" | "updatedAt">) => Promise<PipelineLead>;
   updatePipelineLead: (id: string, l: Partial<PipelineLead>) => Promise<void>;
   deletePipelineLead: (id: string) => Promise<void>;
+  // Personal Events
+  addPersonalEvent: (e: Omit<PersonalEvent, "id" | "createdAt">) => Promise<PersonalEvent>;
+  updatePersonalEvent: (id: string, e: Partial<PersonalEvent>) => Promise<void>;
+  deletePersonalEvent: (id: string) => Promise<void>;
   // Trash
   restoreItem: (table: string, id: string) => Promise<void>;
   permanentlyDelete: (table: string, id: string) => Promise<void>;
@@ -428,6 +432,24 @@ function rowToComment(r: any): EpisodeComment {
   };
 }
 
+function rowToPersonalEvent(r: any): PersonalEvent {
+  return {
+    id: r.id,
+    title: r.title || "",
+    date: r.date,
+    startTime: r.start_time || "",
+    endTime: r.end_time || "",
+    allDay: r.all_day ?? true,
+    location: r.location || "",
+    notes: r.notes || "",
+    category: r.category || "personal",
+    color: r.color || "",
+    priority: r.priority ?? false,
+    orgId: r.org_id || "",
+    createdAt: r.created_at,
+  };
+}
+
 function rowToOrg(r: any): Organization {
   return {
     id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
@@ -444,7 +466,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -520,6 +542,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: proposalsData, error: _e7k },
         { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
+        { data: personalEventsData, error: _e8b },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
@@ -541,6 +564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("proposals").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
+        supabase.from("personal_events").select("*").order("date"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
@@ -567,6 +591,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
+        personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
         organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
@@ -611,6 +636,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       proposals: { key: "proposals", convert: rowToProposal, softDelete: true },
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
       series: { key: "series", convert: rowToSeries },
+      personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
       organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
     };
 
@@ -1014,6 +1040,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("pipeline_leads").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, pipelineLeads: d.pipelineLeads.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Personal Events ----
+  const addPersonalEvent = useCallback(async (e: Omit<PersonalEvent, "id" | "createdAt">): Promise<PersonalEvent> => {
+    const id = `pe_${Date.now()}`;
+    const { data: row, error } = await supabase.from("personal_events").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      title: e.title, date: e.date,
+      start_time: e.startTime || "", end_time: e.endTime || "",
+      all_day: e.allDay ?? !e.startTime,
+      location: e.location || "", notes: e.notes || "",
+      category: e.category || "personal",
+      color: e.color || "",
+      priority: e.priority ?? false,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const evt = rowToPersonalEvent(row);
+    setRawData(d => ({ ...d, personalEvents: [...d.personalEvents, evt].sort((a, b) => a.date.localeCompare(b.date)) }));
+    return evt;
+  }, [orgId]);
+
+  const updatePersonalEvent = useCallback(async (id: string, e: Partial<PersonalEvent>) => {
+    const patch: any = {};
+    if (e.title !== undefined) patch.title = e.title;
+    if (e.date !== undefined) patch.date = e.date;
+    if (e.startTime !== undefined) patch.start_time = e.startTime;
+    if (e.endTime !== undefined) patch.end_time = e.endTime;
+    if (e.allDay !== undefined) patch.all_day = e.allDay;
+    if (e.location !== undefined) patch.location = e.location;
+    if (e.notes !== undefined) patch.notes = e.notes;
+    if (e.category !== undefined) patch.category = e.category;
+    if (e.color !== undefined) patch.color = e.color;
+    if (e.priority !== undefined) patch.priority = e.priority;
+    const { error } = await supabase.from("personal_events").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, personalEvents: d.personalEvents.map(x => x.id === id ? { ...x, ...e } : x) }));
+  }, []);
+
+  const deletePersonalEvent = useCallback(async (id: string) => {
+    const { error } = await supabase.from("personal_events").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, personalEvents: d.personalEvents.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Trash ----
@@ -1536,6 +1604,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposalTemplate, updateProposalTemplate, deleteProposalTemplate,
       addProposal, updateProposal, deleteProposal,
       addPipelineLead, updatePipelineLead, deletePipelineLead,
+      addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       restoreItem, permanentlyDelete,
       updateOrganization,
     }}>

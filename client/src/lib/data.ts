@@ -159,6 +159,7 @@ export const seedData: AppData = {
   proposals: [],
   pipelineLeads: [],
   series: [],
+  personalEvents: [],
   organization: null,
 };
 

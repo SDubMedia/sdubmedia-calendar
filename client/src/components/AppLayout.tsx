@@ -71,7 +71,7 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 const navStructure: NavEntry[] = [
   // Top-level items (no group)
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff"], feature: "calendar" },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff", "family"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
 
   // Sales — owner and partner only
@@ -118,10 +118,10 @@ const navStructure: NavEntry[] = [
 
   // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
-  { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "staff"], feature: "calendar" },
+  { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "staff", "family"], feature: "calendar" },
   { label: "Trash", href: "/trash", icon: Trash2, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
-  { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff"] },
+  { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff", "family"] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -170,6 +170,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const roleOverrides = role === "staff" ? features.staffFeatures
           : role === "partner" ? features.partnerFeatures
           : role === "client" ? features.clientFeatures
+          : role === "family" ? features.familyFeatures
           : undefined;
         if (roleOverrides) {
           const override = (roleOverrides as Record<string, boolean>)[item.feature];
