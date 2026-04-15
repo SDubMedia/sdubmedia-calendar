@@ -96,8 +96,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 **Every new table MUST have:**
 - `org_id text NOT NULL DEFAULT ''` column
 - RLS enabled: `ALTER TABLE x ENABLE ROW LEVEL SECURITY`
-- Owner policy: `CREATE POLICY "owner_all_x" ON x FOR ALL USING (public.user_role() = 'owner')`
+- Owner policy with org_id check: `CREATE POLICY "owner_all_x" ON x FOR ALL USING (public.user_role() = 'owner' AND org_id = public.user_org_id())`
 - Migration file in `migrations/` directory
+
+**RLS checklist for every new table (non-negotiable):**
+1. `ALTER TABLE x ENABLE ROW LEVEL SECURITY;`
+2. Create owner policy with `AND org_id = public.user_org_id()` — NEVER omit the org_id check
+3. Create read policies for other roles that need access (partner, staff, client, family)
+4. **Verify with anon key after deploying** — `curl` the table with the anon key and confirm 0 rows returned
+5. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
+6. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
 
 **JSONB columns**: Always provide a default in the CREATE TABLE statement (e.g., `DEFAULT '[]'`). Never assume JSONB columns are non-null in application code.
 
@@ -203,7 +211,7 @@ These rules exist because real penetration testing found real vulnerabilities. D
 ### API Authentication
 - **NEVER check Bearer tokens manually** (`auth.startsWith("Bearer ")`). Always use `verifyAuth(req)` from `_auth.ts`. Manual checks don't validate the JWT.
 - **API key endpoints** must use `crypto.timingSafeEqual()` — never `===` for secret comparison.
-- **MCP endpoint** uses `X-API-Key` header only — never accept Bearer tokens as API keys.
+- **MCP endpoint** accepts `X-API-Key` header, `Authorization: Bearer` header, or `?key=` query param for Claude.ai connector compatibility.
 
 ### Org Isolation (IDOR Prevention)
 - **Every endpoint that accepts `orgId`** from the request body/query MUST verify the caller belongs to that org: `const callerOrgId = await getUserOrgId(user.userId); if (callerOrgId !== requestOrgId) return 403`.
@@ -214,6 +222,9 @@ These rules exist because real penetration testing found real vulnerabilities. D
 - **Every RLS policy** must include `AND org_id = public.user_org_id()` — not just a role check.
 - **Never** create a table with `USING (true)` or `USING (public.user_role() = 'owner')` alone — that leaks data cross-tenant.
 - **Always enable RLS** on new tables: `ALTER TABLE x ENABLE ROW LEVEL SECURITY`.
+- **After creating any new table or policy, verify with anon key:** `curl` the table endpoint with only the anon key and confirm zero rows returned. We had a critical incident (Apr 2026) where 3 tables were publicly accessible because old permissive policies weren't dropped.
+- **Check for default policies** — Supabase sometimes creates default "Allow all" or "Enable read access for all users" policies when tables are created via the dashboard. Always check `SELECT policyname FROM pg_policies WHERE tablename = 'x'` and drop any overly permissive ones.
+- **Available roles for policies:** `owner`, `partner`, `staff`, `client`, `family`. The `family` role gets read-only access to production data and full access to `personal_events`.
 
 ### Email Security
 - **All user-supplied values** interpolated into HTML emails must be escaped with `escapeHtml()` from `_auth.ts`. This includes names, titles, emails — anything from the DB that a user could have set.
