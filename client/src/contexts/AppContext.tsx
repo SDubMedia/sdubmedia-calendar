@@ -148,6 +148,7 @@ function rowToCrew(r: any): CrewMember {
     businessZip: r.business_zip || "",
     taxId: r.tax_id || "",
     taxIdType: r.tax_id_type || "",
+    w9Url: r.w9_url || "",
   };
 }
 
@@ -787,6 +788,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.businessZip !== undefined) patch.business_zip = c.businessZip;
     if (c.taxId !== undefined) patch.tax_id = c.taxId;
     if (c.taxIdType !== undefined) patch.tax_id_type = c.taxIdType;
+    if (c.w9Url !== undefined) patch.w9_url = c.w9Url;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));

@@ -9,12 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { PersonalEvent } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
-const EVENT_COLORS = [
+export const EVENT_COLORS = [
   { value: "", label: "Default", bg: "bg-rose-500/25", text: "text-rose-700 dark:text-rose-300", dot: "bg-rose-400" },
   { value: "blue", label: "Blue", bg: "bg-sky-500/25", text: "text-sky-700 dark:text-sky-300", dot: "bg-sky-400" },
   { value: "green", label: "Green", bg: "bg-emerald-500/25", text: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-400" },
@@ -25,8 +26,7 @@ const EVENT_COLORS = [
   { value: "orange", label: "Orange", bg: "bg-orange-500/25", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-400" },
 ];
 
-const TEMPLATES = [
-  { label: "Custom", title: "", category: "personal", color: "" },
+export const DEFAULT_TEMPLATES = [
   { label: "Dentist", title: "Dentist Appointment", category: "appointment", color: "blue" },
   { label: "Doctor", title: "Doctor Appointment", category: "appointment", color: "blue" },
   { label: "Date Night", title: "Date Night", category: "personal", color: "pink" },
@@ -51,7 +51,13 @@ interface Props {
 
 export default function PersonalEventDialog({ open, onClose, defaultDate, editEvent }: Props) {
   const { addPersonalEvent, updatePersonalEvent, deletePersonalEvent } = useApp();
+  const { profile } = useAuth();
   const isEdit = !!editEvent;
+
+  // Use user's saved templates, fall back to defaults
+  const templates = profile?.personalEventTemplates?.length
+    ? profile.personalEventTemplates
+    : DEFAULT_TEMPLATES;
 
   const [form, setForm] = useState({
     title: "",
@@ -98,9 +104,7 @@ export default function PersonalEventDialog({ open, onClose, defaultDate, editEv
     }
   }, [open, editEvent, defaultDate]);
 
-  function applyTemplate(idx: number) {
-    const t = TEMPLATES[idx];
-    if (idx === 0) return; // Custom — don't overwrite
+  function applyTemplate(t: typeof templates[number]) {
     setForm(f => ({ ...f, title: t.title, category: t.category, color: t.color }));
   }
 
@@ -178,24 +182,26 @@ export default function PersonalEventDialog({ open, onClose, defaultDate, editEv
 
         <div className="space-y-4">
           {/* Templates */}
-          {!isEdit && (
+          {!isEdit && templates.length > 0 && (
             <div>
               <Label className="text-xs text-muted-foreground uppercase tracking-wider">Template</Label>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {TEMPLATES.map((t, i) => (
-                  <button
-                    key={t.label}
-                    onClick={() => applyTemplate(i)}
-                    className={cn(
-                      "px-2.5 py-1 rounded text-xs font-medium transition-colors border",
-                      i === 0
-                        ? "border-border text-muted-foreground hover:text-foreground hover:bg-white/5"
-                        : "border-border text-muted-foreground hover:text-foreground hover:bg-white/5"
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+                {templates.map((t) => {
+                  const ec = getEventColor(t.color);
+                  return (
+                    <button
+                      key={t.label}
+                      onClick={() => applyTemplate(t)}
+                      className={cn(
+                        "px-2.5 py-1 rounded text-xs font-medium transition-colors border",
+                        "border-border hover:opacity-80",
+                        ec.bg, ec.text,
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

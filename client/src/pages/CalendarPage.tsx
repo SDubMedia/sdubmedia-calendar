@@ -15,6 +15,8 @@ import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
+import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
+import { Settings } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
@@ -49,6 +51,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
@@ -140,8 +143,9 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div className="flex items-center gap-4">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2">
+        {/* Top row: title + action buttons */}
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
@@ -154,55 +158,68 @@ export default function CalendarPage() {
                 : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
             </p>
           </div>
-          {/* Calendar mode toggle — only for owner (family is locked to personal) */}
-          {canSeePersonal && !isFamily && <div className="flex gap-1 bg-background/50 rounded-lg p-1 border border-border">
-            <button
-              onClick={() => setCalendarMode("production")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                calendarMode === "production"
-                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              )}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Production</span>
-            </button>
-            <button
-              onClick={() => setCalendarMode("personal")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                calendarMode === "personal"
-                  ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              )}
-            >
-              <Heart className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">My Life</span>
-            </button>
-            <button
-              onClick={() => setCalendarMode("both")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
-                calendarMode === "both"
-                  ? "bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-500/30"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              )}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Both</span>
-            </button>
-          </div>}
+          <div className="flex gap-2">
+            {canSeePersonal && (calendarMode === "personal" || calendarMode === "both") && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setTemplatesOpen(true)}
+                title="Manage event templates"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
+            {!isClient && !isFamily && calendarMode !== "personal" && (
+              <Button
+                onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Project</span>
+                <span className="sm:hidden">New</span>
+              </Button>
+            )}
+          </div>
         </div>
-        {!isClient && calendarMode !== "personal" && (
-          <Button
-            onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+        {/* Second row: calendar mode toggle */}
+        {(canSeePersonal || isFamily) && <div className="flex gap-1 bg-background/50 rounded-lg p-1 border border-border w-fit">
+          <button
+            onClick={() => setCalendarMode("production")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              calendarMode === "production"
+                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+            )}
           >
-            <Plus className="w-4 h-4" />
-            New Project
-          </Button>
-        )}
+            <Calendar className="w-3.5 h-3.5" />
+            Production
+          </button>
+          <button
+            onClick={() => setCalendarMode("personal")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              calendarMode === "personal"
+                ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+            )}
+          >
+            <Heart className="w-3.5 h-3.5" />
+            My Life
+          </button>
+          <button
+            onClick={() => setCalendarMode("both")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              calendarMode === "both"
+                ? "bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-500/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+            )}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Both
+          </button>
+        </div>}
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -263,10 +280,10 @@ export default function CalendarPage() {
                   onClick={() => {
                     if (isCurrentMonth && dateStr && !isClient) {
                       setSelectedDate(dateStr);
-                      if (calendarMode === "personal") {
+                      if (calendarMode === "personal" || (isFamily && calendarMode === "both")) {
                         setEditingEvent(null);
                         setPersonalEventOpen(true);
-                      } else {
+                      } else if (!isFamily) {
                         setNewProjectOpen(true);
                       }
                     }
@@ -618,6 +635,12 @@ export default function CalendarPage() {
         onClose={() => { setPersonalEventOpen(false); setEditingEvent(null); setSelectedDate(null); }}
         defaultDate={selectedDate ?? undefined}
         editEvent={editingEvent}
+      />
+
+      {/* Personal Templates Manager */}
+      <PersonalTemplatesSheet
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
       />
     </div>
   );

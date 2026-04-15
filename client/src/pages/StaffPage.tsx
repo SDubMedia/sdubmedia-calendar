@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 
@@ -91,6 +91,8 @@ export default function StaffPage() {
   const [newRate, setNewRate] = useState<number>(0);
 
   const [calculatingDistances, setCalculatingDistances] = useState(false);
+  const [uploadingW9, setUploadingW9] = useState(false);
+  const [w9Url, setW9Url] = useState("");
 
   async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
     const locationsWithAddress = data.locations.filter(l => l.address && l.city);
@@ -127,12 +129,13 @@ export default function StaffPage() {
   function openAdd() {
     setEditingId(null);
     setForm(emptyForm());
+    setW9Url("");
     setNewRole("");
     setNewRate(0);
     setDialogOpen(true);
   }
 
-  function openEdit(member: CrewMember) {
+  async function openEdit(member: CrewMember) {
     setEditingId(member.id);
     setForm({
       name: member.name,
@@ -146,12 +149,80 @@ export default function StaffPage() {
       businessCity: member.businessCity || "",
       businessState: member.businessState || "",
       businessZip: member.businessZip || "",
-      taxId: member.taxId || "",
+      taxId: "",
       taxIdType: member.taxIdType || "",
     });
+    setW9Url(member.w9Url || "");
     setNewRole("");
     setNewRate(0);
     setDialogOpen(true);
+    // Fetch decrypted tax info from API
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`/api/tax-info?crewMemberId=${member.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const { taxId, taxIdType } = await res.json();
+        setForm(f => ({ ...f, taxId: taxId || "", taxIdType: taxIdType || "" }));
+      }
+    } catch {
+      // Fall back to whatever's in the local data
+    }
+  }
+
+  async function handleW9Upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!editingId) {
+      toast.error("Save the staff member first, then upload the W-9");
+      return;
+    }
+    setUploadingW9(true);
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const ext = file.name.split(".").pop() || "pdf";
+      const path = `${editingId}/w9.${ext}`;
+      const { error } = await supabase.storage.from("w9-documents").upload(path, file, { upsert: true });
+      if (error) throw new Error(error.message);
+      // Store the storage path, not a public URL — we'll use signed URLs to view
+      await updateCrewMember(editingId, { w9Url: path });
+      setW9Url(path);
+      toast.success("W-9 uploaded");
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadingW9(false);
+    }
+  }
+
+  async function handleW9View() {
+    if (!w9Url) return;
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data, error } = await supabase.storage.from("w9-documents").createSignedUrl(w9Url, 60);
+      if (error) throw new Error(error.message);
+      window.open(data.signedUrl, "_blank");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to open W-9");
+    }
+  }
+
+  async function handleW9Delete() {
+    if (!editingId || !w9Url) return;
+    setUploadingW9(true);
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      await supabase.storage.from("w9-documents").remove([w9Url]);
+      await updateCrewMember(editingId, { w9Url: "" });
+      setW9Url("");
+      toast.success("W-9 removed");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove W-9");
+    } finally {
+      setUploadingW9(false);
+    }
   }
 
   function addRoleRate() {
@@ -200,8 +271,6 @@ export default function StaffPage() {
         businessCity: form.businessCity.trim(),
         businessState: form.businessState.trim(),
         businessZip: form.businessZip.trim(),
-        taxId: form.taxId,
-        taxIdType: form.taxIdType,
       };
       // Auto-fill business address from home address if business address is still empty
       if (form.homeAddress?.address && !form.businessAddress) {
@@ -218,6 +287,19 @@ export default function StaffPage() {
         const newMember = await addCrewMember(payload);
         memberId = newMember.id;
         toast.success("Staff member added");
+      }
+      // Save encrypted tax info via API
+      if (memberId && (form.taxId || form.taxIdType)) {
+        try {
+          const token = await getAuthToken();
+          await fetch("/api/tax-info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ crewMemberId: memberId, taxId: form.taxId, taxIdType: form.taxIdType }),
+          });
+        } catch {
+          // Don't block save if encryption endpoint fails
+        }
       }
       // Calculate distances if home address is set
       if (form.homeAddress?.address && memberId) {
@@ -571,6 +653,56 @@ export default function StaffPage() {
                   autoComplete="off"
                 />
               </div>
+            </div>
+
+            {/* W-9 Document Upload */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" />
+                W-9 Document
+              </Label>
+              <p className="text-xs text-muted-foreground">Upload a scan or photo of their W-9 form.</p>
+              {w9Url ? (
+                <div className="flex items-center gap-2 p-3 bg-secondary rounded-lg border border-border">
+                  <FileText className="w-5 h-5 text-green-400 flex-shrink-0" />
+                  <span className="text-sm text-foreground flex-1 truncate">W-9 on file</span>
+                  <button
+                    onClick={handleW9View}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    View
+                  </button>
+                  <button
+                    onClick={handleW9Delete}
+                    disabled={uploadingW9}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  {!editingId ? (
+                    <p className="text-xs text-muted-foreground italic">Save the staff member first to upload a W-9.</p>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
+                      <Upload className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        {uploadingW9 ? "Uploading..." : "Upload W-9 (PDF, image, or scan)"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf,.pdf"
+                        onChange={handleW9Upload}
+                        disabled={uploadingW9}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
 
           <DialogFooter>

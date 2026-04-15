@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import type { UserProfile, UserRole } from "@/lib/types";
+import type { UserProfile, UserRole, PersonalEventTemplate } from "@/lib/types";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextValue {
@@ -20,6 +20,7 @@ interface AuthContextValue {
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
+  saveMyTemplates: (templates: PersonalEventTemplate[]) => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
   // View As (owner only) — preview the app as another role
@@ -46,6 +47,7 @@ function rowToProfile(r: any): UserProfile {
     mustChangePassword: r.must_change_password ?? true,
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
     featureOverrides: r.feature_overrides || undefined,
+    personalEventTemplates: Array.isArray(r.personal_event_templates) ? r.personal_event_templates : [],
     createdAt: r.created_at,
   };
 }
@@ -235,10 +237,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  const saveMyTemplates = useCallback(async (templates: PersonalEventTemplate[]) => {
+    if (!user) throw new Error("Not authenticated");
+    const { error } = await supabase.from("user_profiles").update({ personal_event_templates: templates }).eq("id", user.id);
+    if (error) throw new Error(error.message);
+    setProfile(p => p ? { ...p, personalEventTemplates: templates } : p);
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
-      signIn, signOut, changePassword, completeOnboarding,
+      signIn, signOut, changePassword, completeOnboarding, saveMyTemplates,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
       viewAsRole, setViewAsRole: setViewAsRoleWrapped, impersonateUserId, setImpersonateUserId, effectiveProfile,

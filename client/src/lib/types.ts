@@ -135,6 +135,14 @@ export interface Organization {
 // ---- Auth & Roles ----
 export type UserRole = "owner" | "client" | "partner" | "staff" | "family";
 
+export interface PersonalEventTemplate {
+  id: string;
+  label: string;
+  title: string;
+  category: string;
+  color: string;
+}
+
 export interface UserProfile {
   id: string;           // matches Supabase Auth user ID
   orgId: string;        // organization this user belongs to
@@ -146,6 +154,7 @@ export interface UserProfile {
   mustChangePassword: boolean; // force password change on first login
   hasCompletedOnboarding: boolean;
   featureOverrides?: Record<string, boolean>; // per-user feature overrides (most specific wins)
+  personalEventTemplates: PersonalEventTemplate[];
   createdAt: string;
 }
 
@@ -235,6 +244,7 @@ export interface CrewMember {
   // W-9 info (owner-only, for 1099 filing)
   taxId?: string; // SSN or EIN from W-9
   taxIdType?: "ssn" | "ein" | ""; // type of tax ID
+  w9Url?: string; // URL to uploaded W-9 document in Supabase Storage
 }
 
 export interface Location {

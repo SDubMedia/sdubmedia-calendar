@@ -41,13 +41,11 @@ export function useScopedData() {
       };
     }
 
-    // Family: only personal events, no production data
+    // Family: can view production projects (read-only) + personal events, but no financial data
     if (role === "family") {
       return {
         ...data,
-        projects: [],
-        clients: [],
-        crewMembers: [],
+        // Keep projects, clients, locations, projectTypes for read-only calendar view
         invoices: [],
         contractorInvoices: [],
         proposals: [],
@@ -57,6 +55,7 @@ export function useScopedData() {
         businessExpenses: [],
         manualTrips: [],
         timeEntries: [],
+        crewMembers: [],
       };
     }
 
