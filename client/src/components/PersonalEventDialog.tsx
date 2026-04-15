@@ -15,14 +15,14 @@ import { cn } from "@/lib/utils";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
 const EVENT_COLORS = [
-  { value: "", label: "Default", bg: "bg-rose-500/25", text: "text-rose-300", dot: "bg-rose-400" },
-  { value: "blue", label: "Blue", bg: "bg-sky-500/25", text: "text-sky-300", dot: "bg-sky-400" },
-  { value: "green", label: "Green", bg: "bg-emerald-500/25", text: "text-emerald-300", dot: "bg-emerald-400" },
-  { value: "purple", label: "Purple", bg: "bg-violet-500/25", text: "text-violet-300", dot: "bg-violet-400" },
-  { value: "amber", label: "Amber", bg: "bg-amber-500/25", text: "text-amber-300", dot: "bg-amber-400" },
-  { value: "pink", label: "Pink", bg: "bg-pink-500/25", text: "text-pink-300", dot: "bg-pink-400" },
-  { value: "cyan", label: "Cyan", bg: "bg-cyan-500/25", text: "text-cyan-300", dot: "bg-cyan-400" },
-  { value: "orange", label: "Orange", bg: "bg-orange-500/25", text: "text-orange-300", dot: "bg-orange-400" },
+  { value: "", label: "Default", bg: "bg-rose-500/25", text: "text-rose-700 dark:text-rose-300", dot: "bg-rose-400" },
+  { value: "blue", label: "Blue", bg: "bg-sky-500/25", text: "text-sky-700 dark:text-sky-300", dot: "bg-sky-400" },
+  { value: "green", label: "Green", bg: "bg-emerald-500/25", text: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-400" },
+  { value: "purple", label: "Purple", bg: "bg-violet-500/25", text: "text-violet-700 dark:text-violet-300", dot: "bg-violet-400" },
+  { value: "amber", label: "Amber", bg: "bg-amber-500/25", text: "text-amber-700 dark:text-amber-300", dot: "bg-amber-400" },
+  { value: "pink", label: "Pink", bg: "bg-pink-500/25", text: "text-pink-700 dark:text-pink-300", dot: "bg-pink-400" },
+  { value: "cyan", label: "Cyan", bg: "bg-cyan-500/25", text: "text-cyan-700 dark:text-cyan-300", dot: "bg-cyan-400" },
+  { value: "orange", label: "Orange", bg: "bg-orange-500/25", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-400" },
 ];
 
 const TEMPLATES = [

@@ -161,7 +161,7 @@ export default function CalendarPage() {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
                 calendarMode === "production"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
               )}
             >
@@ -173,7 +173,7 @@ export default function CalendarPage() {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
                 calendarMode === "personal"
-                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                  ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
               )}
             >
@@ -185,7 +185,7 @@ export default function CalendarPage() {
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
                 calendarMode === "both"
-                  ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                  ? "bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-500/30"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
               )}
             >
@@ -282,7 +282,7 @@ export default function CalendarPage() {
                     </span>
                     {calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
-                        <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-400 bg-amber-500/10">
+                        <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-500/10">
                           {dayHours.billed.toFixed(1)}h billed
                         </span>
                         {dayHours.worked !== dayHours.billed && (
@@ -317,10 +317,10 @@ export default function CalendarPage() {
                             onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
                             className={cn(
                               "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                              p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
-                              p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
-                              p.status === "in_editing" && "bg-amber-500/25 text-amber-300",
-                              p.status === "completed" && "bg-green-500/25 text-green-300",
+                              p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
+                              p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
+                              p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
+                              p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
                             )}
                           >
                             {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
@@ -384,7 +384,7 @@ export default function CalendarPage() {
                     className={cn(
                       "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
                       viewScope === "month"
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
                         : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                     )}
                   >
@@ -395,7 +395,7 @@ export default function CalendarPage() {
                     className={cn(
                       "px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors",
                       viewScope === "all"
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
                         : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                     )}
                   >
@@ -476,11 +476,11 @@ export default function CalendarPage() {
                               {pType?.name ?? "Unknown Project"}
                             </span>
                             <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border",
-                              project.status === "upcoming" && "border-blue-500/40 text-blue-300",
-                              project.status === "filming_done" && "border-purple-500/40 text-purple-300",
-                              project.status === "in_editing" && "border-amber-500/40 text-amber-300",
-                              project.status === "completed" && "border-green-500/40 text-green-300",
-                              project.status === "cancelled" && "border-red-500/40 text-red-300",
+                              project.status === "upcoming" && "border-blue-500/40 text-blue-600 dark:text-blue-300",
+                              project.status === "filming_done" && "border-purple-500/40 text-purple-600 dark:text-purple-300",
+                              project.status === "in_editing" && "border-amber-500/40 text-amber-600 dark:text-amber-300",
+                              project.status === "completed" && "border-green-500/40 text-green-600 dark:text-green-300",
+                              project.status === "cancelled" && "border-red-500/40 text-red-600 dark:text-red-300",
                             )}>
                               {STATUS_LABELS[project.status]}
                             </Badge>
@@ -502,7 +502,7 @@ export default function CalendarPage() {
                         {/* Time + hours */}
                         <div className="text-right flex-shrink-0">
                           <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                          <div className="text-xs text-amber-400 flex items-center gap-1 justify-end mt-0.5">
+                          <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
                             <Clock className="w-3 h-3" />
                             {totalBilled.toFixed(1)} billed
                             {project.paidDate && (
