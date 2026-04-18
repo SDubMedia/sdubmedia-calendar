@@ -37,6 +37,12 @@ export default function LoginPage() {
           options: { data: { name: companyName.trim(), org_name: companyName.trim() } },
         });
         if (error) throw error;
+        // Fire-and-forget welcome email. Server rate-limits to 1/24h per address.
+        fetch("/api/welcome-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, name: companyName.trim() }),
+        }).catch(() => {}); // never block signup on email failure
         setSignupSuccess(true);
       } else {
         await signIn(email, password);
