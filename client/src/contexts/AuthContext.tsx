@@ -231,10 +231,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const completeOnboarding = useCallback(async () => {
-    if (user) {
-      await supabase.from("user_profiles").update({ has_completed_onboarding: true }).eq("id", user.id);
-      setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
+    if (!user) throw new Error("Not authenticated");
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .update({ has_completed_onboarding: true })
+      .eq("id", user.id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) {
+      // Auth user exists but no user_profiles row — account is in a broken state.
+      // Common cause: profile was manually deleted, or signup trigger didn't fire.
+      throw new Error("Your account isn't fully set up. Please sign out and sign up again.");
     }
+    setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
   }, [user]);
 
   const saveMyTemplates = useCallback(async (templates: PersonalEventTemplate[]) => {

@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import type { UserRole } from "@/lib/types";
 import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
@@ -158,7 +159,7 @@ import OwnerOnboardingWizard from "@/components/OwnerOnboardingWizard";
 import StaffOnboardingWelcome from "@/components/StaffOnboardingWelcome";
 
 export default function OnboardingPage() {
-  const { profile, completeOnboarding } = useAuth();
+  const { profile, completeOnboarding, signOut } = useAuth();
   const [step, setStep] = useState(-1); // -1 = welcome screen, 0+ = steps
   const [completing, setCompleting] = useState(false);
 
@@ -175,7 +176,12 @@ export default function OnboardingPage() {
 
   const handleComplete = async () => {
     setCompleting(true);
-    await completeOnboarding();
+    try {
+      await completeOnboarding();
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't finish setup. Try signing out and back in.");
+      setCompleting(false);
+    }
   };
 
   const isWelcome = step === -1;
@@ -274,6 +280,14 @@ export default function OnboardingPage() {
               Skip tour
             </button>
           )}
+          <div className="mt-4">
+            <button
+              onClick={() => signOut()}
+              className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
+            >
+              Use a different account
+            </button>
+          </div>
         </div>
       </div>
     </div>
