@@ -33,6 +33,7 @@ import {
   Trash2,
   MessageSquare,
   CreditCard,
+  Mail,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -376,6 +377,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <MessageSquare className="w-3.5 h-3.5" />
             Send Feedback
           </button>
+          <a
+            href="mailto:support@sdubmedia.com?subject=Slate%20support"
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Contact Support
+          </a>
           <button
             onClick={() => signOut()}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
@@ -534,6 +542,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <MessageSquare className="w-4 h-4" />
                 <span>Send Feedback</span>
               </button>
+              <a
+                href="mailto:support@sdubmedia.com?subject=Slate%20support"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Contact Support</span>
+              </a>
               <button
                 onClick={() => { setMobileMenuOpen(false); signOut(); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
