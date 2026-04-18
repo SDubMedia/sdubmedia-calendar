@@ -14,11 +14,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
 
-// Price IDs — set these in Stripe Dashboard → Products
-// Create two products: "Slate Basic" and "Slate Pro" with monthly prices
-const PRICE_IDS: Record<string, string> = {
-  basic: process.env.STRIPE_BASIC_PRICE_ID || "",
-  pro: process.env.STRIPE_PRO_PRICE_ID || "",
+// Price IDs — monthly + annual per plan.
+// Env vars must not have trailing newlines (use printf, not echo, when adding).
+const PRICE_IDS: Record<string, { monthly: string; annual: string }> = {
+  basic: {
+    monthly: process.env.STRIPE_BASIC_PRICE_ID || "",
+    annual: process.env.STRIPE_BASIC_ANNUAL_PRICE_ID || "",
+  },
+  pro: {
+    monthly: process.env.STRIPE_PRO_PRICE_ID || "",
+    annual: process.env.STRIPE_PRO_ANNUAL_PRICE_ID || "",
+  },
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -42,7 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    const detail = `type=${err?.type} code=${err?.code} status=${err?.statusCode} msg=${err?.message} raw=${err?.raw?.message}`;
+    console.error(`[stripe-subscribe] ${detail}`);
+    return res.status(500).json({ error: err.message, detail });
   }
 }
 
@@ -50,11 +58,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 async function createCheckout(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const { plan, orgId, email, successUrl, cancelUrl } = req.body;
+  const { plan, orgId, email, successUrl, cancelUrl, interval } = req.body as {
+    plan?: string; orgId?: string; email?: string; successUrl?: string; cancelUrl?: string; interval?: string;
+  };
   if (!plan || !orgId) return res.status(400).json({ error: "Missing plan or orgId" });
 
-  const priceId = PRICE_IDS[plan];
-  if (!priceId) return res.status(400).json({ error: `No price configured for plan: ${plan}. Set STRIPE_${plan.toUpperCase()}_PRICE_ID env var.` });
+  const prices = PRICE_IDS[plan];
+  if (!prices) return res.status(400).json({ error: `Unknown plan: ${plan}` });
+
+  const billingInterval = interval === "annual" ? "annual" : "monthly";
+  const priceId = billingInterval === "annual" ? prices.annual : prices.monthly;
+  if (!priceId) return res.status(400).json({ error: `No ${billingInterval} price configured for ${plan}. Set STRIPE_${plan.toUpperCase()}${billingInterval === "annual" ? "_ANNUAL" : ""}_PRICE_ID env var.` });
 
   // Get or create Stripe customer
   const { data: org } = await supabase.from("organizations").select("stripe_customer_id").eq("id", orgId).single();
@@ -70,12 +84,13 @@ async function createCheckout(req: VercelRequest, res: VercelResponse) {
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
+    allow_promotion_codes: true,
     subscription_data: {
       trial_period_days: 14,
-      metadata: { orgId, plan },
+      metadata: { orgId, plan, interval: billingInterval },
     },
-    success_url: (successUrl && isAllowedUrl(successUrl)) ? successUrl : `${req.headers.origin}/settings?subscribed=true`,
-    cancel_url: (cancelUrl && isAllowedUrl(cancelUrl)) ? cancelUrl : `${req.headers.origin}/settings`,
+    success_url: (successUrl && isAllowedUrl(successUrl)) ? successUrl : `${req.headers.origin}/?upgraded=${plan}`,
+    cancel_url: (cancelUrl && isAllowedUrl(cancelUrl)) ? cancelUrl : `${req.headers.origin}/`,
   });
 
   return res.status(200).json({ url: session.url });
