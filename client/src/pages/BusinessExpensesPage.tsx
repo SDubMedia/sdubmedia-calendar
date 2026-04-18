@@ -10,10 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X, Download } from "lucide-react";
+import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X, Download, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getAuthToken } from "@/lib/supabase";
+import { getAuthToken, supabase } from "@/lib/supabase";
+import { getEffectiveTier } from "@/lib/tier-limits";
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -168,6 +169,55 @@ export default function BusinessExpensesPage() {
   // Manual add dialog
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({ date: today.toISOString().slice(0, 10), description: "", category: "Other" as BusinessExpenseCategory, amount: 0, serialNumber: "", notes: "" });
+  const [scanning, setScanning] = useState(false);
+  const receiptRef = useRef<HTMLInputElement>(null);
+  const isPro = getEffectiveTier(data.organization) === "pro";
+
+  const handleScanReceipt = async (file: File) => {
+    setScanning(true);
+    try {
+      // Read file → base64 (strip data URL prefix)
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Please sign in again"); return; }
+
+      const res = await fetch("/api/parse-receipt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not read receipt");
+
+      const parsed = json.data as { vendor?: string; date?: string; amount?: number; description?: string; category?: string };
+      const validCategory = CATEGORIES.includes(parsed.category as BusinessExpenseCategory)
+        ? (parsed.category as BusinessExpenseCategory)
+        : "Other";
+
+      setAddForm(f => ({
+        ...f,
+        date: parsed.date || f.date,
+        amount: typeof parsed.amount === "number" ? parsed.amount : f.amount,
+        description: [parsed.vendor, parsed.description].filter(Boolean).join(" — ") || f.description,
+        category: validCategory,
+      }));
+      toast.success("Receipt scanned — review and save");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to scan receipt");
+    } finally {
+      setScanning(false);
+      if (receiptRef.current) receiptRef.current.value = "";
+    }
+  };
 
   // Edit dialog
   const [editId, setEditId] = useState<string | null>(null);
@@ -729,6 +779,35 @@ export default function BusinessExpensesPage() {
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Add Expense</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Scan Receipt — Pro feature */}
+            {isPro && (
+              <div className="bg-amber-500/5 border border-amber-500/30 rounded-md p-3 flex items-center gap-3">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground">Scan a receipt</p>
+                  <p className="text-[11px] text-muted-foreground">Upload a photo — we'll fill in vendor, date, and amount.</p>
+                </div>
+                <input
+                  ref={receiptRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleScanReceipt(file);
+                  }}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  onClick={() => receiptRef.current?.click()}
+                  disabled={scanning}
+                  className="bg-amber-500 text-black hover:bg-amber-400 text-xs h-8 px-3 whitespace-nowrap"
+                >
+                  {scanning ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Reading…</> : <><Sparkles className="w-3 h-3 mr-1.5" /> Scan</>}
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
