@@ -26,12 +26,42 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
+const resend = new Resend(process.env.RESEND_API_KEY);
+const OPS_ALERT_TO = process.env.FEEDBACK_TO_EMAIL || "geoff@sdubmedia.com";
+const OPS_ALERT_FROM = process.env.RESEND_FROM_EMAIL || "noreply@sdubmedia.com";
+
+// Fire-and-forget ops alert to the admin. Errors logged but not thrown so
+// the webhook still returns 200 to Stripe even if email is down.
+async function sendOpsAlert(subject: string, body: string) {
+  try {
+    if (!process.env.RESEND_API_KEY) return; // email disabled
+    await resend.emails.send({
+      from: `Slate Ops <${OPS_ALERT_FROM}>`,
+      to: OPS_ALERT_TO,
+      subject: `[Slate] ${subject}`,
+      text: body,
+    });
+  } catch (err: any) {
+    console.error(`[stripe-webhook] ops alert failed: ${err?.message}`);
+  }
+}
+
+async function orgNameFor(orgId: string): Promise<string> {
+  const { data } = await supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
+  return data?.name || orgId;
+}
+
+async function orgByCustomer(customerId: string): Promise<{ id: string; name: string } | null> {
+  const { data } = await supabase.from("organizations").select("id, name").eq("stripe_customer_id", customerId).maybeSingle();
+  return data ? { id: data.id, name: data.name } : null;
+}
 
 export const config = {
   api: { bodyParser: false },
@@ -110,11 +140,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!orgId) break;
 
         const status = sub.status;
+        const previousStatus = (event.data.previous_attributes as any)?.status;
+
         // past_due/unpaid: keep paid tier, flag banner. Stripe retries ~3 weeks.
         if (status === "active" || status === "trialing") {
           await applyPlan(orgId, plan, "ok", sub.id);
+          // Ops alert on NEW subscription (created) or resume from past_due
+          if (event.type === "customer.subscription.created") {
+            const name = await orgNameFor(orgId);
+            const interval = sub.metadata?.interval === "annual" ? "annual" : "monthly";
+            await sendOpsAlert(
+              `🎉 New subscriber: ${name}`,
+              `${name} just subscribed to ${plan.toUpperCase()} (${interval}).\nStatus: ${status}\nSubscription: ${sub.id}`
+            );
+          } else if (previousStatus === "past_due" || previousStatus === "unpaid") {
+            const name = await orgNameFor(orgId);
+            await sendOpsAlert(
+              `Recovered: ${name}`,
+              `${name} is back to active (was past_due). Nothing to do.`
+            );
+          }
         } else if (status === "past_due" || status === "unpaid") {
           await applyPlan(orgId, plan, "past_due", sub.id);
+          const name = await orgNameFor(orgId);
+          await sendOpsAlert(
+            `⚠️ Past-due: ${name}`,
+            `${name}'s renewal payment failed on ${plan.toUpperCase()}.\nStripe will retry automatically for ~3 weeks. Customer sees a "Update card" banner in the app. No immediate action needed unless they reach out.`
+          );
         } else {
           // incomplete_expired, canceled — drop to free
           await applyPlan(orgId, "free", "cancelled", null);
@@ -125,7 +177,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
         const orgId = sub.metadata?.orgId;
-        if (orgId) await applyPlan(orgId, "free", "cancelled", null);
+        if (orgId) {
+          await applyPlan(orgId, "free", "cancelled", null);
+          const name = await orgNameFor(orgId);
+          const prevPlan = (sub.metadata?.plan || "basic").toUpperCase();
+          await sendOpsAlert(
+            `Cancelled: ${name}`,
+            `${name} cancelled their ${prevPlan} subscription. Downgraded to free tier.\nSubscription: ${sub.id}`
+          );
+        }
         break;
       }
 
