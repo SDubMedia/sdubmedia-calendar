@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { trackEvent } from "@/lib/analytics";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -43,6 +44,9 @@ export default function LoginPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, name: companyName.trim() }),
         }).catch(() => {}); // never block signup on email failure
+        // Stamp attribution onto a signup event so Scout can see conversions.
+        // trackEvent() auto-merges utm_* from localStorage into metadata.
+        trackEvent("signup_attributed", { app: "slate", email });
         setSignupSuccess(true);
       } else {
         await signIn(email, password);

@@ -15,6 +15,8 @@ const ALLOWED_EVENTS = new Set([
   "checkout_started",
   "checkout_completed",
   "portal_opened",
+  "signup_attributed",
+  "landing_attributed",
 ]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
