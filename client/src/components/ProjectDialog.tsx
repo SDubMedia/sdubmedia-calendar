@@ -49,7 +49,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
-  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation, addClient } = useApp();
+  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation, addClient, addCrewMember } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -75,6 +75,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [showUpgrade, setShowUpgrade] = useState(false);
+  // Inline quick-create crew member — tracks which row requested the new person
+  const [quickAddCrew, setQuickAddCrew] = useState<{ idx: number; section: "crew" | "post" } | null>(null);
+  const [newCrewName, setNewCrewName] = useState("");
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -225,6 +228,32 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       toast.success("Location created");
     } catch (err: any) {
       toast.error(err.message || "Failed to create location");
+    }
+  };
+
+  // Inline create: save new crew member from within the crew/post-production rows
+  const handleSaveNewCrew = async () => {
+    const name = newCrewName.trim();
+    if (!name || !quickAddCrew) return;
+    try {
+      const member = await addCrewMember({
+        name,
+        roleRates: [],
+        phone: "",
+        email: "",
+        defaultPayRatePerHour: 0,
+        homeAddress: null,
+      });
+      if (quickAddCrew.section === "crew") {
+        updateCrewEntry(quickAddCrew.idx, "crewMemberId", member.id);
+      } else {
+        updatePostEntry(quickAddCrew.idx, "crewMemberId", member.id);
+      }
+      setQuickAddCrew(null);
+      setNewCrewName("");
+      toast.success("Crew member added");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add crew member");
     }
   };
 
@@ -548,11 +577,22 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             {crew.map((entry, idx) => (
               <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
                 <div className="flex gap-2">
-                  <Select value={entry.crewMemberId} onValueChange={(v) => updateCrewEntry(idx, "crewMemberId", v)}>
+                  <Select
+                    value={entry.crewMemberId}
+                    onValueChange={(v) => {
+                      if (v === "__new_crew__") {
+                        setQuickAddCrew({ idx, section: "crew" });
+                        setNewCrewName("");
+                      } else {
+                        updateCrewEntry(idx, "crewMemberId", v);
+                      }
+                    }}
+                  >
                     <SelectTrigger className="bg-secondary border-border h-8 text-xs">
                       <SelectValue placeholder="Person" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
+                      <SelectItem value="__new_crew__" className="text-primary font-medium">+ New crew member…</SelectItem>
                       {data.crewMembers.map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
@@ -615,11 +655,22 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             {postProduction.map((entry, idx) => (
               <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
                 <div className="flex gap-2">
-                  <Select value={entry.crewMemberId} onValueChange={(v) => updatePostEntry(idx, "crewMemberId", v)}>
+                  <Select
+                    value={entry.crewMemberId}
+                    onValueChange={(v) => {
+                      if (v === "__new_crew__") {
+                        setQuickAddCrew({ idx, section: "post" });
+                        setNewCrewName("");
+                      } else {
+                        updatePostEntry(idx, "crewMemberId", v);
+                      }
+                    }}
+                  >
                     <SelectTrigger className="bg-secondary border-border h-8 text-xs">
                       <SelectValue placeholder="Person" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
+                      <SelectItem value="__new_crew__" className="text-primary font-medium">+ New crew member…</SelectItem>
                       {data.crewMembers.map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
@@ -707,6 +758,37 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         </DialogFooter>
       </DialogContent>
       <UpgradeDialog open={showUpgrade} onClose={() => setShowUpgrade(false)} />
+
+      {/* Quick-create crew member — nested dialog */}
+      <Dialog open={!!quickAddCrew} onOpenChange={(o) => { if (!o) { setQuickAddCrew(null); setNewCrewName(""); } }}>
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Add Crew Member</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Name</Label>
+              <Input
+                autoFocus
+                value={newCrewName}
+                onChange={(e) => setNewCrewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveNewCrew(); }}
+                placeholder="Full name"
+                className="bg-secondary border-border mt-1.5"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              You can add roles, pay rates, and contact info later from the Staff page.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setQuickAddCrew(null); setNewCrewName(""); }}>Cancel</Button>
+            <Button onClick={handleSaveNewCrew} disabled={!newCrewName.trim()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
