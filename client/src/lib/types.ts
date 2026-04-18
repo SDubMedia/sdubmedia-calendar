@@ -129,6 +129,13 @@ export interface Organization {
   dashboardWidgets: DashboardWidgetConfig[];
   pipelineStages: PipelineStageConfig[];
   services: ServiceItem[];
+  // SaaS billing state — all set by /api/stripe-webhook. Frontend reads these
+  // to enforce project limits, show the Manage Subscription button, and render
+  // the PaymentBanner when a charge has failed.
+  projectLimit: number;          // -1 = unlimited (paid tier or grandfathered), otherwise the free-tier cap (10)
+  stripeCustomerId: string;      // empty string until user first opens checkout
+  stripeSubscriptionId: string;  // empty string when no active subscription
+  billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
   createdAt: string;
 }
 

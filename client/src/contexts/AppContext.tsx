@@ -462,6 +462,10 @@ function rowToOrg(r: any): Organization {
     dashboardWidgets: r.dashboard_widgets || null,
     pipelineStages: Array.isArray(r.pipeline_stages) && r.pipeline_stages.length > 0 ? r.pipeline_stages : DEFAULT_PIPELINE_STAGES,
     services: Array.isArray(r.services) ? r.services : [],
+    projectLimit: r.project_limit ?? 10,
+    stripeCustomerId: r.stripe_customer_id || "",
+    stripeSubscriptionId: r.stripe_subscription_id || "",
+    billingStatus: r.billing_status || "ok",
     createdAt: r.created_at,
   };
 }
