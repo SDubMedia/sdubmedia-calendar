@@ -1,6 +1,7 @@
 // ============================================================
-// Weekly summary — Vercel cron fires every Monday morning (13:00 UTC)
-// and emails Geoff an ops roll-up for Slate + Freelance.
+// Daily summary — Vercel cron fires every day at 11:00 UTC
+// (~6am CDT / 5am CST in Nashville) and emails Geoff an ops
+// roll-up for Slate + Freelance covering the last 24 hours.
 //
 // Protected by CRON_SECRET env var. Also callable manually with the
 // same Authorization: Bearer <CRON_SECRET> header for ad-hoc runs.
@@ -26,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!supabaseUrl || !supabaseServiceKey) return res.status(500).json({ error: "Supabase not configured" });
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   // --- Slate MRR + active subs ---
   const { data: slateOrgs } = await supabase
@@ -48,24 +49,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const freelanceMrr = (freelanceProfiles || []).reduce((s, p) => s + (p.subscription_tier === "freelance_pro" ? 19.99 : p.subscription_tier === "freelance" ? 9.99 : 0), 0);
   const freelancePastDue = (freelanceProfiles || []).filter(p => p.subscription_status === "past_due").length;
 
-  // --- New Slate signups this week ---
+  // --- New Slate signups (last 24h) ---
   const { count: slateSignups } = await supabase
     .from("organizations")
     .select("id", { count: "exact", head: true })
     .neq("id", "org_sdubmedia")
-    .gte("created_at", weekStart);
+    .gte("created_at", since);
 
-  // --- New Freelance signups this week ---
+  // --- New Freelance signups (last 24h) ---
   const { count: freelanceSignups } = await supabase
     .from("producer_profiles")
     .select("id", { count: "exact", head: true })
-    .gte("created_at", weekStart);
+    .gte("created_at", since);
 
-  // --- Conversion funnel (last 7 days) ---
+  // --- Conversion funnel (last 24h) ---
   const { data: events } = await supabase
     .from("analytics_events")
     .select("event_name, metadata")
-    .gte("created_at", weekStart);
+    .gte("created_at", since);
 
   const funnel = { slate: { viewed: 0, started: 0, completed: 0 }, freelance: { viewed: 0, started: 0, completed: 0 } };
   for (const ev of events || []) {
@@ -81,26 +82,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const slateSubs = (slateOrgs || []).length;
   const freelanceSubs = (freelanceProfiles || []).length;
 
-  const subject = `[SDub Weekly] MRR $${totalMrr} · ${slateSubs + freelanceSubs} subs · ${(slateSignups || 0) + (freelanceSignups || 0)} new signups`;
+  const subject = `[SDub Daily] MRR $${totalMrr} · ${slateSubs + freelanceSubs} subs · ${(slateSignups || 0) + (freelanceSignups || 0)} new signups`;
 
   const body = `
-Weekly roll-up for the last 7 days.
+Daily roll-up (last 24 hours).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MRR
+MRR (current state)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Slate:     $${slateMrr.toFixed(2)}  (${slateSubs} active)
   Freelance: $${freelanceMrr.toFixed(2)}  (${freelanceSubs} active)
   Total:     $${totalMrr}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-This week
+Last 24 hours
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   New Slate signups:     ${slateSignups || 0}
   New Freelance signups: ${freelanceSignups || 0}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Conversion funnel (last 7 days)
+Conversion funnel (last 24h)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Slate:     ${funnel.slate.viewed} viewed → ${funnel.slate.started} started → ${funnel.slate.completed} completed
   Freelance: ${funnel.freelance.viewed} viewed → ${funnel.freelance.started} started → ${funnel.freelance.completed} completed
@@ -116,7 +117,7 @@ For deeper cuts, see docs/admin-queries.sql.
 
   try {
     await resend.emails.send({
-      from: `SDub Weekly <${FROM_EMAIL}>`,
+      from: `SDub Daily <${FROM_EMAIL}>`,
       to: TO_EMAIL,
       subject,
       text: body,
