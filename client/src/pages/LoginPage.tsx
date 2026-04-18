@@ -257,7 +257,16 @@ export default function LoginPage() {
             </>
           )}
         </div>
-        <p className="text-center text-[10px] text-zinc-600 mt-6">getslate.net</p>
+        <div className="text-center mt-6 space-y-2">
+          <div className="flex justify-center gap-3 text-[10px] text-zinc-500">
+            <a href="/terms" className="hover:text-zinc-300">Terms</a>
+            <span>·</span>
+            <a href="/refund" className="hover:text-zinc-300">Refunds</a>
+            <span>·</span>
+            <a href="/privacy" className="hover:text-zinc-300">Privacy</a>
+          </div>
+          <p className="text-[10px] text-zinc-600">getslate.net</p>
+        </div>
       </div>
     </div>
   );

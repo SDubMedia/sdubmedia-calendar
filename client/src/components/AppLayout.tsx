@@ -32,8 +32,13 @@ import {
   TrendingUp,
   Trash2,
   MessageSquare,
+  CreditCard,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
+import UpgradeDialog from "@/components/UpgradeDialog";
+import UpgradeSuccessDialog from "@/components/UpgradeSuccessDialog";
+import PaymentBanner from "@/components/PaymentBanner";
+import OverLimitBanner from "@/components/OverLimitBanner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -132,6 +137,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const orgName = data.organization?.name || "Slate";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const isOwner = profile?.role === "owner";
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
 
@@ -353,6 +360,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )}
             </div>
           )}
+          {isOwner && (
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              Subscription
+            </button>
+          )}
           <button
             onClick={() => setFeedbackOpen(true)}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
@@ -502,6 +518,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
               )}
+              {isOwner && (
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setUpgradeOpen(true); }}
+                  className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Subscription</span>
+                </button>
+              )}
               <button
                 onClick={() => { setMobileMenuOpen(false); setFeedbackOpen(true); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
@@ -520,6 +545,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
+        {/* Owner-only SaaS billing banners (only render when applicable) */}
+        <PaymentBanner />
+        <OverLimitBanner />
+
+        {/* Post-checkout celebration (reads ?upgraded= param) */}
+        <UpgradeSuccessDialog />
+
         {/* Page content */}
         <main className="flex-1 overflow-auto">
           {children}
@@ -527,6 +559,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      <UpgradeDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
     </div>
   );
 }

@@ -16,6 +16,8 @@ import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus, Client } from "@/lib/types";
 import { toast } from "sonner";
+import { getProjectLimitState } from "@/lib/tier-limits";
+import UpgradeDialog from "./UpgradeDialog";
 
 const EDIT_TYPES: EditType[] = [
   "Social Vertical", "Social Horizontal", "Podcast Edit",
@@ -72,6 +74,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -277,6 +280,15 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     if (!clientId || !date || !projectTypeId) {
       toast.error("Please fill in client, project type, and date");
       return;
+    }
+    // SaaS tier gate: block new project creation when over plan limit.
+    // Existing projects (edit path) are always allowed — data preserved on downgrade.
+    if (!isEdit) {
+      const state = getProjectLimitState(data.organization, data.projects.length);
+      if (!state.allowNew) {
+        setShowUpgrade(true);
+        return;
+      }
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
       clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime,
@@ -694,6 +706,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </Button>
         </DialogFooter>
       </DialogContent>
+      <UpgradeDialog open={showUpgrade} onClose={() => setShowUpgrade(false)} />
     </Dialog>
   );
 }

@@ -48,6 +48,9 @@ const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
 const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
 const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage"));
+const TermsPage = lazy(() => import("./pages/TermsPage"));
+const RefundPage = lazy(() => import("./pages/RefundPage"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 
 function LoadingScreen() {
   return (
@@ -171,6 +174,22 @@ function App() {
             <Route path="/proposal/:token" component={ViewProposalPage} />
           </Switch>
         </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // Legal pages — always public so Stripe + marketing sites can link in
+  const legalPath = window.location.pathname;
+  if (legalPath === "/terms" || legalPath === "/refund" || legalPath === "/privacy") {
+    const Page = legalPath === "/terms" ? TermsPage : legalPath === "/refund" ? RefundPage : PrivacyPage;
+    return (
+      <ErrorBoundary>
+        <ThemeProvider defaultTheme="dark" switchable>
+          <Suspense fallback={<LoadingScreen />}>
+            <Toaster theme="dark" />
+            <Page />
+          </Suspense>
+        </ThemeProvider>
       </ErrorBoundary>
     );
   }
