@@ -13,6 +13,13 @@ Sentry.init({
   enabled: import.meta.env.PROD,
 });
 
+// After a deploy, old HTML references chunk filenames that no longer exist
+// (content-hashed). The lazy-loaded route throws — auto-reload to pull fresh
+// HTML + new chunk names instead of showing a broken ErrorBoundary.
+window.addEventListener("vite:preloadError", () => {
+  window.location.reload();
+});
+
 // When running inside Capacitor, redirect /api/* calls to the production server
 const apiBase = import.meta.env.VITE_API_BASE;
 if (apiBase) {
