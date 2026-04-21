@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -83,12 +83,15 @@ function Router() {
   const isOwner = role === "owner";
   const isPartner = role === "partner";
   const isStaff = role === "staff";
+  const isFamily = role === "family";
 
   return (
     <AppLayout>
       <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-sm text-muted-foreground">Loading...</div></div>}>
       <Switch>
-        {isStaff ? (
+        {isFamily ? (
+          <Route path="/"><Redirect to="/calendar" /></Route>
+        ) : isStaff ? (
           <Route path="/" component={StaffDashboardPage} />
         ) : (isOwner || isPartner) ? (
           <Route path="/" component={DashboardPage} />
