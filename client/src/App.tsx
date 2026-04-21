@@ -2,7 +2,8 @@ import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch, Redirect } from "wouter";
+import { Route, Switch, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -84,6 +85,13 @@ function Router() {
   const isPartner = role === "partner";
   const isStaff = role === "staff";
   const isFamily = role === "family";
+
+  // Belt-and-suspenders redirect for family — catches the case where
+  // effectiveProfile loads after the initial route match.
+  const [location, navigate] = useLocation();
+  useEffect(() => {
+    if (isFamily && location === "/") navigate("/calendar", { replace: true });
+  }, [isFamily, location, navigate]);
 
   return (
     <AppLayout>

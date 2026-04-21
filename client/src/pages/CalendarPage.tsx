@@ -299,7 +299,7 @@ export default function CalendarPage() {
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
-                    {calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
+                    {!isFamily && calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
                         <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-500/10">
                           {dayHours.billed.toFixed(1)}h billed
@@ -505,25 +505,29 @@ export default function CalendarPage() {
                         {/* Time + hours */}
                         <div className="text-right flex-shrink-0">
                           <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                          <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            {totalBilled.toFixed(1)} billed
-                            {project.paidDate && (
-                              <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
-                                <DollarSign className="w-2.5 h-2.5 text-green-400" />
-                              </span>
-                            )}
-                          </div>
-                          {isFlatRate && flatRateAmount > 0 && (
-                            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 justify-end mt-0.5 font-medium">
-                              <DollarSign className="w-3 h-3" />
-                              {flatRateAmount.toFixed(0)} flat
-                            </div>
-                          )}
-                          {totalWorked !== totalBilled && (
-                            <div className="text-[10px] text-muted-foreground text-right">
-                              {totalWorked.toFixed(1)} worked
-                            </div>
+                          {!isFamily && (
+                            <>
+                              <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                {totalBilled.toFixed(1)} billed
+                                {project.paidDate && (
+                                  <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
+                                    <DollarSign className="w-2.5 h-2.5 text-green-400" />
+                                  </span>
+                                )}
+                              </div>
+                              {isFlatRate && flatRateAmount > 0 && (
+                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 justify-end mt-0.5 font-medium">
+                                  <DollarSign className="w-3 h-3" />
+                                  {flatRateAmount.toFixed(0)} flat
+                                </div>
+                              )}
+                              {totalWorked !== totalBilled && (
+                                <div className="text-[10px] text-muted-foreground text-right">
+                                  {totalWorked.toFixed(1)} worked
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
