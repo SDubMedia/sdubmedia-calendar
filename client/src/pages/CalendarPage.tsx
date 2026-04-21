@@ -11,7 +11,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, PersonalEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";
+import { getBillableHours, getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
@@ -150,13 +150,15 @@ export default function CalendarPage() {
             <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {calendarMode === "production"
-                ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
-                : calendarMode === "personal"
-                ? `${monthPersonalEvents.length} events this month`
-                : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
-            </p>
+            {!(isFamily && calendarMode !== "personal") && (
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {calendarMode === "production"
+                  ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
+                  : calendarMode === "personal"
+                  ? `${monthPersonalEvents.length} events this month`
+                  : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             {canSeePersonal && (calendarMode === "personal" || calendarMode === "both") && (
@@ -222,9 +224,9 @@ export default function CalendarPage() {
         </div>}
       </div>
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Calendar */}
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
           {/* Month nav */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <button onClick={prevMonth} className="p-1.5 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
@@ -371,7 +373,7 @@ export default function CalendarPage() {
         {calendarMode !== "personal" ? (
           <>
             {/* Filter tabs + project list */}
-            <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
                 {/* Scope toggle */}
                 <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
@@ -439,6 +441,11 @@ export default function CalendarPage() {
                     const totalBilled = client
                       ? getProjectBillableHours(project, client).totalBillable
                       : totalWorked;
+                    const effectiveModel = project.billingModel ?? client?.billingModel;
+                    const isFlatRate = effectiveModel === "per_project";
+                    const flatRateAmount = isFlatRate && client
+                      ? getProjectInvoiceAmount(project, client)
+                      : 0;
 
                     return (
                       <div
@@ -507,6 +514,12 @@ export default function CalendarPage() {
                               </span>
                             )}
                           </div>
+                          {isFlatRate && flatRateAmount > 0 && (
+                            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 justify-end mt-0.5 font-medium">
+                              <DollarSign className="w-3 h-3" />
+                              {flatRateAmount.toFixed(0)} flat
+                            </div>
+                          )}
                           {totalWorked !== totalBilled && (
                             <div className="text-[10px] text-muted-foreground text-right">
                               {totalWorked.toFixed(1)} worked
@@ -522,7 +535,7 @@ export default function CalendarPage() {
           </>
         ) : (
           /* Personal events list */
-          <div className="bg-card rounded-lg border border-border overflow-hidden">
+          <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
             <div className="px-4 py-3 border-b border-border">
               <span className="text-sm font-medium text-foreground">Upcoming Events</span>
             </div>

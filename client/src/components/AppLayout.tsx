@@ -142,6 +142,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isOwner = profile?.role === "owner";
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
+  const isFamily = role === "family";
 
   const features = data.organization?.features;
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -370,20 +371,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               Subscription
             </button>
           )}
-          <button
-            onClick={() => setFeedbackOpen(true)}
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Send Feedback
-          </button>
-          <a
-            href="mailto:support@sdubmedia.com?subject=Slate%20support"
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-          >
-            <Mail className="w-3.5 h-3.5" />
-            Contact Support
-          </a>
+          {!isFamily && (
+            <>
+              <button
+                onClick={() => setFeedbackOpen(true)}
+                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Send Feedback
+              </button>
+              <a
+                href="mailto:support@sdubmedia.com?subject=Slate%20support"
+                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                Contact Support
+              </a>
+            </>
+          )}
           <button
             onClick={() => signOut()}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
@@ -535,21 +540,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <span>Subscription</span>
                 </button>
               )}
-              <button
-                onClick={() => { setMobileMenuOpen(false); setFeedbackOpen(true); }}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Send Feedback</span>
-              </button>
-              <a
-                href="mailto:support@sdubmedia.com?subject=Slate%20support"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
-              >
-                <Mail className="w-4 h-4" />
-                <span>Contact Support</span>
-              </a>
+              {!isFamily && (
+                <>
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); setFeedbackOpen(true); }}
+                    className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Send Feedback</span>
+                  </button>
+                  <a
+                    href="mailto:support@sdubmedia.com?subject=Slate%20support"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>Contact Support</span>
+                  </a>
+                </>
+              )}
               <button
                 onClick={() => { setMobileMenuOpen(false); signOut(); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/5 w-full"
