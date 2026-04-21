@@ -3,7 +3,7 @@
 // Design: Dark Cinematic Studio | Amber accent on charcoal
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,42 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
+  // Long-press on a day → quick-create
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const openAddForDate = useCallback((dateStr: string | null) => {
+    const targetDate = dateStr ?? selectedDate ?? todayStr;
+    setSelectedDate(targetDate);
+    if (isFamily || calendarMode === "personal") {
+      setEditingEvent(null);
+      setPersonalEventOpen(true);
+    } else {
+      setNewProjectOpen(true);
+    }
+  }, [selectedDate, todayStr, isFamily, calendarMode]);
+
+  const handleDayPointerDown = (dateStr: string | null) => {
+    if (!dateStr || isClient) return;
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      openAddForDate(dateStr);
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
     const map: Record<string, { worked: number; billed: number }> = {};
@@ -94,13 +130,25 @@ export default function CalendarPage() {
       .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
   };
 
-  // Projects filtered by scope (month or all) and status for the list below
+  // Projects filtered by selected date, or scope (month/all) and status
   const filteredProjects = useMemo(() => {
-    const projects = viewScope === "month" ? monthProjects : data.projects;
+    let projects;
+    if (selectedDate) {
+      projects = data.projects.filter(p => p.date === selectedDate);
+    } else {
+      projects = viewScope === "month" ? monthProjects : data.projects;
+    }
     const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, monthProjects, filterStatus, viewScope]);
+  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate]);
+
+  const filteredPersonalEvents = useMemo(() => {
+    if (selectedDate) {
+      return data.personalEvents.filter(e => e.date === selectedDate);
+    }
+    return monthPersonalEvents;
+  }, [data.personalEvents, monthPersonalEvents, selectedDate]);
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -171,14 +219,13 @@ export default function CalendarPage() {
                 <Settings className="w-4 h-4" />
               </Button>
             )}
-            {!isClient && !isFamily && calendarMode !== "personal" && (
+            {!isClient && (
               <Button
-                onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
+                onClick={() => openAddForDate(null)}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Project</span>
-                <span className="sm:hidden">New</span>
+                <span>New</span>
               </Button>
             )}
           </div>
@@ -270,26 +317,30 @@ export default function CalendarPage() {
                 : null;
               const dayHours = dateStr ? (dailyHours[dateStr] ?? null) : null;
 
+              const isSelected = dateStr !== null && dateStr === selectedDate;
               return (
                 <div
                   key={i}
                   className={cn(
-                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative",
+                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none",
                     !isCurrentMonth && "opacity-30",
-                    isToday && "bg-primary/5",
+                    isToday && !isSelected && "bg-primary/5",
+                    isSelected && "bg-primary/15 ring-2 ring-primary/60 ring-inset",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
                   )}
                   onClick={() => {
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false;
+                      return;
+                    }
                     if (isCurrentMonth && dateStr && !isClient) {
-                      setSelectedDate(dateStr);
-                      if (calendarMode === "personal" || (isFamily && calendarMode === "both")) {
-                        setEditingEvent(null);
-                        setPersonalEventOpen(true);
-                      } else if (!isFamily) {
-                        setNewProjectOpen(true);
-                      }
+                      setSelectedDate(prev => prev === dateStr ? null : dateStr);
                     }
                   }}
+                  onPointerDown={() => handleDayPointerDown(isCurrentMonth ? dateStr : null)}
+                  onPointerUp={cancelLongPress}
+                  onPointerLeave={cancelLongPress}
+                  onPointerCancel={cancelLongPress}
                 >
                   {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
@@ -320,6 +371,7 @@ export default function CalendarPage() {
                         <div
                           key={p.id}
                           onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
+                          onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
                             "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                             p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
@@ -348,6 +400,7 @@ export default function CalendarPage() {
                           <div
                             key={e.id}
                             onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
+                            onPointerDown={(ev) => ev.stopPropagation()}
                             className={cn(
                               "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                               ec.bg, ec.text,
@@ -374,7 +427,17 @@ export default function CalendarPage() {
           <>
             {/* Filter tabs + project list */}
             <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
+              {selectedDate && (
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                  </span>
+                  <button onClick={() => setSelectedDate(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Show all ×
+                  </button>
+                </div>
+              )}
+              {!selectedDate && <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
                 {/* Scope toggle */}
                 <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
                   <button
@@ -424,7 +487,7 @@ export default function CalendarPage() {
                   </button>
                 ))}
                 </div>
-              </div>
+              </div>}
 
               {/* Project list */}
               <div className="divide-y divide-border">
@@ -540,16 +603,25 @@ export default function CalendarPage() {
         ) : (
           /* Personal events list */
           <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <span className="text-sm font-medium text-foreground">Upcoming Events</span>
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">
+                {selectedDate
+                  ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+                  : "Upcoming Events"}
+              </span>
+              {selectedDate && (
+                <button onClick={() => setSelectedDate(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Show all ×
+                </button>
+              )}
             </div>
             <div className="divide-y divide-border">
-              {monthPersonalEvents.length === 0 ? (
+              {filteredPersonalEvents.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">
-                  No personal events this month. Click a date to add one!
+                  {selectedDate ? "No events on this day." : "No personal events this month. Long-press a date to add one!"}
                 </div>
               ) : (
-                [...monthPersonalEvents].sort((a, b) => a.priority === b.priority ? a.date.localeCompare(b.date) : a.priority ? -1 : 1).map((evt) => {
+                [...filteredPersonalEvents].sort((a, b) => a.priority === b.priority ? a.date.localeCompare(b.date) : a.priority ? -1 : 1).map((evt) => {
                   const ec = getEventColor(evt.color);
                   return (
                     <div
