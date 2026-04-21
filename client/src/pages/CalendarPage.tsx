@@ -57,6 +57,10 @@ export default function CalendarPage() {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
 
+  // Swipe detection on the calendar grid → change month
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeFiredRef = useRef(false);
+
   const todayStr = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -86,6 +90,32 @@ export default function CalendarPage() {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
+    }
+  };
+
+  const onGridPointerDown = (e: React.PointerEvent) => {
+    swipeStartRef.current = { x: e.clientX, y: e.clientY };
+    swipeFiredRef.current = false;
+  };
+  const onGridPointerMove = (e: React.PointerEvent) => {
+    const start = swipeStartRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    // Any meaningful movement cancels the long-press timer.
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) cancelLongPress();
+  };
+  const onGridPointerUp = (e: React.PointerEvent) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const SWIPE_THRESHOLD = 60;
+    // Horizontal, and clearly more horizontal than vertical (avoid scroll).
+    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swipeFiredRef.current = true;
+      if (dx > 0) prevMonth(); else nextMonth();
     }
   };
 
@@ -305,7 +335,13 @@ export default function CalendarPage() {
           </div>
 
           {/* Calendar grid */}
-          <div className="grid grid-cols-7">
+          <div
+            className="grid grid-cols-7 touch-pan-y"
+            onPointerDown={onGridPointerDown}
+            onPointerMove={onGridPointerMove}
+            onPointerUp={onGridPointerUp}
+            onPointerCancel={() => { swipeStartRef.current = null; }}
+          >
             {Array.from({ length: totalCells }).map((_, i) => {
               const day = i - firstDay + 1;
               const isCurrentMonth = day >= 1 && day <= daysInMonth;
@@ -331,6 +367,10 @@ export default function CalendarPage() {
                   onClick={() => {
                     if (longPressTriggeredRef.current) {
                       longPressTriggeredRef.current = false;
+                      return;
+                    }
+                    if (swipeFiredRef.current) {
+                      swipeFiredRef.current = false;
                       return;
                     }
                     if (isCurrentMonth && dateStr && !isClient) {
