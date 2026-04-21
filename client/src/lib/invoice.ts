@@ -96,7 +96,8 @@ export function buildLineItems(
     const locName = locations.find(l => l.id === p.locationId)?.name;
     const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
 
-    if (client.billingModel === "per_project") {
+    const effectiveModel = p.billingModel ?? client.billingModel;
+    if (effectiveModel === "per_project") {
       const amount = getProjectInvoiceAmount(p, client);
 
       // Break down into production + post-production if we have crew data
@@ -131,7 +132,7 @@ export function buildLineItems(
       }
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
-      const rate = Number(client.billingRatePerHour ?? 0);
+      const rate = Number(p.billingRate ?? client.billingRatePerHour ?? 0);
       const { crewBillable, postBillable } = getProjectBillableHours(p, client);
 
       if (p.crew.length > 0 && crewBillable > 0) {

@@ -324,6 +324,8 @@ export interface Project {
   postProduction: ProjectPostEntry[];
   editorBilling?: EditorBilling | null; // photo editor image-based billing
   projectRate?: number | null; // per-project rate override (for per_project billing)
+  billingModel?: BillingModel | null; // null = inherit from client
+  billingRate?: number | null; // $/hr when hourly, flat $ when per_project. null = inherit
   paidDate?: string | null; // date this project was marked paid (ISO date or null)
   editTypes: string[]; // edit_type IDs
   notes: string;

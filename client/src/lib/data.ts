@@ -254,17 +254,23 @@ export function getProjectBillableHours(project: Project, client: Client): {
  * Per-project: project-level override → type-specific rate → client default rate.
  */
 export function getProjectInvoiceAmount(project: Project, client: Client): number {
-  if (client.billingModel === "per_project") {
-    // 1. Project-level override (editable per project)
+  const effectiveModel = project.billingModel ?? client.billingModel;
+  if (effectiveModel === "per_project") {
+    // 1. Project-level billing override (new: per-project flat rate)
+    if (project.billingRate != null && project.billingRate > 0) {
+      return project.billingRate;
+    }
+    // 2. Legacy project.projectRate override
     if (project.projectRate != null && project.projectRate > 0) {
       return project.projectRate;
     }
-    // 2. Project-type-specific rate, 3. Client default per-project rate
+    // 3. Project-type-specific rate, 4. Client default per-project rate
     const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
   const { totalBillable } = getProjectBillableHours(project, client);
-  return totalBillable * Number(client.billingRatePerHour ?? 0);
+  const effectiveHourly = project.billingRate ?? client.billingRatePerHour ?? 0;
+  return totalBillable * Number(effectiveHourly);
 }
 
 /**

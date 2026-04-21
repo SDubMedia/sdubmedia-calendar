@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, Client } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, Client, BillingModel } from "@/lib/types";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
 import UpgradeDialog from "./UpgradeDialog";
@@ -60,6 +60,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
+  const [billingModelOverride, setBillingModelOverride] = useState<BillingModel | null>(project?.billingModel ?? null);
+  const [billingRateOverride, setBillingRateOverride] = useState<number | null>(project?.billingRate ?? null);
 
   // Inline creation state
   const [showNewType, setShowNewType] = useState(false);
@@ -105,6 +107,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       } else {
         setProjectRate(null);
       }
+      setBillingModelOverride(project?.billingModel ?? null);
+      setBillingRateOverride(project?.billingRate ?? null);
       setShowNewType(false);
       setNewTypeName("");
       setShowNewEditType(false);
@@ -338,6 +342,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       postProduction: postProduction.filter((c) => c.crewMemberId),
       editorBilling: project?.editorBilling ?? null,
       projectRate: selectedClient?.billingModel === "per_project" ? projectRate : null,
+      billingModel: billingModelOverride,
+      billingRate: billingModelOverride ? billingRateOverride : null,
       editTypes, notes, deliverableUrl,
     };
     try {
@@ -556,8 +562,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>}
           </div>
 
-          {/* Project Rate (per-project billing clients only) */}
-          {!isLightweight && selectedClient?.billingModel === "per_project" && (
+          {/* Project Rate (per-project billing clients only, legacy field) */}
+          {!isLightweight && selectedClient?.billingModel === "per_project" && !billingModelOverride && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Rate ($)</Label>
               <Input
@@ -572,6 +578,60 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               <p className="text-[10px] text-muted-foreground">
                 Flat rate billed to client for this project. Crew entries below are for internal cost tracking only.
               </p>
+            </div>
+          )}
+
+          {/* Billing override — works for any client */}
+          {!isLightweight && selectedClient && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Billing Mode</Label>
+              <Select
+                value={billingModelOverride ?? "inherit"}
+                onValueChange={(v) => {
+                  if (v === "inherit") {
+                    setBillingModelOverride(null);
+                    setBillingRateOverride(null);
+                  } else {
+                    const mode = v as BillingModel;
+                    setBillingModelOverride(mode);
+                    if (billingRateOverride == null) {
+                      setBillingRateOverride(mode === "hourly"
+                        ? Number(selectedClient.billingRatePerHour || 0)
+                        : Number(selectedClient.perProjectRate || 0));
+                    }
+                  }
+                }}
+              >
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  <SelectItem value="inherit">Use client default</SelectItem>
+                  <SelectItem value="hourly">Hourly</SelectItem>
+                  <SelectItem value="per_project">Per project (flat)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Client default: {selectedClient.billingModel === "per_project"
+                  ? `Per project @ $${Number(selectedClient.perProjectRate || 0).toFixed(0)}`
+                  : `Hourly @ $${Number(selectedClient.billingRatePerHour || 0).toFixed(0)}/hr`}
+              </p>
+              {billingModelOverride && (
+                <div className="pt-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {billingModelOverride === "hourly" ? "Hourly rate ($/hr)" : "Project rate ($)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step={billingModelOverride === "hourly" ? "5" : "25"}
+                    value={billingRateOverride ?? ""}
+                    onChange={(e) => setBillingRateOverride(parseFloat(e.target.value) || 0)}
+                    className="bg-secondary border-border"
+                    placeholder={billingModelOverride === "hourly" ? "e.g. 150" : "e.g. 500"}
+                  />
+                </div>
+              )}
             </div>
           )}
 

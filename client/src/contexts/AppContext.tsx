@@ -339,6 +339,8 @@ function rowToProject(r: any): Project {
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
     editorBilling: r.editor_billing || null,
     projectRate: r.project_rate != null ? Number(r.project_rate) : null,
+    billingModel: r.billing_model || null,
+    billingRate: r.billing_rate != null ? Number(r.billing_rate) : null,
     paidDate: r.paid_date || null,
     editTypes: r.edit_types || [],
     notes: r.notes || "",
@@ -1327,6 +1329,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       post_production: p.postProduction,
       editor_billing: p.editorBilling || null,
       project_rate: p.projectRate ?? null,
+      billing_model: p.billingModel ?? null,
+      billing_rate: p.billingRate ?? null,
       paid_date: p.paidDate || null,
       edit_types: p.editTypes,
       notes: p.notes,
@@ -1358,6 +1362,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (p.projectRate !== undefined) patch.project_rate = p.projectRate;
+    if (p.billingModel !== undefined) patch.billing_model = p.billingModel;
+    if (p.billingRate !== undefined) patch.billing_rate = p.billingRate;
     if (p.paidDate !== undefined) patch.paid_date = p.paidDate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
