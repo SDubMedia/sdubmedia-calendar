@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App";
 import "./index.css";
+// Side-effect import: runs captureAttribution() at app boot so UTM
+// params are captured even when the user lands on a route that doesn't
+// transitively import analytics.
+import "@/lib/analytics";
 
 Sentry.init({
   dsn: "https://9fd0ca7c83d4e4b28ab33920b9eb0209@o4511098248888320.ingest.us.sentry.io/4511219409551360",

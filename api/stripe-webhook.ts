@@ -27,6 +27,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { pingCronitor } from "./_cronitor.js";
+
+const CRONITOR_MONITOR = "slate-stripe-webhook";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -115,9 +118,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: "STRIPE_WEBHOOK_SECRET not configured" });
     return res.status(500).json({ error: "STRIPE_WEBHOOK_SECRET not configured — refusing to process unverified webhooks" });
   }
   if (!sig) {
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: "missing stripe-signature header" });
     return res.status(400).json({ error: "Missing stripe-signature header" });
   }
 
@@ -127,6 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch (err: any) {
     console.error(`[stripe-webhook] signature verification failed: ${err?.message}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${err?.message}` });
     return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
   }
 
@@ -226,10 +232,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (err: any) {
     console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${err?.message} raw=${err?.raw?.message}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${err?.message}` });
     // Return 200 anyway so Stripe doesn't retry on our internal errors.
     // Webhook replay from dashboard is still possible if needed.
     return res.status(200).json({ received: true, error: err.message });
   }
 
+  await pingCronitor(CRONITOR_MONITOR, "complete", { message: event.type });
   return res.status(200).json({ received: true });
 }
