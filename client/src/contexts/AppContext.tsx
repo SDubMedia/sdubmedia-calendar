@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures, PersonalEvent } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures, PersonalEvent } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -31,6 +31,10 @@ interface AppContextValue {
   addProjectType: (pt: Omit<ProjectType, "id">) => Promise<ProjectType>;
   updateProjectType: (id: string, pt: Partial<ProjectType>) => Promise<void>;
   deleteProjectType: (id: string) => Promise<void>;
+  // Edit Types
+  addEditType: (et: Omit<EditType, "id">) => Promise<EditType>;
+  updateEditType: (id: string, et: Partial<EditType>) => Promise<void>;
+  deleteEditType: (id: string) => Promise<void>;
   // Projects
   addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<Project>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
@@ -307,6 +311,10 @@ function rowToProjectType(r: any): ProjectType {
   return { id: r.id, name: r.name, lightweight: r.lightweight || false };
 }
 
+function rowToEditType(r: any): EditType {
+  return { id: r.id, name: r.name };
+}
+
 function normalizeCrewEntry(c: any) {
   return {
     crewMemberId: c.crewMemberId || c.crew_member_id || "",
@@ -471,7 +479,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -532,6 +540,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: crew, error: e2 },
         { data: locs, error: e3 },
         { data: types, error: e4 },
+        { data: editTypesData, error: _e4b },
         { data: projects, error: e5 },
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
@@ -554,6 +563,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("crew_members").select("*").order("name"),
         supabase.from("locations").select("*").order("name"),
         supabase.from("project_types").select("*").order("name"),
+        supabase.from("edit_types").select("*").order("name"),
         supabase.from("projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
@@ -581,6 +591,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         crewMembers: (crew || []).map(rowToCrew),
         locations: (locs || []).map(rowToLocation),
         projectTypes: (types || []).map(rowToProjectType),
+        editTypes: (editTypesData || []).map(rowToEditType),
         projects: (projects || []).map(rowToProject),
         marketingExpenses: (expenses || []).map(rowToExpense),
         invoices: (invoices || []).map(rowToInvoice),
@@ -626,6 +637,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       crew_members: { key: "crewMembers", convert: rowToCrew, sort: (a, b) => a.name.localeCompare(b.name) },
       locations: { key: "locations", convert: rowToLocation, sort: (a, b) => a.name.localeCompare(b.name) },
       project_types: { key: "projectTypes", convert: rowToProjectType, sort: (a, b) => a.name.localeCompare(b.name) },
+      edit_types: { key: "editTypes", convert: rowToEditType, sort: (a, b) => a.name.localeCompare(b.name) },
       projects: { key: "projects", convert: rowToProject, sort: (a, b) => a.date.localeCompare(b.date) },
       marketing_expenses: { key: "marketingExpenses", convert: rowToExpense },
       invoices: { key: "invoices", convert: rowToInvoice, softDelete: true },
@@ -1274,6 +1286,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, projectTypes: d.projectTypes.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Edit Types ----
+  const addEditType = useCallback(async (et: Omit<EditType, "id">): Promise<EditType> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("edit_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: et.name }).select().single();
+    if (error) throw new Error(error.message);
+    const type = rowToEditType(row);
+    setRawData(d => ({ ...d, editTypes: [...d.editTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
+    return type;
+  }, [orgId]);
+
+  const updateEditType = useCallback(async (id: string, et: Partial<EditType>) => {
+    const dbFields: Record<string, any> = {};
+    if (et.name !== undefined) dbFields.name = et.name;
+    const { error } = await supabase.from("edit_types").update(dbFields).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, editTypes: d.editTypes.map(x => x.id === id ? { ...x, ...et } : x) }));
+  }, []);
+
+  const deleteEditType = useCallback(async (id: string) => {
+    const { error } = await supabase.from("edit_types").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, editTypes: d.editTypes.filter(x => x.id !== id) }));
+  }, []);
+
   // ---- Projects ----
   const addProject = useCallback(async (p: Omit<Project, "id" | "createdAt">): Promise<Project> => {
     const id = nanoid(10);
@@ -1592,6 +1628,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addCrewMember, updateCrewMember, deleteCrewMember,
       addLocation, updateLocation, deleteLocation,
       addProjectType, updateProjectType, deleteProjectType,
+      addEditType, updateEditType, deleteEditType,
       addProject, updateProject, deleteProject,
       addMarketingExpense, deleteMarketingExpense,
       addInvoice, updateInvoice, deleteInvoice,

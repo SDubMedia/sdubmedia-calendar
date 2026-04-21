@@ -14,15 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, EditType, ProjectStatus, Client } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, Client } from "@/lib/types";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
 import UpgradeDialog from "./UpgradeDialog";
-
-const EDIT_TYPES: EditType[] = [
-  "Social Vertical", "Social Horizontal", "Podcast Edit",
-  "Full Edit", "Highlight Reel", "Raw Footage",
-];
 
 interface Props {
   open: boolean;
@@ -49,7 +44,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
-  const { data, addProject, updateProject, addProjectType, addLocation, updateLocation, addClient, addCrewMember } = useApp();
+  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -61,7 +56,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "upcoming");
   const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew ?? [emptyCrewEntry()]);
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
-  const [editTypes, setEditTypes] = useState<EditType[]>(project?.editTypes ?? []);
+  const [editTypes, setEditTypes] = useState<string[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
@@ -69,6 +64,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // Inline creation state
   const [showNewType, setShowNewType] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
+  const [showNewEditType, setShowNewEditType] = useState(false);
+  const [newEditTypeName, setNewEditTypeName] = useState("");
   const [showNewLocation, setShowNewLocation] = useState(false);
   const [newLocForm, setNewLocForm] = useState({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
   const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
@@ -110,6 +107,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       }
       setShowNewType(false);
       setNewTypeName("");
+      setShowNewEditType(false);
+      setNewEditTypeName("");
       setShowNewLocation(false);
       setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
       setLocationTab("saved");
@@ -119,8 +118,21 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     wasOpen.current = open;
   }, [open, project, defaultDate, defaultClientId, data.clients]);
 
-  const toggleEditType = (et: EditType) => {
-    setEditTypes((prev) => prev.includes(et) ? prev.filter((x) => x !== et) : [...prev, et]);
+  const toggleEditType = (id: string) => {
+    setEditTypes((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const handleSaveNewEditType = async () => {
+    if (!newEditTypeName.trim()) return;
+    try {
+      const et = await addEditType({ name: newEditTypeName.trim() });
+      setEditTypes((prev) => [...prev, et.id]);
+      setShowNewEditType(false);
+      setNewEditTypeName("");
+      toast.success("Edit type created");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create edit type");
+    }
   };
 
   // Get the selected client and check if selected type is lightweight
@@ -722,20 +734,42 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           {!isLightweight && <div className="space-y-2">
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Edit Types</Label>
             <div className="flex flex-wrap gap-2">
-              {EDIT_TYPES.map((et) => (
+              {data.editTypes.map((et) => (
                 <button
-                  key={et}
-                  onClick={() => toggleEditType(et)}
+                  key={et.id}
+                  onClick={() => toggleEditType(et.id)}
                   className={`px-2.5 py-1 rounded text-xs border transition-colors ${
-                    editTypes.includes(et)
+                    editTypes.includes(et.id)
                       ? "bg-primary/20 border-primary/50 text-primary"
                       : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
                   }`}
                 >
-                  {et}
+                  {et.name}
                 </button>
               ))}
+              {!showNewEditType && (
+                <button
+                  onClick={() => setShowNewEditType(true)}
+                  className="px-2.5 py-1 rounded text-xs border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Add Edit Type
+                </button>
+              )}
             </div>
+            {showNewEditType && (
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={newEditTypeName}
+                  onChange={(e) => setNewEditTypeName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveNewEditType()}
+                  placeholder="Edit type name"
+                  className="bg-secondary border-border h-9 flex-1"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handleSaveNewEditType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowNewEditType(false); setNewEditTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+              </div>
+            )}
           </div>}
 
           {/* Notes */}

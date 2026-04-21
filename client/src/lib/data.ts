@@ -44,6 +44,7 @@ export const seedData: AppData = {
     { id: "loc_cbsr_mtjuliet", name: "CBSR Mt. Juliet", address: "2600 N Mt Juliet Rd", city: "Mt. Juliet", state: "TN", zip: "37122", oneTimeUse: false },
     { id: "loc_cbsr_nashville", name: "CBSR Nashville", address: "915 Rep. John Lewis Way S Suite 102", city: "Nashville", state: "TN", zip: "37203", oneTimeUse: false },
   ],
+  editTypes: [],
   projectTypes: [
     { id: "pt_awards", name: "Awards Ceremony", lightweight: false },
     { id: "pt_jason_recruit", name: "Jason Nagy - Recruitment Videos", lightweight: false },

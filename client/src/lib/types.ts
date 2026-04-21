@@ -182,13 +182,10 @@ export type CrewRole =
   | "Crew"
   | "Travel";
 
-export type EditType =
-  | "Social Vertical"
-  | "Social Horizontal"
-  | "Podcast Edit"
-  | "Full Edit"
-  | "Highlight Reel"
-  | "Raw Footage";
+export interface EditType {
+  id: string;
+  name: string;
+}
 
 export type BillingModel = "hourly" | "per_project";
 
@@ -328,7 +325,7 @@ export interface Project {
   editorBilling?: EditorBilling | null; // photo editor image-based billing
   projectRate?: number | null; // per-project rate override (for per_project billing)
   paidDate?: string | null; // date this project was marked paid (ISO date or null)
-  editTypes: EditType[];
+  editTypes: string[]; // edit_type IDs
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables
   createdAt: string;
@@ -767,6 +764,7 @@ export interface AppData {
   crewMembers: CrewMember[];
   locations: Location[];
   projectTypes: ProjectType[];
+  editTypes: EditType[];
   projects: Project[];
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];

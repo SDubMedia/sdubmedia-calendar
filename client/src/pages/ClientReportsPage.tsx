@@ -174,7 +174,8 @@ export default function ClientReportsPage() {
       });
     });
     const allDeliverables = new Set<string>();
-    clientProjects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
+    const editTypeName = (id: string) => data.editTypes.find(et => et.id === id)?.name || id;
+    clientProjects.forEach(p => (p.editTypes || []).forEach(id => allDeliverables.add(editTypeName(id))));
 
     const projectCards = clientProjects.map(p => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
