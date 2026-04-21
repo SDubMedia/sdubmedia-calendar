@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, PersonalEvent } from "@/lib/types";
+import type { Project, PersonalEvent, PersonalEventTemplate } from "@/lib/types";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
@@ -34,7 +35,7 @@ const MONTH_NAMES = [
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarPage() {
-  const { data } = useApp();
+  const { data, addPersonalEvent } = useApp();
   const { effectiveProfile } = useAuth();
   const role = effectiveProfile?.role;
   const isClient = role === "client";
@@ -52,6 +53,55 @@ export default function CalendarPage() {
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+
+  // Bulk-apply template to multiple dates
+  const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
+  const [bulkDates, setBulkDates] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const myTemplates = effectiveProfile?.personalEventTemplates || [];
+
+  const toggleBulkDate = (dateStr: string) => {
+    setBulkDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
+
+  const exitBulkMode = () => {
+    setBulkTemplate(null);
+    setBulkDates(new Set());
+  };
+
+  const applyBulk = async () => {
+    if (!bulkTemplate || bulkDates.size === 0) return;
+    setBulkSaving(true);
+    const dates = Array.from(bulkDates).sort();
+    try {
+      for (const d of dates) {
+        await addPersonalEvent({
+          title: bulkTemplate.title,
+          date: d,
+          startTime: "",
+          endTime: "",
+          allDay: true,
+          location: "",
+          notes: "",
+          category: bulkTemplate.category,
+          color: bulkTemplate.color,
+          priority: false,
+          orgId: "",
+        });
+      }
+      toast.success(`Added ${dates.length} event${dates.length === 1 ? "" : "s"}`);
+      exitBulkMode();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add events");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // Long-press on a day → quick-create
   const longPressTimerRef = useRef<number | null>(null);
@@ -78,7 +128,7 @@ export default function CalendarPage() {
   }, [selectedDate, todayStr, isFamily, calendarMode]);
 
   const handleDayPointerDown = (dateStr: string | null) => {
-    if (!dateStr || isClient) return;
+    if (!dateStr || isClient || bulkTemplate) return;
     longPressTriggeredRef.current = false;
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTriggeredRef.current = true;
@@ -249,6 +299,21 @@ export default function CalendarPage() {
                 <Settings className="w-4 h-4" />
               </Button>
             )}
+            {!isClient && (calendarMode === "personal" || calendarMode === "both") && myTemplates.length > 0 && !bulkTemplate && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const t = myTemplates.find(x => x.id === e.target.value);
+                  if (t) { setBulkTemplate(t); setBulkDates(new Set()); setSelectedDate(null); }
+                }}
+                className="bg-secondary border border-border text-foreground text-sm rounded-md px-3 py-2 cursor-pointer hover:bg-white/5 transition-colors"
+              >
+                <option value="" disabled>Quick apply…</option>
+                {myTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            )}
             {!isClient && (
               <Button
                 onClick={() => openAddForDate(null)}
@@ -302,6 +367,21 @@ export default function CalendarPage() {
       </div>
 
       <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
+        {bulkTemplate && (
+          <div className="mx-3 sm:mx-0 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-muted-foreground">Applying template</div>
+              <div className="text-sm font-medium text-foreground truncate">
+                {bulkTemplate.label} <span className="text-muted-foreground font-normal">· tap dates to select</span>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums shrink-0">{bulkDates.size} selected</div>
+            <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving}>Cancel</Button>
+            <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground">
+              {bulkSaving ? "Adding…" : `Add (${bulkDates.size})`}
+            </Button>
+          </div>
+        )}
         {/* Calendar */}
         <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
           {/* Month nav */}
@@ -354,14 +434,16 @@ export default function CalendarPage() {
               const dayHours = dateStr ? (dailyHours[dateStr] ?? null) : null;
 
               const isSelected = dateStr !== null && dateStr === selectedDate;
+              const isBulkSelected = dateStr !== null && bulkDates.has(dateStr);
               return (
                 <div
                   key={i}
                   className={cn(
                     "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none",
                     !isCurrentMonth && "opacity-30",
-                    isToday && !isSelected && "bg-primary/5",
+                    isToday && !isSelected && !isBulkSelected && "bg-primary/5",
                     isSelected && "bg-primary/15 ring-2 ring-primary/60 ring-inset",
+                    isBulkSelected && "bg-emerald-500/20 ring-2 ring-emerald-500/60 ring-inset",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
                   )}
                   onClick={() => {
@@ -373,9 +455,12 @@ export default function CalendarPage() {
                       swipeFiredRef.current = false;
                       return;
                     }
-                    if (isCurrentMonth && dateStr && !isClient) {
-                      setSelectedDate(prev => prev === dateStr ? null : dateStr);
+                    if (!isCurrentMonth || !dateStr || isClient) return;
+                    if (bulkTemplate) {
+                      toggleBulkDate(dateStr);
+                      return;
                     }
+                    setSelectedDate(prev => prev === dateStr ? null : dateStr);
                   }}
                   onPointerDown={() => handleDayPointerDown(isCurrentMonth ? dateStr : null)}
                   onPointerUp={cancelLongPress}
