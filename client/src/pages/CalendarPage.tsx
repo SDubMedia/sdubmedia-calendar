@@ -272,7 +272,7 @@ export default function CalendarPage() {
                 <div
                   key={i}
                   className={cn(
-                    "min-h-[60px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative",
+                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative",
                     !isCurrentMonth && "opacity-30",
                     isToday && "bg-primary/5",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
@@ -311,77 +311,56 @@ export default function CalendarPage() {
                     )}
                   </div>
 
-                  {/* Production chips */}
+                  {/* Production chips (mobile + desktop) */}
                   {(calendarMode === "production" || calendarMode === "both") && (
-                    <>
-                      {dayProjects.length > 0 && (
-                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
-                          {dayProjects.slice(0, 3).map((p) => (
-                            <div key={p.id} className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              p.status === "upcoming" && "bg-blue-400",
-                              p.status === "filming_done" && "bg-purple-400",
-                              p.status === "in_editing" && "bg-amber-400",
-                              p.status === "completed" && "bg-green-400",
-                            )} />
-                          ))}
+                    <div className="space-y-0.5">
+                      {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
+                          className={cn(
+                            "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
+                            p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
+                            p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
+                            p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                          )}
+                        >
+                          {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
+                          <span className="hidden sm:inline">{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}</span>
+                          <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
                         </div>
+                      ))}
+                      {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
-                      <div className="space-y-0.5 hidden sm:block">
-                        {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
-                          <div
-                            key={p.id}
-                            onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
-                            className={cn(
-                              "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                              p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
-                              p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
-                              p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
-                              p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
-                            )}
-                          >
-                            {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
-                          </div>
-                        ))}
-                        {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
-                          <div className="text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)} more</div>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
 
-                  {/* Personal event chips */}
+                  {/* Personal event chips (mobile + desktop) */}
                   {(calendarMode === "personal" || calendarMode === "both") && (
-                    <>
-                      {dayEvents.length > 0 && calendarMode !== "both" && (
-                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
-                          {dayEvents.slice(0, 3).map((e) => (
-                            <div key={e.id} className={cn("w-1.5 h-1.5 rounded-full", getEventColor(e.color).dot)} />
-                          ))}
-                        </div>
+                    <div className="space-y-0.5">
+                      {dayEvents.slice(0, calendarMode === "both" ? 2 : 3).map((e) => {
+                        const ec = getEventColor(e.color);
+                        return (
+                          <div
+                            key={e.id}
+                            onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
+                            className={cn(
+                              "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              ec.bg, ec.text,
+                            )}
+                          >
+                            {e.priority && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 inline-block flex-shrink-0 mr-0.5" />}
+                            <span className="hidden sm:inline">{e.startTime ? `${e.startTime} ` : ""}{e.title}</span>
+                            <span className="sm:hidden">{e.title}</span>
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
-                      <div className="space-y-0.5 hidden sm:block">
-                        {dayEvents.slice(0, calendarMode === "both" ? 2 : 3).map((e) => {
-                          const ec = getEventColor(e.color);
-                          return (
-                            <div
-                              key={e.id}
-                              onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
-                              className={cn(
-                                "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                                ec.bg, ec.text,
-                              )}
-                            >
-                              {e.priority && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 inline-block flex-shrink-0 mr-0.5" />}
-                              {e.startTime ? `${e.startTime} ` : ""}{e.title}
-                            </div>
-                          );
-                        })}
-                        {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
-                          <div className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)} more</div>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
