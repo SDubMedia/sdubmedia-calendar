@@ -413,7 +413,7 @@ export default function CalendarPage() {
                           onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
-                            "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                             p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
                             p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
                             p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
@@ -442,7 +442,7 @@ export default function CalendarPage() {
                             onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
                             onPointerDown={(ev) => ev.stopPropagation()}
                             className={cn(
-                              "text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                               ec.bg, ec.text,
                             )}
                           >
