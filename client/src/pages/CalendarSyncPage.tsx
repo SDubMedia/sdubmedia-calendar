@@ -3,16 +3,27 @@
 // Available to all roles
 // ============================================================
 
+import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
-import { CalendarDays, Copy, ExternalLink } from "lucide-react";
+import { CalendarDays, Copy, ExternalLink, Clapperboard, Heart, Layers } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+type FeedType = "production" | "personal" | "all";
+
+const FEED_OPTIONS: { key: FeedType; label: string; description: string; icon: typeof CalendarDays; accent: string }[] = [
+  { key: "production", label: "Production", description: "Just your work projects", icon: Clapperboard, accent: "amber" },
+  { key: "personal", label: "My Life", description: "Personal events only", icon: Heart, accent: "rose" },
+  { key: "all", label: "Both", description: "Work + personal combined", icon: Layers, accent: "violet" },
+];
 
 export default function CalendarSyncPage() {
   const { data } = useApp();
   const orgId = data.organization?.id || "";
+  const [feedType, setFeedType] = useState<FeedType>("all");
 
   const feedBase = `${window.location.origin}/api/calendar.ics`;
-  const feedUrl = `${feedBase}?key=${orgId}&type=all`;
+  const feedUrl = `${feedBase}?key=${orgId}&type=${feedType}`;
   const webcalUrl = feedUrl.replace("https://", "webcal://").replace("http://", "webcal://");
   const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`;
 
@@ -39,6 +50,40 @@ export default function CalendarSyncPage() {
 
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         <div className="max-w-lg mx-auto space-y-6">
+          {/* Feed type picker */}
+          <div className="bg-card border border-border rounded-xl p-4 sm:p-6 space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Which calendar to sync?</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Subscribe to each feed separately to keep them as distinct calendars in Apple or Google — toggle visibility anytime.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {FEED_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const active = feedType === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setFeedType(opt.key)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 px-2 py-3 rounded-lg border text-xs font-medium transition-colors",
+                      active
+                        ? opt.accent === "amber" ? "bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-300"
+                        : opt.accent === "rose" ? "bg-rose-500/20 border-rose-500/50 text-rose-700 dark:text-rose-300"
+                        : "bg-violet-500/20 border-violet-500/50 text-violet-700 dark:text-violet-300"
+                        : "border-border text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground text-center pt-1">
+              {FEED_OPTIONS.find(o => o.key === feedType)?.description}
+            </p>
+          </div>
+
           {/* Google Calendar */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -47,7 +92,7 @@ export default function CalendarSyncPage() {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Google Calendar</h2>
-                <p className="text-xs text-muted-foreground">Click the button below to add your Slate calendar to Google Calendar</p>
+                <p className="text-xs text-muted-foreground">Adds the selected feed as a subscribed calendar</p>
               </div>
             </div>
             <a
@@ -70,7 +115,7 @@ export default function CalendarSyncPage() {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Apple Calendar</h2>
-                <p className="text-xs text-muted-foreground">Click to subscribe in Apple Calendar (Mac, iPhone, iPad)</p>
+                <p className="text-xs text-muted-foreground">Adds the selected feed as a subscribed calendar (Mac, iPhone, iPad)</p>
               </div>
             </div>
             <a
@@ -80,6 +125,9 @@ export default function CalendarSyncPage() {
               <CalendarDays className="w-4 h-4" />
               Add to Apple Calendar
             </a>
+            <p className="text-[10px] text-muted-foreground text-center">
+              Tip: subscribe to Production and My Life separately to toggle them independently.
+            </p>
           </div>
 
           {/* Manual / Other Apps */}
