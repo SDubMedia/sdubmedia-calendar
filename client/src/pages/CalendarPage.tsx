@@ -383,7 +383,7 @@ export default function CalendarPage() {
           </div>
         )}
         {/* Calendar */}
-        <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
+        <div className="bg-card sm:rounded-lg border-t border-b-0 sm:border border-border overflow-hidden">
           {/* Month nav */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <button onClick={prevMonth} className="p-1.5 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
@@ -439,7 +439,7 @@ export default function CalendarPage() {
                 <div
                   key={i}
                   className={cn(
-                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none",
+                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none [&:nth-child(7n)]:border-r-0 sm:[&:nth-child(7n)]:border-r",
                     !isCurrentMonth && "opacity-30",
                     isToday && !isSelected && !isBulkSelected && "bg-primary/5",
                     isSelected && "bg-primary/15 ring-2 ring-primary/60 ring-inset",
