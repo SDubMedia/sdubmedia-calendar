@@ -20,6 +20,19 @@ window.addEventListener("vite:preloadError", () => {
   window.location.reload();
 });
 
+// Belt-and-suspenders: when the service worker swaps to a new version,
+// reload the page so the now-current HTML + chunks are loaded. Prevents
+// the "old bundle running, new chunks fetched" mismatch that landed on
+// the ErrorBoundary twice in April 2026.
+if ("serviceWorker" in navigator) {
+  let reloadedOnce = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedOnce) return;
+    reloadedOnce = true;
+    window.location.reload();
+  });
+}
+
 // When running inside Capacitor, redirect /api/* calls to the production server
 const apiBase = import.meta.env.VITE_API_BASE;
 if (apiBase) {
