@@ -368,17 +368,16 @@ export default function CalendarPage() {
 
       <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
         {bulkTemplate && (
-          <div className="mx-3 sm:mx-0 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 flex items-center gap-3">
+          <div className="sticky top-0 z-20 mx-3 sm:mx-0 rounded-lg border border-primary/40 bg-primary/15 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 shadow-lg">
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground">Applying template</div>
-              <div className="text-sm font-medium text-foreground truncate">
-                {bulkTemplate.label} <span className="text-muted-foreground font-normal">· tap dates to select</span>
+              <div className="text-sm font-medium text-foreground truncate">{bulkTemplate.label}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {bulkDates.size === 0 ? "Tap dates to select" : `${bulkDates.size} selected`}
               </div>
             </div>
-            <div className="text-xs text-muted-foreground tabular-nums shrink-0">{bulkDates.size} selected</div>
-            <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving}>Cancel</Button>
-            <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground">
-              {bulkSaving ? "Adding…" : `Add (${bulkDates.size})`}
+            <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving} className="shrink-0">Cancel</Button>
+            <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground shrink-0">
+              {bulkSaving ? "Adding…" : `Add${bulkDates.size > 0 ? ` (${bulkDates.size})` : ""}`}
             </Button>
           </div>
         )}
