@@ -136,6 +136,7 @@ export interface Organization {
   stripeCustomerId: string;      // empty string until user first opens checkout
   stripeSubscriptionId: string;  // empty string when no active subscription
   billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
+  testimonialPromptedAt: string | null; // when the testimonial prompt last fired (null = never asked)
   createdAt: string;
 }
 

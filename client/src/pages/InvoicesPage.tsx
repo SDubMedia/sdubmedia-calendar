@@ -13,6 +13,7 @@ import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, C
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import TestimonialPromptDialog from "@/components/TestimonialPromptDialog";
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -59,6 +60,7 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all");
   const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
   const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
+  const [testimonialOpen, setTestimonialOpen] = useState(false);
 
   async function createPaymentLink(invoiceId: string) {
     const orgId = data.organization?.id;
@@ -165,8 +167,16 @@ export default function InvoicesPage() {
 
   const handleMarkPaid = async (id: string) => {
     try {
+      // Check if this is the org's first-ever paid invoice (before we flip it).
+      const wasFirstPaid =
+        !data.invoices.some((i) => i.status === "paid") &&
+        !data.organization?.testimonialPromptedAt;
       await updateInvoice(id, { status: "paid", paidDate: new Date().toISOString().slice(0, 10) });
       toast.success("Invoice marked as paid");
+      if (wasFirstPaid) {
+        // Small delay so the mark-paid toast lands first.
+        setTimeout(() => setTestimonialOpen(true), 400);
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to update");
     }
@@ -575,6 +585,13 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+
+      <TestimonialPromptDialog
+        open={testimonialOpen}
+        onClose={() => setTestimonialOpen(false)}
+        trigger="first_paid_invoice"
+        defaultCompany={data.organization?.name}
+      />
     </div>
   );
 }

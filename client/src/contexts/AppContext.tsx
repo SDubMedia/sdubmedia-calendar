@@ -476,6 +476,7 @@ function rowToOrg(r: any): Organization {
     stripeCustomerId: r.stripe_customer_id || "",
     stripeSubscriptionId: r.stripe_subscription_id || "",
     billingStatus: r.billing_status || "ok",
+    testimonialPromptedAt: r.testimonial_prompted_at || null,
     createdAt: r.created_at,
   };
 }
