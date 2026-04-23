@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import type { CrewMember, CrewRole, RoleRate, HomeAddress } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -79,12 +80,22 @@ const emptyForm = (): StaffFormData => ({
   taxIdType: "",
 });
 
+function generatePassword(): string {
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
 export default function StaffPage() {
   const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance } = useApp();
+  const { createUser } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StaffFormData>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [sendStaffInvite, setSendStaffInvite] = useState(false);
+  const [invitePassword, setInvitePassword] = useState("");
 
   // For adding a new role row in the form
   const [newRole, setNewRole] = useState<CrewRole | "">("");
@@ -287,6 +298,33 @@ export default function StaffPage() {
         const newMember = await addCrewMember(payload);
         memberId = newMember.id;
         toast.success("Staff member added");
+
+        // Optional: create staff user + send invite email
+        if (sendStaffInvite && form.email.trim() && invitePassword) {
+          try {
+            const userId = await createUser(
+              form.email.trim(),
+              invitePassword,
+              form.name.trim() || form.email.trim(),
+              "staff",
+              [],
+              newMember.id
+            );
+            const token = await getAuthToken();
+            const res = await fetch("/api/invite-user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ userId, tempPassword: invitePassword }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: "Failed" }));
+              throw new Error(err.error || "Failed to send invite");
+            }
+            toast.success(`Login invite sent to ${form.email}`);
+          } catch (inviteErr: any) {
+            toast.error(`Staff saved but invite failed: ${inviteErr.message}`);
+          }
+        }
       }
       // Save encrypted tax info via API
       if (memberId && (form.taxId || form.taxIdType)) {
@@ -306,6 +344,8 @@ export default function StaffPage() {
         calculateDistances(memberId, form.homeAddress);
       }
       setDialogOpen(false);
+      setSendStaffInvite(false);
+      setInvitePassword("");
     } catch (e: any) {
       toast.error(e.message || "Failed to save");
     } finally {
@@ -547,6 +587,44 @@ export default function StaffPage() {
               </div>
             </div>
           </div>
+
+          {/* Invite-to-login option (only for new crew, requires email) */}
+          {!editingId && form.email.trim() && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendStaffInvite}
+                  onChange={(e) => {
+                    setSendStaffInvite(e.target.checked);
+                    if (e.target.checked && !invitePassword) {
+                      setInvitePassword(generatePassword());
+                    }
+                  }}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-foreground">
+                    Send {form.name.split(" ")[0] || "them"} a staff login
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    They'll get an email with a temporary password and can view their schedule, hours, and pay. Free.
+                  </div>
+                </div>
+              </label>
+              {sendStaffInvite && (
+                <div className="pl-6">
+                  <Label className="text-xs">Temporary password (they'll change on first login)</Label>
+                  <Input
+                    value={invitePassword}
+                    onChange={(e) => setInvitePassword(e.target.value)}
+                    placeholder="temp password"
+                    className="mt-1 font-mono text-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
             {/* Home Address (for mileage) */}
             <div className="space-y-2">
