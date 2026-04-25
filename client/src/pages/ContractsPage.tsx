@@ -34,18 +34,52 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
   void: "Void",
 };
 
-// Merge fields that can be used in templates
-const MERGE_FIELDS = [
-  { key: "{{client_name}}", label: "Client Name" },
-  { key: "{{client_company}}", label: "Client Company" },
-  { key: "{{client_email}}", label: "Client Email" },
-  { key: "{{project_type}}", label: "Project Type" },
-  { key: "{{project_date}}", label: "Project Date" },
-  { key: "{{project_location}}", label: "Location" },
-  { key: "{{date}}", label: "Today's Date" },
-  { key: "{{owner_name}}", label: "Your Name" },
-  { key: "{{company_name}}", label: "Your Company" },
+// Merge fields that can be used in templates, grouped by source for color-coding.
+type MergeGroup = "client" | "project" | "you" | "date";
+const MERGE_FIELDS: { key: string; label: string; group: MergeGroup }[] = [
+  { key: "{{client_name}}", label: "Client Name", group: "client" },
+  { key: "{{client_company}}", label: "Client Company", group: "client" },
+  { key: "{{client_email}}", label: "Client Email", group: "client" },
+  { key: "{{project_type}}", label: "Project Type", group: "project" },
+  { key: "{{project_date}}", label: "Project Date", group: "project" },
+  { key: "{{project_location}}", label: "Location", group: "project" },
+  { key: "{{date}}", label: "Today's Date", group: "date" },
+  { key: "{{owner_name}}", label: "Your Name", group: "you" },
+  { key: "{{company_name}}", label: "Your Company", group: "you" },
 ];
+
+const MERGE_GROUP_STYLES: Record<MergeGroup, string> = {
+  client: "bg-blue-500/15 text-blue-300 border-blue-500/30 hover:bg-blue-500/25",
+  project: "bg-purple-500/15 text-purple-300 border-purple-500/30 hover:bg-purple-500/25",
+  you: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25",
+  date: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30 hover:bg-zinc-500/25",
+};
+
+const MERGE_GROUP_LABELS: Record<MergeGroup, string> = {
+  client: "From client",
+  project: "From project",
+  you: "From you",
+  date: "Auto",
+};
+
+// Maps the seeded library template names to a display category.
+// User-created templates that don't match fall through to "Custom".
+const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing"> = {
+  "Video Production Contract": "Agreements",
+  "Proposal / Statement of Work": "Agreements",
+  "Independent Contractor Agreement": "Agreements",
+  "Crew Deal Memo": "Agreements",
+  "Equipment Rental Agreement": "Agreements",
+  "Mutual NDA": "Agreements",
+  "Model Release": "Releases & Licensing",
+  "Minor Model Release": "Releases & Licensing",
+  "Location Release": "Releases & Licensing",
+  "Usage License": "Releases & Licensing",
+  "Music License Request": "Releases & Licensing",
+};
+
+const CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
+type CategoryName = typeof CATEGORY_ORDER[number];
 
 export default function ContractsPage() {
   const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
@@ -439,13 +473,10 @@ export default function ContractsPage() {
           </div>
         ) : (
           /* Templates Tab */
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex gap-2">
               <Button onClick={() => setLocation("/proposals/templates/new/edit")} className="gap-2">
                 <Plus className="w-4 h-4" /> New Template
-              </Button>
-              <Button variant="outline" onClick={openNewTemplate} className="gap-2 text-xs">
-                <Plus className="w-4 h-4" /> Quick Template (text only)
               </Button>
             </div>
 
@@ -455,51 +486,73 @@ export default function ContractsPage() {
                 <p className="text-sm">No templates yet. Create a reusable template.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {/* Proposal templates (V2 - full editor) */}
-                {data.proposalTemplates.map(tpl => (
-                  <div key={`p-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                      {tpl.coverImageUrl ? (
-                        <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <FileText className="w-10 h-10 text-primary/30" />
+              CATEGORY_ORDER.map(cat => {
+                const proposalsForCat = cat === "Proposals" ? data.proposalTemplates : [];
+                const contractsForCat = data.contractTemplates.filter(t => {
+                  const c = TEMPLATE_CATEGORIES[t.name];
+                  if (cat === "Custom") return !c;
+                  if (cat === "Proposals") return false;
+                  return c === cat;
+                });
+                const total = proposalsForCat.length + contractsForCat.length;
+                if (total === 0) return null;
+                return (
+                  <div key={cat} className="space-y-3">
+                    <div className="flex items-baseline justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{cat}</h3>
+                      <span className="text-[10px] text-muted-foreground/60">{total} {total === 1 ? "template" : "templates"}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {/* Proposal templates (V2 - full editor) */}
+                      {proposalsForCat.map(tpl => (
+                        <div key={`p-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
+                          <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                            {tpl.coverImageUrl ? (
+                              <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                                <FileText className="w-10 h-10 text-primary/30" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Saved template"}</p>
+                          </div>
                         </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
-                      </div>
-                    </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Saved template"}</p>
-                    </div>
-                  </div>
-                ))}
-                {/* Legacy contract templates */}
-                {data.contractTemplates.map(tpl => (
-                  <div key={`c-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                      <div className="w-full h-full flex flex-col items-start justify-end p-3 bg-gradient-to-br from-zinc-500/10 to-zinc-500/5">
-                        <p className="text-[8px] text-muted-foreground/60 line-clamp-6 leading-tight font-mono">
-                          {tpl.content?.slice(0, 200) || "Empty template"}
-                        </p>
-                      </div>
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                      <div className="absolute top-2 right-2 text-[8px] bg-zinc-700/80 text-zinc-300 px-1.5 py-0.5 rounded">Legacy</div>
-                    </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Text-only template</p>
+                      ))}
+                      {/* Contract templates — serif preview on cream paper */}
+                      {contractsForCat.map(tpl => (
+                        <div key={`c-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer" onClick={() => openEditTemplate(tpl)}>
+                          <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
+                            <div className="absolute inset-0 px-4 py-3 overflow-hidden pointer-events-none">
+                              <div
+                                className="text-[7.5px] text-zinc-800 leading-[1.55] line-clamp-[14] whitespace-pre-wrap"
+                                style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
+                              >
+                                {tpl.content || "Empty template"}
+                              </div>
+                            </div>
+                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#f6f2e8] to-transparent pointer-events-none" />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Contract template</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })
             )}
           </div>
         )}
@@ -518,14 +571,29 @@ export default function ContractsPage() {
               <Label className="text-xs text-muted-foreground">Template Name</Label>
               <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Standard Video Production Agreement" />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Merge Fields (click to insert)</Label>
-              <div className="flex flex-wrap gap-1">
-                {MERGE_FIELDS.map(f => (
-                  <button key={f.key} onClick={() => setTplContent(c => c + f.key)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                    {f.label}
-                  </button>
-                ))}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Merge Fields (click to insert at cursor)</Label>
+              <div className="space-y-2">
+                {(["client", "project", "you", "date"] as MergeGroup[]).map(group => {
+                  const fields = MERGE_FIELDS.filter(f => f.group === group);
+                  if (fields.length === 0) return null;
+                  return (
+                    <div key={group} className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 w-20 shrink-0">{MERGE_GROUP_LABELS[group]}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {fields.map(f => (
+                          <button
+                            key={f.key}
+                            onClick={() => setTplContent(c => c + f.key)}
+                            className={cn("text-xs px-2.5 py-1.5 rounded-md border transition-colors font-medium", MERGE_GROUP_STYLES[f.group])}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="space-y-1.5">
