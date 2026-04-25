@@ -204,7 +204,7 @@ export default function ContractsPage() {
   }
 
   // Open the new-contract dialog pre-loaded with this template
-  function useTemplateForContract(tpl: ContractTemplate) {
+  function applyTemplateToNewContract(tpl: ContractTemplate) {
     setDetailTplId(null);
     openNewContract();
     setContractTemplateId(tpl.id);
@@ -769,7 +769,7 @@ export default function ContractsPage() {
                     <Button variant="outline" onClick={() => { setDetailTplId(null); openEditTemplate(detailTpl); }}>
                       <Edit3 className="w-4 h-4 mr-1.5" /> Edit
                     </Button>
-                    <Button onClick={() => useTemplateForContract(detailTpl)}>
+                    <Button onClick={() => applyTemplateToNewContract(detailTpl)}>
                       <ArrowRight className="w-4 h-4 mr-1.5" /> Use in new contract
                     </Button>
                   </div>

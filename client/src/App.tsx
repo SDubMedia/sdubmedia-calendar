@@ -77,8 +77,7 @@ function ErrorScreen({ message }: { message: string }) {
 function Router() {
   const { effectiveProfile } = useAuth();
   const { loading, error } = useApp();
-  if (loading) return <LoadingScreen />;
-  if (error) return <ErrorScreen message={error} />;
+  const [location, navigate] = useLocation();
 
   const role = effectiveProfile?.role ?? "client";
   const isOwner = role === "owner";
@@ -88,10 +87,12 @@ function Router() {
 
   // Belt-and-suspenders redirect for family — catches the case where
   // effectiveProfile loads after the initial route match.
-  const [location, navigate] = useLocation();
   useEffect(() => {
     if (isFamily && location === "/") navigate("/calendar", { replace: true });
   }, [isFamily, location, navigate]);
+
+  if (loading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={error} />;
 
   return (
     <AppLayout>
