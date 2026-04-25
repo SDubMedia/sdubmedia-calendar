@@ -1,0 +1,20 @@
+{
+  "name": "sdubmedia-calendar-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Read-only MCP server for SDub Media calendar data",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@supabase/supabase-js": "^2.98.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.3"
+  }
+}

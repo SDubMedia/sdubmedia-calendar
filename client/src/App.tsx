@@ -2,7 +2,8 @@ import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -83,12 +84,22 @@ function Router() {
   const isOwner = role === "owner";
   const isPartner = role === "partner";
   const isStaff = role === "staff";
+  const isFamily = role === "family";
+
+  // Belt-and-suspenders redirect for family — catches the case where
+  // effectiveProfile loads after the initial route match.
+  const [location, navigate] = useLocation();
+  useEffect(() => {
+    if (isFamily && location === "/") navigate("/calendar", { replace: true });
+  }, [isFamily, location, navigate]);
 
   return (
     <AppLayout>
       <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-sm text-muted-foreground">Loading...</div></div>}>
       <Switch>
-        {isStaff ? (
+        {isFamily ? (
+          <Route path="/"><Redirect to="/calendar" /></Route>
+        ) : isStaff ? (
           <Route path="/" component={StaffDashboardPage} />
         ) : (isOwner || isPartner) ? (
           <Route path="/" component={DashboardPage} />

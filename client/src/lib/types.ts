@@ -136,6 +136,7 @@ export interface Organization {
   stripeCustomerId: string;      // empty string until user first opens checkout
   stripeSubscriptionId: string;  // empty string when no active subscription
   billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
+  testimonialPromptedAt: string | null; // when the testimonial prompt last fired (null = never asked)
   createdAt: string;
 }
 
@@ -182,13 +183,10 @@ export type CrewRole =
   | "Crew"
   | "Travel";
 
-export type EditType =
-  | "Social Vertical"
-  | "Social Horizontal"
-  | "Podcast Edit"
-  | "Full Edit"
-  | "Highlight Reel"
-  | "Raw Footage";
+export interface EditType {
+  id: string;
+  name: string;
+}
 
 export type BillingModel = "hourly" | "per_project";
 
@@ -327,8 +325,10 @@ export interface Project {
   postProduction: ProjectPostEntry[];
   editorBilling?: EditorBilling | null; // photo editor image-based billing
   projectRate?: number | null; // per-project rate override (for per_project billing)
+  billingModel?: BillingModel | null; // null = inherit from client
+  billingRate?: number | null; // $/hr when hourly, flat $ when per_project. null = inherit
   paidDate?: string | null; // date this project was marked paid (ISO date or null)
-  editTypes: EditType[];
+  editTypes: string[]; // edit_type IDs
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables
   createdAt: string;
@@ -767,6 +767,7 @@ export interface AppData {
   crewMembers: CrewMember[];
   locations: Location[];
   projectTypes: ProjectType[];
+  editTypes: EditType[];
   projects: Project[];
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];

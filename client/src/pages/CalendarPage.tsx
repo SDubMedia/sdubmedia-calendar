@@ -3,15 +3,16 @@
 // Design: Dark Cinematic Studio | Amber accent on charcoal
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, PersonalEvent } from "@/lib/types";
+import type { Project, PersonalEvent, PersonalEventTemplate } from "@/lib/types";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectWorkedHours, getProjectBillableHours } from "@/lib/data";
+import { getBillableHours, getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
@@ -34,7 +35,7 @@ const MONTH_NAMES = [
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarPage() {
-  const { data } = useApp();
+  const { data, addPersonalEvent } = useApp();
   const { effectiveProfile } = useAuth();
   const role = effectiveProfile?.role;
   const isClient = role === "client";
@@ -52,6 +53,121 @@ export default function CalendarPage() {
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+
+  // Bulk-apply template to multiple dates
+  const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
+  const [bulkDates, setBulkDates] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const myTemplates = effectiveProfile?.personalEventTemplates || [];
+
+  const toggleBulkDate = (dateStr: string) => {
+    setBulkDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
+
+  const exitBulkMode = () => {
+    setBulkTemplate(null);
+    setBulkDates(new Set());
+  };
+
+  const applyBulk = async () => {
+    if (!bulkTemplate || bulkDates.size === 0) return;
+    setBulkSaving(true);
+    const dates = Array.from(bulkDates).sort();
+    try {
+      for (const d of dates) {
+        await addPersonalEvent({
+          title: bulkTemplate.title,
+          date: d,
+          startTime: "",
+          endTime: "",
+          allDay: true,
+          location: "",
+          notes: "",
+          category: bulkTemplate.category,
+          color: bulkTemplate.color,
+          priority: false,
+          orgId: "",
+        });
+      }
+      toast.success(`Added ${dates.length} event${dates.length === 1 ? "" : "s"}`);
+      exitBulkMode();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add events");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  // Long-press on a day → quick-create
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  // Swipe detection on the calendar grid → change month
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipeFiredRef = useRef(false);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const openAddForDate = useCallback((dateStr: string | null) => {
+    const targetDate = dateStr ?? selectedDate ?? todayStr;
+    setSelectedDate(targetDate);
+    if (isFamily || calendarMode === "personal") {
+      setEditingEvent(null);
+      setPersonalEventOpen(true);
+    } else {
+      setNewProjectOpen(true);
+    }
+  }, [selectedDate, todayStr, isFamily, calendarMode]);
+
+  const handleDayPointerDown = (dateStr: string | null) => {
+    if (!dateStr || isClient || bulkTemplate) return;
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      openAddForDate(dateStr);
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const onGridPointerDown = (e: React.PointerEvent) => {
+    swipeStartRef.current = { x: e.clientX, y: e.clientY };
+    swipeFiredRef.current = false;
+  };
+  const onGridPointerMove = (e: React.PointerEvent) => {
+    const start = swipeStartRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    // Any meaningful movement cancels the long-press timer.
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) cancelLongPress();
+  };
+  const onGridPointerUp = (e: React.PointerEvent) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const SWIPE_THRESHOLD = 60;
+    // Horizontal, and clearly more horizontal than vertical (avoid scroll).
+    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swipeFiredRef.current = true;
+      if (dx > 0) prevMonth(); else nextMonth();
+    }
+  };
 
   // Total hours per day for calendar overlay (worked + billed)
   const dailyHours = useMemo(() => {
@@ -94,13 +210,25 @@ export default function CalendarPage() {
       .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
   };
 
-  // Projects filtered by scope (month or all) and status for the list below
+  // Projects filtered by selected date, or scope (month/all) and status
   const filteredProjects = useMemo(() => {
-    const projects = viewScope === "month" ? monthProjects : data.projects;
+    let projects;
+    if (selectedDate) {
+      projects = data.projects.filter(p => p.date === selectedDate);
+    } else {
+      projects = viewScope === "month" ? monthProjects : data.projects;
+    }
     const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, monthProjects, filterStatus, viewScope]);
+  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate]);
+
+  const filteredPersonalEvents = useMemo(() => {
+    if (selectedDate) {
+      return data.personalEvents.filter(e => e.date === selectedDate);
+    }
+    return monthPersonalEvents;
+  }, [data.personalEvents, monthPersonalEvents, selectedDate]);
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
@@ -150,13 +278,15 @@ export default function CalendarPage() {
             <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {calendarMode === "production"
-                ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
-                : calendarMode === "personal"
-                ? `${monthPersonalEvents.length} events this month`
-                : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
-            </p>
+            {!(isFamily && calendarMode !== "personal") && (
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {calendarMode === "production"
+                  ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
+                  : calendarMode === "personal"
+                  ? `${monthPersonalEvents.length} events this month`
+                  : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             {canSeePersonal && (calendarMode === "personal" || calendarMode === "both") && (
@@ -169,14 +299,28 @@ export default function CalendarPage() {
                 <Settings className="w-4 h-4" />
               </Button>
             )}
-            {!isClient && !isFamily && calendarMode !== "personal" && (
+            {!isClient && (calendarMode === "personal" || calendarMode === "both") && myTemplates.length > 0 && !bulkTemplate && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const t = myTemplates.find(x => x.id === e.target.value);
+                  if (t) { setBulkTemplate(t); setBulkDates(new Set()); setSelectedDate(null); }
+                }}
+                className="bg-secondary border border-border text-foreground text-sm rounded-md px-3 py-2 cursor-pointer hover:bg-white/5 transition-colors"
+              >
+                <option value="" disabled>Quick apply…</option>
+                {myTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            )}
+            {!isClient && (
               <Button
-                onClick={() => { setSelectedDate(null); setNewProjectOpen(true); }}
+                onClick={() => openAddForDate(null)}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Project</span>
-                <span className="sm:hidden">New</span>
+                <span>New</span>
               </Button>
             )}
           </div>
@@ -222,9 +366,23 @@ export default function CalendarPage() {
         </div>}
       </div>
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
+        {bulkTemplate && (
+          <div className="sticky top-0 z-20 mx-3 sm:mx-0 rounded-lg border border-primary/40 bg-primary/15 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 shadow-lg">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-foreground truncate">{bulkTemplate.label}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {bulkDates.size === 0 ? "Tap dates to select" : `${bulkDates.size} selected`}
+              </div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving} className="shrink-0">Cancel</Button>
+            <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground shrink-0">
+              {bulkSaving ? "Adding…" : `Add${bulkDates.size > 0 ? ` (${bulkDates.size})` : ""}`}
+            </Button>
+          </div>
+        )}
         {/* Calendar */}
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <div className="bg-card sm:rounded-lg border-t border-b-0 sm:border border-border overflow-hidden">
           {/* Month nav */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <button onClick={prevMonth} className="p-1.5 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
@@ -256,7 +414,13 @@ export default function CalendarPage() {
           </div>
 
           {/* Calendar grid */}
-          <div className="grid grid-cols-7">
+          <div
+            className="grid grid-cols-7 touch-pan-y"
+            onPointerDown={onGridPointerDown}
+            onPointerMove={onGridPointerMove}
+            onPointerUp={onGridPointerUp}
+            onPointerCancel={() => { swipeStartRef.current = null; }}
+          >
             {Array.from({ length: totalCells }).map((_, i) => {
               const day = i - firstDay + 1;
               const isCurrentMonth = day >= 1 && day <= daysInMonth;
@@ -268,26 +432,39 @@ export default function CalendarPage() {
                 : null;
               const dayHours = dateStr ? (dailyHours[dateStr] ?? null) : null;
 
+              const isSelected = dateStr !== null && dateStr === selectedDate;
+              const isBulkSelected = dateStr !== null && bulkDates.has(dateStr);
               return (
                 <div
                   key={i}
                   className={cn(
-                    "min-h-[60px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative",
+                    "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none [&:nth-child(7n)]:border-r-0 sm:[&:nth-child(7n)]:border-r",
                     !isCurrentMonth && "opacity-30",
-                    isToday && "bg-primary/5",
+                    isToday && !isSelected && !isBulkSelected && "bg-primary/5",
+                    isSelected && "bg-primary/15 ring-2 ring-primary/60 ring-inset",
+                    isBulkSelected && "bg-emerald-500/20 ring-2 ring-emerald-500/60 ring-inset",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
                   )}
                   onClick={() => {
-                    if (isCurrentMonth && dateStr && !isClient) {
-                      setSelectedDate(dateStr);
-                      if (calendarMode === "personal" || (isFamily && calendarMode === "both")) {
-                        setEditingEvent(null);
-                        setPersonalEventOpen(true);
-                      } else if (!isFamily) {
-                        setNewProjectOpen(true);
-                      }
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false;
+                      return;
                     }
+                    if (swipeFiredRef.current) {
+                      swipeFiredRef.current = false;
+                      return;
+                    }
+                    if (!isCurrentMonth || !dateStr || isClient) return;
+                    if (bulkTemplate) {
+                      toggleBulkDate(dateStr);
+                      return;
+                    }
+                    setSelectedDate(prev => prev === dateStr ? null : dateStr);
                   }}
+                  onPointerDown={() => handleDayPointerDown(isCurrentMonth ? dateStr : null)}
+                  onPointerUp={cancelLongPress}
+                  onPointerLeave={cancelLongPress}
+                  onPointerCancel={cancelLongPress}
                 >
                   {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
@@ -297,7 +474,7 @@ export default function CalendarPage() {
                     )}>
                       {isCurrentMonth ? day : ""}
                     </span>
-                    {calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
+                    {!isFamily && calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
                         <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-500/10">
                           {dayHours.billed.toFixed(1)}h billed
@@ -311,77 +488,58 @@ export default function CalendarPage() {
                     )}
                   </div>
 
-                  {/* Production chips */}
+                  {/* Production chips (mobile + desktop) */}
                   {(calendarMode === "production" || calendarMode === "both") && (
-                    <>
-                      {dayProjects.length > 0 && (
-                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
-                          {dayProjects.slice(0, 3).map((p) => (
-                            <div key={p.id} className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              p.status === "upcoming" && "bg-blue-400",
-                              p.status === "filming_done" && "bg-purple-400",
-                              p.status === "in_editing" && "bg-amber-400",
-                              p.status === "completed" && "bg-green-400",
-                            )} />
-                          ))}
+                    <div className="space-y-0.5">
+                      {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className={cn(
+                            "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
+                            p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
+                            p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
+                            p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                          )}
+                        >
+                          {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
+                          <span className="hidden sm:inline">{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}</span>
+                          <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
                         </div>
+                      ))}
+                      {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
-                      <div className="space-y-0.5 hidden sm:block">
-                        {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
-                          <div
-                            key={p.id}
-                            onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
-                            className={cn(
-                              "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                              p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
-                              p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
-                              p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
-                              p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
-                            )}
-                          >
-                            {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
-                          </div>
-                        ))}
-                        {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
-                          <div className="text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)} more</div>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
 
-                  {/* Personal event chips */}
+                  {/* Personal event chips (mobile + desktop) */}
                   {(calendarMode === "personal" || calendarMode === "both") && (
-                    <>
-                      {dayEvents.length > 0 && calendarMode !== "both" && (
-                        <div className="flex gap-0.5 flex-wrap sm:hidden mb-0.5">
-                          {dayEvents.slice(0, 3).map((e) => (
-                            <div key={e.id} className={cn("w-1.5 h-1.5 rounded-full", getEventColor(e.color).dot)} />
-                          ))}
-                        </div>
+                    <div className="space-y-0.5">
+                      {dayEvents.slice(0, calendarMode === "both" ? 2 : 3).map((e) => {
+                        const ec = getEventColor(e.color);
+                        return (
+                          <div
+                            key={e.id}
+                            onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
+                            onPointerDown={(ev) => ev.stopPropagation()}
+                            className={cn(
+                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              ec.bg, ec.text,
+                            )}
+                          >
+                            {e.priority && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 inline-block flex-shrink-0 mr-0.5" />}
+                            <span className="hidden sm:inline">{e.startTime ? `${e.startTime} ` : ""}{e.title}</span>
+                            <span className="sm:hidden">{e.title}</span>
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
-                      <div className="space-y-0.5 hidden sm:block">
-                        {dayEvents.slice(0, calendarMode === "both" ? 2 : 3).map((e) => {
-                          const ec = getEventColor(e.color);
-                          return (
-                            <div
-                              key={e.id}
-                              onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
-                              className={cn(
-                                "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
-                                ec.bg, ec.text,
-                              )}
-                            >
-                              {e.priority && <AlertTriangle className="w-2.5 h-2.5 text-amber-400 inline-block flex-shrink-0 mr-0.5" />}
-                              {e.startTime ? `${e.startTime} ` : ""}{e.title}
-                            </div>
-                          );
-                        })}
-                        {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
-                          <div className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)} more</div>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
@@ -392,8 +550,18 @@ export default function CalendarPage() {
         {calendarMode !== "personal" ? (
           <>
             {/* Filter tabs + project list */}
-            <div className="bg-card rounded-lg border border-border overflow-hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
+            <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
+              {selectedDate && (
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                  </span>
+                  <button onClick={() => setSelectedDate(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Show all ×
+                  </button>
+                </div>
+              )}
+              {!selectedDate && <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-1 px-4 py-3 border-b border-border">
                 {/* Scope toggle */}
                 <div className="flex gap-1 sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
                   <button
@@ -443,7 +611,7 @@ export default function CalendarPage() {
                   </button>
                 ))}
                 </div>
-              </div>
+              </div>}
 
               {/* Project list */}
               <div className="divide-y divide-border">
@@ -460,6 +628,11 @@ export default function CalendarPage() {
                     const totalBilled = client
                       ? getProjectBillableHours(project, client).totalBillable
                       : totalWorked;
+                    const effectiveModel = project.billingModel ?? client?.billingModel;
+                    const isFlatRate = effectiveModel === "per_project";
+                    const flatRateAmount = isFlatRate && client
+                      ? getProjectInvoiceAmount(project, client)
+                      : 0;
 
                     return (
                       <div
@@ -519,19 +692,29 @@ export default function CalendarPage() {
                         {/* Time + hours */}
                         <div className="text-right flex-shrink-0">
                           <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                          <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            {totalBilled.toFixed(1)} billed
-                            {project.paidDate && (
-                              <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
-                                <DollarSign className="w-2.5 h-2.5 text-green-400" />
-                              </span>
-                            )}
-                          </div>
-                          {totalWorked !== totalBilled && (
-                            <div className="text-[10px] text-muted-foreground text-right">
-                              {totalWorked.toFixed(1)} worked
-                            </div>
+                          {!isFamily && (
+                            <>
+                              <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                {totalBilled.toFixed(1)} billed
+                                {project.paidDate && (
+                                  <span title={`Paid ${project.paidDate}`} className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 border border-green-500/40">
+                                    <DollarSign className="w-2.5 h-2.5 text-green-400" />
+                                  </span>
+                                )}
+                              </div>
+                              {isFlatRate && flatRateAmount > 0 && (
+                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 justify-end mt-0.5 font-medium">
+                                  <DollarSign className="w-3 h-3" />
+                                  {flatRateAmount.toFixed(0)} flat
+                                </div>
+                              )}
+                              {totalWorked !== totalBilled && (
+                                <div className="text-[10px] text-muted-foreground text-right">
+                                  {totalWorked.toFixed(1)} worked
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -543,17 +726,26 @@ export default function CalendarPage() {
           </>
         ) : (
           /* Personal events list */
-          <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <span className="text-sm font-medium text-foreground">Upcoming Events</span>
+          <div className="bg-card sm:rounded-lg border-y sm:border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">
+                {selectedDate
+                  ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+                  : "Upcoming Events"}
+              </span>
+              {selectedDate && (
+                <button onClick={() => setSelectedDate(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Show all ×
+                </button>
+              )}
             </div>
             <div className="divide-y divide-border">
-              {monthPersonalEvents.length === 0 ? (
+              {filteredPersonalEvents.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">
-                  No personal events this month. Click a date to add one!
+                  {selectedDate ? "No events on this day." : "No personal events this month. Long-press a date to add one!"}
                 </div>
               ) : (
-                [...monthPersonalEvents].sort((a, b) => a.priority === b.priority ? a.date.localeCompare(b.date) : a.priority ? -1 : 1).map((evt) => {
+                [...filteredPersonalEvents].sort((a, b) => a.priority === b.priority ? a.date.localeCompare(b.date) : a.priority ? -1 : 1).map((evt) => {
                   const ec = getEventColor(evt.color);
                   return (
                     <div
