@@ -771,6 +771,19 @@ export default function ContractsPage() {
                     <Trash2 className="w-4 h-4 mr-1.5" /> Delete
                   </Button>
                   <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        const copy = await addContractTemplate({
+                          name: `${detailTpl.name} (Copy)`,
+                          content: detailTpl.content,
+                        });
+                        toast.success("Duplicated — opening your copy");
+                        setDetailTplId(copy.id);
+                      }}
+                    >
+                      <Copy className="w-4 h-4 mr-1.5" /> Duplicate
+                    </Button>
                     <Button variant="outline" onClick={() => { setDetailTplId(null); openEditTemplate(detailTpl); }}>
                       <Edit3 className="w-4 h-4 mr-1.5" /> Edit
                     </Button>
