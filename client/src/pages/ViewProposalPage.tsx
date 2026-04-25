@@ -67,7 +67,7 @@ export default function ViewProposalPage() {
         })
         .catch(() => setVerifyingPayment(false));
     }
-  }, [paidParam, sessionIdParam, token]);
+  }, [paidParam, sessionIdParam, token, paymentVerified]);
 
   // Canvas drawing
   const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {

@@ -3,7 +3,7 @@
 // Supports pause/resume, auto-stops at 2 hours
 // ============================================================
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Play, Square, Clock, Pause } from "lucide-react";
@@ -41,33 +41,45 @@ export default function TimerWidget() {
 
   const isPaused = !!activeTimer?.pausedAt;
 
-  // Tick the timer
+  // Latest stopTimer in a ref so the tick interval always invokes the current
+  // version without re-arming on every parent render.
+  const stopTimerRef = useRef<(auto?: boolean) => void>(() => {});
+
+  // Tick the timer. Deps are deliberately narrowed to the fields that need
+  // to re-arm the interval; the closure over activeTimer is otherwise safe
+  // because those three fields (id/pausedAt/totalPausedMs) are everything
+  // tick() reads from it.
   useEffect(() => {
     if (!activeTimer) { setElapsed(0); return; }
 
     const startTime = new Date(activeTimer.startTime).getTime();
     const totalPausedMs = activeTimer.totalPausedMs || 0;
+    const pausedAt = activeTimer.pausedAt;
 
     const tick = () => {
       const now = Date.now();
-      let activePauseMs = 0;
-      if (activeTimer.pausedAt) {
-        activePauseMs = now - new Date(activeTimer.pausedAt).getTime();
-      }
+      const activePauseMs = pausedAt ? now - new Date(pausedAt).getTime() : 0;
       const secs = Math.floor((now - startTime - totalPausedMs - activePauseMs) / 1000);
       setElapsed(secs);
 
       // Auto-stop at 2 hours of active time
       if (secs >= AUTO_STOP_MINUTES * 60) {
-        stopTimer(true);
+        stopTimerRef.current(true);
       }
     };
 
     tick();
     // Tick every second when running, every 10s when paused (just to stay in sync)
-    const interval = setInterval(tick, activeTimer.pausedAt ? 10000 : 1000);
+    const interval = setInterval(tick, pausedAt ? 10000 : 1000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTimer?.id, activeTimer?.pausedAt, activeTimer?.totalPausedMs]);
+
+  // Keep stopTimerRef pointing at the freshest stopTimer (which closes over
+  // the latest activeTimer). Runs after every render.
+  useEffect(() => {
+    stopTimerRef.current = (auto?: boolean) => { void stopTimer(auto); };
+  });
 
   // Get project name for active timer
   const activeProject = useMemo(() => {

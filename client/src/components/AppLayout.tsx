@@ -213,8 +213,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Auto-expand group if active page is inside it
   useEffect(() => {
+    const matchesActive = (href: string) => href === "/" ? location === "/" : location.startsWith(href);
     for (const entry of filteredNav) {
-      if (isGroup(entry) && entry.items.some(item => isActive(item.href))) {
+      if (isGroup(entry) && entry.items.some(item => matchesActive(item.href))) {
         setExpandedGroups(prev => {
           if (prev.has(entry.label)) return prev;
           const next = new Set(prev);
@@ -223,7 +224,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         });
       }
     }
-  }, [location]);
+  }, [location, filteredNav]);
 
   return (
     <div className="flex overflow-hidden bg-background" style={{ height: '100dvh' }}>

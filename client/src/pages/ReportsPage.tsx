@@ -96,7 +96,7 @@ export default function ReportsPage() {
       const margin = invoiceAmount - crewCost;
       return { client, projectCount: clientProjects.length, totalHours, invoiceAmount, crewCost, margin };
     });
-  }, [data.clients, monthlyProjects]);
+  }, [data.clients, allMonthlyProjects]);
 
   // ---- Report generators ----
   function generateInternalReport() {

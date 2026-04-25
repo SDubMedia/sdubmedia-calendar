@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+  }, [fetchProfile, refreshProfiles]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     // Clear any stale impersonation from previous session

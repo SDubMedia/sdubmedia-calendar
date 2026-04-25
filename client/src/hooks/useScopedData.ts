@@ -14,7 +14,10 @@ export function useScopedData() {
   const { effectiveProfile } = useAuth();
   const role = effectiveProfile?.role;
   const crewMemberId = effectiveProfile?.crewMemberId;
-  const clientIds = effectiveProfile?.clientIds || [];
+  // Memoize the fallback empty array so a missing clientIds doesn't produce
+  // a new reference on every render and bust the scopedData useMemo below.
+  const profileClientIds = effectiveProfile?.clientIds;
+  const clientIds = useMemo(() => profileClientIds || [], [profileClientIds]);
 
   const scopedData = useMemo(() => {
     // Owner and partner see everything

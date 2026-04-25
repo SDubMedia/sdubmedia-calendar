@@ -124,7 +124,7 @@ export default function PipelinePage() {
     for (const s of stages) counts[s.id] = 0;
     for (const e of entries) counts[e.pipelineStage] = (counts[e.pipelineStage] || 0) + 1;
     return counts;
-  }, [entries]);
+  }, [entries, stages]);
 
   // Filtered entries
   const filtered = useMemo(() => {

@@ -1163,7 +1163,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const trip = rowToManualTrip(row);
     setRawData(d => ({ ...d, manualTrips: [trip, ...d.manualTrips] }));
     return trip;
-  }, []);
+  }, [orgId]);
 
   const deleteManualTrip = useCallback(async (id: string) => {
     const { error } = await supabase.from("manual_trips").delete().eq("id", id);

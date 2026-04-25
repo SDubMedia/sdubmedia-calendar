@@ -118,7 +118,10 @@ export default function TemplateEditorPage() {
       setPages([p, emptyPage("invoice", 1), emptyPage("payment", 2)]);
       setActivePageId(p.id);
     }
-  }, [existing?.id]);
+    // Deliberately narrow deps: re-running on every realtime update of `existing`
+    // would clobber the user's in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing?.id, isNew]);
 
   // Set initial active page
   useEffect(() => {
