@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -81,6 +82,25 @@ const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing">
 const CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
 type CategoryName = typeof CATEGORY_ORDER[number];
 
+// Template icon by name. Falls back to FileText for user-created templates.
+const TEMPLATE_ICONS: Record<string, LucideIcon> = {
+  "Video Production Contract": Clapperboard,
+  "Proposal / Statement of Work": ScrollText,
+  "Independent Contractor Agreement": Handshake,
+  "Crew Deal Memo": Users,
+  "Equipment Rental Agreement": Package,
+  "Mutual NDA": Lock,
+  "Model Release": UserCheck,
+  "Minor Model Release": Baby,
+  "Location Release": MapPin,
+  "Usage License": Key,
+  "Music License Request": Music,
+};
+
+function templateIcon(name: string): LucideIcon {
+  return TEMPLATE_ICONS[name] || FileText;
+}
+
 export default function ContractsPage() {
   const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
@@ -92,6 +112,9 @@ export default function ContractsPage() {
   const [editingTplId, setEditingTplId] = useState<string | null>(null);
   const [tplName, setTplName] = useState("");
   const [tplContent, setTplContent] = useState("");
+
+  // Template detail panel — opens before edit so user can preview + see usage stats
+  const [detailTplId, setDetailTplId] = useState<string | null>(null);
 
   // Contract dialog
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
@@ -185,6 +208,26 @@ export default function ContractsPage() {
       if (!contractTitle) setContractTitle(tpl.name);
     }
   }
+
+  // Open the new-contract dialog pre-loaded with this template
+  function useTemplateForContract(tpl: ContractTemplate) {
+    setDetailTplId(null);
+    openNewContract();
+    setContractTemplateId(tpl.id);
+    setContractContent(tpl.content);
+    setContractTitle(tpl.name);
+  }
+
+  // Stats for detail panel
+  const detailTpl = detailTplId ? data.contractTemplates.find(t => t.id === detailTplId) : null;
+  const detailUsage = useMemo(() => {
+    if (!detailTpl) return { count: 0, lastUsed: null as string | null };
+    const matching = data.contracts.filter(c => c.templateId === detailTpl.id);
+    const lastUsed = matching.length > 0
+      ? matching.map(c => c.sentAt || c.createdAt).filter(Boolean).sort().pop() || null
+      : null;
+    return { count: matching.length, lastUsed };
+  }, [detailTpl, data.contracts]);
 
   function resolveMergeFields(content: string): string {
     const client = data.clients.find(c => c.id === contractClientId);
@@ -424,9 +467,32 @@ export default function ContractsPage() {
             </Button>
 
             {data.contracts.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No contracts yet. Create your first contract or template.</p>
+              <div className="space-y-4">
+                {(data.contractTemplates.length > 0 || data.proposalTemplates.length > 0) && (
+                  <button
+                    onClick={() => setTab("templates")}
+                    className="group relative w-full overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5 text-left transition-all hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="shrink-0 rounded-lg bg-primary/15 p-2.5">
+                        <Sparkles className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                          Start with a template
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {data.contractTemplates.length + data.proposalTemplates.length} ready to use — NDAs, releases, production contracts. Pick one and we'll auto-fill your client and project details.
+                        </p>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-primary opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 mt-3" />
+                    </div>
+                  </button>
+                )}
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No contracts yet. {data.contractTemplates.length === 0 && data.proposalTemplates.length === 0 ? "Create one above or build a template first." : "Pick a template above, or click \"New Contract\" to start blank."}</p>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -504,51 +570,75 @@ export default function ContractsPage() {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {/* Proposal templates (V2 - full editor) */}
-                      {proposalsForCat.map(tpl => (
-                        <div key={`p-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
-                          <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                            {tpl.coverImageUrl ? (
-                              <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                                <FileText className="w-10 h-10 text-primary/30" />
+                      {proposalsForCat.map(tpl => {
+                        const Icon = templateIcon(tpl.name);
+                        return (
+                          <div
+                            key={`p-${tpl.id}`}
+                            className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
+                            onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}
+                          >
+                            <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
+                              {tpl.coverImageUrl ? (
+                                <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                                  <div>
+                                    <Icon className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                                    <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                                      {tpl.name}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                                <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
                               </div>
-                            )}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                              <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                            </div>
+                            <div className="p-3 flex items-start gap-2">
+                              <Icon className="w-4 h-4 text-muted-foreground/60 shrink-0 mt-0.5" strokeWidth={1.75} />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Proposal template"}</p>
+                              </div>
                             </div>
                           </div>
-                          <div className="p-3">
-                            <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Saved template"}</p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {/* Contract templates — serif preview on cream paper */}
-                      {contractsForCat.map(tpl => (
-                        <div key={`c-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all cursor-pointer" onClick={() => openEditTemplate(tpl)}>
-                          <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
-                            <div className="absolute inset-0 px-4 py-3 overflow-hidden pointer-events-none">
-                              <div
-                                className="text-[7.5px] text-zinc-800 leading-[1.55] line-clamp-[14] whitespace-pre-wrap"
-                                style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
-                              >
-                                {tpl.content || "Empty template"}
+                      {contractsForCat.map(tpl => {
+                        const Icon = templateIcon(tpl.name);
+                        return (
+                          <div
+                            key={`c-${tpl.id}`}
+                            className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
+                            onClick={() => setDetailTplId(tpl.id)}
+                          >
+                            <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
+                              <div className="absolute inset-0 px-4 py-3 overflow-hidden pointer-events-none">
+                                <div
+                                  className="text-[7.5px] text-zinc-800 leading-[1.55] line-clamp-[14] whitespace-pre-wrap"
+                                  style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
+                                >
+                                  {tpl.content || "Empty template"}
+                                </div>
+                              </div>
+                              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#f6f2e8] to-transparent pointer-events-none" />
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-white/90 text-xs font-medium">Click to preview</span>
                               </div>
                             </div>
-                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#f6f2e8] to-transparent pointer-events-none" />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                              <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <div className="p-3 flex items-start gap-2">
+                              <Icon className="w-4 h-4 text-muted-foreground/60 shrink-0 mt-0.5" strokeWidth={1.75} />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">Contract template</p>
+                              </div>
                             </div>
                           </div>
-                          <div className="p-3">
-                            <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">Contract template</p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -610,6 +700,88 @@ export default function ContractsPage() {
             <Button variant="ghost" onClick={() => setTplDialogOpen(false)}>Cancel</Button>
             <Button onClick={saveTemplate}>{editingTplId ? "Save" : "Create Template"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Template Detail Dialog — preview before edit */}
+      <Dialog open={!!detailTpl} onOpenChange={(open) => !open && setDetailTplId(null)}>
+        <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90dvh] overflow-y-auto">
+          {detailTpl && (() => {
+            const Icon = templateIcon(detailTpl.name);
+            const cat = TEMPLATE_CATEGORIES[detailTpl.name] || "Custom";
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 rounded-lg bg-primary/10 p-2.5">
+                      <Icon className="w-5 h-5 text-primary" strokeWidth={1.75} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {detailTpl.name}
+                      </DialogTitle>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">{cat}</p>
+                    </div>
+                  </div>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Used in</p>
+                      <p className="text-lg font-semibold text-foreground mt-0.5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {detailUsage.count} {detailUsage.count === 1 ? "contract" : "contracts"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Last used</p>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        {detailUsage.lastUsed ? new Date(detailUsage.lastUsed).toLocaleDateString() : "Never"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Length</p>
+                      <p className="text-sm font-semibold text-foreground mt-0.5">
+                        {detailTpl.content.length.toLocaleString()} chars
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Preview</p>
+                    <div className="rounded-lg bg-[#f6f2e8] p-6 max-h-80 overflow-y-auto">
+                      <div
+                        className="text-zinc-800 text-sm leading-relaxed whitespace-pre-wrap"
+                        style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
+                      >
+                        {detailTpl.content || "Empty template"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className="gap-2 flex-row sm:justify-between">
+                  <Button
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={async () => {
+                      if (!confirm(`Delete "${detailTpl.name}"?`)) return;
+                      await deleteContractTemplate(detailTpl.id);
+                      setDetailTplId(null);
+                      toast.success("Template deleted");
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => { setDetailTplId(null); openEditTemplate(detailTpl); }}>
+                      <Edit3 className="w-4 h-4 mr-1.5" /> Edit
+                    </Button>
+                    <Button onClick={() => useTemplateForContract(detailTpl)}>
+                      <ArrowRight className="w-4 h-4 mr-1.5" /> Use in new contract
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
