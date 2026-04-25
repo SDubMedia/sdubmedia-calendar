@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { CheckCircle, AlertCircle } from "lucide-react";
+import DOMPurify from "dompurify";
 
 export default function SignContractPage() {
   const params = useParams<{ token: string }>();
@@ -152,9 +153,16 @@ export default function SignContractPage() {
 
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
         {/* Contract Content */}
-        <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-          {contract?.content}
-        </div>
+        {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(contract?.content || "") ? (
+          <div
+            className="bg-white rounded-xl shadow-sm border p-6 sm:p-8 text-gray-700 contract-html-light"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contract?.content || "") }}
+          />
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {contract?.content}
+          </div>
+        )}
 
         {/* Signature Section */}
         <div className="bg-white rounded-xl shadow-sm border p-6">

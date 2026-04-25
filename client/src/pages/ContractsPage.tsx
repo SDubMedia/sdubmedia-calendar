@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { WysiwygContractEditor, plainTextToHtml } from "@/components/WysiwygContractEditor";
+import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -33,34 +35,6 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
   client_signed: "Awaiting Your Signature",
   completed: "Completed",
   void: "Void",
-};
-
-// Merge fields that can be used in templates, grouped by source for color-coding.
-type MergeGroup = "client" | "project" | "you" | "date";
-const MERGE_FIELDS: { key: string; label: string; group: MergeGroup }[] = [
-  { key: "{{client_name}}", label: "Client Name", group: "client" },
-  { key: "{{client_company}}", label: "Client Company", group: "client" },
-  { key: "{{client_email}}", label: "Client Email", group: "client" },
-  { key: "{{project_type}}", label: "Project Type", group: "project" },
-  { key: "{{project_date}}", label: "Project Date", group: "project" },
-  { key: "{{project_location}}", label: "Location", group: "project" },
-  { key: "{{date}}", label: "Today's Date", group: "date" },
-  { key: "{{owner_name}}", label: "Your Name", group: "you" },
-  { key: "{{company_name}}", label: "Your Company", group: "you" },
-];
-
-const MERGE_GROUP_STYLES: Record<MergeGroup, string> = {
-  client: "bg-blue-500/15 text-blue-300 border-blue-500/30 hover:bg-blue-500/25",
-  project: "bg-purple-500/15 text-purple-300 border-purple-500/30 hover:bg-purple-500/25",
-  you: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25",
-  date: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30 hover:bg-zinc-500/25",
-};
-
-const MERGE_GROUP_LABELS: Record<MergeGroup, string> = {
-  client: "From client",
-  project: "From project",
-  you: "From you",
-  date: "Auto",
 };
 
 // Maps the seeded library template names to a display category.
@@ -99,6 +73,26 @@ const TEMPLATE_ICONS: Record<string, LucideIcon> = {
 
 function templateIcon(name: string): LucideIcon {
   return TEMPLATE_ICONS[name] || FileText;
+}
+
+// Strip HTML tags for the cream-paper thumbnail preview while keeping
+// {{merge_field}} tokens visible. Falls through cleanly for legacy
+// plain-text templates.
+function templatePreviewText(content: string): string {
+  if (!content) return "";
+  // Drop chip wrappers but keep the {{token}} text inside.
+  return content
+    .replace(/<br\s*\/?>(\s*)/gi, "\n$1")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<\/(h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export default function ContractsPage() {
@@ -234,16 +228,22 @@ export default function ContractsPage() {
     const project = contractProjectId ? data.projects.find(p => p.id === contractProjectId) : null;
     const projectType = project ? data.projectTypes.find(t => t.id === project.projectTypeId) : null;
     const location = project ? data.locations.find(l => l.id === project.locationId) : null;
+    const replacements: Record<string, string> = {
+      client_name: client?.contactName || "",
+      client_company: client?.company || "",
+      client_email: client?.email || "",
+      project_type: projectType?.name || "",
+      project_date: project?.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "TBD",
+      project_location: location?.name || "TBD",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+      owner_name: profile?.name || "",
+      company_name: data.organization?.name || "",
+    };
     return content
-      .replace(/\{\{client_name\}\}/g, client?.contactName || "")
-      .replace(/\{\{client_company\}\}/g, client?.company || "")
-      .replace(/\{\{client_email\}\}/g, client?.email || "")
-      .replace(/\{\{project_type\}\}/g, projectType?.name || "")
-      .replace(/\{\{project_date\}\}/g, project?.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "TBD")
-      .replace(/\{\{project_location\}\}/g, location?.name || "TBD")
-      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))
-      .replace(/\{\{owner_name\}\}/g, profile?.name || "")
-      .replace(/\{\{company_name\}\}/g, data.organization?.name || "");
+      // Replace WYSIWYG chip spans with their resolved value (drops the styling).
+      .replace(/<span\s+data-merge-field="(\w+)"[^>]*>\s*\{\{\1\}\}\s*<\/span>/g, (_, field) => replacements[field] ?? "")
+      // Then any unwrapped {{token}} in plain text or pasted content.
+      .replace(/\{\{(\w+)\}\}/g, (_, field) => replacements[field] ?? "");
   }
 
   async function createContract() {
@@ -621,7 +621,7 @@ export default function ContractsPage() {
                                   className="text-[7.5px] text-zinc-800 leading-[1.55] line-clamp-[14] whitespace-pre-wrap"
                                   style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
                                 >
-                                  {tpl.content || "Empty template"}
+                                  {templatePreviewText(tpl.content) || "Empty template"}
                                 </div>
                               </div>
                               <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#f6f2e8] to-transparent pointer-events-none" />
@@ -661,38 +661,13 @@ export default function ContractsPage() {
               <Label className="text-xs text-muted-foreground">Template Name</Label>
               <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Standard Video Production Agreement" />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Merge Fields (click to insert at cursor)</Label>
-              <div className="space-y-2">
-                {(["client", "project", "you", "date"] as MergeGroup[]).map(group => {
-                  const fields = MERGE_FIELDS.filter(f => f.group === group);
-                  if (fields.length === 0) return null;
-                  return (
-                    <div key={group} className="flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 w-20 shrink-0">{MERGE_GROUP_LABELS[group]}</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {fields.map(f => (
-                          <button
-                            key={f.key}
-                            onClick={() => setTplContent(c => c + f.key)}
-                            className={cn("text-xs px-2.5 py-1.5 rounded-md border transition-colors font-medium", MERGE_GROUP_STYLES[f.group])}
-                          >
-                            {f.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Contract Content</Label>
-              <textarea
+              <WysiwygContractEditor
                 value={tplContent}
-                onChange={e => setTplContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[60vh] resize-y font-mono"
-                placeholder="Enter your contract text here. Use merge fields like {{client_name}} for dynamic content..."
+                onChange={setTplContent}
+                placeholder="Start typing or paste your contract. Insert merge fields from the toolbar — they'll auto-fill with client and project data when used."
+                minHeight="55vh"
               />
             </div>
           </div>
@@ -748,12 +723,19 @@ export default function ContractsPage() {
                   <div className="space-y-2">
                     <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Preview</p>
                     <div className="rounded-lg bg-[#f6f2e8] p-6 max-h-80 overflow-y-auto">
-                      <div
-                        className="text-zinc-800 text-sm leading-relaxed whitespace-pre-wrap"
-                        style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
-                      >
-                        {detailTpl.content || "Empty template"}
-                      </div>
+                      {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
+                        <div
+                          className="contract-html-light"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailTpl.content) }}
+                        />
+                      ) : (
+                        <div
+                          className="text-zinc-800 text-sm leading-relaxed whitespace-pre-wrap"
+                          style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
+                        >
+                          {detailTpl.content || "Empty template"}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -861,11 +843,11 @@ export default function ContractsPage() {
                   </button>
                 </div>
               </div>
-              <textarea
+              <WysiwygContractEditor
                 value={contractContent}
-                onChange={e => setContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[50vh] resize-y"
-                placeholder="Enter or paste your contract text, or upload a PDF..."
+                onChange={setContractContent}
+                placeholder="Enter or paste contract text, or upload a PDF. Pick a template above to start from a legal-vetted draft."
+                minHeight="45vh"
               />
             </div>
           </div>
@@ -890,9 +872,16 @@ export default function ContractsPage() {
                 </span>
                 <span className="text-xs text-muted-foreground">{data.clients.find(c => c.id === viewContract.clientId)?.company}</span>
               </div>
-              <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">
-                {viewContract.content}
-              </div>
+              {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(viewContract.content) ? (
+                <div
+                  className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed max-h-[50vh] overflow-y-auto contract-html-light"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }}
+                />
+              ) : (
+                <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">
+                  {viewContract.content}
+                </div>
+              )}
               {viewContract.clientSignature && (
                 <div className="bg-secondary/50 rounded-lg p-4">
                   <p className="text-xs text-muted-foreground mb-1">Client Signature</p>
