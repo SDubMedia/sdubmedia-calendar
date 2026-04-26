@@ -407,15 +407,26 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
             onClick={() => setBracketEdit(null)}
           />
           <div
-            className="fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 w-[min(360px,calc(100vw-24px))]"
-            style={{
-              top: Math.min(bracketEdit.rect.bottom + 6, window.innerHeight - 180),
-              left: Math.max(12, Math.min(bracketEdit.rect.left, window.innerWidth - 372)),
-            }}
+            className="fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 w-[min(380px,calc(100vw-24px))]"
+            style={(() => {
+              // Position above the chip if it's in the bottom 50% of viewport
+              // (where the iOS keyboard would otherwise cover the popover).
+              const popoverHeight = 200;
+              const margin = 8;
+              const room = window.innerHeight - bracketEdit.rect.bottom;
+              const placeBelow = room > popoverHeight + margin;
+              const top = placeBelow
+                ? bracketEdit.rect.bottom + margin
+                : Math.max(margin, bracketEdit.rect.top - popoverHeight - margin);
+              return {
+                top,
+                left: Math.max(12, Math.min(bracketEdit.rect.left, window.innerWidth - 392)),
+              };
+            })()}
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">Fill in</p>
-            <p className="text-xs text-foreground/80 mb-2 leading-snug">{bracketEdit.placeholder}</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/70 mb-1">Fill in</p>
+            <p className="text-sm text-foreground/85 mb-2 leading-snug">{bracketEdit.placeholder}</p>
             <input
               autoFocus
               type="text"
@@ -426,13 +437,16 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
                 else if (e.key === "Escape") { e.preventDefault(); setBracketEdit(null); }
               }}
               placeholder="Type the value..."
-              className="w-full bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              // 16px font-size prevents iOS Safari from auto-zooming the
+              // viewport on focus. Don't go below this on touch surfaces.
+              style={{ fontSize: "16px" }}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
-            <div className="flex items-center justify-between mt-2 gap-2">
+            <div className="flex items-center justify-between mt-3 gap-2">
               <button
                 type="button"
                 onClick={clearBracket}
-                className="text-[11px] text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground py-2 px-1"
                 disabled={!bracketEdit.value}
               >
                 Clear
@@ -441,14 +455,14 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
                 <button
                   type="button"
                   onClick={() => setBracketEdit(null)}
-                  className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  className="text-sm px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={saveBracket}
-                  className="text-xs px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="text-sm px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                 >
                   Save
                 </button>
