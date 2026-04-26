@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
+import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
@@ -148,6 +148,8 @@ export default function ContractsPage() {
   const [contractContent, setContractContent] = useState("");
   const [contractClientEmail, setContractClientEmail] = useState("");
   const [contractFieldValues, setContractFieldValues] = useState<Record<string, string>>({});
+  const [contractPlaceholders, setContractPlaceholders] = useState<string[]>([]);
+  const contractEditorRef = useRef<WysiwygContractEditorHandle>(null);
 
   // Quick-add client
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -274,6 +276,15 @@ export default function ContractsPage() {
     if (!contractTitle.trim()) { toast.error("Title required"); return; }
     if (!contractClientId) { toast.error("Select a client"); return; }
     if (!contractClientEmail.trim()) { toast.error("Client email required"); return; }
+
+    // Soft-block: warn if the contract still has unfilled bracket placeholders.
+    // User can override (some templates have intentionally optional fields).
+    const unfilled = contractPlaceholders.filter(p => (contractFieldValues[p] || "").trim() === "");
+    if (unfilled.length > 0) {
+      const sample = unfilled.slice(0, 3).join(", ") + (unfilled.length > 3 ? ` +${unfilled.length - 3} more` : "");
+      const ok = confirm(`${unfilled.length} bracket placeholder${unfilled.length === 1 ? "" : "s"} still empty (${sample}).\n\nCreate the draft anyway? You can fill them later.`);
+      if (!ok) return;
+    }
 
     const resolved = resolveMergeFields(contractContent);
     const token = nanoid(32);
@@ -883,13 +894,55 @@ export default function ContractsPage() {
                   </button>
                 </div>
               </div>
+              {/* Progress UI — visible only when the contract has bracket
+                  placeholders to fill. Filled count comes from contractFieldValues. */}
+              {contractPlaceholders.length > 0 && (() => {
+                const total = contractPlaceholders.length;
+                const filled = contractPlaceholders.filter(p => (contractFieldValues[p] || "").trim() !== "").length;
+                const remaining = total - filled;
+                const pct = total === 0 ? 0 : Math.round((filled / total) * 100);
+                return (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className={cn("font-semibold", remaining === 0 ? "text-emerald-300" : "text-amber-300")}>
+                          {filled} of {total} fields filled
+                        </span>
+                        {remaining > 0 && (
+                          <span className="text-muted-foreground">— {remaining} to go</span>
+                        )}
+                        {remaining === 0 && (
+                          <span className="text-muted-foreground">— ready to send</span>
+                        )}
+                      </div>
+                      {remaining > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => contractEditorRef.current?.focusFirstEmpty()}
+                          className="text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25"
+                        >
+                          Next empty field →
+                        </button>
+                      )}
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={cn("h-full transition-all", remaining === 0 ? "bg-emerald-500" : "bg-amber-500")}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
               <WysiwygContractEditor
+                ref={contractEditorRef}
                 value={contractContent}
                 onChange={setContractContent}
                 placeholder="Enter or paste contract text, or upload a PDF. Pick a template above to start from a legal-vetted draft."
                 minHeight="45vh"
                 fieldValues={contractFieldValues}
                 onFieldValuesChange={setContractFieldValues}
+                onPlaceholdersChange={setContractPlaceholders}
               />
             </div>
           </div>

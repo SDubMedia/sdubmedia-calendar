@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -219,6 +219,15 @@ interface Props {
    */
   fieldValues?: Record<string, string>;
   onFieldValuesChange?: (values: Record<string, string>) => void;
+  /** Emits the de-duplicated list of bracket-field placeholders found in the
+   * current document. Use to drive a progress UI ("X of Y fields filled"). */
+  onPlaceholdersChange?: (placeholders: string[]) => void;
+}
+
+/** Imperative API for the new-contract dialog's "Next empty field" button. */
+export interface WysiwygContractEditorHandle {
+  /** Scroll to the first unfilled bracket chip and open its edit popover. */
+  focusFirstEmpty: () => void;
 }
 
 // Bracket chip popover state — tracked at parent level so we can position
@@ -230,7 +239,10 @@ interface BracketEditState {
   rect: DOMRect;
 }
 
-export function WysiwygContractEditor({ value, onChange, placeholder, minHeight = "50vh", fieldValues, onFieldValuesChange }: Props) {
+export const WysiwygContractEditor = forwardRef<WysiwygContractEditorHandle, Props>(function WysiwygContractEditor(
+  { value, onChange, placeholder, minHeight = "50vh", fieldValues, onFieldValuesChange, onPlaceholdersChange },
+  ref,
+) {
   // Hold the latest onChange in a ref so the editor's onUpdate callback
   // doesn't need to be re-bound when the parent's onChange identity changes.
   const onChangeRef = useRef(onChange);
@@ -260,6 +272,53 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
       onChangeRef.current(editor.getHTML());
     },
   });
+
+  // Walk the doc and emit the de-duplicated placeholder list whenever it
+  // changes. Drives the parent's progress UI ("X of Y fields filled").
+  // Ref-sync pattern: assign in an effect, never during render.
+  const placeholdersChangeRef = useRef(onPlaceholdersChange);
+  useEffect(() => {
+    placeholdersChangeRef.current = onPlaceholdersChange;
+  }, [onPlaceholdersChange]);
+  useEffect(() => {
+    if (!editor || !placeholdersChangeRef.current) return;
+    const emit = () => {
+      const seen = new Set<string>();
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "bracketField" && node.attrs.placeholder) {
+          seen.add(node.attrs.placeholder as string);
+        }
+      });
+      placeholdersChangeRef.current?.(Array.from(seen));
+    };
+    emit();
+    editor.on("update", emit);
+    return () => { editor.off("update", emit); };
+  }, [editor]);
+
+  // Imperative: scroll to the first chip whose value is empty in the live
+  // doc, then synthesize a click on it so the popover opens. Used by the
+  // dialog's "Next empty field" button.
+  useImperativeHandle(ref, () => ({
+    focusFirstEmpty: () => {
+      if (!editor) return;
+      let firstEmptyPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (firstEmptyPos !== -1) return false;
+        if (node.type.name === "bracketField" && !node.attrs.value) {
+          firstEmptyPos = pos;
+          return false;
+        }
+        return undefined;
+      });
+      if (firstEmptyPos === -1) return;
+      const dom = editor.view.nodeDOM(firstEmptyPos) as HTMLElement | null;
+      if (!dom) return;
+      dom.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Slight delay so the scroll completes before the popover positions.
+      setTimeout(() => dom.dispatchEvent(new MouseEvent("click", { bubbles: true })), 250);
+    },
+  }), [editor]);
 
   // Sync external value changes (e.g. PDF upload, template applied) into the editor.
   // Compare against current editor HTML to avoid loops on our own onUpdate emissions.
@@ -443,6 +502,7 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
         <EditorContent editor={editor} />
       </div>
 
+      {/* Hidden — the imperative ref API hooks into the editor's DOM */}
       {/* Bracket-field edit popover — fixed-positioned overlay near the chip */}
       {bracketEdit && (
         <>
@@ -518,7 +578,7 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
       )}
     </div>
   );
-}
+});
 
 function ToolbarButton({
   active,
