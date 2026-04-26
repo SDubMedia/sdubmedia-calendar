@@ -63,7 +63,6 @@ export default function DashboardPage() {
     const w = widgetConfig.find(c => c.id === id);
     return w ? w.enabled : true;
   };
-  const widgetOrder = widgetConfig.filter(w => w.enabled).map(w => w.id);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -141,7 +140,6 @@ export default function DashboardPage() {
     }
     return counts;
   }, [data.pipelineLeads, data.proposals, pipelineStages]);
-  const totalPipelineActive = Object.values(pipelineCounts).reduce((s, c) => s + c, 0);
 
   // Revenue chart — last 6 months
   const chartData = useMemo(() => {

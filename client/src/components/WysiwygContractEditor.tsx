@@ -145,10 +145,12 @@ interface Props {
 }
 
 export function WysiwygContractEditor({ value, onChange, placeholder, minHeight = "50vh" }: Props) {
-  // Hold the latest value in a ref so the onUpdate callback isn't a dep
-  // of the editor (which would re-instantiate every render).
+  // Hold the latest onChange in a ref so the editor's onUpdate callback
+  // doesn't need to be re-bound when the parent's onChange identity changes.
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   const editor = useEditor({
     extensions: [

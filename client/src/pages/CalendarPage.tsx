@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, PersonalEvent, PersonalEventTemplate } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";

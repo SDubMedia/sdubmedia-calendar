@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, BarChart2, DollarSign, Users, TrendingUp, Calendar } from "lucide-react";
+import { Eye, BarChart2, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
 import { cn } from "@/lib/utils";
 import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost } from "@/lib/data";
@@ -128,11 +128,6 @@ export default function ReportsPage() {
     const totalImages = useNewHoursDisplay
       ? projects.reduce((s, p) => s + (p.editorBilling?.imageCount ?? 0), 0)
       : 0;
-    const totalTravelHours = projects.reduce((s, p) => {
-      const crewTravel = (p.crew || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
-      const postTravel = (p.postProduction || []).filter(e => e.role === "Travel").reduce((h, e) => h + Number(e.hoursWorked ?? 0), 0);
-      return s + crewTravel + postTravel;
-    }, 0);
     const totalHours = totalProductionHours + totalEditorHours;
 
     const totalBilling = projects.reduce((s, p) => {
@@ -274,7 +269,6 @@ export default function ReportsPage() {
     // Monthly marketing expenses (same month only)
     const monthStr = `${yr}-${String(monthNum).padStart(2, "0")}`;
     const monthlyExpensesList = data.marketingExpenses.filter(e => e.date.startsWith(monthStr));
-    const monthlyExpenses = monthlyExpensesList.reduce((s, e) => s + e.amount, 0);
     const monthlyTravelExpenses = monthlyExpensesList.filter(e => e.category === "Travel").reduce((s, e) => s + e.amount, 0);
     const travelReimbursement = totalTravelCost + monthlyTravelExpenses;
 

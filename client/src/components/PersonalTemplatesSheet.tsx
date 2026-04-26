@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { PersonalEventTemplate } from "@/lib/types";
 import { EVENT_COLORS, DEFAULT_TEMPLATES } from "@/components/PersonalEventDialog";
 import { cn } from "@/lib/utils";
-import { Plus, Pencil, Trash2, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { nanoid } from "nanoid";
 

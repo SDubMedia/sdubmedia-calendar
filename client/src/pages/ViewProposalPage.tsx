@@ -100,9 +100,8 @@ export default function ViewProposalPage() {
   async function handleAccept() {
     if (!typedName.trim() && signatureType === "typed") return;
     if (!signerEmail.trim()) return;
-    setSubmitting(true);
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       signatureData = typedName.trim();
     } else {
@@ -111,6 +110,7 @@ export default function ViewProposalPage() {
       signatureData = canvas.toDataURL("image/png");
     }
 
+    setSubmitting(true);
     try {
       const res = await fetch("/api/proposal-accept?action=accept", {
         method: "POST",
@@ -125,7 +125,7 @@ export default function ViewProposalPage() {
       if (!res.ok) throw new Error(result.error);
 
       if (result.paymentRequired && result.checkoutUrl) {
-        window.location.href = result.checkoutUrl;
+        window.location.assign(result.checkoutUrl);
         return;
       }
       if (result.paymentRequired && result.paymentError) {

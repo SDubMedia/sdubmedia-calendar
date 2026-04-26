@@ -6,9 +6,7 @@ import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { supabase } from "@/lib/supabase";
 import { Trash2, RotateCcw, X, FileText, Receipt, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface TrashItem {
   id: string;
@@ -88,8 +86,13 @@ export default function TrashPage() {
     }
   }
 
+  // Snapshot "now" once per page mount via the lazy useState initializer
+  // (runs once, not on every render). Time-ago labels are intentionally a
+  // frozen view of when the trash was loaded, not a live ticker.
+  const [nowSnapshot] = useState(() => Date.now());
+
   function formatTimeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const diff = nowSnapshot - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);

@@ -10,7 +10,7 @@ import type { UserRole } from "@/lib/types";
 import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
   Clock, DollarSign, HeartPulse,
-  Film, ChevronRight, ChevronLeft, CheckCircle,
+  ChevronRight, ChevronLeft, CheckCircle,
   Building2, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

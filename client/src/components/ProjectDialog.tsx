@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, Client, BillingModel } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel } from "@/lib/types";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
 import UpgradeDialog from "./UpgradeDialog";

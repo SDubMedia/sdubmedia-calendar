@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X, Download, Sparkles, Loader2 } from "lucide-react";
+import { Upload, Plus, Trash2, ChevronLeft, ChevronRight, FileText, Download, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getAuthToken, supabase } from "@/lib/supabase";

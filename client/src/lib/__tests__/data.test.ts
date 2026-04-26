@@ -13,7 +13,7 @@ import {
   getProjectInvoiceAmount,
   calcHoursWorked,
 } from "../data";
-import type { Client, Project, ProjectCrewEntry, ProjectPostEntry } from "../types";
+import type { Client, Project, ProjectCrewEntry } from "../types";
 
 // ---- Factory helpers ----
 

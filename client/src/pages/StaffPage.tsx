@@ -101,7 +101,6 @@ export default function StaffPage() {
   const [newRole, setNewRole] = useState<CrewRole | "">("");
   const [newRate, setNewRate] = useState<number>(0);
 
-  const [calculatingDistances, setCalculatingDistances] = useState(false);
   const [uploadingW9, setUploadingW9] = useState(false);
   const [w9Url, setW9Url] = useState("");
 
@@ -109,7 +108,6 @@ export default function StaffPage() {
     const locationsWithAddress = data.locations.filter(l => l.address && l.city);
     if (locationsWithAddress.length === 0) return;
 
-    setCalculatingDistances(true);
     const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
     let successCount = 0;
 
@@ -131,7 +129,6 @@ export default function StaffPage() {
         // Skip failed calculations — API key may not be configured yet
       }
     }
-    setCalculatingDistances(false);
     if (successCount > 0) {
       toast.success(`Calculated distances to ${successCount} location${successCount !== 1 ? "s" : ""}`);
     }

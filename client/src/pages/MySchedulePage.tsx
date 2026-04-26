@@ -428,7 +428,6 @@ export default function MySchedulePage() {
                     {/* Project chips */}
                     <div className="space-y-0.5 hidden sm:block">
                       {dayProjects.slice(0, 3).map(p => {
-                        const { totalPay } = getMyPay(p);
                         return (
                           <div
                             key={p.id}

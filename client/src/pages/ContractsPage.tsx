@@ -12,9 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { WysiwygContractEditor, plainTextToHtml } from "@/components/WysiwygContractEditor";
+import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -54,7 +54,6 @@ const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing">
 };
 
 const CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
-type CategoryName = typeof CATEGORY_ORDER[number];
 
 // Template icon by name. Falls back to FileText for user-created templates.
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
@@ -157,13 +156,6 @@ export default function ContractsPage() {
   // Upload PDF
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
-
-  function openNewTemplate() {
-    setEditingTplId(null);
-    setTplName("");
-    setTplContent("");
-    setTplDialogOpen(true);
-  }
 
   function openEditTemplate(tpl: ContractTemplate) {
     setEditingTplId(tpl.id);
@@ -316,7 +308,7 @@ export default function ContractsPage() {
   async function submitSignature() {
     if (!signingContractId) return;
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       if (!typedName.trim()) { toast.error("Type your name"); return; }
       signatureData = typedName.trim();

@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, AlertCircle } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";

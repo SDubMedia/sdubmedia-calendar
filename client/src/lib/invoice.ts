@@ -136,7 +136,6 @@ export function buildLineItems(
       const { crewBillable, postBillable } = getProjectBillableHours(p, client);
 
       if (p.crew.length > 0 && crewBillable > 0) {
-        const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
           description: `${projectLabel} — Production`,
@@ -146,7 +145,6 @@ export function buildLineItems(
       }
 
       if (p.postProduction.length > 0 && postBillable > 0) {
-        const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
           description: `${projectLabel} — Editing`,

@@ -3,15 +3,14 @@
 // 3-column layout: page sidebar | document editor | properties
 // ============================================================
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
-import { useAuth } from "@/contexts/AuthContext";
-import type { ProposalTemplate, ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
+import type { ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, Trash2, ChevronUp, ChevronDown, Upload, Save, X, Image } from "lucide-react";
+import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, ChevronUp, ChevronDown, Save, X, Image } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -63,7 +62,6 @@ export default function TemplateEditorPage() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { data, addProposalTemplate, updateProposalTemplate } = useApp();
-  const { profile } = useAuth();
 
   const isNew = params.id === "new";
   const existing = isNew ? null : data.proposalTemplates.find(t => t.id === params.id);

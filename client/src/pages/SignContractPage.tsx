@@ -72,9 +72,8 @@ export default function SignContractPage() {
 
   async function handleSign() {
     if (!typedName.trim() && signatureType === "typed") return;
-    setSigning(true);
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       signatureData = typedName.trim();
     } else {
@@ -83,6 +82,7 @@ export default function SignContractPage() {
       signatureData = canvas.toDataURL("image/png");
     }
 
+    setSigning(true);
     try {
       const res = await fetch("/api/contract-sign?action=sign", {
         method: "POST",

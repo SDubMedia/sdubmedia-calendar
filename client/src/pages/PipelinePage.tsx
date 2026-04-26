@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import type { PipelineLead, PipelineStage, PipelineStageConfig, Proposal } from "@/lib/types";
+import type { PipelineStage, Proposal } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,7 @@ interface PipelineEntry {
 }
 
 export default function PipelinePage() {
-  const { data, addClient, addProposal, updateProposal, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
+  const { data, addClient, addProposal, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
   const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
   const [activeStage, setActiveStage] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);

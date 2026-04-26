@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig, ServiceItem } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem } from "@/lib/types";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -134,7 +134,7 @@ export default function SettingsPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to connect Stripe");
       if (result.url) {
-        window.location.href = result.url;
+        window.location.assign(result.url);
       } else {
         throw new Error("No redirect URL received from Stripe");
       }
@@ -225,10 +225,6 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function toggleFeature(key: keyof OrgFeatures) {
-    setFeatures(f => ({ ...f, [key]: !f[key] }));
   }
 
   return (
@@ -802,33 +798,6 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
-  );
-}
-
-function FeatureToggleRow({ ft, features, onToggle }: { ft: FeatureToggle; features: OrgFeatures; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        "w-full flex items-center justify-between p-2.5 rounded-lg border transition-colors text-left",
-        features[ft.key] ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/20"
-      )}
-    >
-      <div className="min-w-0">
-        <p className={cn("text-sm font-medium", features[ft.key] ? "text-foreground" : "text-muted-foreground")}>
-          {ft.label}
-        </p>
-      </div>
-      <div className={cn(
-        "w-10 h-5 rounded-full transition-colors shrink-0 ml-3",
-        features[ft.key] ? "bg-primary" : "bg-secondary border border-border"
-      )}>
-        <span className={cn(
-          "block w-4 h-4 rounded-full bg-white transition-transform mt-0.5",
-          features[ft.key] ? "translate-x-5" : "translate-x-0.5"
-        )} />
-      </div>
-    </button>
   );
 }
 

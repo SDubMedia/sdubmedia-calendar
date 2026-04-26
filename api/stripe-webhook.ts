@@ -61,11 +61,6 @@ async function orgNameFor(orgId: string): Promise<string> {
   return data?.name || orgId;
 }
 
-async function orgByCustomer(customerId: string): Promise<{ id: string; name: string } | null> {
-  const { data } = await supabase.from("organizations").select("id, name").eq("stripe_customer_id", customerId).maybeSingle();
-  return data ? { id: data.id, name: data.name } : null;
-}
-
 export const config = {
   api: { bodyParser: false },
 };

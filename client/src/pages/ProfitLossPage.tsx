@@ -6,15 +6,10 @@
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown } from "@/lib/data";
-import type { MonthlyEarnings } from "@/lib/data";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, ChevronRight, Printer, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function formatCurrency(n: number) {

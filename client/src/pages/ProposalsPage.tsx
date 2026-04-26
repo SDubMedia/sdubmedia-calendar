@@ -3,17 +3,17 @@
 // Bundles services + contract + payment into one client-facing link
 // ============================================================
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Proposal, ProposalTemplate, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
+import type { Proposal, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, DollarSign, Link2, ExternalLink, Copy } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, Link2, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -201,14 +201,17 @@ export default function ProposalsPage() {
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"proposals" | "templates">("templates");
 
-  // Template dialog state
+  // Template dialog state — Dialog body is currently unreachable (no caller
+  // sets tplDialogOpen=true). Template editing was moved to TemplateEditorPage.
+  // Keeping the state + dialog JSX behind tplDialogOpen=false until a planned
+  // dead-code cleanup removes them entirely. Unused setters underscored.
   const [tplDialogOpen, setTplDialogOpen] = useState(false);
-  const [editingTplId, setEditingTplId] = useState<string | null>(null);
+  const [editingTplId, _setEditingTplId] = useState<string | null>(null);
   const [tplName, setTplName] = useState("");
   const [tplLineItems, setTplLineItems] = useState<ProposalLineItem[]>([emptyLineItem()]);
   const [tplContractContent, setTplContractContent] = useState("");
   const [tplPayment, setTplPayment] = useState<ProposalPaymentConfig>(DEFAULT_PAYMENT);
-  const [tplNotes, setTplNotes] = useState("");
+  const [tplNotes, _setTplNotes] = useState("");
   const [tplCoverUrl, setTplCoverUrl] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
 
@@ -297,28 +300,6 @@ export default function ProposalsPage() {
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
 
-  // ---- Template CRUD ----
-  function openNewTemplate() {
-    setEditingTplId(null);
-    setTplName("");
-    setTplLineItems([emptyLineItem()]);
-    setTplContractContent("");
-    setTplPayment(DEFAULT_PAYMENT);
-    setTplNotes("");
-    setTplCoverUrl("");
-    setTplDialogOpen(true);
-  }
-
-  function openEditTemplate(tpl: ProposalTemplate) {
-    setEditingTplId(tpl.id);
-    setTplName(tpl.name);
-    setTplLineItems(tpl.lineItems.length > 0 ? tpl.lineItems : [emptyLineItem()]);
-    setTplContractContent(tpl.contractContent);
-    setTplPayment(tpl.paymentConfig);
-    setTplNotes(tpl.notes);
-    setTplCoverUrl(tpl.coverImageUrl || "");
-    setTplDialogOpen(true);
-  }
 
   async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -505,7 +486,7 @@ export default function ProposalsPage() {
   async function submitSignature() {
     if (!signingProposalId) return;
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       if (!typedName.trim()) { toast.error("Type your name"); return; }
       signatureData = typedName.trim();
