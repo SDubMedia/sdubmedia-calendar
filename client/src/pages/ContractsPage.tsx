@@ -54,6 +54,35 @@ const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing">
 };
 
 const CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
+type CategoryName = typeof CATEGORY_ORDER[number];
+
+// Visual identity per category. Icon in a tinted box, short subtitle.
+const CATEGORY_META: Record<CategoryName, { icon: LucideIcon; subtitle: string; tint: string; iconColor: string }> = {
+  "Proposals": {
+    icon: ScrollText,
+    subtitle: "Pre-contract pitches with packages and milestones",
+    tint: "bg-sky-500/10 border-sky-500/20",
+    iconColor: "text-sky-300",
+  },
+  "Agreements": {
+    icon: Handshake,
+    subtitle: "Signable contracts you send to clients",
+    tint: "bg-amber-500/10 border-amber-500/20",
+    iconColor: "text-amber-300",
+  },
+  "Releases & Licensing": {
+    icon: Key,
+    subtitle: "On-set permissions and rights grants",
+    tint: "bg-purple-500/10 border-purple-500/20",
+    iconColor: "text-purple-300",
+  },
+  "Custom": {
+    icon: Sparkles,
+    subtitle: "Templates you've created or duplicated",
+    tint: "bg-zinc-500/10 border-zinc-500/20",
+    iconColor: "text-zinc-300",
+  },
+};
 
 // Template icon by name. Falls back to FileText for user-created templates.
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
@@ -554,11 +583,19 @@ export default function ContractsPage() {
                 });
                 const total = proposalsForCat.length + contractsForCat.length;
                 if (total === 0) return null;
+                const meta = CATEGORY_META[cat];
+                const CatIcon = meta.icon;
                 return (
-                  <div key={cat} className="space-y-3">
-                    <div className="flex items-baseline justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{cat}</h3>
-                      <span className="text-[10px] text-muted-foreground/60">{total} {total === 1 ? "template" : "templates"}</span>
+                  <div key={cat} className="space-y-4">
+                    <div className="flex items-center gap-3 pb-2 border-b border-border/60">
+                      <div className={cn("shrink-0 rounded-lg border p-2", meta.tint)}>
+                        <CatIcon className={cn("w-5 h-5", meta.iconColor)} strokeWidth={1.75} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{cat}</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">{meta.subtitle}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums">{total} {total === 1 ? "template" : "templates"}</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {/* Proposal templates (V2 - full editor) */}
