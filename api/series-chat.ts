@@ -5,7 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Anthropic from "@anthropic-ai/sdk";
-import { verifyAuth } from "./_auth.js";
+import { verifyAuth, errorMessage } from "./_auth.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
 
@@ -90,8 +90,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(413).json({ error: "Message too long (max 10,000 characters)" });
     }
 
-    const episodeList = (episodes || [])
-      .map((e: any) => `  Episode ${e.number}: "${e.title}" — ${e.concept || "No concept yet"} [${e.status}]`)
+    type EpisodeRow = { number: number; title: string; concept: string | null; status: string };
+    const episodeList = ((episodes as EpisodeRow[]) || [])
+      .map(e => `  Episode ${e.number}: "${e.title}" — ${e.concept || "No concept yet"} [${e.status}]`)
       .join("\n");
 
     const systemPrompt = `You are a creative content strategist helping SDub Media plan a video series for their client.
@@ -145,7 +146,7 @@ The person you're talking to is ${senderName || "the user"}. Be conversational, 
 
     // Process response — extract text and tool calls
     let textContent = "";
-    const actions: any[] = [];
+    const actions: { tool: string; input: unknown; id: string }[] = [];
 
     for (const block of response.content) {
       if (block.type === "text") {
@@ -194,8 +195,8 @@ The person you're talking to is ${senderName || "the user"}. Be conversational, 
 
     const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
     return res.status(200).json({ content: textContent, actions, tokensUsed });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Series chat error:", err);
-    return res.status(500).json({ error: err.message || "AI request failed" });
+    return res.status(500).json({ error: errorMessage(err, "AI request failed") });
   }
 }

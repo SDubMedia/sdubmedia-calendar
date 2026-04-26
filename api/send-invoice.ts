@@ -5,7 +5,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, escapeHtml } from "./_auth.js";
+import { verifyAuth, getUserOrgId, escapeHtml, errorMessage } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -79,8 +79,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           readable.push(null);
           readable.pipe(busboy);
         } else {
-          // req is already a readable stream
-          (req as any).pipe(busboy);
+          // req is already a readable stream — VercelRequest extends IncomingMessage which is a Readable
+          (req as unknown as Readable).pipe(busboy);
         }
       });
 
@@ -113,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from("clients")
         .select("email")
         .eq("org_id", callerOrgId);
-      const knownEmails = (clients || []).map((c: any) => (c.email || "").toLowerCase()).filter(Boolean);
+      const knownEmails = ((clients as { email: string | null }[] | null) || []).map(c => (c.email || "").toLowerCase()).filter(Boolean);
       if (knownEmails.length > 0 && !knownEmails.includes(recipientEmail.toLowerCase())) {
         return res.status(403).json({ error: "Recipient is not a known client for this organization" });
       }
@@ -162,8 +162,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ success: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Send invoice error:", err);
-    return res.status(500).json({ error: err.message || "Internal server error" });
+    return res.status(500).json({ error: errorMessage(err, "Internal server error") });
   }
 }

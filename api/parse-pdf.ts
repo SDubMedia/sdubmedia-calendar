@@ -4,7 +4,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyAuth } from "./_auth.js";
+import { verifyAuth, errorMessage } from "./_auth.js";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "10mb" } },
@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ transactions, count: transactions.length, rawLineCount: lines.length, text: rawText });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed to parse PDF" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed to parse PDF") });
   }
 }

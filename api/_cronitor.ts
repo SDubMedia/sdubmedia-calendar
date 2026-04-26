@@ -1,3 +1,4 @@
+import { errorMessage } from "./_auth.js";
 // Cronitor telemetry ping helper for Slate. Mirrors Scout's helper.
 // Never throws — a failed ping must not break the caller.
 
@@ -24,7 +25,7 @@ export async function pingCronitor(
 
   try {
     await fetch(url, { method: "GET", signal: AbortSignal.timeout(5000) });
-  } catch (err: any) {
-    console.error(`[cronitor] ping failed (${monitorKey}/${state}):`, err?.message || err);
+  } catch (err) {
+    console.error(`[cronitor] ping failed (${monitorKey}/${state}):`, errorMessage(err) || err);
   }
 }

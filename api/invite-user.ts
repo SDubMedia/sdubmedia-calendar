@@ -6,7 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, escapeHtml, isAllowedUrl } from "./_auth.js";
+import { verifyAuth, getUserOrgId, escapeHtml, isAllowedUrl, errorMessage } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -117,8 +117,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ ok: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Invite user error:", err);
-    return res.status(500).json({ error: err.message || "Failed to send invite" });
+    return res.status(500).json({ error: errorMessage(err, "Failed to send invite") });
   }
 }

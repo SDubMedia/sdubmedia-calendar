@@ -8,6 +8,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { errorMessage } from "./_auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -27,8 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "verify-payment": return await verifyPayment(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }
 
@@ -108,13 +109,15 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const now = new Date().toISOString();
 
   // Resolve selected package and milestones
-  const packages = proposal.packages || [];
-  const selectedPkg = selectedPackageId ? packages.find((p: any) => p.id === selectedPackageId) : packages[0] || null;
-  const resolvedMilestones = selectedPkg?.paymentMilestones || [];
+  type Milestone = { dueType: string; type: "percent" | "fixed"; percent?: number; amount?: number; label: string };
+  type Package = { id: string; totalPrice?: number; paymentMilestones?: Milestone[] };
+  const packages: Package[] = proposal.packages || [];
+  const selectedPkg = selectedPackageId ? packages.find(p => p.id === selectedPackageId) : packages[0] || null;
+  const resolvedMilestones: Milestone[] = selectedPkg?.paymentMilestones || [];
   const proposalTotal = selectedPkg?.totalPrice || proposal.total;
 
   // Update proposal
-  const updatePayload: any = {
+  const updatePayload: Record<string, unknown> = {
     client_signature: fullSignature,
     accepted_at: now,
     status: "accepted",
@@ -132,7 +135,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (count === 0) return res.status(409).json({ error: "Proposal already accepted" });
 
   // Check if payment required: first via milestones, then legacy paymentConfig
-  const hasAtSigningMilestone = resolvedMilestones.some((m: any) => m.dueType === "at_signing");
+  const hasAtSigningMilestone = resolvedMilestones.some(m => m.dueType === "at_signing");
   const paymentConfig = proposal.payment_config || { option: "none" };
   const needsPayment = hasAtSigningMilestone || paymentConfig.option !== "none";
 
@@ -156,7 +159,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     let paymentAmount = proposalTotal;
     let paymentLabel = "Full Payment";
     if (hasAtSigningMilestone) {
-      const ms = resolvedMilestones.find((m: any) => m.dueType === "at_signing");
+      const ms = resolvedMilestones.find(m => m.dueType === "at_signing")!;
       if (ms.type === "percent") {
         paymentAmount = Math.round(proposalTotal * (ms.percent / 100) * 100) / 100;
         paymentLabel = `${ms.label} (${ms.percent}%)`;
@@ -208,11 +211,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         checkoutUrl: session.url,
         sessionId: session.id,
       });
-    } catch (stripeErr: any) {
+    } catch (stripeErr) {
       return res.status(500).json({
         success: false,
         paymentRequired: true,
-        paymentError: stripeErr.message || "Failed to create payment session",
+        paymentError: errorMessage(stripeErr, "Failed to create payment session"),
       });
     }
   }

@@ -11,6 +11,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { errorMessage } from "./_auth.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -103,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data } = await supabase.from("analytics_events").select("event_name, metadata").gte("created_at", sinceIso);
     const f = empty();
     for (const ev of data || []) {
-      const app = ((ev.metadata as any)?.app || "").toLowerCase() as AppKey;
+      const app = ((ev.metadata as Record<string, unknown> | null)?.app as string || "").toLowerCase() as AppKey;
       if (app !== "slate" && app !== "freelance") continue;
       if (ev.event_name === "upgrade_dialog_viewed") f[app].viewed++;
       else if (ev.event_name === "checkout_started") f[app].started++;
@@ -170,8 +171,8 @@ For deeper cuts, see docs/admin-queries.sql.
       text: body,
     });
     return res.status(200).json({ ok: true, subject });
-  } catch (err: any) {
-    console.error(`[daily-summary] failed: ${err?.message}`);
-    return res.status(500).json({ error: err?.message });
+  } catch (err) {
+    console.error(`[daily-summary] failed: ${errorMessage(err)}`);
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }

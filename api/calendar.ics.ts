@@ -46,27 +46,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const calType = (req.query.type as string) || "all";
 
+  // Minimal row shapes for the .ics builder — enough for the fields we read.
+  type ProjectRow = { id: string; client_id: string; project_type_id: string; location_id: string; date: string; start_time: string | null; end_time: string | null; notes: string | null };
+  type PersonalEventRow = { id: string; title: string; date: string; start_time: string | null; end_time: string | null; notes: string | null };
+  type ClientRow = { id: string; company: string };
+  type TypeRow = { id: string; name: string };
+  type LocationRow = { id: string; name: string; address: string; city: string; state: string };
+
   // Fetch projects — scoped to org
-  let projects: any[] = [];
+  let projects: ProjectRow[] = [];
   if (calType === "all" || calType === "production") {
     const { data } = await db.from("projects").select("*").eq("org_id", callerOrgId).neq("status", "deleted").order("date");
-    projects = data || [];
+    projects = (data as ProjectRow[]) || [];
   }
 
   // Fetch personal events — scoped to org
-  let personalEvents: any[] = [];
+  let personalEvents: PersonalEventRow[] = [];
   if (calType === "all" || calType === "personal") {
     const { data } = await db.from("personal_events").select("*").eq("org_id", callerOrgId).order("date");
-    personalEvents = data || [];
+    personalEvents = (data as PersonalEventRow[]) || [];
   }
 
   // Fetch reference data for project names — scoped to org
   const { data: clientsRaw } = await db.from("clients").select("id, company").eq("org_id", callerOrgId);
   const { data: typesRaw } = await db.from("project_types").select("id, name").eq("org_id", callerOrgId);
   const { data: locsRaw } = await db.from("locations").select("id, name, address, city, state").eq("org_id", callerOrgId);
-  const clients = Object.fromEntries((clientsRaw || []).map((c: any) => [c.id, c.company]));
-  const types = Object.fromEntries((typesRaw || []).map((t: any) => [t.id, t.name]));
-  const locs = Object.fromEntries((locsRaw || []).map((l: any) => [l.id, { name: l.name, address: `${l.address}, ${l.city}, ${l.state}` }]));
+  const clients = Object.fromEntries(((clientsRaw as ClientRow[]) || []).map(c => [c.id, c.company]));
+  const types = Object.fromEntries(((typesRaw as TypeRow[]) || []).map(t => [t.id, t.name]));
+  const locs = Object.fromEntries(((locsRaw as LocationRow[]) || []).map(l => [l.id, { name: l.name, address: `${l.address}, ${l.city}, ${l.state}` }]));
 
   // Build iCal
   const events: string[] = [];

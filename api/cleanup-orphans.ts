@@ -17,6 +17,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "./_auth.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -79,8 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         deleted.push(orphan.email);
       }
-    } catch (err: any) {
-      failed.push({ email: orphan.email, reason: err?.message || "unknown" });
+    } catch (err) {
+      failed.push({ email: orphan.email, reason: errorMessage(err, "unknown") });
     }
   }
 

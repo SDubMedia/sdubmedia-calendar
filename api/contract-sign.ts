@@ -6,7 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { escapeHtml } from "./_auth.js";
+import { escapeHtml, errorMessage } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -24,8 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "sign": return await signContract(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }
 

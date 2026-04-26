@@ -4,7 +4,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { verifyAuth } from "./_auth.js";
+import { verifyAuth, errorMessage } from "./_auth.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
@@ -53,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       distanceText: element.distance.text,
       durationText: element.duration.text,
     });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed to calculate distance" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed to calculate distance") });
   }
 }

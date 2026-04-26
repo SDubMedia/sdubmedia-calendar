@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
+import { errorMessage } from "./_auth.js";
 
 function verifyApiKey(req: VercelRequest): boolean {
   const key = req.headers["x-api-key"] as string | undefined;
@@ -69,8 +70,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Internal server error" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Internal server error") });
   }
 }
 
@@ -170,7 +171,7 @@ async function updateProject(req: VercelRequest, res: VercelResponse) {
   if (!id) return res.status(400).json({ error: "Missing id" });
 
   const body = req.body;
-  const patch: Record<string, any> = {};
+  const patch: Record<string, unknown> = {};
 
   // Only include fields that were provided
   if (body.client_id !== undefined) patch.client_id = body.client_id;
@@ -278,7 +279,7 @@ async function updatePersonalEvent(req: VercelRequest, res: VercelResponse) {
   const { id } = req.query;
   if (!id) return res.status(400).json({ error: "Missing id" });
   const body = req.body;
-  const patch: Record<string, any> = {};
+  const patch: Record<string, unknown> = {};
   if (body.title !== undefined) patch.title = body.title;
   if (body.date !== undefined) patch.date = body.date;
   if (body.start_time !== undefined) patch.start_time = body.start_time;

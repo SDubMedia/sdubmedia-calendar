@@ -4,7 +4,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth, isAllowedUrl, escapeHtml } from "./_auth.js";
+import { verifyAuth, isAllowedUrl, escapeHtml, errorMessage } from "./_auth.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ ok: true });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed to send email" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed to send email") });
   }
 }

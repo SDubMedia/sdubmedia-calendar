@@ -6,7 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, isAllowedUrl } from "./_auth.js";
+import { verifyAuth, getUserOrgId, isAllowedUrl, errorMessage } from "./_auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -33,8 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "verify-payment": return await verifyPayment(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }
 
@@ -107,7 +107,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
     // Mark linked projects as paid
     const { data: invoice } = await supabase.from("invoices").select("line_items").eq("id", session.metadata.invoiceId).single();
     if (invoice?.line_items) {
-      const projectIds = (invoice.line_items as any[]).map((li: any) => li.projectId).filter(Boolean);
+      const projectIds = (invoice.line_items as { projectId?: string }[]).map(li => li.projectId).filter(Boolean);
       for (const pid of projectIds) {
         await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
       }

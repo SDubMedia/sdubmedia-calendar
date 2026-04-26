@@ -28,6 +28,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
+import { errorMessage } from "./_auth.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -51,8 +52,8 @@ async function sendOpsAlert(subject: string, body: string) {
       subject: `[Slate] ${subject}`,
       text: body,
     });
-  } catch (err: any) {
-    console.error(`[stripe-webhook] ops alert failed: ${err?.message}`);
+  } catch (err) {
+    console.error(`[stripe-webhook] ops alert failed: ${errorMessage(err)}`);
   }
 }
 
@@ -125,10 +126,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const body = await getRawBody(req);
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-  } catch (err: any) {
-    console.error(`[stripe-webhook] signature verification failed: ${err?.message}`);
-    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${err?.message}` });
-    return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+  } catch (err) {
+    console.error(`[stripe-webhook] signature verification failed: ${errorMessage(err)}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${errorMessage(err)}` });
+    return res.status(400).json({ error: `Webhook signature verification failed: ${errorMessage(err)}` });
   }
 
   try {
@@ -141,7 +142,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!orgId) break;
 
         const status = sub.status;
-        const previousStatus = (event.data.previous_attributes as any)?.status;
+        const previousStatus = (event.data.previous_attributes as { status?: string } | undefined)?.status;
 
         // past_due/unpaid: keep paid tier, flag banner. Stripe retries ~3 weeks.
         if (status === "active" || status === "trialing") {
@@ -216,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const { data: invoice } = await supabase.from("invoices").select("line_items").eq("id", session.metadata.invoiceId).maybeSingle();
           if (invoice?.line_items) {
-            const projectIds = (invoice.line_items as any[]).map((li: any) => li.projectId).filter(Boolean);
+            const projectIds = (invoice.line_items as { projectId?: string }[]).map(li => li.projectId).filter(Boolean);
             for (const pid of projectIds) {
               await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
             }
@@ -225,12 +226,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
     }
-  } catch (err: any) {
-    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${err?.message} raw=${err?.raw?.message}`);
-    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${err?.message}` });
+  } catch (err) {
+    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${errorMessage(err)} raw=${err?.raw?.message}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${errorMessage(err)}` });
     // Return 200 anyway so Stripe doesn't retry on our internal errors.
     // Webhook replay from dashboard is still possible if needed.
-    return res.status(200).json({ received: true, error: err.message });
+    return res.status(200).json({ received: true, error: errorMessage(err) });
   }
 
   await pingCronitor(CRONITOR_MONITOR, "complete", { message: event.type });

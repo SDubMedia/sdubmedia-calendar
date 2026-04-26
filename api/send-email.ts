@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import nodemailer from "nodemailer";
 import { timingSafeEqual } from "crypto";
+import { errorMessage } from "./_auth.js";
 
 function verifyApiKey(req: VercelRequest): boolean {
   const key = req.headers["x-api-key"] as string | undefined;
@@ -50,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     return res.status(200).json({ success: true, messageId: info.messageId });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed to send email" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed to send email") });
   }
 }

@@ -101,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
     if (!member || member.org_id !== callerOrgId) return res.status(403).json({ error: "Not in your org" });
 
-    const patch: any = {};
+    const patch: Record<string, unknown> = {};
     if (taxId !== undefined) patch.tax_id = encrypt(taxId);
     if (taxIdType !== undefined) patch.tax_id_type = taxIdType;
 
