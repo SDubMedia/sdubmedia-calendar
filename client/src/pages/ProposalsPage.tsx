@@ -196,24 +196,10 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
 }
 
 export default function ProposalsPage() {
-  const { data, addClient, addContractTemplate, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
+  const { data, addClient, addContractTemplate, addProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"proposals" | "templates">("templates");
-
-  // Template dialog state — Dialog body is currently unreachable (no caller
-  // sets tplDialogOpen=true). Template editing was moved to TemplateEditorPage.
-  // Keeping the state + dialog JSX behind tplDialogOpen=false until a planned
-  // dead-code cleanup removes them entirely. Unused setters underscored.
-  const [tplDialogOpen, setTplDialogOpen] = useState(false);
-  const [editingTplId, _setEditingTplId] = useState<string | null>(null);
-  const [tplName, setTplName] = useState("");
-  const [tplLineItems, setTplLineItems] = useState<ProposalLineItem[]>([emptyLineItem()]);
-  const [tplContractContent, setTplContractContent] = useState("");
-  const [tplPayment, setTplPayment] = useState<ProposalPaymentConfig>(DEFAULT_PAYMENT);
-  const [tplNotes, _setTplNotes] = useState("");
-  const [tplCoverUrl, setTplCoverUrl] = useState("");
-  const [uploadingCover, setUploadingCover] = useState(false);
 
   // Proposal dialog state
   const [proposalDialogOpen, setProposalDialogOpen] = useState(false);
@@ -243,7 +229,6 @@ export default function ProposalsPage() {
   const [importUrl, setImportUrl] = useState("");
   const [importPasteContent, setImportPasteContent] = useState("");
   const [importing, setImporting] = useState(false);
-  const [importTarget, setImportTarget] = useState<"template" | "proposal">("template");
 
   // Quick-add client
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -278,8 +263,7 @@ export default function ProposalsPage() {
     }
   }
 
-  // Textarea refs for cursor-position insert
-  const tplTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Textarea ref for cursor-position insert
   const propTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   function insertAtCursor(ref: React.RefObject<HTMLTextAreaElement | null>, text: string, setter: (val: string) => void, currentVal: string) {
@@ -297,52 +281,7 @@ export default function ProposalsPage() {
   }
 
   // PDF upload
-  const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
-
-
-  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setUploadingCover(true);
-    try {
-      const { supabase } = await import("@/lib/supabase");
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `covers/${nanoid(10)}.${ext}`;
-      const { error } = await supabase.storage.from("proposal-assets").upload(path, file, { upsert: true });
-      if (error) throw new Error(error.message);
-      const { data: urlData } = supabase.storage.from("proposal-assets").getPublicUrl(path);
-      setTplCoverUrl(urlData.publicUrl);
-      toast.success("Cover image uploaded");
-    } catch (err: any) {
-      toast.error(err.message || "Upload failed");
-    } finally {
-      setUploadingCover(false);
-    }
-  }
-
-  async function saveTemplate() {
-    if (!tplName.trim()) { toast.error("Template name required"); return; }
-    const payload = {
-      name: tplName.trim(),
-      coverImageUrl: tplCoverUrl,
-      pages: [] as any[],
-      packages: [] as any[],
-      lineItems: calcLineItems(tplLineItems),
-      contractContent: tplContractContent,
-      paymentConfig: { ...tplPayment, depositAmount: tplPayment.option === "deposit" ? Math.round(calcTotal(tplLineItems) * (tplPayment.depositPercent / 100) * 100) / 100 : 0 },
-      notes: tplNotes,
-    };
-    if (editingTplId) {
-      await updateProposalTemplate(editingTplId, payload);
-      toast.success("Template updated");
-    } else {
-      await addProposalTemplate(payload);
-      toast.success("Template created");
-    }
-    setTplDialogOpen(false);
-  }
 
   // ---- Proposal CRUD ----
   function openNewProposal() {
@@ -555,8 +494,7 @@ export default function ProposalsPage() {
   }
 
   // ---- HoneyBook Import ----
-  function openImport(target: "template" | "proposal") {
-    setImportTarget(target);
+  function openImport() {
     setImportUrl("");
     setImportPasteContent("");
     setImportDialogOpen(true);
@@ -565,11 +503,7 @@ export default function ProposalsPage() {
   async function doImport() {
     // If user pasted content directly, use that
     if (importPasteContent.trim()) {
-      if (importTarget === "template") {
-        setTplContractContent(importPasteContent.trim());
-      } else {
-        setPropContractContent(importPasteContent.trim());
-      }
+      setPropContractContent(importPasteContent.trim());
       toast.success("Content imported");
       setImportDialogOpen(false);
       return;
@@ -595,23 +529,19 @@ export default function ProposalsPage() {
         toast.warning(result.error);
       }
       if (result.contractContent) {
-        if (importTarget === "template") {
-          setTplContractContent(result.contractContent);
-        } else {
-          setPropContractContent(result.contractContent);
-        }
+        setPropContractContent(result.contractContent);
         toast.success("Contract content imported");
         setImportDialogOpen(false);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Import failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed");
     } finally {
       setImporting(false);
     }
   }
 
   // ---- PDF Upload (for contract content) ----
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>, target: "template" | "proposal") {
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
@@ -633,14 +563,13 @@ export default function ProposalsPage() {
       if (!res.ok) throw new Error("Failed to parse PDF");
       const { text } = await res.json();
       if (text) {
-        if (target === "template") setTplContractContent(text);
-        else setPropContractContent(text);
+        setPropContractContent(text);
         toast.success("PDF content imported");
       } else {
         toast.error("No text found in PDF");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to upload");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload");
     } finally {
       setUploadingPdf(false);
     }
@@ -786,76 +715,6 @@ export default function ProposalsPage() {
         )}
       </div>
 
-      {/* ============ TEMPLATE DIALOG ============ */}
-      <Dialog open={tplDialogOpen} onOpenChange={setTplDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              {editingTplId ? "Edit Template" : "New Proposal Template"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-5 py-2">
-            <div className="grid grid-cols-[1fr_auto] gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Template Name</Label>
-                <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Full Day Video Production" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Cover Image</Label>
-                <div className="w-24 h-16 rounded-lg border border-border overflow-hidden bg-secondary relative group">
-                  {tplCoverUrl ? (
-                    <img src={tplCoverUrl} alt="Cover" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <Upload className="w-4 h-4" />
-                    </div>
-                  )}
-                  <input type="file" accept="image/*" onChange={handleCoverUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploadingCover} />
-                  {uploadingCover && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
-                </div>
-              </div>
-            </div>
-
-            <LineItemEditor items={tplLineItems} setter={setTplLineItems} services={data.organization?.services} />
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Agreement / Contract</Label>
-                <div className="flex gap-2">
-                  <button onClick={() => openImport("template")} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <ExternalLink className="w-3 h-3" /> Import from HoneyBook
-                  </button>
-                  <input ref={pdfRef} type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={e => handlePdfUpload(e, "template")} className="hidden" />
-                  <button onClick={() => pdfRef.current?.click()} disabled={uploadingPdf} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <Upload className="w-3 h-3" /> {uploadingPdf ? "Uploading..." : "Upload PDF"}
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-1">
-                {MERGE_FIELDS.map(f => (
-                  <button key={f.key} onClick={() => insertAtCursor(tplTextareaRef, f.key, setTplContractContent, tplContractContent)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              <textarea
-                ref={tplTextareaRef}
-                value={tplContractContent}
-                onChange={e => setTplContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y font-mono"
-                placeholder="Enter your contract/agreement text here..."
-              />
-            </div>
-
-            <PaymentEditor config={tplPayment} setConfig={setTplPayment} total={calcTotal(tplLineItems)} />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setTplDialogOpen(false)}>Cancel</Button>
-            <Button onClick={saveTemplate}>{editingTplId ? "Save" : "Create Template"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ============ PROPOSAL DIALOG ============ */}
       <Dialog open={proposalDialogOpen} onOpenChange={setProposalDialogOpen}>
         <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
@@ -911,10 +770,10 @@ export default function ProposalsPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-muted-foreground">Agreement / Contract</Label>
                 <div className="flex gap-2">
-                  <button onClick={() => openImport("proposal")} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                  <button onClick={openImport} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
                     <ExternalLink className="w-3 h-3" /> Import
                   </button>
-                  <input type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={e => handlePdfUpload(e, "proposal")} className="hidden" id="prop-pdf-upload" />
+                  <input type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={handlePdfUpload} className="hidden" id="prop-pdf-upload" />
                   <button onClick={() => (document.getElementById("prop-pdf-upload") as HTMLInputElement)?.click()} disabled={uploadingPdf} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
                     <Upload className="w-3 h-3" /> {uploadingPdf ? "Uploading..." : "Upload PDF"}
                   </button>
