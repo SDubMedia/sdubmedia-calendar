@@ -13,7 +13,8 @@
     "test:run": "vitest run",
     "lint": "eslint client/src/ api/",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "gen:types": "supabase gen types typescript --project-id fjnfmvzdnhgiapuawzpp > client/src/lib/database.types.ts"
   },
   "lint-staged": {
     "{client/src,api}/**/*.{ts,tsx}": [

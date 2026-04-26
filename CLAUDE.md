@@ -95,6 +95,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - Service role key for API endpoints: `SUPABASE_SERVICE_ROLE_KEY`
 - Anon key for frontend: `VITE_SUPABASE_ANON_KEY`
 
+### Generated types
+
+Schema types live at `client/src/lib/database.types.ts`. Regenerate after any migration:
+
+```sh
+SUPABASE_ACCESS_TOKEN=sbp_... pnpm gen:types
+```
+
+The global `supabase` client in `client/src/lib/supabase.ts` is **not yet typed** with `<Database>` — flipping it on surfaces ~14 strict-typing errors in AppContext's CRUD payloads (JSONB columns spreading as `Json`, etc.). Migrating the global client to `<Database>` is its own focused task — until then, use `import type { Database, Tables } from "@/lib/database.types"` in isolated helpers where you want type safety.
+
 **Every new table MUST have:**
 - `org_id text NOT NULL DEFAULT ''` column
 - RLS enabled: `ALTER TABLE x ENABLE ROW LEVEL SECURITY`
