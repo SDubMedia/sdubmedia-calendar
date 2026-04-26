@@ -751,18 +751,25 @@ export default function ContractsPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Preview</p>
-                    <div className="rounded-lg bg-[#f6f2e8] p-6 max-h-80 overflow-y-auto">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Preview</p>
+                      <p className="text-[10px] text-muted-foreground/60">This is what your client sees</p>
+                    </div>
+                    <div className="bg-white rounded-lg max-h-[60vh] overflow-y-auto border border-gray-200">
+                      <ContractLetterhead
+                        orgName={data.organization?.name}
+                        ownerName={profile?.name}
+                        orgLogo={data.organization?.logoUrl}
+                        businessInfo={data.organization?.businessInfo}
+                        intro="The contract is ready for review and signature. If you have any questions, just ask."
+                      />
                       {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
                         <div
-                          className="contract-html-light"
+                          className="px-6 sm:px-10 py-8 contract-html-light"
                           dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailTpl.content) }}
                         />
                       ) : (
-                        <div
-                          className="text-zinc-800 text-sm leading-relaxed whitespace-pre-wrap"
-                          style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
-                        >
+                        <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}>
                           {detailTpl.content || "Empty template"}
                         </div>
                       )}
