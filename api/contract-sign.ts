@@ -42,23 +42,33 @@ async function getContract(token: string, res: VercelResponse) {
   if (contract.status === "void") return res.status(400).json({ error: "This contract has been voided" });
   if (contract.client_signed_at) return res.status(200).json({ ...contract, alreadySigned: true });
 
-  // Get org branding for the letterhead at the top of the contract.
+  // Get org branding + owner identity for the letterhead.
   const { data: org } = await supabase.from("contracts").select("org_id").eq("sign_token", token).single();
   let orgName = "";
   let orgLogo = "";
   let orgBusinessInfo: Record<string, unknown> | null = null;
+  let ownerName = "";
   if (org?.org_id) {
-    const { data: orgData } = await supabase
-      .from("organizations")
-      .select("name, logo_url, business_info")
-      .eq("id", org.org_id)
-      .single();
+    const [{ data: orgData }, { data: ownerProfiles }] = await Promise.all([
+      supabase
+        .from("organizations")
+        .select("name, logo_url, business_info")
+        .eq("id", org.org_id)
+        .single(),
+      supabase
+        .from("user_profiles")
+        .select("name")
+        .eq("org_id", org.org_id)
+        .eq("role", "owner")
+        .limit(1),
+    ]);
     orgName = orgData?.name || "";
     orgLogo = orgData?.logo_url || "";
     orgBusinessInfo = (orgData?.business_info as Record<string, unknown>) || null;
+    ownerName = (ownerProfiles?.[0]?.name as string) || "";
   }
 
-  return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, alreadySigned: false });
+  return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, ownerName, alreadySigned: false });
 }
 
 async function signContract(req: VercelRequest, res: VercelResponse) {

@@ -157,7 +157,7 @@ export default function SignContractPage() {
           {/* Letterhead */}
           {(contract?.orgLogo || contract?.orgName) && (() => {
             const bi = (contract?.orgBusinessInfo || {}) as Record<string, string | undefined>;
-            const contactBits = [bi.ownerName, bi.phone, bi.email].filter(Boolean).join(" | ");
+            const contactBits = [contract?.ownerName, bi.phone, bi.email].filter(Boolean).join(" | ");
             const addressBits = [bi.address, bi.city, bi.state, bi.zip].filter(Boolean).join(", ");
             return (
               <div className="px-6 sm:px-10 pt-10 pb-6 text-center border-b border-gray-100">
