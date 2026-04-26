@@ -609,6 +609,13 @@ export interface Contract {
   clientEmail: string;
   signToken: string;
   pdfUrl?: string; // for uploaded PDF contracts
+  /**
+   * Bracket-field values keyed by the placeholder text (e.g. "PURPOSE — what
+   * are you discussing?"). Populated when the user fills `[BRACKETED]` chips
+   * in the WYSIWYG editor. Same key used across the document so filling one
+   * chip fills every duplicate.
+   */
+  fieldValues: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

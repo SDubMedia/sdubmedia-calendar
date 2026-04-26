@@ -147,6 +147,7 @@ export default function ContractsPage() {
   const [contractTemplateId, setContractTemplateId] = useState("");
   const [contractContent, setContractContent] = useState("");
   const [contractClientEmail, setContractClientEmail] = useState("");
+  const [contractFieldValues, setContractFieldValues] = useState<Record<string, string>>({});
 
   // Quick-add client
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -213,6 +214,7 @@ export default function ContractsPage() {
     setContractTemplateId("");
     setContractContent("");
     setContractClientEmail("");
+    setContractFieldValues({});
     setContractDialogOpen(true);
   }
 
@@ -290,6 +292,7 @@ export default function ContractsPage() {
       ownerSignature: null,
       clientEmail: contractClientEmail.trim(),
       signToken: token,
+      fieldValues: contractFieldValues,
     });
     toast.success("Contract created as draft");
     setContractDialogOpen(false);
@@ -885,6 +888,8 @@ export default function ContractsPage() {
                 onChange={setContractContent}
                 placeholder="Enter or paste contract text, or upload a PDF. Pick a template above to start from a legal-vetted draft."
                 minHeight="45vh"
+                fieldValues={contractFieldValues}
+                onFieldValuesChange={setContractFieldValues}
               />
             </div>
           </div>

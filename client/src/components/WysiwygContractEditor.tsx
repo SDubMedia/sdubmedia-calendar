@@ -210,6 +210,15 @@ interface Props {
   onChange: (html: string) => void;
   placeholder?: string;
   minHeight?: string;
+  /**
+   * Bracket-field value map keyed by the placeholder text. When provided,
+   * the editor renders chips with values pulled from this map (so duplicate
+   * `[PURPOSE]` chips share a single value), and edits flow through
+   * onFieldValuesChange instead of mutating chip attributes directly.
+   * Without it, the editor falls back to per-chip inline values (Tier 1).
+   */
+  fieldValues?: Record<string, string>;
+  onFieldValuesChange?: (values: Record<string, string>) => void;
 }
 
 // Bracket chip popover state — tracked at parent level so we can position
@@ -221,7 +230,7 @@ interface BracketEditState {
   rect: DOMRect;
 }
 
-export function WysiwygContractEditor({ value, onChange, placeholder, minHeight = "50vh" }: Props) {
+export function WysiwygContractEditor({ value, onChange, placeholder, minHeight = "50vh", fieldValues, onFieldValuesChange }: Props) {
   // Hold the latest onChange in a ref so the editor's onUpdate callback
   // doesn't need to be re-bound when the parent's onChange identity changes.
   const onChangeRef = useRef(onChange);
@@ -263,6 +272,31 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
     }
   }, [value, editor]);
 
+  // When fieldValues prop changes (parent updated the shared map), walk the
+  // doc and apply the matching value to every bracket chip with that
+  // placeholder. This is what makes duplicate `[PURPOSE]` chips share a value.
+  useEffect(() => {
+    if (!editor || !fieldValues) return;
+    const tr = editor.state.tr;
+    let modified = false;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "bracketField") return;
+      const expected = fieldValues[node.attrs.placeholder] || "";
+      if (node.attrs.value !== expected) {
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          value: expected,
+        });
+        modified = true;
+      }
+    });
+    if (modified) {
+      // emitUpdate:false equivalent — we're just hydrating, not user-editing.
+      tr.setMeta("addToHistory", false);
+      editor.view.dispatch(tr);
+    }
+  }, [editor, fieldValues]);
+
   // Click handler for bracket chips — opens the popover positioned over the chip.
   // Wired through useEffect so it sees the live editor instance.
   useEffect(() => {
@@ -297,23 +331,34 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
     editor.chain().focus().insertContent({ type: "mergeField", attrs: { field } }).run();
   };
 
-  const saveBracket = () => {
-    if (!editor || !bracketEdit) return;
-    const tr = editor.state.tr.setNodeMarkup(bracketEdit.pos, undefined, {
-      placeholder: bracketEdit.placeholder,
-      value: bracketDraft,
+  // Apply a value to ALL chips with the matching placeholder. Returns the
+  // new fieldValues map so the parent can persist it.
+  const applyValueToAllMatchingChips = (placeholder: string, newValue: string) => {
+    if (!editor) return;
+    const tr = editor.state.tr;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "bracketField" && node.attrs.placeholder === placeholder) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, value: newValue });
+      }
     });
     editor.view.dispatch(tr);
+    if (onFieldValuesChange) {
+      const next = { ...(fieldValues || {}) };
+      if (newValue) next[placeholder] = newValue;
+      else delete next[placeholder];
+      onFieldValuesChange(next);
+    }
+  };
+
+  const saveBracket = () => {
+    if (!bracketEdit) return;
+    applyValueToAllMatchingChips(bracketEdit.placeholder, bracketDraft);
     setBracketEdit(null);
   };
 
   const clearBracket = () => {
-    if (!editor || !bracketEdit) return;
-    const tr = editor.state.tr.setNodeMarkup(bracketEdit.pos, undefined, {
-      placeholder: bracketEdit.placeholder,
-      value: "",
-    });
-    editor.view.dispatch(tr);
+    if (!bracketEdit) return;
+    applyValueToAllMatchingChips(bracketEdit.placeholder, "");
     setBracketEdit(null);
   };
 
