@@ -113,3 +113,7 @@ backups/
 .vercel
 .env*.local
 .temp
+
+# Supabase CLI cache
+supabase/.temp/
+supabase/.branches/
