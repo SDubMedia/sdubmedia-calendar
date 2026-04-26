@@ -42,15 +42,23 @@ async function getContract(token: string, res: VercelResponse) {
   if (contract.status === "void") return res.status(400).json({ error: "This contract has been voided" });
   if (contract.client_signed_at) return res.status(200).json({ ...contract, alreadySigned: true });
 
-  // Get org name for branding
+  // Get org branding for the letterhead at the top of the contract.
   const { data: org } = await supabase.from("contracts").select("org_id").eq("sign_token", token).single();
   let orgName = "";
+  let orgLogo = "";
+  let orgBusinessInfo: Record<string, unknown> | null = null;
   if (org?.org_id) {
-    const { data: orgData } = await supabase.from("organizations").select("name").eq("id", org.org_id).single();
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("name, logo_url, business_info")
+      .eq("id", org.org_id)
+      .single();
     orgName = orgData?.name || "";
+    orgLogo = orgData?.logo_url || "";
+    orgBusinessInfo = (orgData?.business_info as Record<string, unknown>) || null;
   }
 
-  return res.status(200).json({ ...contract, orgName, alreadySigned: false });
+  return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, alreadySigned: false });
 }
 
 async function signContract(req: VercelRequest, res: VercelResponse) {

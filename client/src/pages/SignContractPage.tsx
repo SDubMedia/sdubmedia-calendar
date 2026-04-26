@@ -152,17 +152,48 @@ export default function SignContractPage() {
       </div>
 
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-        {/* Contract Content */}
-        {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(contract?.content || "") ? (
-          <div
-            className="bg-white rounded-xl shadow-sm border p-6 sm:p-8 text-gray-700 contract-html-light"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contract?.content || "") }}
-          />
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {contract?.content}
-          </div>
-        )}
+        {/* Contract document — letterhead + body in one paper-like card */}
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          {/* Letterhead */}
+          {(contract?.orgLogo || contract?.orgName) && (() => {
+            const bi = (contract?.orgBusinessInfo || {}) as Record<string, string | undefined>;
+            const contactBits = [bi.ownerName, bi.phone, bi.email].filter(Boolean).join(" | ");
+            const addressBits = [bi.address, bi.city, bi.state, bi.zip].filter(Boolean).join(", ");
+            return (
+              <div className="px-6 sm:px-10 pt-10 pb-6 text-center border-b border-gray-100">
+                {contract.orgLogo && (
+                  <img src={contract.orgLogo} alt={contract.orgName} className="mx-auto h-20 w-auto mb-5 object-contain" />
+                )}
+                <h2 className="text-2xl font-bold text-gray-900 mb-3" style={{ fontFamily: "'Source Serif Pro', Georgia, serif" }}>
+                  {contract.orgName}
+                </h2>
+                {contactBits && <p className="text-sm text-gray-600">{contactBits}</p>}
+                {addressBits && <p className="text-sm text-gray-600 mt-1">{addressBits}</p>}
+                {bi.website && (
+                  <p className="text-sm mt-1">
+                    <a href={bi.website} className="text-gray-700 underline" target="_blank" rel="noreferrer">
+                      {bi.website.replace(/^https?:\/\//, "")}
+                    </a>
+                  </p>
+                )}
+                <p className="text-base text-gray-700 mt-6 max-w-md mx-auto leading-relaxed">
+                  The contract is ready for review and signature. If you have any questions, just ask.
+                </p>
+              </div>
+            );
+          })()}
+          {/* Body */}
+          {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(contract?.content || "") ? (
+            <div
+              className="px-6 sm:px-10 py-8 text-gray-700 contract-html-light"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contract?.content || "") }}
+            />
+          ) : (
+            <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {contract?.content}
+            </div>
+          )}
+        </div>
 
         {/* Signature Section */}
         <div className="bg-white rounded-xl shadow-sm border p-6">

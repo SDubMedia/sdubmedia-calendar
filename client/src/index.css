@@ -255,16 +255,55 @@
   float: left;
 }
 
-/* Rendered contract on the public sign page (light theme paper) */
-.contract-html-light h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; color: rgb(24 24 27); font-family: 'Source Serif Pro', Georgia, serif; }
-.contract-html-light h2 { font-size: 1.2rem; font-weight: 600; margin: 1rem 0 0.4rem; color: rgb(39 39 42); font-family: 'Source Serif Pro', Georgia, serif; }
-.contract-html-light h3 { font-size: 1.05rem; font-weight: 600; margin: 0.8rem 0 0.3rem; color: rgb(39 39 42); font-family: 'Source Serif Pro', Georgia, serif; }
-.contract-html-light p { margin: 0.6rem 0; line-height: 1.6; color: rgb(63 63 70); font-family: 'Source Serif Pro', Georgia, serif; }
-.contract-html-light strong { color: rgb(24 24 27); font-weight: 600; }
-.contract-html-light ul, .contract-html-light ol { margin: 0.5rem 0 0.5rem 1.5rem; color: rgb(63 63 70); }
+/* Rendered contract on the public sign page — Honeybook-style clean sans
+   typography: big bold ALL-CAPS section headers, generous line height, lots
+   of breathing room. */
+.contract-html-light {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  color: rgb(39 39 42);
+}
+.contract-html-light h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 2.25rem 0 1rem;
+  color: rgb(17 24 39);
+}
+.contract-html-light h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 2rem 0 0.85rem;
+  color: rgb(17 24 39);
+}
+.contract-html-light h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1.25rem 0 0.5rem;
+  color: rgb(17 24 39);
+}
+.contract-html-light p {
+  margin: 0.85rem 0;
+  line-height: 1.65;
+  color: rgb(55 65 81);
+}
+.contract-html-light strong { color: rgb(17 24 39); font-weight: 700; }
+.contract-html-light em { font-style: italic; }
+.contract-html-light ul, .contract-html-light ol { margin: 0.75rem 0 0.75rem 1.5rem; color: rgb(55 65 81); }
 .contract-html-light ul { list-style: disc; }
 .contract-html-light ol { list-style: decimal; }
-.contract-html-light li { margin: 0.2rem 0; }
+.contract-html-light li { margin: 0.4rem 0; line-height: 1.65; }
+.contract-html-light h1:first-child,
+.contract-html-light h2:first-child { margin-top: 0; }
+.contract-html-light hr {
+  border: 0;
+  border-top: 1px solid rgb(229 231 235);
+  margin: 2rem 0;
+}
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
