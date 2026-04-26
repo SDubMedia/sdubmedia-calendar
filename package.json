@@ -11,8 +11,15 @@
     "check": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint client/src/",
-    "format": "prettier --write ."
+    "lint": "eslint client/src/ api/",
+    "format": "prettier --write .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "{client/src,api}/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "bash -c 'npx tsc --noEmit'"
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -104,6 +111,8 @@
     "eslint": "^10.1.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "pnpm": "^10.15.1",
     "postcss": "^8.4.47",
     "prettier": "^3.6.2",

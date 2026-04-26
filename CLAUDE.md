@@ -76,11 +76,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4. Business logic
     // 5. Return response
     return res.status(200).json({ ok: true });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed") });
   }
 }
 ```
+
+**`catch (err: any)` is forbidden.** Use `catch (err)` (TS infers `unknown`) and the shared `errorMessage(err, fallback)` helper from `api/_auth.ts`. Mirrors `err.message || fallback` semantics without the `any` escape hatch.
 
 **Public endpoints** (no auth): `contract-sign.ts`, `proposal-accept.ts`, `proposal-view.ts` — these use token-based verification instead of Bearer auth.
 
@@ -203,6 +205,11 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't use bare local imports in `api/` files.** Always use `.js` extensions: `from "./_auth.js"`. Never use `require()` — this is ESM.
 - **Don't reset form state in useEffect based on context data props.** With Supabase Realtime, any DB change gives props new references, which re-triggers the effect and wipes the form mid-edit. Use a `wasOpen` ref to only reset on open transition, or use event handlers (`openEdit()`/`openAdd()`) to populate forms instead.
 - **Don't portal to `document.body` from inside an open Radix Dialog/AlertDialog/Sheet without `pointer-events-auto`.** Radix locks `pointer-events: none` on body while a modal is open, so sibling portals are inert until you re-enable pointer events on the overlay. We've been burned by this twice on the invoice preview.
+- **Don't use `catch (err: any)`.** Use `catch (err)` and `errorMessage(err, fallback)` from `_auth.ts`. The `any` escape hatch is forbidden — TypeScript infers `unknown` in catch blocks under strict mode for a reason.
+- **Don't write to refs during render.** `myRef.current = value` belongs inside a `useEffect(() => { ... })` (no deps array). Writing during render breaks React's purity rules and can cause stale captures.
+- **Don't `setLoading(true)` before validation.** In any async submit handler, validate first (canvas exists, required fields filled, etc.), THEN flip the loading flag. We had a stuck-button bug on every signing surface (4 places) where missed validation left the button hung in "signing…" with no recovery.
+- **Don't use `window.location.href = url`.** Use `window.location.assign(url)` — same effect, doesn't trip React's purity/immutability rule.
+- **Don't write narrow useEffect deps without a `// eslint-disable-next-line react-hooks/exhaustive-deps` comment.** Sometimes deps must be narrowed (e.g. only re-fire on id-change, not on every realtime update). When you do that, leave a one-line comment naming the reason — bare disable comments are not OK.
 
 ## Security — Mandatory Rules
 
