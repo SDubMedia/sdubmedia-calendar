@@ -255,6 +255,51 @@
   float: left;
 }
 
+/* Bracketed-field chip — `[PURPOSE — what are you discussing?]` style
+   placeholders rendered as clickable atoms in the editor. Empty = amber hint;
+   filled = darker readable text with a subtle underline showing it was a field. */
+.bracket-chip {
+  display: inline-block;
+  padding: 0 6px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  font-size: 0.95em;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.bracket-chip-empty {
+  background: rgb(245 158 11 / 0.18);
+  color: rgb(252 211 77);
+  border-color: rgb(245 158 11 / 0.45);
+}
+.bracket-chip-empty:hover { background: rgb(245 158 11 / 0.28); }
+.bracket-chip-filled {
+  background: transparent;
+  color: rgb(228 228 231);
+  border-bottom: 1px dashed rgb(113 113 122 / 0.6);
+  border-radius: 0;
+  padding: 0 2px;
+  font-weight: 400;
+}
+.bracket-chip-filled:hover {
+  background: rgb(113 113 122 / 0.12);
+  border-bottom-color: rgb(113 113 122);
+}
+
+/* Light theme variant for the contract preview / sign page */
+.contract-html-light .bracket-chip-empty {
+  background: rgb(245 158 11 / 0.12);
+  color: rgb(180 83 9);
+  border-color: rgb(245 158 11 / 0.4);
+}
+.contract-html-light .bracket-chip-filled {
+  color: rgb(17 24 39);
+  border-bottom-color: rgb(156 163 175);
+}
+
 /* Rendered contract on the public sign page — Honeybook-style clean sans
    typography: big bold ALL-CAPS section headers, generous line height, lots
    of breathing room. */

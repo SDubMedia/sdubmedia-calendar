@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -38,6 +38,53 @@ const GROUP_LABEL: Record<MergeGroup, string> = {
   you: "From you",
   date: "Auto",
 };
+
+// Custom Tiptap node — a bracketed-field chip stands in for `[PURPOSE — what
+// are you discussing?]`-style placeholders in seeded templates. Atomic so
+// the cursor can't land inside; click opens a popover to fill the value.
+const BracketedFieldChip = Node.create({
+  name: "bracketField",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+
+  addAttributes() {
+    return {
+      placeholder: { default: "" },  // the original hint text from inside the brackets
+      value: { default: "" },         // user-entered value; empty = unfilled
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-bracket-field]",
+        getAttrs: (el) => ({
+          placeholder: (el as HTMLElement).getAttribute("data-placeholder") || "",
+          value: (el as HTMLElement).getAttribute("data-value") || "",
+        }),
+      },
+    ];
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const placeholder = node.attrs.placeholder as string;
+    const value = node.attrs.value as string;
+    const filled = !!value;
+    const display = filled ? value : `[${placeholder}]`;
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-bracket-field": "",
+        "data-placeholder": placeholder,
+        "data-value": value,
+        class: filled ? "bracket-chip bracket-chip-filled" : "bracket-chip bracket-chip-empty",
+      }),
+      display,
+    ];
+  },
+});
 
 // Custom Tiptap node — a merge field chip is atomic, inline, non-editable.
 const MergeFieldChip = Node.create({
@@ -96,16 +143,34 @@ function wrapMergeFields(escapedText: string): string {
   });
 }
 
+// Wrap `[BRACKETED HINT]` text as a clickable chip placeholder. Must start
+// with a capital letter so we don't false-match `[1.]` or `[item]`.
+function wrapBracketFields(escapedText: string): string {
+  return escapedText.replace(/\[([A-Z][^\]]{0,250})\]/g, (_, content) => {
+    const attrSafe = String(content).replace(/"/g, "&quot;");
+    return `<span data-bracket-field="" data-placeholder="${attrSafe}" data-value="" class="bracket-chip bracket-chip-empty">[${content}]</span>`;
+  });
+}
+
+// Wrap brackets in already-HTML content while skipping any that are already
+// inside a chip span — so existing wraps survive a re-load.
+function wrapBracketFieldsInHtml(html: string): string {
+  const parts = html.split(/(<span\s+data-bracket-field[^>]*>[\s\S]*?<\/span>)/);
+  return parts.map((part, i) => (i % 2 === 1 ? part : wrapBracketFields(part))).join("");
+}
+
 // Convert legacy plain-text contract bodies into HTML the editor can load.
 // Detects all-caps lines as headings (h1 for the first, h2 for subsequent).
 export function plainTextToHtml(text: string): string {
   if (!text) return "";
-  if (isHtml(text)) return text;
+  if (isHtml(text)) return wrapBracketFieldsInHtml(text);
 
   const lines = text.split(/\r?\n/);
   const out: string[] = [];
   let buffer: string[] = [];
   let sawAnyContent = false;
+
+  const wrapAll = (s: string) => wrapBracketFields(wrapMergeFields(s));
 
   const flushParagraph = () => {
     if (buffer.length === 0) return;
@@ -119,16 +184,19 @@ export function plainTextToHtml(text: string): string {
       flushParagraph();
       continue;
     }
+    // ALL-CAPS heading detection — but skip lines that are bracketed
+    // placeholders (e.g. `[FEE]`), which look all-caps but are content.
     const isAllCapsHeading =
+      !trimmed.startsWith("[") &&
       /^[\s\d.]*[A-Z][A-Z0-9\s.,&'\-—–]*$/.test(trimmed) &&
       trimmed.length < 90 &&
       !trimmed.endsWith(".");
     if (isAllCapsHeading) {
       flushParagraph();
       const tag = !sawAnyContent ? "h1" : "h2";
-      out.push(`<${tag}>${wrapMergeFields(escapeHtml(trimmed))}</${tag}>`);
+      out.push(`<${tag}>${wrapAll(escapeHtml(trimmed))}</${tag}>`);
     } else {
-      buffer.push(wrapMergeFields(escapeHtml(line)));
+      buffer.push(wrapAll(escapeHtml(line)));
     }
     sawAnyContent = true;
   }
@@ -144,6 +212,15 @@ interface Props {
   minHeight?: string;
 }
 
+// Bracket chip popover state — tracked at parent level so we can position
+// a single floating editor near the clicked chip.
+interface BracketEditState {
+  pos: number;
+  placeholder: string;
+  value: string;
+  rect: DOMRect;
+}
+
 export function WysiwygContractEditor({ value, onChange, placeholder, minHeight = "50vh" }: Props) {
   // Hold the latest onChange in a ref so the editor's onUpdate callback
   // doesn't need to be re-bound when the parent's onChange identity changes.
@@ -152,6 +229,9 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  const [bracketEdit, setBracketEdit] = useState<BracketEditState | null>(null);
+  const [bracketDraft, setBracketDraft] = useState("");
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -159,6 +239,7 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
       }),
       Placeholder.configure({ placeholder: placeholder || "Start typing or paste your contract..." }),
       MergeFieldChip,
+      BracketedFieldChip,
     ],
     content: plainTextToHtml(value || ""),
     editorProps: {
@@ -182,12 +263,58 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
     }
   }, [value, editor]);
 
+  // Click handler for bracket chips — opens the popover positioned over the chip.
+  // Wired through useEffect so it sees the live editor instance.
+  useEffect(() => {
+    if (!editor) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const chip = target.closest("[data-bracket-field]") as HTMLElement | null;
+      if (!chip) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const pos = editor.view.posAtDOM(chip, 0);
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node || node.type.name !== "bracketField") return;
+      setBracketEdit({
+        pos,
+        placeholder: node.attrs.placeholder,
+        value: node.attrs.value,
+        rect: chip.getBoundingClientRect(),
+      });
+      setBracketDraft(node.attrs.value);
+    };
+    const dom = editor.view.dom;
+    dom.addEventListener("click", handleClick);
+    return () => dom.removeEventListener("click", handleClick);
+  }, [editor]);
+
   if (!editor) {
     return <div className="bg-secondary border border-border rounded-md" style={{ minHeight }} />;
   }
 
   const insertMergeField = (field: string) => {
     editor.chain().focus().insertContent({ type: "mergeField", attrs: { field } }).run();
+  };
+
+  const saveBracket = () => {
+    if (!editor || !bracketEdit) return;
+    const tr = editor.state.tr.setNodeMarkup(bracketEdit.pos, undefined, {
+      placeholder: bracketEdit.placeholder,
+      value: bracketDraft,
+    });
+    editor.view.dispatch(tr);
+    setBracketEdit(null);
+  };
+
+  const clearBracket = () => {
+    if (!editor || !bracketEdit) return;
+    const tr = editor.state.tr.setNodeMarkup(bracketEdit.pos, undefined, {
+      placeholder: bracketEdit.placeholder,
+      value: "",
+    });
+    editor.view.dispatch(tr);
+    setBracketEdit(null);
   };
 
   return (
@@ -270,6 +397,66 @@ export function WysiwygContractEditor({ value, onChange, placeholder, minHeight 
       <div className="bg-secondary" style={{ minHeight }}>
         <EditorContent editor={editor} />
       </div>
+
+      {/* Bracket-field edit popover — fixed-positioned overlay near the chip */}
+      {bracketEdit && (
+        <>
+          {/* Backdrop to close on outside click */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setBracketEdit(null)}
+          />
+          <div
+            className="fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 w-[min(360px,calc(100vw-24px))]"
+            style={{
+              top: Math.min(bracketEdit.rect.bottom + 6, window.innerHeight - 180),
+              left: Math.max(12, Math.min(bracketEdit.rect.left, window.innerWidth - 372)),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">Fill in</p>
+            <p className="text-xs text-foreground/80 mb-2 leading-snug">{bracketEdit.placeholder}</p>
+            <input
+              autoFocus
+              type="text"
+              value={bracketDraft}
+              onChange={(e) => setBracketDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); saveBracket(); }
+                else if (e.key === "Escape") { e.preventDefault(); setBracketEdit(null); }
+              }}
+              placeholder="Type the value..."
+              className="w-full bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <div className="flex items-center justify-between mt-2 gap-2">
+              <button
+                type="button"
+                onClick={clearBracket}
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+                disabled={!bracketEdit.value}
+              >
+                Clear
+              </button>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBracketEdit(null)}
+                  className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveBracket}
+                  className="text-xs px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
