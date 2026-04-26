@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
+import { ContractLetterhead } from "@/components/ContractLetterhead";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -901,16 +902,25 @@ export default function ContractsPage() {
                 </span>
                 <span className="text-xs text-muted-foreground">{data.clients.find(c => c.id === viewContract.clientId)?.company}</span>
               </div>
-              {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(viewContract.content) ? (
-                <div
-                  className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed max-h-[50vh] overflow-y-auto contract-html-light"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }}
+              <div className="bg-white rounded-lg max-h-[60vh] overflow-y-auto border border-gray-200">
+                <ContractLetterhead
+                  orgName={data.organization?.name}
+                  ownerName={profile?.name}
+                  orgLogo={data.organization?.logoUrl}
+                  businessInfo={data.organization?.businessInfo}
+                  intro="The contract is ready for review and signature. If you have any questions, just ask."
                 />
-              ) : (
-                <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">
-                  {viewContract.content}
-                </div>
-              )}
+                {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(viewContract.content) ? (
+                  <div
+                    className="px-6 sm:px-10 py-8 contract-html-light"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }}
+                  />
+                ) : (
+                  <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {viewContract.content}
+                  </div>
+                )}
+              </div>
               {viewContract.clientSignature && (
                 <div className="bg-secondary/50 rounded-lg p-4">
                   <p className="text-xs text-muted-foreground mb-1">Client Signature</p>
