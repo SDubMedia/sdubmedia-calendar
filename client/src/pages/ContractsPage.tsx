@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
@@ -722,109 +723,120 @@ export default function ContractsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Template Detail Dialog — preview before edit */}
+      {/* Template Detail — desktop modal, mobile bottom-sheet feel via responsive
+          full-screen + pinned-bottom CTA. One layout, breakpoint-driven. */}
       <Dialog open={!!detailTpl} onOpenChange={(open) => !open && setDetailTplId(null)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90dvh] overflow-y-auto">
+        <DialogContent
+          className={cn(
+            "bg-card border-border text-foreground p-0 gap-0 overflow-hidden flex flex-col",
+            // Mobile: full viewport, no rounding
+            "max-w-[100vw] w-[100vw] h-[100dvh] rounded-none",
+            // Desktop: standard centered modal
+            "sm:max-w-3xl sm:w-auto sm:h-auto sm:max-h-[90dvh] sm:rounded-lg",
+          )}
+        >
           {detailTpl && (() => {
             const Icon = templateIcon(detailTpl.name);
             const cat = TEMPLATE_CATEGORIES[detailTpl.name] || "Custom";
+            const useCta = () => applyTemplateToNewContract(detailTpl);
+            const editCta = () => { setDetailTplId(null); openEditTemplate(detailTpl); };
+            const dupCta = async () => {
+              const copy = await addContractTemplate({ name: `${detailTpl.name} (Copy)`, content: detailTpl.content });
+              toast.success("Duplicated — opening your copy");
+              setDetailTplId(copy.id);
+            };
+            const delCta = async () => {
+              if (!confirm(`Delete "${detailTpl.name}"?`)) return;
+              await deleteContractTemplate(detailTpl.id);
+              setDetailTplId(null);
+              toast.success("Template deleted");
+            };
             return (
               <>
-                <DialogHeader>
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 rounded-lg bg-primary/10 p-2.5">
-                      <Icon className="w-5 h-5 text-primary" strokeWidth={1.75} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {detailTpl.name}
-                      </DialogTitle>
-                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">{cat}</p>
-                    </div>
+                {/* Sticky header — title + category + secondary-actions menu + desktop CTA */}
+                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 border-b border-border shrink-0">
+                  <div className="shrink-0 rounded-lg bg-primary/10 p-2">
+                    <Icon className="w-5 h-5 text-primary" strokeWidth={1.75} />
                   </div>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Used in</p>
-                      <p className="text-lg font-semibold text-foreground mt-0.5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {detailUsage.count} {detailUsage.count === 1 ? "contract" : "contracts"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Last used</p>
-                      <p className="text-sm font-semibold text-foreground mt-0.5">
-                        {detailUsage.lastUsed ? new Date(detailUsage.lastUsed).toLocaleDateString() : "Never"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-secondary/50 p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Length</p>
-                      <p className="text-sm font-semibold text-foreground mt-0.5">
-                        {detailTpl.content.length.toLocaleString()} chars
-                      </p>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <DialogTitle className="text-base sm:text-lg leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      {detailTpl.name}
+                    </DialogTitle>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mt-0.5">{cat}</p>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Preview</p>
-                      <p className="text-[10px] text-muted-foreground/60">This is what your client sees</p>
-                    </div>
-                    <div className="bg-white rounded-lg max-h-[60vh] overflow-y-auto border border-gray-200">
-                      <ContractLetterhead
-                        orgName={data.organization?.name}
-                        ownerName={profile?.name}
-                        orgLogo={data.organization?.logoUrl}
-                        businessInfo={data.organization?.businessInfo}
-                        intro="The contract is ready for review and signature. If you have any questions, just ask."
-                      />
-                      {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
-                        <div
-                          className="px-6 sm:px-10 py-8 contract-html-light"
-                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailTpl.content) }}
-                        />
-                      ) : (
-                        <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}>
-                          {detailTpl.content || "Empty template"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter className="gap-2 flex-row sm:justify-between">
-                  <Button
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={async () => {
-                      if (!confirm(`Delete "${detailTpl.name}"?`)) return;
-                      await deleteContractTemplate(detailTpl.id);
-                      setDetailTplId(null);
-                      toast.success("Template deleted");
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary touch-manipulation"
+                        aria-label="More actions"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={editCta}>
+                        <Edit3 className="w-4 h-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={dupCta}>
+                        <Copy className="w-4 h-4 mr-2" /> Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={delCta} className="text-destructive focus:text-destructive">
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button onClick={useCta} className="hidden sm:inline-flex">
+                    Use in new contract <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        const copy = await addContractTemplate({
-                          name: `${detailTpl.name} (Copy)`,
-                          content: detailTpl.content,
-                        });
-                        toast.success("Duplicated — opening your copy");
-                        setDetailTplId(copy.id);
-                      }}
-                    >
-                      <Copy className="w-4 h-4 mr-1.5" /> Duplicate
-                    </Button>
-                    <Button variant="outline" onClick={() => { setDetailTplId(null); openEditTemplate(detailTpl); }}>
-                      <Edit3 className="w-4 h-4 mr-1.5" /> Edit
-                    </Button>
-                    <Button onClick={() => applyTemplateToNewContract(detailTpl)}>
-                      <ArrowRight className="w-4 h-4 mr-1.5" /> Use in new contract
-                    </Button>
+                </div>
+
+                {/* Body — fills remaining height, scrolls internally. Inline stat
+                    line replaces the old 3-card grid; preview owns the fold. */}
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 space-y-3 min-h-0">
+                  <p className="text-xs text-muted-foreground">
+                    Used in <span className="text-foreground font-medium tabular-nums">{detailUsage.count}</span>{" "}
+                    {detailUsage.count === 1 ? "contract" : "contracts"}
+                    <span className="mx-1.5">·</span>
+                    Last used <span className="text-foreground font-medium">{detailUsage.lastUsed ? new Date(detailUsage.lastUsed).toLocaleDateString() : "Never"}</span>
+                    <span className="mx-1.5">·</span>
+                    <span className="text-foreground font-medium tabular-nums">{detailTpl.content.length.toLocaleString()}</span> chars
+                  </p>
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <ContractLetterhead
+                      orgName={data.organization?.name}
+                      ownerName={profile?.name}
+                      orgLogo={data.organization?.logoUrl}
+                      businessInfo={data.organization?.businessInfo}
+                      intro="The contract is ready for review and signature. If you have any questions, just ask."
+                    />
+                    {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
+                      <div
+                        className="px-6 sm:px-10 py-8 contract-html-light"
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailTpl.content) }}
+                      />
+                    ) : (
+                      <div
+                        className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap"
+                        style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}
+                      >
+                        {detailTpl.content || "Empty template"}
+                      </div>
+                    )}
                   </div>
-                </DialogFooter>
+                  <p className="text-[10px] text-muted-foreground/60 text-center pb-1">This is what your client sees when you send it</p>
+                </div>
+
+                {/* Mobile-only pinned CTA — safe-area-aware so it clears the iOS home indicator */}
+                <div
+                  className="sm:hidden border-t border-border bg-card p-3 shrink-0"
+                  style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+                >
+                  <Button onClick={useCta} className="w-full" size="lg">
+                    Use in new contract <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
               </>
             );
           })()}
