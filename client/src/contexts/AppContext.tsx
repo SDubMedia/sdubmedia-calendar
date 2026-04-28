@@ -583,7 +583,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    // Partner/Client: filter by assigned clientIds
+    // Partner/Client: filter by assigned clientIds.
+    // This must mirror what RLS allows when the user logs in directly — see
+    // migrations/2026-04-28-partner-rls-tighten.sql et al. Owner finance
+    // (contractor invoices, expenses, leads) is hidden entirely.
     if (clientIds.length > 0) {
       const allowedClientIds = new Set(clientIds);
       const allowedProjects = rawData.projects.filter(p => allowedClientIds.has(p.clientId));
@@ -596,6 +599,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
         proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
         deliveries: rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId)),
+        // Hidden from partners/clients entirely — owner-only data
+        contractorInvoices: [],
+        marketingExpenses: [],
+        businessExpenses: [],
+        pipelineLeads: [],
+        categoryRules: [],
+        manualTrips: [],
+        // Time entries — only show entries on allowed projects
+        timeEntries: rawData.timeEntries.filter(t => t.projectId && allowedProjectIds.has(t.projectId)),
       };
     }
 
