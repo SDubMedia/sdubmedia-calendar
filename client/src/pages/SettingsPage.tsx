@@ -33,6 +33,7 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "pipeline", label: "Sales Pipeline", description: "CRM pipeline for tracking leads and proposals" },
   { key: "proposals", label: "Proposals", description: "Create and send proposals with packages and e-signatures" },
   { key: "contracts", label: "Contracts", description: "Create and send contracts for e-signatures" },
+  { key: "deliveries", label: "Galleries", description: "Photo delivery + client proofing with optional paid extras" },
   { key: "invoicing", label: "Invoicing", description: "Create invoices, track payments, contractor invoices" },
   { key: "clientHealth", label: "Client Health", description: "Client engagement scoring and health dashboard" },
   { key: "contentSeries", label: "Content Series", description: "Plan multi-episode video series with AI brainstorming" },

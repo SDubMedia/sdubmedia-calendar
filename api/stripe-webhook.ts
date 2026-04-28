@@ -29,6 +29,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
 import { errorMessage } from "./_auth.js";
+import { saveSelectionsAndAlert } from "./delivery-public.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -105,6 +106,29 @@ async function applyPlan(orgId: string, plan: "pro" | "basic" | "free", billingS
 
 async function setBillingStatusByCustomer(customerId: string, billingStatus: "ok" | "past_due") {
   await supabase.from("organizations").update({ billing_status: billingStatus }).eq("stripe_customer_id", customerId);
+}
+
+async function handleDeliveryExtrasPaid(session: Stripe.Checkout.Session) {
+  const md = session.metadata || {};
+  const deliveryId = md.deliveryId;
+  const clientName = md.clientName;
+  const clientEmail = md.clientEmail;
+  const fileIdsRaw = md.fileIds;
+  if (!deliveryId || !clientName || !clientEmail || !fileIdsRaw) return;
+
+  let fileIds: string[];
+  try { fileIds = JSON.parse(fileIdsRaw); } catch { return; }
+  if (!Array.isArray(fileIds) || fileIds.length === 0) return;
+
+  // Reload the full delivery row — saveSelectionsAndAlert needs the org_id etc.
+  const { data: delivery } = await supabase.from("deliveries").select("*").eq("id", deliveryId).single();
+  if (!delivery) return;
+
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent?.id || null;
+
+  await saveSelectionsAndAlert(delivery, fileIds, clientName, clientEmail, true, paymentIntentId);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -206,7 +230,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "checkout.session.completed": {
-        // Invoice-payment mode (via Stripe Connect) — unrelated to SaaS subscription.
+        // Two checkout flavors via Stripe Connect:
+        //   - invoiceId metadata → invoice payment (existing flow)
+        //   - kind=delivery_extras metadata → delivery proofing extras (new flow)
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.mode === "payment" && session.metadata?.invoiceId) {
           const today = new Date().toISOString().slice(0, 10);
@@ -222,6 +248,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
             }
           }
+        } else if (session.mode === "payment" && session.metadata?.kind === "delivery_extras") {
+          await handleDeliveryExtrasPaid(session);
         }
         break;
       }

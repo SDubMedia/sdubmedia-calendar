@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -103,6 +103,16 @@ interface AppContextValue {
   addPersonalEvent: (e: Omit<PersonalEvent, "id" | "createdAt">) => Promise<PersonalEvent>;
   updatePersonalEvent: (id: string, e: Partial<PersonalEvent>) => Promise<void>;
   deletePersonalEvent: (id: string) => Promise<void>;
+  // Deliveries (galleries)
+  addDelivery: (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">) => Promise<Delivery>;
+  updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
+  deleteDelivery: (id: string) => Promise<void>;
+  setDeliveryStatus: (id: string, status: DeliveryStatus) => Promise<void>;
+  // Delivery files (metadata; actual upload goes through Storage SDK)
+  registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
+  deleteDeliveryFile: (id: string) => Promise<void>;
+  reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
+  markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
   // Trash
   restoreItem: (table: string, id: string) => Promise<void>;
   permanentlyDelete: (table: string, id: string) => Promise<void>;
@@ -462,6 +472,59 @@ function rowToPersonalEvent(r: any): PersonalEvent {
   };
 }
 
+function rowToDelivery(r: any): Delivery {
+  return {
+    id: r.id,
+    projectId: r.project_id || null,
+    title: r.title || "",
+    coverFileId: r.cover_file_id || null,
+    token: r.token || "",
+    hasPassword: !!r.password_hash,
+    expiresAt: r.expires_at || null,
+    selectionLimit: Number(r.selection_limit ?? 0),
+    perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
+    buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
+    status: (r.status || "draft") as DeliveryStatus,
+    clientName: r.client_name || null,
+    clientEmail: r.client_email || null,
+    submittedAt: r.submitted_at || null,
+    workingAt: r.working_at || null,
+    deliveredAt: r.delivered_at || null,
+    viewCount: Number(r.view_count ?? 0),
+    downloadCount: Number(r.download_count ?? 0),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function rowToDeliveryFile(r: any): DeliveryFile {
+  return {
+    id: r.id,
+    deliveryId: r.delivery_id,
+    storagePath: r.storage_path || "",
+    originalName: r.original_name || "",
+    sizeBytes: Number(r.size_bytes ?? 0),
+    width: r.width ?? null,
+    height: r.height ?? null,
+    mimeType: r.mime_type || "",
+    position: Number(r.position ?? 0),
+    downloadCount: Number(r.download_count ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToDeliverySelection(r: any): DeliverySelection {
+  return {
+    id: r.id,
+    deliveryId: r.delivery_id,
+    fileId: r.file_id,
+    isPaid: !!r.is_paid,
+    stripePaymentIntentId: r.stripe_payment_intent_id || null,
+    editedAt: r.edited_at || null,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToOrg(r: any): Organization {
   return {
     id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
@@ -483,7 +546,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], deliveries: [], deliveryFiles: [], deliverySelections: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -508,6 +571,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         p.postProduction.some(c => c.crewMemberId === crewMemberId)
       );
       const staffClientIds = new Set(staffProjects.map(p => p.clientId));
+      const staffProjectIds = new Set(staffProjects.map(p => p.id));
       return {
         ...rawData,
         projects: staffProjects,
@@ -515,19 +579,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: [],
         contracts: [],
         proposals: [],
+        deliveries: rawData.deliveries.filter(d => d.projectId && staffProjectIds.has(d.projectId)),
       };
     }
 
     // Partner/Client: filter by assigned clientIds
     if (clientIds.length > 0) {
       const allowedClientIds = new Set(clientIds);
+      const allowedProjects = rawData.projects.filter(p => allowedClientIds.has(p.clientId));
+      const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
       return {
         ...rawData,
         clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
-        projects: rawData.projects.filter(p => allowedClientIds.has(p.clientId)),
+        projects: allowedProjects,
         invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
         contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
         proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
+        deliveries: rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId)),
       };
     }
 
@@ -561,6 +629,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
         { data: personalEventsData, error: _e8b },
+        { data: deliveriesData, error: _e8c },
+        { data: deliveryFilesData, error: _e8d },
+        { data: deliverySelectionsData, error: _e8e },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
@@ -584,6 +655,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         supabase.from("personal_events").select("*").order("date"),
+        supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
+        supabase.from("delivery_files").select("*").order("position"),
+        supabase.from("delivery_selections").select("*").order("created_at"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
@@ -612,6 +686,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
+        deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
+        deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
+        deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
         organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
@@ -658,6 +735,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
       series: { key: "series", convert: rowToSeries },
       personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      deliveries: { key: "deliveries", convert: rowToDelivery },
+      delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
+      delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
       organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
     };
 
@@ -1106,6 +1186,120 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("personal_events").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, personalEvents: d.personalEvents.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Deliveries (galleries) ----
+  const addDelivery = useCallback(async (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">): Promise<Delivery> => {
+    const id = nanoid(10);
+    const token = nanoid(16); // longer for public URL — harder to guess
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("deliveries").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      project_id: d.projectId, title: d.title, cover_file_id: d.coverFileId,
+      token, expires_at: d.expiresAt,
+      selection_limit: d.selectionLimit, per_extra_photo_cents: d.perExtraPhotoCents,
+      buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
+      updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const delivery = rowToDelivery(row);
+    setRawData(d => ({ ...d, deliveries: [delivery, ...d.deliveries] }));
+    return delivery;
+  }, [orgId]);
+
+  const updateDelivery = useCallback(async (id: string, d: Partial<Delivery>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (d.title !== undefined) patch.title = d.title;
+    if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
+    if (d.projectId !== undefined) patch.project_id = d.projectId;
+    if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
+    if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
+    if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
+    if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;
+    if (d.status !== undefined) patch.status = d.status;
+    const { error } = await supabase.from("deliveries").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({ ...s, deliveries: s.deliveries.map(x => x.id === id ? { ...x, ...d, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteDelivery = useCallback(async (id: string) => {
+    // Hard delete (cascades to delivery_files + delivery_selections via FK).
+    // Storage-side cleanup happens via the API endpoint, which can also unlink R2 objects.
+    const { error } = await supabase.from("deliveries").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveries: s.deliveries.filter(x => x.id !== id),
+      deliveryFiles: s.deliveryFiles.filter(f => f.deliveryId !== id),
+      deliverySelections: s.deliverySelections.filter(sel => sel.deliveryId !== id),
+    }));
+  }, []);
+
+  const setDeliveryStatus = useCallback(async (id: string, status: DeliveryStatus) => {
+    const now = new Date().toISOString();
+    const patch: any = { status, updated_at: now };
+    if (status === "submitted") patch.submitted_at = now;
+    else if (status === "working") patch.working_at = now;
+    else if (status === "delivered") patch.delivered_at = now;
+    const { error } = await supabase.from("deliveries").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveries: s.deliveries.map(x => x.id === id
+        ? { ...x, status, updatedAt: now,
+            submittedAt: status === "submitted" ? now : x.submittedAt,
+            workingAt: status === "working" ? now : x.workingAt,
+            deliveredAt: status === "delivered" ? now : x.deliveredAt }
+        : x),
+    }));
+  }, []);
+
+  const registerDeliveryFile = useCallback(async (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">): Promise<DeliveryFile> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("delivery_files").insert({
+      id, delivery_id: f.deliveryId, ...(orgId ? { org_id: orgId } : {}),
+      storage_path: f.storagePath, original_name: f.originalName,
+      size_bytes: f.sizeBytes, width: f.width, height: f.height,
+      mime_type: f.mimeType, position: f.position,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const file = rowToDeliveryFile(row);
+    setRawData(s => ({ ...s, deliveryFiles: [...s.deliveryFiles, file] }));
+    return file;
+  }, [orgId]);
+
+  const deleteDeliveryFile = useCallback(async (id: string) => {
+    const { error } = await supabase.from("delivery_files").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({ ...s, deliveryFiles: s.deliveryFiles.filter(f => f.id !== id) }));
+  }, []);
+
+  const reorderDeliveryFiles = useCallback(async (deliveryId: string, orderedIds: string[]) => {
+    // Update positions in a single round-trip via .upsert on (id, position).
+    const updates = orderedIds.map((id, i) => ({ id, position: i }));
+    const { error } = await supabase.from("delivery_files").upsert(updates, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+    setRawData(s => {
+      const positionMap = new Map(orderedIds.map((id, i) => [id, i]));
+      return {
+        ...s,
+        deliveryFiles: s.deliveryFiles.map(f =>
+          f.deliveryId === deliveryId && positionMap.has(f.id)
+            ? { ...f, position: positionMap.get(f.id)! }
+            : f
+        ),
+      };
+    });
+  }, []);
+
+  const markSelectionEdited = useCallback(async (selectionId: string, edited: boolean) => {
+    const editedAt = edited ? new Date().toISOString() : null;
+    const { error } = await supabase.from("delivery_selections").update({ edited_at: editedAt }).eq("id", selectionId);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliverySelections: s.deliverySelections.map(sel => sel.id === selectionId ? { ...sel, editedAt } : sel),
+    }));
   }, []);
 
   // ---- Trash ----
@@ -1658,6 +1852,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposal, updateProposal, deleteProposal,
       addPipelineLead, updatePipelineLead, deletePipelineLead,
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
+      addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
+      registerDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       restoreItem, permanentlyDelete,
       updateOrganization,
     }}>

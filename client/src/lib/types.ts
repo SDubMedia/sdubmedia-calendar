@@ -17,6 +17,7 @@ export interface OrgFeatures {
   pipeline: boolean;
   proposals: boolean;
   contracts: boolean;
+  deliveries: boolean;
   clientHealth: boolean;
   profitLoss: boolean;
   contractor1099: boolean;
@@ -43,6 +44,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
   pipeline: true,
   proposals: true,
   contracts: true,
+  deliveries: true,
   clientHealth: true,
   profitLoss: true,
   contractor1099: true,
@@ -769,6 +771,65 @@ export interface PersonalEvent {
   createdAt: string;
 }
 
+// ----------------------------------------------------------------------
+// Galleries (deliveries)
+// ----------------------------------------------------------------------
+
+export type DeliveryStatus = "draft" | "sent" | "submitted" | "working" | "delivered";
+
+export interface DeliveryFile {
+  id: string;
+  deliveryId: string;
+  storagePath: string;
+  originalName: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  mimeType: string;
+  position: number;
+  downloadCount: number;
+  createdAt: string;
+}
+
+export interface DeliverySelection {
+  id: string;
+  deliveryId: string;
+  fileId: string;
+  isPaid: boolean;
+  stripePaymentIntentId: string | null;
+  editedAt: string | null;
+  createdAt: string;
+}
+
+export interface Delivery {
+  id: string;
+  projectId: string | null;
+  title: string;
+  coverFileId: string | null;
+  token: string;
+  hasPassword: boolean;          // never expose the hash; UI just needs to know it's set
+  expiresAt: string | null;
+
+  // Proofing config
+  selectionLimit: number;        // 0 disables proofing entirely
+  perExtraPhotoCents: number;    // 0 = no per-photo upsell
+  buyAllFlatCents: number;       // 0 = no flat unlock-all option
+
+  status: DeliveryStatus;
+
+  clientName: string | null;
+  clientEmail: string | null;
+  submittedAt: string | null;
+  workingAt: string | null;
+  deliveredAt: string | null;
+
+  viewCount: number;
+  downloadCount: number;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppData {
   clients: Client[];
   crewMembers: CrewMember[];
@@ -791,5 +852,8 @@ export interface AppData {
   pipelineLeads: PipelineLead[];
   series: Series[];
   personalEvents: PersonalEvent[];
+  deliveries: Delivery[];
+  deliveryFiles: DeliveryFile[];
+  deliverySelections: DeliverySelection[];
   organization: Organization | null;
 }

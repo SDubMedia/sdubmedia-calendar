@@ -41,10 +41,12 @@ const ProfitLossPage = lazy(() => import("./pages/ProfitLossPage"));
 const BusinessExpensesPage = lazy(() => import("./pages/BusinessExpensesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ContractsPage = lazy(() => import("./pages/ContractsPage"));
+const DeliveriesPage = lazy(() => import("./pages/DeliveriesPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
+const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
 const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
@@ -136,6 +138,8 @@ function Router() {
         <Route path="/profit-loss" component={ProfitLossPage} />
         <Route path="/expenses" component={BusinessExpensesPage} />
         <Route path="/contracts" component={ContractsPage} />
+        <Route path="/deliveries" component={DeliveriesPage} />
+        <Route path="/deliveries/:id" component={DeliveriesPage} />
         <Route path="/proposals" component={ProposalsPage} />
         <Route path="/pipeline" component={PipelinePage} />
         <Route path="/1099" component={ContractorSummaryPage} />
@@ -184,6 +188,19 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/proposal/:token" component={ViewProposalPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/deliver/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/deliver/:token" component={DeliverGalleryPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>
