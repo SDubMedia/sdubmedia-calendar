@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Users, Package, Lock, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles, MoreHorizontal } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
@@ -45,9 +45,7 @@ const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing">
   "Video Production Contract": "Agreements",
   "Proposal / Statement of Work": "Agreements",
   "Independent Contractor Agreement": "Agreements",
-  "Crew Deal Memo": "Agreements",
   "Equipment Rental Agreement": "Agreements",
-  "Mutual NDA": "Agreements",
   "Model Release": "Releases & Licensing",
   "Minor Model Release": "Releases & Licensing",
   "Location Release": "Releases & Licensing",
@@ -91,9 +89,7 @@ const TEMPLATE_ICONS: Record<string, LucideIcon> = {
   "Video Production Contract": Clapperboard,
   "Proposal / Statement of Work": ScrollText,
   "Independent Contractor Agreement": Handshake,
-  "Crew Deal Memo": Users,
   "Equipment Rental Agreement": Package,
-  "Mutual NDA": Lock,
   "Model Release": UserCheck,
   "Minor Model Release": Baby,
   "Location Release": MapPin,
