@@ -140,7 +140,15 @@ export default function ReportsPage() {
     // Earnings splits — use client's partnerSplit if available, otherwise SDub-only split
     const selectedClient = selectedClientId !== "all" ? data.clients.find(c => c.id === selectedClientId) : null;
     const split = selectedClient?.partnerSplit;
-    const partnerName = split?.partnerName || null;
+    // When a single client is selected, use its partnerName. When viewing
+    // "all" but the visible roster has exactly one partner-split client
+    // (the partner-impersonation case for Dan/Sandra), surface that name
+    // anyway so the report shows the partner/admin breakdown to that user.
+    const visiblePartnerSplitClients = data.clients.filter(c => c.partnerSplit);
+    const fallbackPartnerName = visiblePartnerSplitClients.length === 1
+      ? (visiblePartnerSplitClients[0].partnerSplit?.partnerName || null)
+      : null;
+    const partnerName = split?.partnerName || fallbackPartnerName;
     const useNewSplitLogic = split && (yr > 2026 || (yr === 2026 && monthNum >= 3));
 
     let ownerCut = 0;
@@ -596,9 +604,9 @@ export default function ReportsPage() {
           <table class="pay-table">
             <thead><tr><th>Person</th><th style="text-align:right">Amount to Pay</th></tr></thead>
             <tbody>${payTableRows}
-              ${partnerName ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
-              ${split ? `<tr><td>Geoff Southworth (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
-              ${split && grossBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(grossBudgetContribution)}</td></tr>` : ""}
+              ${partnerName && ownerCut > 0 ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
+              ${adminCut > 0 ? `<tr><td>SDub Media (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
+              ${grossBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(grossBudgetContribution)}</td></tr>` : ""}
             </tbody>
             <tfoot><tr class="pay-total"><td><strong>Total to Pay</strong></td><td style="text-align:right">${formatCurrency(totalBilling)}</td></tr></tfoot>
           </table>
