@@ -133,6 +133,14 @@ interface CreateInput {
   expiresAt: string | null;
   status: DeliveryStatus;
   coverFileId: string | null;
+  coverLayout: "center" | "vintage" | "minimal";
+  coverSubtitle: string | null;
+  coverDate: string | null;
+  slug: string | null;
+  requireEmail: boolean;
+  collectionId: string | null;
+  watermarkText: string | null;
+  printsEnabled: boolean;
 }
 
 function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (g: CreateInput) => void }) {
@@ -206,6 +214,14 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               expiresAt: expiresAt || null,
               status: "draft",
               coverFileId: null,
+              coverLayout: "center",
+              coverSubtitle: null,
+              coverDate: null,
+              slug: null,
+              requireEmail: false,
+              collectionId: null,
+              watermarkText: null,
+              printsEnabled: false,
             })}
             disabled={!title.trim()}
             className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
@@ -226,6 +242,7 @@ function DeliveryDetail({ id }: { id: string }) {
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
+  const [activeTab, setActiveTab] = useState<"photos" | "general" | "cover" | "privacy" | "selections">("photos");
 
   const delivery = data.deliveries.find(d => d.id === id);
   const files = useMemo(
@@ -274,7 +291,10 @@ function DeliveryDetail({ id }: { id: string }) {
     );
   }
 
-  const publicUrl = `${PUBLIC_BASE}/deliver/${delivery.token}`;
+  // Prefer the vanity URL when the owner has set a slug; otherwise the random token link.
+  const publicUrl = delivery.slug
+    ? `${PUBLIC_BASE}/g/${delivery.slug}`
+    : `${PUBLIC_BASE}/deliver/${delivery.token}`;
   const totalSize = files.reduce((s, f) => s + f.sizeBytes, 0);
 
   async function handleFiles(fileList: FileList | null) {
@@ -417,48 +437,132 @@ function DeliveryDetail({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Status controls */}
-      <div className="flex flex-wrap gap-2 mb-6 text-xs">
-        <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
-        <StatusButton current={delivery.status} target="sent" onClick={() => setDeliveryStatus(id, "sent")} label="Send to client" />
-        <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
-        <StatusButton current={delivery.status} target="delivered" onClick={() => setDeliveryStatus(id, "delivered")} label="Mark delivered" />
+      {/* Tabs — Pixieset-style left nav (collapsed to top tabs on mobile) */}
+      <div className="flex items-center gap-1 mb-6 border-b border-white/10 overflow-x-auto -mx-1 px-1">
+        {(["photos", "general", "cover", "privacy", "selections"] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t)}
+            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap border-b-2 transition-colors ${
+              activeTab === t ? "border-[#0088ff] text-white" : "border-transparent text-slate-400 hover:text-white"
+            }`}
+          >
+            {t === "photos" ? `Photos (${files.length})`
+              : t === "general" ? "General"
+              : t === "cover" ? "Cover"
+              : t === "privacy" ? "Privacy"
+              : `Selections${selections.length > 0 ? ` (${selections.length})` : ""}`}
+          </button>
+        ))}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm">
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Photos</div>
-          <div className="text-lg font-semibold">{files.length}</div>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Storage</div>
-          <div className="text-lg font-semibold">{(totalSize / 1024 / 1024).toFixed(1)} MB</div>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Views</div>
-          <div className="text-lg font-semibold">{delivery.viewCount}</div>
-        </div>
-        {proofingEnabled && (
-          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Picks</div>
-            <div className="text-lg font-semibold">{selections.length}</div>
+      {activeTab === "photos" && (
+        <>
+          {/* Stats compact strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm">
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Photos</div>
+              <div className="text-lg font-semibold">{files.length}</div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Storage</div>
+              <div className="text-lg font-semibold">{(totalSize / 1024 / 1024).toFixed(1)} MB</div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Views</div>
+              <div className="text-lg font-semibold">{delivery.viewCount}</div>
+            </div>
+            {proofingEnabled && (
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Picks</div>
+                <div className="text-lg font-semibold">{selections.length}</div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Submitted-by panel */}
-      {delivery.submittedAt && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-6">
-          <p className="text-sm">
-            <strong>{delivery.clientName || "Client"}</strong>
-            {delivery.clientEmail && <span className="text-slate-400"> · {delivery.clientEmail}</span>}
-            <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
-          </p>
-          <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
-        </div>
+        </>
       )}
 
+      {activeTab === "general" && (
+        <>
+          <BasicsPanel
+            title={delivery.title}
+            projectId={delivery.projectId}
+            projects={data.projects}
+            clients={data.clients}
+            onUpdate={(patch) => updateDelivery(id, patch)}
+          />
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Status</h3>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
+              <StatusButton current={delivery.status} target="sent" onClick={() => setDeliveryStatus(id, "sent")} label="Send to client" />
+              <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
+              <StatusButton current={delivery.status} target="delivered" onClick={() => setDeliveryStatus(id, "delivered")} label="Mark delivered" />
+            </div>
+          </div>
+          <ExpiryPanel
+            expiresAt={delivery.expiresAt}
+            onUpdate={(v) => updateDelivery(id, { expiresAt: v })}
+          />
+          <CollectionPanel
+            collectionId={delivery.collectionId}
+            onUpdate={(v) => updateDelivery(id, { collectionId: v })}
+          />
+          <WatermarkPanel
+            watermarkText={delivery.watermarkText}
+            onUpdate={(v) => updateDelivery(id, { watermarkText: v })}
+          />
+          <PrintsPanel
+            printsEnabled={delivery.printsEnabled}
+            onUpdate={(v) => updateDelivery(id, { printsEnabled: v })}
+          />
+        </>
+      )}
+
+      {activeTab === "cover" && (
+        <CoverDesignPanel
+          delivery={delivery}
+          files={files}
+          signedUrls={signedUrls}
+          onUpdate={(patch) => updateDelivery(id, patch)}
+        />
+      )}
+
+      {activeTab === "privacy" && (
+        <>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Password</h3>
+            <button onClick={() => setPwOpen(true)} className="text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04] inline-flex items-center gap-1.5">
+              <Lock className="w-3 h-3" /> {delivery.hasPassword ? "Change password" : "Set password"}
+            </button>
+            {delivery.hasPassword && <p className="text-[11px] text-slate-500 mt-2">A password is set. Visitors enter it before viewing.</p>}
+          </div>
+          <PrivacyPanel
+            requireEmail={delivery.requireEmail}
+            onUpdate={(v) => updateDelivery(id, { requireEmail: v })}
+          />
+        </>
+      )}
+
+      {activeTab === "selections" && (
+        <>
+          {delivery.submittedAt ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-6">
+              <p className="text-sm">
+                <strong>{delivery.clientName || "Client"}</strong>
+                {delivery.clientEmail && <span className="text-slate-400"> · {delivery.clientEmail}</span>}
+                <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
+              </p>
+              <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 py-8 text-center">No selections submitted yet.</p>
+          )}
+        </>
+      )}
+
+      {activeTab === "photos" && (
+      <>
       {/* Upload zone — drag-drop OR click to browse */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -539,14 +643,398 @@ function DeliveryDetail({ id }: { id: string }) {
           })}
         </div>
       )}
+      </>
+      )}
 
-      <div className="mt-10 pt-6 border-t border-white/10 flex justify-end">
-        <button onClick={handleDeleteGallery} className="text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1">
-          <Trash2 className="w-4 h-4" /> Delete gallery
-        </button>
-      </div>
+      {activeTab === "general" && (
+        <div className="mt-10 pt-6 border-t border-white/10 flex justify-end">
+          <button onClick={handleDeleteGallery} className="text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1">
+            <Trash2 className="w-4 h-4" /> Delete gallery
+          </button>
+        </div>
+      )}
 
       {pwOpen && <PasswordDialog hasPassword={delivery.hasPassword} onClose={() => setPwOpen(false)} onSave={async (pw) => { await setPassword(pw); setPwOpen(false); }} />}
+    </div>
+  );
+}
+
+type CoverLayoutId = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+
+interface CoverDesignProps {
+  delivery: { coverFileId: string | null; coverLayout: CoverLayoutId; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  files: Array<{ id: string; originalName: string }>;
+  signedUrls: Map<string, string>;
+  onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
+}
+
+function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesignProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [subtitle, setSubtitle] = useState(delivery.coverSubtitle || "");
+  const [date, setDate] = useState(delivery.coverDate || "");
+  const [slug, setSlug] = useState(delivery.slug || "");
+
+  // Sync local state when delivery changes (e.g. after save echo from realtime)
+  useEffect(() => { setSubtitle(delivery.coverSubtitle || ""); }, [delivery.coverSubtitle]);
+  useEffect(() => { setDate(delivery.coverDate || ""); }, [delivery.coverDate]);
+  useEffect(() => { setSlug(delivery.slug || ""); }, [delivery.slug]);
+
+  const coverFile = files.find(f => f.id === delivery.coverFileId);
+  const coverUrl = coverFile ? signedUrls.get(coverFile.id) : undefined;
+
+  const layouts: Array<{ id: CoverLayoutId; label: string; hint: string }> = [
+    { id: "center", label: "Center", hint: "Title centered over hero" },
+    { id: "vintage", label: "Vintage", hint: "Bottom-left serif over dark hero" },
+    { id: "left", label: "Left", hint: "Bottom-left, lighter overlay" },
+    { id: "stripe", label: "Stripe", hint: "Title with horizontal accent stripes" },
+    { id: "frame", label: "Frame", hint: "Title inside a bordered frame" },
+    { id: "divider", label: "Divider", hint: "Title with horizontal divider line" },
+    { id: "stamp", label: "Stamp", hint: "Title in circular badge" },
+    { id: "outline", label: "Outline", hint: "Outline-only typography" },
+    { id: "minimal", label: "Minimal", hint: "Typography only, no hero image" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Cover & Design</h3>
+
+      {/* Layout chips */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {layouts.map(l => (
+          <button
+            key={l.id}
+            onClick={() => onUpdate({ coverLayout: l.id })}
+            className={`text-left px-3 py-2 rounded-lg border text-xs ${
+              delivery.coverLayout === l.id
+                ? "border-[#0088ff] bg-[#0088ff]/10"
+                : "border-white/10 hover:border-white/20"
+            }`}
+          >
+            <div className="font-semibold text-white">{l.label}</div>
+            <div className="text-slate-500 text-[10px] mt-0.5">{l.hint}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Cover image picker */}
+      {delivery.coverLayout !== "minimal" && (
+        <div className="mb-4">
+          <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cover photo</label>
+          <button
+            onClick={() => setPickerOpen(true)}
+            disabled={files.length === 0}
+            className="w-full aspect-[3/1] bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
+          >
+            {coverUrl ? (
+              <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+            ) : files.length === 0 ? (
+              "Upload photos first"
+            ) : (
+              `Pick a cover (defaults to first photo)`
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Subtitle + Date */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Subtitle (optional)</label>
+          <input
+            type="text"
+            value={subtitle}
+            onChange={(e) => setSubtitle(e.target.value)}
+            onBlur={() => { if (subtitle !== (delivery.coverSubtitle || "")) onUpdate({ coverSubtitle: subtitle || null }); }}
+            placeholder="e.g. Coldwell Banker · Brentwood"
+            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Date (optional)</label>
+          <input
+            type="text"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onBlur={() => { if (date !== (delivery.coverDate || "")) onUpdate({ coverDate: date || null }); }}
+            placeholder="16th March, 2026"
+            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+          />
+        </div>
+      </div>
+
+      {/* Vanity URL slug */}
+      <div className="mt-3">
+        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Custom URL (optional)</label>
+        <div className="flex items-stretch gap-0">
+          <span className="bg-white/[0.03] border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/g/</span>
+          <input
+            type="text"
+            value={slug}
+            onChange={(e) => setSlug(slugify(e.target.value))}
+            onBlur={async () => {
+              if (slug !== (delivery.slug || "")) {
+                try {
+                  await onUpdate({ slug: slug || null });
+                  if (slug) toast.success(`URL set: /g/${slug}`);
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "";
+                  if (msg.includes("duplicate") || msg.includes("unique")) {
+                    toast.error("That URL is already taken — try a different slug");
+                  } else {
+                    toast.error("Couldn't save URL", { description: msg });
+                  }
+                  setSlug(delivery.slug || "");
+                }
+              }
+            }}
+            placeholder="cbsr-awards-2026"
+            className="flex-1 bg-white/[0.03] border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+          />
+        </div>
+        <p className="text-[10px] text-slate-500 mt-1">Lowercase letters, numbers, dashes. Leave blank to use the random share link only.</p>
+      </div>
+
+      {/* Picker dialog */}
+      {pickerOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPickerOpen(false)}>
+          <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">Choose cover photo</h2>
+              <button onClick={() => setPickerOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {files.map(f => {
+                const url = signedUrls.get(f.id);
+                const isSel = delivery.coverFileId === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={async () => { await onUpdate({ coverFileId: f.id }); setPickerOpen(false); }}
+                    className={`relative aspect-square overflow-hidden rounded-lg border-2 ${isSel ? "border-[#0088ff]" : "border-transparent hover:border-white/30"}`}
+                  >
+                    {url ? <img src={url} alt={f.originalName} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-800" />}
+                    {isSel && <div className="absolute top-2 right-2 bg-[#0088ff] text-white text-[10px] px-2 py-0.5 rounded">Selected</div>}
+                  </button>
+                );
+              })}
+            </div>
+            {delivery.coverFileId && (
+              <button
+                onClick={async () => { await onUpdate({ coverFileId: null }); setPickerOpen(false); }}
+                className="mt-4 text-xs text-slate-400 hover:text-white"
+              >
+                Clear cover (use first photo)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BasicsPanel({ title, projectId, projects, clients, onUpdate }: {
+  title: string;
+  projectId: string | null;
+  projects: Project[];
+  clients: Client[];
+  onUpdate: (patch: { title?: string; projectId?: string | null }) => Promise<void>;
+}) {
+  const [t, setT] = useState(title);
+  const [p, setP] = useState(projectId || "");
+  useEffect(() => { setT(title); }, [title]);
+  useEffect(() => { setP(projectId || ""); }, [projectId]);
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Basics</h3>
+      <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Title</label>
+      <input
+        type="text"
+        value={t}
+        onChange={(e) => setT(e.target.value)}
+        onBlur={() => { if (t.trim() && t !== title) onUpdate({ title: t.trim() }); }}
+        placeholder="Gallery title"
+        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] mb-3"
+      />
+      <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Project</label>
+      <select
+        value={p}
+        onChange={(e) => {
+          const next = e.target.value || null;
+          setP(e.target.value);
+          onUpdate({ projectId: next });
+        }}
+        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+      >
+        <option value="">— No project —</option>
+        {projects.map((proj) => (
+          <option key={proj.id} value={proj.id}>{projectLabel(proj, clients)}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | null; onUpdate: (v: string | null) => Promise<void> }) {
+  const { data, addDeliveryCollection } = useApp();
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Collection</h3>
+      <p className="text-[11px] text-slate-500 mb-3">Group several galleries under a shared landing URL <span className="text-slate-400">/c/&lt;slug&gt;</span>.</p>
+      <div className="flex items-center gap-2">
+        <select
+          value={collectionId || ""}
+          onChange={(e) => onUpdate(e.target.value || null)}
+          className="bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] flex-1"
+        >
+          <option value="">— Standalone (no collection) —</option>
+          {data.deliveryCollections.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.slug ? ` (/c/${c.slug})` : ""}</option>
+          ))}
+        </select>
+        {!creating && (
+          <button onClick={() => setCreating(true)} className="text-xs text-[#0088ff] hover:underline whitespace-nowrap">New collection</button>
+        )}
+      </div>
+      {creating && (
+        <div className="flex items-center gap-2 mt-3">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Collection name"
+            className="flex-1 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+            autoFocus
+          />
+          <button
+            onClick={async () => {
+              if (!newName.trim()) return;
+              try {
+                const c = await addDeliveryCollection({ name: newName.trim(), slug: null, coverSubtitle: null });
+                await onUpdate(c.id);
+                setCreating(false);
+                setNewName("");
+                toast.success(`Collection "${c.name}" created`);
+              } catch (err) {
+                toast.error("Couldn't create", { description: err instanceof Error ? err.message : "" });
+              }
+            }}
+            className="px-3 py-2 bg-[#0088ff] text-white rounded-lg text-sm font-semibold whitespace-nowrap"
+          >Create</button>
+          <button onClick={() => { setCreating(false); setNewName(""); }} className="text-xs text-slate-400 hover:text-white">Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WatermarkPanel({ watermarkText, onUpdate }: { watermarkText: string | null; onUpdate: (v: string | null) => Promise<void> }) {
+  const [val, setVal] = useState(watermarkText || "");
+  useEffect(() => { setVal(watermarkText || ""); }, [watermarkText]);
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Watermark</h3>
+      <input
+        type="text"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={() => { if (val !== (watermarkText || "")) onUpdate(val || null); }}
+        placeholder="© Your Name 2026"
+        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+      />
+      <p className="text-[11px] text-slate-500 mt-2">Tiled overlay across the public gallery. Deters casual screenshots; the underlying image isn't modified — paid clients still get clean originals via download.</p>
+    </div>
+  );
+}
+
+function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Print orders</h3>
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={printsEnabled}
+          onChange={(e) => onUpdate(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">Allow clients to request prints</span>
+          <span className="text-xs text-slate-500">Adds a "Request prints" button to each photo on the public gallery. Requests email you with the photo + size; you handle fulfillment manually for now.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function PrivacyPanel({ requireEmail, onUpdate }: { requireEmail: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Privacy</h3>
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={requireEmail}
+          onChange={(e) => onUpdate(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">Require email to view</span>
+          <span className="text-xs text-slate-500">Visitors enter their email before seeing photos. Captured emails appear below.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function ExpiryPanel({ expiresAt, onUpdate }: { expiresAt: string | null; onUpdate: (v: string | null) => Promise<void> }) {
+  const [val, setVal] = useState(expiresAt ? expiresAt.slice(0, 10) : "");
+  // Snapshot Date.now() at mount — calling it during render is impure.
+  // Per audit pattern memory: useState lazy init is the safe pattern.
+  const [nowMs] = useState(() => Date.now());
+  useEffect(() => { setVal(expiresAt ? expiresAt.slice(0, 10) : ""); }, [expiresAt]);
+
+  const daysLeft = expiresAt
+    ? Math.ceil((new Date(expiresAt).getTime() - nowMs) / 86400_000)
+    : null;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Expiry</h3>
+      <div className="flex items-center gap-3">
+        <input
+          type="date"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={async () => {
+            const next = val ? `${val}T23:59:59Z` : null;
+            if (next !== expiresAt) await onUpdate(next);
+          }}
+          className="bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+        />
+        {expiresAt && (
+          <button
+            onClick={() => onUpdate(null)}
+            className="text-xs text-slate-400 hover:text-white"
+          >
+            Clear
+          </button>
+        )}
+        {daysLeft !== null && (
+          <span className={`text-xs ${daysLeft < 7 ? "text-amber-400" : "text-slate-500"}`}>
+            {daysLeft > 0 ? `Expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : `Expired`}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-500 mt-2">After expiry, clients can't view the gallery. We'll email you 7 days before.</p>
     </div>
   );
 }

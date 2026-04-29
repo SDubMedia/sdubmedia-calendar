@@ -801,11 +801,30 @@ export interface DeliverySelection {
   createdAt: string;
 }
 
+export type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+
+export interface DeliveryCollection {
+  id: string;
+  name: string;
+  slug: string | null;
+  coverSubtitle: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Delivery {
   id: string;
   projectId: string | null;
+  collectionId: string | null;
   title: string;
   coverFileId: string | null;
+  watermarkText: string | null;
+  printsEnabled: boolean;
+  coverLayout: CoverLayout;
+  coverSubtitle: string | null;  // tagline / location / event subtitle
+  coverDate: string | null;      // free-form date string ("16th March, 2026")
+  slug: string | null;           // vanity URL — /g/<slug>; null = use /deliver/<token> only
+  requireEmail: boolean;         // when true, visitors must enter email before viewing
   token: string;
   hasPassword: boolean;          // never expose the hash; UI just needs to know it's set
   expiresAt: string | null;
@@ -855,5 +874,6 @@ export interface AppData {
   deliveries: Delivery[];
   deliveryFiles: DeliveryFile[];
   deliverySelections: DeliverySelection[];
+  deliveryCollections: DeliveryCollection[];
   organization: Organization | null;
 }

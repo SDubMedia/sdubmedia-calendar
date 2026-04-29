@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -113,6 +113,10 @@ interface AppContextValue {
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
+  // Delivery collections
+  addDeliveryCollection: (c: { name: string; slug: string | null; coverSubtitle: string | null }) => Promise<DeliveryCollection>;
+  updateDeliveryCollection: (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => Promise<void>;
+  deleteDeliveryCollection: (id: string) => Promise<void>;
   // Trash
   restoreItem: (table: string, id: string) => Promise<void>;
   permanentlyDelete: (table: string, id: string) => Promise<void>;
@@ -472,12 +476,31 @@ function rowToPersonalEvent(r: any): PersonalEvent {
   };
 }
 
+function rowToDeliveryCollection(r: any): DeliveryCollection {
+  return {
+    id: r.id,
+    name: r.name || "",
+    slug: r.slug || null,
+    coverSubtitle: r.cover_subtitle || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 function rowToDelivery(r: any): Delivery {
   return {
     id: r.id,
     projectId: r.project_id || null,
+    collectionId: r.collection_id || null,
     title: r.title || "",
     coverFileId: r.cover_file_id || null,
+    watermarkText: r.watermark_text || null,
+    printsEnabled: !!r.prints_enabled,
+    coverLayout: (r.cover_layout || "center") as Delivery["coverLayout"],
+    coverSubtitle: r.cover_subtitle || null,
+    coverDate: r.cover_date || null,
+    slug: r.slug || null,
+    requireEmail: !!r.require_email,
     token: r.token || "",
     hasPassword: !!r.password_hash,
     expiresAt: r.expires_at || null,
@@ -546,7 +569,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], deliveries: [], deliveryFiles: [], deliverySelections: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -644,6 +667,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: deliveriesData, error: _e8c },
         { data: deliveryFilesData, error: _e8d },
         { data: deliverySelectionsData, error: _e8e },
+        { data: deliveryCollectionsData, error: _e8f },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
@@ -670,6 +694,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
         supabase.from("delivery_files").select("*").order("position"),
         supabase.from("delivery_selections").select("*").order("created_at"),
+        supabase.from("delivery_collections").select("*").order("created_at", { ascending: false }),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
@@ -701,6 +726,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
         deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
         deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
+        deliveryCollections: (deliveryCollectionsData || []).map(r => { try { return rowToDeliveryCollection(r); } catch { return null; } }).filter(Boolean) as DeliveryCollection[],
         organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
@@ -750,6 +776,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deliveries: { key: "deliveries", convert: rowToDelivery },
       delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
       delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
+      delivery_collections: { key: "deliveryCollections", convert: rowToDeliveryCollection },
       organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
     };
 
@@ -1208,6 +1235,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("deliveries").insert({
       id, ...(orgId ? { org_id: orgId } : {}),
       project_id: d.projectId, title: d.title, cover_file_id: d.coverFileId,
+      cover_layout: d.coverLayout || "center",
+      cover_subtitle: d.coverSubtitle,
+      cover_date: d.coverDate,
       token, expires_at: d.expiresAt,
       selection_limit: d.selectionLimit, per_extra_photo_cents: d.perExtraPhotoCents,
       buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
@@ -1223,6 +1253,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = { updated_at: new Date().toISOString() };
     if (d.title !== undefined) patch.title = d.title;
     if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
+    if (d.coverLayout !== undefined) patch.cover_layout = d.coverLayout;
+    if (d.coverSubtitle !== undefined) patch.cover_subtitle = d.coverSubtitle;
+    if (d.coverDate !== undefined) patch.cover_date = d.coverDate;
+    if (d.slug !== undefined) patch.slug = d.slug;
+    if (d.requireEmail !== undefined) patch.require_email = d.requireEmail;
+    if (d.collectionId !== undefined) patch.collection_id = d.collectionId;
+    if (d.watermarkText !== undefined) patch.watermark_text = d.watermarkText;
+    if (d.printsEnabled !== undefined) patch.prints_enabled = d.printsEnabled;
     if (d.projectId !== undefined) patch.project_id = d.projectId;
     if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
     if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
@@ -1302,6 +1340,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ),
       };
     });
+  }, []);
+
+  // ---- Delivery Collections ----
+  const addDeliveryCollection = useCallback(async (c: { name: string; slug: string | null; coverSubtitle: string | null }): Promise<DeliveryCollection> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("delivery_collections").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      name: c.name, slug: c.slug, cover_subtitle: c.coverSubtitle,
+      updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const coll = rowToDeliveryCollection(row);
+    setRawData(s => ({ ...s, deliveryCollections: [coll, ...s.deliveryCollections] }));
+    return coll;
+  }, [orgId]);
+
+  const updateDeliveryCollection = useCallback(async (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (c.name !== undefined) patch.name = c.name;
+    if (c.slug !== undefined) patch.slug = c.slug;
+    if (c.coverSubtitle !== undefined) patch.cover_subtitle = c.coverSubtitle;
+    const { error } = await supabase.from("delivery_collections").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryCollections: s.deliveryCollections.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x),
+    }));
+  }, []);
+
+  const deleteDeliveryCollection = useCallback(async (id: string) => {
+    const { error } = await supabase.from("delivery_collections").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryCollections: s.deliveryCollections.filter(x => x.id !== id),
+      // Detach any galleries that pointed at this collection
+      deliveries: s.deliveries.map(d => d.collectionId === id ? { ...d, collectionId: null } : d),
+    }));
   }, []);
 
   const markSelectionEdited = useCallback(async (selectionId: string, edited: boolean) => {
@@ -1866,6 +1943,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
       registerDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
+      addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       restoreItem, permanentlyDelete,
       updateOrganization,
     }}>

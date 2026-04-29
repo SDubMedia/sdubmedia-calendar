@@ -164,6 +164,7 @@ export const seedData: AppData = {
   deliveries: [],
   deliveryFiles: [],
   deliverySelections: [],
+  deliveryCollections: [],
   organization: null,
 };
 

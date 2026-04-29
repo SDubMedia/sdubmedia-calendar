@@ -16,7 +16,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRoute } from "wouter";
-import { ContractLetterhead } from "../components/ContractLetterhead";
 import { toast } from "sonner";
 
 interface FileItem {
@@ -34,6 +33,11 @@ interface DeliveryInfo {
   id: string;
   title: string;
   coverFileId: string | null;
+  coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+  coverSubtitle: string | null;
+  coverDate: string | null;
+  watermarkText: string | null;
+  printsEnabled: boolean;
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
   selectionLimit: number;
   perExtraPhotoCents: number;
@@ -65,8 +69,11 @@ function money(cents: number): string {
 }
 
 export default function DeliverGalleryPage() {
-  const [, params] = useRoute("/deliver/:token");
-  const token = params?.token || "";
+  // Same component handles /deliver/:token (random secret link) and /g/:token (vanity slug).
+  // The :token param is used as a generic identifier — backend resolves token-or-slug.
+  const [, deliverParams] = useRoute("/deliver/:token");
+  const [, gParams] = useRoute("/g/:token");
+  const token = deliverParams?.token || gParams?.token || "";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,11 +85,60 @@ export default function DeliverGalleryPage() {
   // Local proofing state — what the client has hearted but not yet submitted
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [slideshowPlaying, setSlideshowPlaying] = useState(false);
+
+  // Auto-advance lightbox when slideshow is on. ~4s per photo, loops at end.
+  useEffect(() => {
+    if (lightboxIdx === null || !slideshowPlaying) return;
+    const t = setTimeout(() => {
+      setLightboxIdx((i) => {
+        if (i === null) return null;
+        return i + 1 >= files.length ? 0 : i + 1;
+      });
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [lightboxIdx, slideshowPlaying, files.length]);
+
+  // Keyboard nav inside lightbox: arrows + escape + space-to-toggle-slideshow
+  useEffect(() => {
+    if (lightboxIdx === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { setLightboxIdx(null); setSlideshowPlaying(false); }
+      else if (e.key === "ArrowRight") setLightboxIdx((i) => (i === null ? null : Math.min(files.length - 1, i + 1)));
+      else if (e.key === "ArrowLeft") setLightboxIdx((i) => (i === null ? null : Math.max(0, i - 1)));
+      else if (e.key === " ") { e.preventDefault(); setSlideshowPlaying(p => !p); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxIdx, files.length]);
 
   // Password gate
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [password, setPassword] = useState("");
   const [pwError, setPwError] = useState("");
+
+  // Email-registration gate (visitor must enter email before viewing)
+  const [emailRequired, setEmailRequired] = useState(false);
+  const [visitorEmail, setVisitorEmail] = useState(() =>
+    typeof window !== "undefined" ? (localStorage.getItem(`gallery-email-${token}`) || "") : ""
+  );
+  const [registering, setRegistering] = useState(false);
+
+  // First-visit walkthrough — shown once per token via localStorage. Triggered
+  // after the gallery loads (not before, to avoid blocking gates).
+  const [walkthroughStep, setWalkthroughStep] = useState<number | null>(null);
+  useEffect(() => {
+    if (!delivery || typeof window === "undefined") return;
+    if (localStorage.getItem(`gallery-walkthrough-${token}`) === "done") return;
+    // Show welcome card after a short delay so the hero animates in first.
+    const t = setTimeout(() => setWalkthroughStep(0), 800);
+    return () => clearTimeout(t);
+  }, [delivery, token]);
+
+  function dismissWalkthrough() {
+    setWalkthroughStep(null);
+    if (typeof window !== "undefined") localStorage.setItem(`gallery-walkthrough-${token}`, "done");
+  }
 
   // Submission UI
   const [submitOpen, setSubmitOpen] = useState(false);
@@ -92,19 +148,67 @@ export default function DeliverGalleryPage() {
   const [checkoutOptions, setCheckoutOptions] = useState<CheckoutOptions | null>(null);
   const [zipping, setZipping] = useState(false);
 
-  async function loadGallery(pwToTry?: string) {
+  // Print request modal — file id + collected fields
+  const [printFor, setPrintFor] = useState<FileItem | null>(null);
+  const [printSize, setPrintSize] = useState("8x10");
+  const [printQty, setPrintQty] = useState(1);
+  const [printName, setPrintName] = useState("");
+  const [printEmail, setPrintEmail] = useState("");
+  const [printNote, setPrintNote] = useState("");
+  const [printSubmitting, setPrintSubmitting] = useState(false);
+
+  async function submitPrintRequest() {
+    if (!printFor) return;
+    if (!printName.trim() || !printEmail.trim()) {
+      toast.error("Name and email required");
+      return;
+    }
+    setPrintSubmitting(true);
+    try {
+      const res = await fetch(`/api/delivery-public?action=request-prints`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          fileId: printFor.id,
+          size: printSize,
+          quantity: printQty,
+          clientName: printName.trim(),
+          clientEmail: printEmail.trim(),
+          note: printNote.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed");
+      }
+      toast.success("Print request sent", { description: "We'll be in touch with pricing." });
+      setPrintFor(null);
+      setPrintNote("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPrintSubmitting(false);
+    }
+  }
+
+  async function loadGallery(pwToTry?: string, emailToTry?: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = pwToTry !== undefined
+      // Bundle whatever credentials we have — password (if pwToTry given) or
+      // remembered email (from localStorage) — into a single POST so the
+      // server can decide which gate(s) to apply.
+      const emailForCall = emailToTry !== undefined ? emailToTry : visitorEmail;
+      const res = pwToTry !== undefined || emailForCall
         ? await fetch(`/api/delivery-public?action=verify-password`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token, password: pwToTry }),
+            body: JSON.stringify({ token, password: pwToTry, email: emailForCall || undefined }),
           })
         : await fetch(`/api/delivery-public?action=get&token=${encodeURIComponent(token)}`);
       const data = await res.json();
-      if (!res.ok && !data.passwordRequired) {
+      if (!res.ok && !data.passwordRequired && !data.emailRequired) {
         setError(data.error || "Failed to load gallery");
         return;
       }
@@ -113,7 +217,12 @@ export default function DeliverGalleryPage() {
         if (pwToTry !== undefined) setPwError(data.error || "Incorrect password");
         return;
       }
+      if (data.emailRequired) {
+        setEmailRequired(true);
+        return;
+      }
       setPasswordRequired(false);
+      setEmailRequired(false);
       setDelivery(data.delivery);
       setFiles(data.files || []);
       setServerSelections(data.selections || []);
@@ -273,6 +382,58 @@ export default function DeliverGalleryPage() {
 
   const lightboxFile = lightboxIdx !== null ? files[lightboxIdx] : null;
 
+  // Cover image: explicit pick first, otherwise first uploaded photo.
+  const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files[0] || null;
+  const coverUrl = coverFile?.url || "";
+
+  async function downloadOne(f: FileItem) {
+    try {
+      const res = await fetch(f.url);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.originalName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Couldn't download");
+    }
+  }
+
+  async function registerAndEnter() {
+    const email = visitorEmail.trim().toLowerCase();
+    if (!email.includes("@")) return;
+    setRegistering(true);
+    try {
+      const res = await fetch(`/api/delivery-public?action=register-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, email }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't register");
+      }
+      // Remember per-token so revisits skip the gate.
+      localStorage.setItem(`gallery-email-${token}`, email);
+      setVisitorEmail(email);
+      await loadGallery(undefined, email);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  async function shareGallery() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ url, title: delivery?.title }); return; } catch { /* user dismissed */ }
+    }
+    try { await navigator.clipboard.writeText(url); toast.success("Link copied"); } catch { /* ignore */ }
+  }
+
   // ---- Renders ----
 
   if (loading) {
@@ -307,6 +468,36 @@ export default function DeliverGalleryPage() {
     );
   }
 
+  if (emailRequired && !delivery) {
+    return (
+      <div className="min-h-screen bg-white text-black flex items-center justify-center p-6">
+        <div className="w-full max-w-sm">
+          <h1 className="text-2xl font-bold mb-2 text-center">Sign in to view</h1>
+          <p className="text-slate-500 text-sm mb-6 text-center">Enter your email to access this gallery.</p>
+          <input
+            type="email"
+            value={visitorEmail}
+            onChange={(e) => setVisitorEmail(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter") await registerAndEnter();
+            }}
+            className="w-full border border-slate-300 rounded-lg px-4 py-3 text-base mb-3 outline-none focus:border-black"
+            placeholder="you@example.com"
+            autoFocus
+            style={{ fontSize: 16 }}
+          />
+          <button
+            onClick={registerAndEnter}
+            disabled={registering || !visitorEmail.includes("@")}
+            className="w-full bg-black text-white py-3 rounded-lg font-semibold disabled:opacity-50"
+          >
+            {registering ? "Signing in…" : "View gallery"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !delivery) {
     return (
       <div className="min-h-screen bg-white text-black flex items-center justify-center p-6 text-center">
@@ -318,90 +509,191 @@ export default function DeliverGalleryPage() {
     );
   }
 
-  const businessInfo = (org?.businessInfo as Record<string, string> | null | undefined) || null;
+
+  const cover = delivery.coverLayout || "center";
+  const layoutHasHero = cover !== "minimal" && coverUrl;
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        <ContractLetterhead
-          orgName={org?.name}
-          orgLogo={org?.logoUrl}
-          businessInfo={businessInfo}
+      {/* Inline font for the hero — Cormorant for that Pixieset serif feel */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet" />
+
+      {/* HERO */}
+      {layoutHasHero ? (
+        <CoverHero
+          layout={cover}
+          imageUrl={coverUrl}
+          title={delivery.title}
+          subtitle={delivery.coverSubtitle}
+          date={delivery.coverDate}
         />
+      ) : (
+        // Minimal layout: typography-only on white
+        <section className="text-center py-20 sm:py-28 px-6 border-b border-slate-200">
+          <h1 className="text-black" style={{
+            fontFamily: "'Cormorant Garamond', Georgia, serif",
+            fontWeight: 300,
+            fontSize: "clamp(2.5rem, 6vw, 5rem)",
+            letterSpacing: "0.02em",
+            lineHeight: 1.1,
+          }}>
+            {delivery.title}
+          </h1>
+          {(delivery.coverDate || delivery.coverSubtitle) && (
+            <p className="text-slate-500 mt-4 text-xs sm:text-sm uppercase" style={{ letterSpacing: "0.3em" }}>
+              {delivery.coverDate}
+              {delivery.coverDate && delivery.coverSubtitle && " · "}
+              {delivery.coverSubtitle}
+            </p>
+          )}
+        </section>
+      )}
 
-        <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-2">{delivery.title}</h1>
-          {isWorking && <p className="text-emerald-700 text-sm">Your selections are being edited.</p>}
-          {delivery.status === "submitted" && <p className="text-blue-700 text-sm">Submitted ✓ · We'll be in touch.</p>}
-          {delivery.status === "delivered" && <p className="text-slate-500 text-sm">Final files delivered.</p>}
-        </div>
-
-        {/* Proofing instructions banner */}
-        {proofingEnabled && delivery.status === "sent" && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-sm text-amber-900">
-            <strong>Pick your {delivery.selectionLimit} favorite{delivery.selectionLimit === 1 ? "" : "s"} for editing.</strong>
-            {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
-            {hasFlat && <> {hasPerPhoto ? "Or " : "Or "}<strong>{money(flatCents)}</strong> to unlock all picks.</>}
+      {/* Sticky thin header — gallery name + global actions */}
+      <header
+        id="photos"
+        className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200"
+      >
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-10 py-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-[0.25em] text-black truncate">
+              {delivery.title}
+            </h2>
+            {org?.name && (
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400 mt-0.5">{org.name}</p>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => { if (files.length > 0) { setLightboxIdx(0); setSlideshowPlaying(true); } }}
+              disabled={files.length === 0}
+              title="Slideshow"
+              className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black disabled:opacity-50"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+            <button onClick={downloadAll} disabled={zipping} title="Download all" className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black disabled:opacity-50">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button onClick={shareGallery} title="Share" className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </button>
+          </div>
+        </div>
+      </header>
 
-        {/* Action bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
-          <button
-            onClick={downloadAll}
-            disabled={zipping}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-          >
-            {zipping ? "Preparing ZIP…" : `Download all (${files.length})`}
-          </button>
-          {delivery.status === "submitted" && !isWorking && (
-            <button onClick={requestChange} className="text-sm text-blue-700 underline">Request a change</button>
+      {/* Status / state banners */}
+      {(isWorking || delivery.status === "submitted" || delivery.status === "delivered" || (proofingEnabled && delivery.status === "sent")) && (
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-10 py-4">
+          {isWorking && <p className="text-emerald-700 text-xs sm:text-sm uppercase tracking-widest">Your selections are being edited.</p>}
+          {delivery.status === "submitted" && <p className="text-blue-700 text-xs sm:text-sm uppercase tracking-widest">Submitted ✓ · We'll be in touch.</p>}
+          {delivery.status === "delivered" && <p className="text-slate-500 text-xs sm:text-sm uppercase tracking-widest">Final files delivered.</p>}
+          {proofingEnabled && delivery.status === "sent" && (
+            <p className="text-amber-900 text-xs sm:text-sm">
+              <strong>Pick your {delivery.selectionLimit} favorite{delivery.selectionLimit === 1 ? "" : "s"} for editing.</strong>
+              {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
+              {hasFlat && <> {hasPerPhoto ? "Or " : "Or "}<strong>{money(flatCents)}</strong> to unlock all picks.</>}
+            </p>
           )}
-          {isWorking && hasPerPhoto && !isLocked && (
-            <button onClick={() => doSubmit("per-photo")} className="text-sm text-blue-700 underline">Pay for additional picks</button>
+          {delivery.status === "submitted" && !isWorking && (
+            <button onClick={requestChange} className="text-xs text-blue-700 underline mt-2">Request a change</button>
           )}
         </div>
+      )}
 
-        {/* Photo grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {files.map((f, i) => {
-            const isPicked = picked.has(f.id);
-            const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
-            return (
-              <div
-                key={f.id}
-                className="relative group cursor-pointer aspect-square overflow-hidden rounded-lg bg-slate-100"
-                onClick={() => setLightboxIdx(i)}
-              >
-                <img
-                  src={f.url}
-                  alt={f.originalName}
-                  loading="lazy"
-                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                />
-                {proofingEnabled && (
+      {/* PHOTO GRID — flush, full-bleed, no gaps */}
+      <div
+        className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-px bg-slate-200"
+        onContextMenu={(e) => { if (delivery.watermarkText) e.preventDefault(); }}
+      >
+        {/* Tiled watermark overlay (CSS only — doesn't modify the underlying images) */}
+        {delivery.watermarkText && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 select-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><text x='50%' y='50%' fill='rgba(255,255,255,0.18)' font-family='Helvetica' font-size='22' text-anchor='middle' transform='rotate(-30 200 200)'>${delivery.watermarkText}</text></svg>`
+              )}")`,
+              backgroundRepeat: "repeat",
+              mixBlendMode: "difference",
+            }}
+          />
+        )}
+        {files.map((f, i) => {
+          const isPicked = picked.has(f.id);
+          const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
+          return (
+            <div
+              key={f.id}
+              className="relative group cursor-pointer aspect-square overflow-hidden bg-white"
+              onClick={() => setLightboxIdx(i)}
+            >
+              <img
+                src={f.url}
+                alt={f.originalName}
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+              {/* Hover gradient for icon legibility */}
+              <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+              {/* Hover icons — bottom-right cluster */}
+              <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {delivery.printsEnabled && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); togglePick(f.id); }}
-                    disabled={isLocked}
-                    className={`absolute top-2 right-2 w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-md transition-all ${
-                      isPicked
-                        ? "bg-red-500 text-white scale-100"
-                        : "bg-white/80 text-slate-400 hover:text-red-500 hover:scale-110 group-hover:opacity-100 opacity-70"
-                    } ${isLocked ? "cursor-default" : ""}`}
-                    aria-label={isPicked ? "Unpick" : "Pick"}
+                    onClick={(e) => { e.stopPropagation(); setPrintFor(f); }}
+                    className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
+                    title="Order print"
+                    aria-label="Order print"
                   >
-                    {isPicked ? "♥" : "♡"}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                   </button>
                 )}
-                {isPaid && (
-                  <div className="absolute bottom-2 left-2 bg-emerald-500 text-white text-[10px] font-semibold uppercase px-2 py-0.5 rounded">
-                    Paid
-                  </div>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); downloadOne(f); }}
+                  className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
+                  title="Download"
+                  aria-label="Download"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); shareGallery(); }}
+                  className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
+                  title="Share"
+                  aria-label="Share"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </button>
               </div>
-            );
-          })}
-        </div>
+
+              {/* Heart (proofing) — top-right, always semi-visible if picked */}
+              {proofingEnabled && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); togglePick(f.id); }}
+                  disabled={isLocked}
+                  className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-md transition-all ${
+                    isPicked
+                      ? "bg-red-500 text-white"
+                      : "bg-white/80 text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                  } ${isLocked ? "cursor-default" : ""}`}
+                  aria-label={isPicked ? "Unpick" : "Pick"}
+                >
+                  {isPicked ? "♥" : "♡"}
+                </button>
+              )}
+              {isPaid && (
+                <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded">
+                  Paid
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
         {/* Sticky proofing footer */}
         {proofingEnabled && delivery.status === "sent" && picked.size > 0 && (
@@ -425,19 +717,56 @@ export default function DeliverGalleryPage() {
           </div>
         )}
 
+        {/* First-visit walkthrough */}
+        {walkthroughStep !== null && (() => {
+          const steps = [
+            { title: "Welcome", body: `Take a look through ${delivery.title}. Click any photo to view full-size.` },
+            ...(proofingEnabled ? [{ title: "Pick favorites", body: `Tap the ♡ heart on photos you'd like edited. You can pick up to ${delivery.selectionLimit} for free.` }] : []),
+            { title: "Download anytime", body: "Save individual photos or download everything as a ZIP from the top bar." },
+          ];
+          const step = steps[walkthroughStep];
+          const last = walkthroughStep >= steps.length - 1;
+          return (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl">
+                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">{walkthroughStep + 1} of {steps.length}</p>
+                <h3 className="text-xl font-bold mb-2" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>{step.title}</h3>
+                <p className="text-sm text-slate-600 mb-5">{step.body}</p>
+                <div className="flex items-center justify-between">
+                  <button onClick={dismissWalkthrough} className="text-xs text-slate-400 hover:text-slate-700">Skip</button>
+                  <button
+                    onClick={() => last ? dismissWalkthrough() : setWalkthroughStep(walkthroughStep + 1)}
+                    className="bg-black text-white px-5 py-2 rounded-lg text-sm font-semibold"
+                  >
+                    {last ? "Got it" : "Next"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Lightbox */}
         {lightboxFile && (
           <div
             className="fixed inset-0 bg-black/95 z-40 flex items-center justify-center p-4"
-            onClick={() => setLightboxIdx(null)}
+            onClick={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
           >
             <img src={lightboxFile.url} alt={lightboxFile.originalName} className="max-w-full max-h-full object-contain" />
             <button
-              onClick={(e) => { e.stopPropagation(); setLightboxIdx(null); }}
+              onClick={(e) => { e.stopPropagation(); setLightboxIdx(null); setSlideshowPlaying(false); }}
               className="absolute top-4 right-4 text-white/80 text-3xl hover:text-white"
               aria-label="Close"
             >
               ×
+            </button>
+            {/* Slideshow play/pause toggle — top-left */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setSlideshowPlaying(p => !p); }}
+              className="absolute top-4 left-4 text-white/70 hover:text-white px-3 py-2 text-xs uppercase tracking-widest"
+              aria-label={slideshowPlaying ? "Pause slideshow" : "Play slideshow"}
+            >
+              {slideshowPlaying ? "❚❚ Pause" : "▶ Slideshow"}
             </button>
             {proofingEnabled && !isLocked && (
               <button
@@ -535,11 +864,175 @@ export default function DeliverGalleryPage() {
           </div>
         )}
 
-        {/* Footer */}
-        <footer className="mt-16 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-          Powered by Slate · slate.sdubmedia.com
-        </footer>
-      </div>
+      {/* Print request modal */}
+      {printFor && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => !printSubmitting && setPrintFor(null)}>
+          <div className="bg-white rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-1">Request a print</h2>
+            <p className="text-xs text-slate-500 mb-4">{printFor.originalName}</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Size</label>
+                <select value={printSize} onChange={(e) => setPrintSize(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" style={{ fontSize: 16 }}>
+                  <option value="4x6">4×6</option>
+                  <option value="5x7">5×7</option>
+                  <option value="8x10">8×10</option>
+                  <option value="11x14">11×14</option>
+                  <option value="16x20">16×20</option>
+                  <option value="24x36">24×36</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">Quantity</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={printQty === 0 ? "" : String(printQty)}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/[^\d]/g, "");
+                    if (cleaned === "") { setPrintQty(0); return; }
+                    setPrintQty(Math.min(50, Math.max(1, parseInt(cleaned, 10))));
+                  }}
+                  onBlur={() => { if (printQty < 1) setPrintQty(1); }}
+                  placeholder="1"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  style={{ fontSize: 16 }}
+                />
+              </div>
+            </div>
+            <input type="text" value={printName} onChange={(e) => setPrintName(e.target.value)} placeholder="Your name" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" style={{ fontSize: 16 }} />
+            <input type="email" value={printEmail} onChange={(e) => setPrintEmail(e.target.value)} placeholder="your@email.com" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2" style={{ fontSize: 16 }} />
+            <textarea value={printNote} onChange={(e) => setPrintNote(e.target.value)} placeholder="Notes (optional)" rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-3" style={{ fontSize: 16 }} />
+            <p className="text-[11px] text-slate-500 mb-3">We'll email you with pricing and payment options. No charge yet.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setPrintFor(null)} disabled={printSubmitting} className="flex-1 border border-slate-300 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
+              <button onClick={submitPrintRequest} disabled={printSubmitting} className="flex-1 bg-black text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50">
+                {printSubmitting ? "Sending…" : "Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 py-8 text-center text-xs text-slate-400">
+        Powered by Slate · slate.sdubmedia.com
+      </footer>
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Cover layouts — each renders the title/subtitle/date over a hero image
+// in a different visual style. Inspired by Pixieset's cover designs.
+// ----------------------------------------------------------------------
+type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+
+function CoverHero({ layout, imageUrl, title, subtitle, date }: {
+  layout: CoverLayout;
+  imageUrl: string;
+  title: string;
+  subtitle: string | null;
+  date: string | null;
+}) {
+  const meta = (date || subtitle)
+    ? <>{date}{date && subtitle && " · "}{subtitle}</>
+    : null;
+
+  // Each layout chooses its own overlay gradient + alignment + extra decoration
+  const overlay = (() => {
+    switch (layout) {
+      case "vintage": return "linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.55) 100%)";
+      case "left": return "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 60%, rgba(0,0,0,0.05) 100%)";
+      case "center":
+      case "stripe":
+      case "frame":
+      case "divider":
+      case "stamp":
+      case "outline":
+        return "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)";
+      default: return "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)";
+    }
+  })();
+
+  // Wrapper alignment (placement of the inner block)
+  const wrapAlign = layout === "vintage" || layout === "left"
+    ? "items-start justify-end text-left"
+    : "items-center justify-center text-center";
+
+  // Title styling per layout
+  const titleStyle: React.CSSProperties = {
+    fontFamily: "'Cormorant Garamond', Georgia, serif",
+    fontWeight: 300,
+    fontSize: layout === "vintage" || layout === "left" ? "clamp(2.5rem, 7vw, 5.5rem)" : "clamp(3rem, 8vw, 6rem)",
+    letterSpacing: layout === "vintage" ? "0.04em" : "0.02em",
+    lineHeight: 1.05,
+    textShadow: "0 2px 18px rgba(0,0,0,0.4)",
+    maxWidth: "20ch",
+    color: "white",
+  };
+
+  if (layout === "outline") {
+    titleStyle.color = "transparent";
+    titleStyle.WebkitTextStroke = "1.5px white";
+    titleStyle.textShadow = "none";
+  }
+
+  // The title element with optional decorative bits per layout
+  const titleEl = (() => {
+    if (layout === "stripe") {
+      return (
+        <div className="flex items-center gap-6">
+          <div className="hidden sm:block h-px w-24 bg-white/60" />
+          <h1 style={titleStyle}>{title}</h1>
+          <div className="hidden sm:block h-px w-24 bg-white/60" />
+        </div>
+      );
+    }
+    if (layout === "frame") {
+      return (
+        <div className="border border-white/50 px-10 py-12 sm:px-16 sm:py-14">
+          <h1 style={titleStyle}>{title}</h1>
+        </div>
+      );
+    }
+    if (layout === "stamp") {
+      return (
+        <div className="border-2 border-white rounded-full px-12 py-10 sm:px-20 sm:py-16 inline-flex items-center justify-center">
+          <h1 style={{ ...titleStyle, fontSize: "clamp(2rem, 5vw, 4rem)", maxWidth: "16ch" }}>{title}</h1>
+        </div>
+      );
+    }
+    return <h1 style={titleStyle}>{title}</h1>;
+  })();
+
+  // Subtitle/divider element
+  const metaEl = meta ? (
+    layout === "divider" ? (
+      <div className="mt-6 flex flex-col items-center text-center">
+        <div className="h-px w-20 bg-white/60 mb-5" />
+        <p className="text-white/85 text-xs sm:text-sm uppercase" style={{ letterSpacing: "0.3em" }}>{meta}</p>
+      </div>
+    ) : (
+      <p className="text-white/85 mt-5 text-xs sm:text-sm uppercase" style={{ letterSpacing: "0.3em" }}>{meta}</p>
+    )
+  ) : null;
+
+  return (
+    <section className="relative w-full overflow-hidden" style={{ height: "min(100vh, 900px)" }}>
+      <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" loading="eager" />
+      <div className="absolute inset-0" style={{ background: overlay }} />
+      <div className={`absolute inset-0 flex flex-col p-8 sm:p-16 ${wrapAlign}`}>
+        {titleEl}
+        {metaEl}
+        <a
+          href="#photos"
+          className="mt-10 inline-block text-white border border-white/70 hover:border-white hover:bg-white hover:text-black transition-colors px-8 py-3 text-xs uppercase"
+          style={{ letterSpacing: "0.25em" }}
+        >
+          View Gallery
+        </a>
+      </div>
+    </section>
   );
 }

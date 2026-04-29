@@ -43,11 +43,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { data: delivery, error } = await supabase
-      .from("deliveries")
+    // Accept either a token or a vanity slug as the public identifier.
+    const byToken = await supabase.from("deliveries")
       .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id")
-      .eq("token", token)
-      .single();
+      .eq("token", token).maybeSingle();
+    const lookup = byToken.data
+      ? byToken
+      : await supabase.from("deliveries")
+          .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id")
+          .eq("slug", token).maybeSingle();
+    const delivery = lookup.data;
+    const error = lookup.error;
     if (error || !delivery) return res.status(404).json({ error: "Gallery not found" });
 
     if (delivery.password_hash && (!password || !verifyPassword(password, delivery.password_hash))) {

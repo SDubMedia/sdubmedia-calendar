@@ -74,11 +74,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     switch (action) {
-      case "get": return await getDelivery(token, undefined, res);
+      case "get": {
+        const body = (req.body || {}) as Record<string, unknown>;
+        const email = typeof body.email === "string" ? body.email : (req.query.email as string) || undefined;
+        return await getDelivery(token, undefined, email, res);
+      }
       case "verify-password": {
         const body = (req.body || {}) as Record<string, unknown>;
-        return await getDelivery(token, typeof body.password === "string" ? body.password : "", res);
+        const email = typeof body.email === "string" ? body.email : undefined;
+        return await getDelivery(token, typeof body.password === "string" ? body.password : "", email, res);
       }
+      case "register-email": return await registerEmail(req, res, token);
+      case "request-prints": return await requestPrints(req, res, token);
       case "submit": return await submitSelections(req, res, token);
       case "request-change": return await requestChange(req, res, token);
       default: return res.status(400).json({ error: "Unknown action" });
@@ -88,12 +95,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function getDelivery(token: string, password: string | undefined, res: VercelResponse) {
-  const { data: delivery, error } = await supabase
-    .from("deliveries")
-    .select("*")
-    .eq("token", token)
-    .single<DeliveryRow>();
+// Resolve a token-or-slug identifier to a delivery row. Tokens are 16-char
+// random hex; slugs are human-readable. We accept either string in the same
+// `token` API param and try-token-first, then-slug.
+async function findDelivery(identifier: string) {
+  const byToken = await supabase.from("deliveries").select("*").eq("token", identifier).maybeSingle<DeliveryRow>();
+  if (byToken.data) return byToken;
+  return await supabase.from("deliveries").select("*").eq("slug", identifier).maybeSingle<DeliveryRow>();
+}
+
+async function getDelivery(token: string, password: string | undefined, email: string | undefined, res: VercelResponse) {
+  const { data: delivery, error } = await findDelivery(token);
   if (error || !delivery) return res.status(404).json({ error: "Gallery not found" });
 
   // Expiry check
@@ -111,6 +123,30 @@ async function getDelivery(token: string, password: string | undefined, res: Ver
     }
     if (!verifyPassword(password, delivery.password_hash)) {
       return res.status(401).json({ error: "Incorrect password", passwordRequired: true });
+    }
+  }
+
+  // Email registration gate (when delivery.require_email is true)
+  const requireEmail = (delivery as unknown as { require_email?: boolean }).require_email === true;
+  if (requireEmail) {
+    if (!email) {
+      return res.status(200).json({
+        emailRequired: true,
+        title: delivery.title,
+      });
+    }
+    // Verify the email is registered for this delivery
+    const { data: visitor } = await supabase
+      .from("gallery_visitors")
+      .select("id")
+      .eq("delivery_id", delivery.id)
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    if (!visitor) {
+      return res.status(200).json({
+        emailRequired: true,
+        title: delivery.title,
+      });
     }
   }
 
@@ -156,6 +192,11 @@ async function getDelivery(token: string, password: string | undefined, res: Ver
       id: delivery.id,
       title: delivery.title,
       coverFileId: delivery.cover_file_id,
+      coverLayout: (delivery as unknown as { cover_layout?: string }).cover_layout || "center",
+      coverSubtitle: (delivery as unknown as { cover_subtitle?: string }).cover_subtitle || null,
+      coverDate: (delivery as unknown as { cover_date?: string }).cover_date || null,
+      watermarkText: (delivery as unknown as { watermark_text?: string }).watermark_text || null,
+      printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       selectionLimit: delivery.selection_limit,
       perExtraPhotoCents: delivery.per_extra_photo_cents,
@@ -173,6 +214,85 @@ async function getDelivery(token: string, password: string | undefined, res: Ver
   });
 }
 
+async function requestPrints(req: VercelRequest, res: VercelResponse, token: string) {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const fileId = typeof body.fileId === "string" ? body.fileId : "";
+  const size = typeof body.size === "string" ? body.size : "";
+  const quantity = typeof body.quantity === "number" ? body.quantity : 1;
+  const clientName = typeof body.clientName === "string" ? body.clientName : "";
+  const clientEmail = typeof body.clientEmail === "string" ? body.clientEmail : "";
+  const note = typeof body.note === "string" ? body.note : "";
+
+  if (!fileId || !size || !clientName || !clientEmail) {
+    return res.status(400).json({ error: "fileId, size, clientName, clientEmail required" });
+  }
+
+  const { data: delivery } = await findDelivery(token);
+  if (!delivery) return res.status(404).json({ error: "Gallery not found" });
+  if (!(delivery as unknown as { prints_enabled?: boolean }).prints_enabled) {
+    return res.status(400).json({ error: "Prints not enabled for this gallery" });
+  }
+
+  // Look up the file to include its name in the email
+  const { data: file } = await supabase.from("delivery_files").select("original_name").eq("id", fileId).maybeSingle<{ original_name: string }>();
+
+  // Email the org owner
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("email")
+    .eq("org_id", delivery.org_id)
+    .eq("role", "owner")
+    .single();
+
+  if (profile?.email) {
+    const { data: org } = await supabase.from("organizations").select("name").eq("id", delivery.org_id).single();
+    const orgName = (org?.name as string) || "Slate";
+    await resend.emails.send({
+      from: `${orgName} <${FROM_EMAIL}>`,
+      to: profile.email,
+      replyTo: clientEmail,
+      subject: `Print request — ${escapeHtml(delivery.title)}`,
+      html: `
+        <p><strong>${escapeHtml(clientName)}</strong> (${escapeHtml(clientEmail)}) requested prints from <em>${escapeHtml(delivery.title)}</em>.</p>
+        <ul>
+          <li><strong>Photo:</strong> ${escapeHtml(file?.original_name || fileId)}</li>
+          <li><strong>Size:</strong> ${escapeHtml(size)}</li>
+          <li><strong>Quantity:</strong> ${quantity}</li>
+          ${note ? `<li><strong>Note:</strong> ${escapeHtml(note)}</li>` : ""}
+        </ul>
+        <p>Reply directly to this email to arrange payment and fulfillment.</p>
+        <p><a href="https://slate.sdubmedia.com/deliveries/${delivery.id}">Open gallery in Slate →</a></p>
+      `,
+    }).catch(() => { /* fire-and-forget */ });
+  }
+
+  return res.status(200).json({ ok: true });
+}
+
+async function registerEmail(req: VercelRequest, res: VercelResponse, token: string) {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const rawEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!rawEmail || !rawEmail.includes("@")) return res.status(400).json({ error: "Valid email required" });
+
+  const { data: delivery } = await findDelivery(token);
+  if (!delivery) return res.status(404).json({ error: "Gallery not found" });
+
+  const ipHeader = (req.headers["x-forwarded-for"] as string) || "";
+  const ip = ipHeader.split(",")[0].trim() || null;
+  const id = `gv_${delivery.id.slice(0, 6)}_${Date.now().toString(36)}`;
+
+  // Idempotent — unique index on (delivery_id, email) prevents dupes
+  await supabase.from("gallery_visitors").upsert({
+    id,
+    delivery_id: delivery.id,
+    org_id: delivery.org_id,
+    email: rawEmail,
+    ip,
+  }, { onConflict: "delivery_id,email" });
+
+  return res.status(200).json({ ok: true });
+}
+
 async function submitSelections(req: VercelRequest, res: VercelResponse, token: string) {
   const body = (req.body || {}) as Record<string, unknown>;
   const fileIds = Array.isArray(body.fileIds) ? body.fileIds.filter((x): x is string => typeof x === "string") : [];
@@ -183,11 +303,7 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
   if (!clientName || !clientEmail) return res.status(400).json({ error: "Name and email required" });
   if (fileIds.length === 0) return res.status(400).json({ error: "Pick at least one photo" });
 
-  const { data: delivery, error } = await supabase
-    .from("deliveries")
-    .select("*")
-    .eq("token", token)
-    .single<DeliveryRow>();
+  const { data: delivery, error } = await findDelivery(token);
   if (error || !delivery) return res.status(404).json({ error: "Gallery not found" });
 
   // Password gate
@@ -249,11 +365,7 @@ async function requestChange(req: VercelRequest, res: VercelResponse, token: str
   const body = (req.body || {}) as Record<string, unknown>;
   const message = typeof body.message === "string" ? body.message.trim() : "";
 
-  const { data: delivery, error } = await supabase
-    .from("deliveries")
-    .select("id, org_id, status, title, client_name, client_email")
-    .eq("token", token)
-    .single();
+  const { data: delivery, error } = await findDelivery(token);
   if (error || !delivery) return res.status(404).json({ error: "Gallery not found" });
 
   if (delivery.status !== "submitted") {
