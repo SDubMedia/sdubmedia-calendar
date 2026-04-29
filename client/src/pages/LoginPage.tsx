@@ -15,11 +15,32 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (mode === "forgot") {
+      if (!email) {
+        toast.error("Please enter your email");
+        return;
+      }
+      setLoading(true);
+      try {
+        // Always show "check your email" — never leak whether the address has an account.
+        await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        setResetSent(true);
+      } catch {
+        // Still pretend success to avoid leaking; log via Sentry happens client-side automatically
+        setResetSent(true);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     if (!email || !password) {
       toast.error("Please enter email and password");
       return;
@@ -193,6 +214,53 @@ export default function LoginPage() {
                 Back to Sign In
               </button>
             </div>
+          ) : resetSent ? (
+            <div className="text-center space-y-3 py-2">
+              <p className="text-sm text-white font-medium">Check your email</p>
+              <p className="text-xs text-zinc-400">
+                If <span className="text-white">{email}</span> has an account, we sent a reset link. Click it to set a new password.
+              </p>
+              <button
+                onClick={() => { setResetSent(false); setMode("signin"); setPassword(""); }}
+                className="w-full py-2.5 rounded-lg border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          ) : mode === "forgot" ? (
+            <>
+              <div className="space-y-1">
+                <h2 className="text-sm font-semibold text-white">Reset your password</h2>
+                <p className="text-xs text-zinc-400">Enter your email and we'll send you a reset link.</p>
+              </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-500 hover:to-blue-400 transition-all text-sm font-semibold disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                >
+                  {loading ? "Sending..." : "Send reset link"}
+                </button>
+              </form>
+              <button
+                onClick={() => setMode("signin")}
+                className="w-full text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Back to Sign In
+              </button>
+            </>
           ) : (
             <>
               {/* Sign In / Sign Up toggle */}
@@ -258,6 +326,16 @@ export default function LoginPage() {
                   }
                 </button>
               </form>
+
+              {mode === "signin" && (
+                <button
+                  type="button"
+                  onClick={() => setMode("forgot")}
+                  className="block w-full text-center text-xs text-zinc-400 hover:text-white transition-colors"
+                >
+                  Forgot password?
+                </button>
+              )}
 
               {mode === "signup" && (
                 <p className="text-[10px] text-zinc-500 text-center">

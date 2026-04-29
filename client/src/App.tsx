@@ -47,6 +47,8 @@ const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const CollectionPage = lazy(() => import("./pages/CollectionPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
 const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
@@ -194,13 +196,28 @@ function App() {
     );
   }
 
-  if (window.location.pathname.startsWith("/deliver/")) {
+  if (window.location.pathname.startsWith("/deliver/") || window.location.pathname.startsWith("/g/") || window.location.pathname.startsWith("/c/")) {
     return (
       <ErrorBoundary>
         <Suspense fallback={<LoadingScreen />}>
           <Toaster />
           <Switch>
             <Route path="/deliver/:token" component={DeliverGalleryPage} />
+            <Route path="/g/:token" component={DeliverGalleryPage} />
+            <Route path="/c/:slug" component={CollectionPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname === "/reset-password") {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/reset-password" component={ResetPasswordPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>
