@@ -59,7 +59,9 @@ export default function ReportsPage() {
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
+  const [period, setPeriod] = useState<"month" | "year">("month");
   const [preview, setPreview] = useState<ReportPreviewState | null>(null);
+  const isYearMode = period === "year";
 
   // ---- Derived data ----
   const filteredProjects = useMemo(() => {
@@ -72,20 +74,23 @@ export default function ReportsPage() {
   }, [data.projects, selectedYear, selectedClientId]);
 
   const monthlyProjects = useMemo(() => {
+    if (isYearMode) return filteredProjects;
     return filteredProjects.filter(p => {
       const m = parseInt(p.date.split("-")[1]);
       return m === parseInt(selectedMonth);
     });
-  }, [filteredProjects, selectedMonth]);
+  }, [filteredProjects, selectedMonth, isYearMode]);
 
-  // ---- Billing stats per client (scoped to selected year + month, NOT client filter) ----
+  // ---- Billing stats per client (scoped to selected period, NOT client filter) ----
   const allMonthlyProjects = useMemo(() => {
     return data.projects.filter(p => {
       const [y] = p.date.split("-");
+      if (y !== selectedYear) return false;
+      if (isYearMode) return true;
       const m = parseInt(p.date.split("-")[1]);
-      return y === selectedYear && m === parseInt(selectedMonth);
+      return m === parseInt(selectedMonth);
     });
-  }, [data.projects, selectedYear, selectedMonth]);
+  }, [data.projects, selectedYear, selectedMonth, isYearMode]);
 
   const clientBillingStats = useMemo((): ClientBillingStat[] => {
     return data.clients.map(client => {
@@ -870,6 +875,245 @@ export default function ReportsPage() {
     ` });
   }
 
+  // ---- Annual reports ----
+  // Year-mode generators. Simpler shape than the monthly reports — they
+  // surface trend data (per-month rows) instead of per-day pay tables.
+  function generateAnnualInternalReport() {
+    const yr = parseInt(selectedYear);
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const projects = filteredProjects.slice().sort((a, b) => a.date.localeCompare(b.date));
+
+    const monthlyAgg = MONTHS.map((monthName, idx) => {
+      const mNum = idx + 1;
+      const mp = projects.filter(p => parseInt(p.date.split("-")[1]) === mNum);
+      const revenue = mp.reduce((s, p) => {
+        const c = data.clients.find(cl => cl.id === p.clientId);
+        return s + (c ? getProjectInvoiceAmount(p, c) : 0);
+      }, 0);
+      const crewCost = mp.reduce((s, p) => s + getProjectCrewCost(p), 0);
+      const hours = mp.reduce((s, p) => {
+        const c = data.clients.find(cl => cl.id === p.clientId);
+        if (!c) return s + getProjectHours(p).totalHours;
+        return s + getProjectBillableHours(p, c).totalBillable;
+      }, 0);
+      return { monthName, count: mp.length, revenue, crewCost, hours };
+    });
+
+    const totalProjects = projects.length;
+    const totalRevenue = monthlyAgg.reduce((s, m) => s + m.revenue, 0);
+    const totalCrewCost = monthlyAgg.reduce((s, m) => s + m.crewCost, 0);
+    const totalHours = monthlyAgg.reduce((s, m) => s + m.hours, 0);
+    const totalProfit = totalRevenue - totalCrewCost;
+
+    const personPay: Record<string, { name: string; hours: number; pay: number }> = {};
+    projects.forEach(p => {
+      [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
+        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+        const name = member?.name ?? "Unknown";
+        if (!personPay[e.crewMemberId]) personPay[e.crewMemberId] = { name, hours: 0, pay: 0 };
+        const isPhotoEditorBilling = e.role === "Photo Editor" && p.editorBilling;
+        if (isPhotoEditorBilling) {
+          personPay[e.crewMemberId].pay += p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
+        } else {
+          const hrs = Number(e.hoursWorked ?? 0);
+          const rate = Number(e.payRatePerHour ?? 0);
+          personPay[e.crewMemberId].hours += hrs;
+          personPay[e.crewMemberId].pay += hrs * rate;
+        }
+      });
+    });
+    const personList = Object.values(personPay).sort((a, b) => b.pay - a.pay);
+
+    const clientAgg = data.clients.map(client => {
+      const cp = projects.filter(p => p.clientId === client.id);
+      const rev = cp.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+      const cc = cp.reduce((s, p) => s + getProjectCrewCost(p), 0);
+      return { client, count: cp.length, revenue: rev, crewCost: cc, profit: rev - cc };
+    }).filter(a => a.count > 0).sort((a, b) => b.revenue - a.revenue);
+
+    const monthlyRows = monthlyAgg.map(m => `
+      <tr>
+        <td>${m.monthName}</td>
+        <td style="text-align:right">${m.count || "—"}</td>
+        <td style="text-align:right">${m.hours > 0 ? m.hours.toFixed(2) : "—"}</td>
+        <td style="text-align:right">${m.revenue > 0 ? formatCurrency(m.revenue) : "—"}</td>
+        <td style="text-align:right">${m.crewCost > 0 ? formatCurrency(m.crewCost) : "—"}</td>
+        <td style="text-align:right;font-weight:700">${m.revenue - m.crewCost !== 0 ? formatCurrency(m.revenue - m.crewCost) : "—"}</td>
+      </tr>
+    `).join("");
+
+    const personRows = personList.map(p => `
+      <tr>
+        <td>${p.name}</td>
+        <td style="text-align:right">${p.hours > 0 ? p.hours.toFixed(2) : "—"}</td>
+        <td style="text-align:right">${formatCurrency(p.pay)}</td>
+      </tr>
+    `).join("");
+
+    const clientRows = clientAgg.map(c => `
+      <tr>
+        <td>${c.client.company}</td>
+        <td style="text-align:right">${c.count}</td>
+        <td style="text-align:right">${formatCurrency(c.revenue)}</td>
+        <td style="text-align:right">${formatCurrency(c.crewCost)}</td>
+        <td style="text-align:right;font-weight:700">${formatCurrency(c.profit)}</td>
+      </tr>
+    `).join("");
+
+    const clientFilterLabel = selectedClientId !== "all"
+      ? data.clients.find(c => c.id === selectedClientId)?.company || "Filtered"
+      : "All Clients";
+
+    setPreview({ title: `Annual Earnings — ${yr}`, html: `
+      <div class="invoice-header">
+        <h1>Annual Earnings Report</h1>
+        <div class="meta-grid">
+          <div><div class="meta-label">Report Period</div><div class="meta-value">January – December ${yr}</div></div>
+          <div><div class="meta-label">Scope</div><div class="meta-value">${clientFilterLabel}</div></div>
+          <div><div class="meta-label">Generated</div><div class="meta-value">${issueDate}</div></div>
+        </div>
+      </div>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">Year at a Glance</h2>
+      <div class="earnings-grid-2">
+        <div class="earnings-card admin">
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">Total Revenue</div>
+          <div class="card-value">${formatCurrency(totalRevenue)}</div>
+        </div>
+        <div class="earnings-card owner">
+          <div class="card-label" style="color: #22c55e; font-weight: 600;">Profit (Revenue − Crew)</div>
+          <div class="card-value">${formatCurrency(totalProfit)}</div>
+        </div>
+      </div>
+      <div class="earnings-grid-2">
+        <div class="earnings-card">
+          <div class="card-label">Projects</div>
+          <div class="card-value">${totalProjects}</div>
+        </div>
+        <div class="earnings-card">
+          <div class="card-label">Total Hours Billed</div>
+          <div class="card-value">${totalHours.toFixed(2)} hrs</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Monthly Breakdown</div>
+        <div class="section-body" style="padding: 0;">
+          <table class="pay-table">
+            <thead><tr><th>Month</th><th style="text-align:right">Projects</th><th style="text-align:right">Hours</th><th style="text-align:right">Revenue</th><th style="text-align:right">Crew Cost</th><th style="text-align:right">Profit</th></tr></thead>
+            <tbody>${monthlyRows}</tbody>
+            <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totalProjects}</td><td style="text-align:right">${totalHours.toFixed(2)}</td><td style="text-align:right">${formatCurrency(totalRevenue)}</td><td style="text-align:right">${formatCurrency(totalCrewCost)}</td><td style="text-align:right">${formatCurrency(totalProfit)}</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">By Client</h2>
+      <table class="pay-table">
+        <thead><tr><th>Client</th><th style="text-align:right">Projects</th><th style="text-align:right">Revenue</th><th style="text-align:right">Crew Cost</th><th style="text-align:right">Profit</th></tr></thead>
+        <tbody>${clientRows || "<tr><td colspan='5' style='text-align:center;color:#888'>No client activity</td></tr>"}</tbody>
+      </table>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">By Person — Annual Pay</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">Aggregated from project Internal Pay Allocation rows. Owner/admin/marketing splits are separate.</p>
+      <table class="pay-table">
+        <thead><tr><th>Person</th><th style="text-align:right">Hours</th><th style="text-align:right">Annual Pay</th></tr></thead>
+        <tbody>${personRows || "<tr><td colspan='3' style='text-align:center;color:#888'>No crew activity</td></tr>"}</tbody>
+      </table>
+    ` });
+  }
+
+  function generateAnnualClientReport(clientId: string) {
+    const client = data.clients.find(c => c.id === clientId);
+    if (!client) return;
+    const yr = parseInt(selectedYear);
+    const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    const clientProjects = filteredProjects
+      .filter(p => p.clientId === clientId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const totalProductionHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).crewBillable, 0);
+    const totalEditorHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).postBillable, 0);
+    const totalHours = totalProductionHours + totalEditorHours;
+    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+    const isPerProject = client.billingModel === "per_project";
+
+    const monthlyAgg = MONTHS.map((monthName, idx) => {
+      const mNum = idx + 1;
+      const mp = clientProjects.filter(p => parseInt(p.date.split("-")[1]) === mNum);
+      const hours = mp.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
+      const rev = mp.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+      return { monthName, count: mp.length, hours, rev };
+    }).filter(m => m.count > 0);
+
+    const monthlyRows = monthlyAgg.map(m => `
+      <tr><td>${m.monthName}</td><td style="text-align:right">${m.count}</td><td style="text-align:right">${m.hours.toFixed(2)}</td><td style="text-align:right">${formatCurrency(m.rev)}</td></tr>
+    `).join("");
+
+    const projectRows = clientProjects.map(p => {
+      const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
+      const loc = data.locations.find(l => l.id === p.locationId);
+      const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const { totalBillable } = getProjectBillableHours(p, client);
+      const inv = getProjectInvoiceAmount(p, client);
+      return `<tr><td>${dateStr}</td><td>${type}</td><td>${loc?.name || ""}</td><td style="text-align:right">${totalBillable.toFixed(2)}</td><td style="text-align:right">${formatCurrency(inv)}</td></tr>`;
+    }).join("");
+
+    const clientPrefix = client.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);
+    const reportNum = `${clientPrefix}-${yr}-ANNUAL-001`;
+
+    setPreview({ title: `Annual Report — ${client.company} ${yr}`, html: `
+      <div class="invoice-header">
+        <h1>Annual Activity Report</h1>
+        <div class="meta-grid">
+          <div><div class="meta-label">Report #</div><div class="meta-value">${reportNum}</div></div>
+          <div><div class="meta-label">Period</div><div class="meta-value">January – December ${yr}</div></div>
+          <div><div class="meta-label">Issue Date</div><div class="meta-value">${issueDate}</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Year Summary</div>
+        <div class="section-body">
+          <div class="hours-row"><span>Projects</span><span>${clientProjects.length}</span></div>
+          ${!isPerProject ? `
+          <div class="hours-row"><span>Production Hours</span><span>${totalProductionHours.toFixed(2)} hrs</span></div>
+          <div class="hours-row"><span>Editor Hours</span><span>${totalEditorHours.toFixed(2)} hrs</span></div>
+          <div class="hours-row total"><span>Total Hours</span><span>${totalHours.toFixed(2)} hrs</span></div>
+          ` : ""}
+          <div class="hours-row highlight"><span>Total Billed</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Service Provider & Client</div>
+        <div class="section-body">
+          <div class="provider-grid">
+            <div><div class="col-label">Service Provider</div><div class="col-value">${client.partnerSplit?.partnerName || "SDub Media LLC"}</div></div>
+            <div><div class="col-label">Client</div><div class="col-value">${client.company}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">Monthly Activity</h2>
+      <table class="pay-table">
+        <thead><tr><th>Month</th><th style="text-align:right">Projects</th><th style="text-align:right">Hours</th><th style="text-align:right">Billed</th></tr></thead>
+        <tbody>${monthlyRows || "<tr><td colspan='4' style='text-align:center;color:#888'>No activity this year</td></tr>"}</tbody>
+        <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${clientProjects.length}</td><td style="text-align:right">${totalHours.toFixed(2)}</td><td style="text-align:right">${formatCurrency(totalInvoice)}</td></tr></tfoot>
+      </table>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">All Projects</h2>
+      <table class="pay-table">
+        <thead><tr><th>Date</th><th>Type</th><th>Location</th><th style="text-align:right">Hours</th><th style="text-align:right">Billed</th></tr></thead>
+        <tbody>${projectRows || "<tr><td colspan='5' style='text-align:center;color:#888'>No projects</td></tr>"}</tbody>
+      </table>
+
+      <div class="report-footer">
+        <div class="contact">Questions? ${client.email || client.phone || "(contact not provided)"}</div>
+      </div>
+    ` });
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -914,6 +1158,20 @@ export default function ReportsPage() {
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-4">
           <div className="flex flex-wrap gap-3 items-center">
+            <div className="inline-flex rounded-md border border-border bg-secondary p-0.5">
+              <button
+                onClick={() => setPeriod("month")}
+                className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", period === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                Month
+              </button>
+              <button
+                onClick={() => setPeriod("year")}
+                className={cn("px-3 py-1 rounded text-xs font-medium transition-colors", period === "year" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                Year
+              </button>
+            </div>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Year:</span>
@@ -926,17 +1184,19 @@ export default function ReportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Month:</span>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="w-32 h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {!isYearMode && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Month:</span>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-32 h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Client:</span>
               <Select value={selectedClientId} onValueChange={setSelectedClientId}>
@@ -1030,7 +1290,15 @@ export default function ReportsPage() {
 
         {/* ---- Client Reports ---- */}
         <TabsContent value="client" className="mt-4 space-y-4">
-          {data.clients.filter(c => selectedClientId === "all" || c.id === selectedClientId).map(client => {
+          {data.clients
+            .filter(c => selectedClientId === "all" || c.id === selectedClientId)
+            // Hide clients with $0 to invoice for the selected period — keeps
+            // the list focused on actionable bills.
+            .filter(c => {
+              const stat = clientBillingStats.find(s => s.client.id === c.id);
+              return stat && stat.invoiceAmount > 0;
+            })
+            .map(client => {
             const stat = clientBillingStats.find(s => s.client.id === client.id);
             if (!stat) return null;
             return (
@@ -1041,9 +1309,9 @@ export default function ReportsPage() {
                       <CardTitle className="text-base">{client.company}</CardTitle>
                       <p className="text-xs text-muted-foreground mt-0.5">{client.contactName} · {client.email} · {client.billingModel === "per_project" ? `$${Number(client.perProjectRate).toFixed(0)}/project` : `$${client.billingRatePerHour}/hr`}</p>
                     </div>
-                    <Button size="sm" onClick={() => generateClientReport(client.id)} className="gap-2">
+                    <Button size="sm" onClick={() => isYearMode ? generateAnnualClientReport(client.id) : generateClientReport(client.id)} className="gap-2">
                       <Eye className="w-4 h-4" />
-                      Preview Report
+                      {isYearMode ? "Preview Annual Report" : "Preview Report"}
                     </Button>
                   </div>
                 </CardHeader>
@@ -1074,8 +1342,10 @@ export default function ReportsPage() {
               </Card>
             );
           })}
-          {data.clients.length === 0 && (
+          {data.clients.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-8">No clients found</p>
+          ) : !clientBillingStats.some(s => s.invoiceAmount > 0) && (
+            <p className="text-muted-foreground text-sm text-center py-8">No clients have anything to bill for {isYearMode ? selectedYear : `${MONTHS[parseInt(selectedMonth) - 1]} ${selectedYear}`}.</p>
           )}
         </TabsContent>
 
@@ -1085,20 +1355,22 @@ export default function ReportsPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">
-                  Earnings Breakdown — {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}
+                  {isYearMode ? `Annual Earnings — ${selectedYear}` : `Earnings Breakdown — ${MONTHS[parseInt(selectedMonth) - 1]} ${selectedYear}`}
                 </CardTitle>
-                <Button size="sm" onClick={generateInternalReport} className="gap-2">
+                <Button size="sm" onClick={isYearMode ? generateAnnualInternalReport : generateInternalReport} className="gap-2">
                   <Eye className="w-4 h-4" />
-                  Preview Report
+                  {isYearMode ? "Preview Annual Report" : "Preview Report"}
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Internal earnings breakdown with crew pay allocation, owner/admin splits, spending budget, and per-project labor costs for {MONTHS[parseInt(selectedMonth) - 1]} {selectedYear}.
+                {isYearMode
+                  ? `Annual earnings summary with monthly breakdown, per-client revenue, and per-person yearly pay totals for ${selectedYear}.`
+                  : `Internal earnings breakdown with crew pay allocation, owner/admin splits, spending budget, and per-project labor costs for ${MONTHS[parseInt(selectedMonth) - 1]} ${selectedYear}.`}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
-                {monthlyProjects.length} project{monthlyProjects.length !== 1 ? "s" : ""} this month
+                {monthlyProjects.length} project{monthlyProjects.length !== 1 ? "s" : ""} this {isYearMode ? "year" : "month"}
               </p>
             </CardContent>
           </Card>
