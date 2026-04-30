@@ -96,7 +96,9 @@ export default function ReportsPage() {
 
   const clientBillingStats = useMemo((): ClientBillingStat[] => {
     return data.clients.map(client => {
-      const clientProjects = allMonthlyProjects.filter(p => p.clientId === client.id);
+      // Only count non-cancelled projects toward billing stats. Cancelled
+      // projects appear in their own section on the report.
+      const clientProjects = allMonthlyProjects.filter(p => p.clientId === client.id && p.status !== "cancelled");
       const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
       const crewCost = clientProjects.reduce((s, p) => s + getProjectCrewCost(p), 0);
       const invoiceAmount = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
@@ -112,10 +114,14 @@ export default function ReportsPage() {
     const yr = parseInt(selectedYear);
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    // Filter projects for this month
-    const projects = filteredProjects
+    // Filter projects for this month, then split into active vs cancelled.
+    // Active projects drive billing/totals/day breakdown; cancelled get
+    // listed in their own section so the reason is preserved.
+    const allProjectsThisMonth = filteredProjects
       .filter(p => parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => a.date.localeCompare(b.date));
+    const cancelledProjects = allProjectsThisMonth.filter(p => p.status === "cancelled");
+    const projects = allProjectsThisMonth.filter(p => p.status !== "cancelled");
 
     // March 2026+: use billable hours with image tracking; before: use worked hours
     const useNewHoursDisplay = yr > 2026 || (yr === 2026 && monthNum >= 3);
@@ -664,6 +670,22 @@ export default function ReportsPage() {
       <!-- Weekly Activity & Pay Breakdown -->
       <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 4px; border: none; text-transform: uppercase; letter-spacing: 0.05em;">Weekly Activity & Pay Breakdown (Internal)</h2>
       ${daySections || "<p>No projects this period</p>"}
+
+      ${cancelledProjects.length > 0 ? `
+      <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 4px; border: none; color: #dc2626;">Cancelled Projects (${cancelledProjects.length})</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">Cancelled projects do not contribute to revenue, hours, or partner splits.</p>
+      <table class="pay-table">
+        <thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Location</th><th>Reason</th><th style="text-align:right">Cancelled On</th></tr></thead>
+        <tbody>${cancelledProjects.map(p => {
+          const c = data.clients.find(cl => cl.id === p.clientId);
+          const t = data.projectTypes.find(t => t.id === p.projectTypeId);
+          const l = data.locations.find(l => l.id === p.locationId);
+          const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const cancelStr = p.cancelledAt ? new Date(p.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+          return `<tr><td>${dateStr}</td><td>${t?.name ?? "Project"}</td><td>${c?.company ?? "—"}</td><td>${l?.name ?? "—"}</td><td style="font-style:italic;color:#666">${p.cancellationReason || "(no reason recorded)"}</td><td style="text-align:right">${cancelStr}</td></tr>`;
+        }).join("")}</tbody>
+      </table>
+      ` : ""}
     ` });
   }
 
@@ -675,10 +697,14 @@ export default function ReportsPage() {
     const monthName = MONTHS[monthNum - 1];
     const yr = parseInt(selectedYear);
 
-    // Filter projects for this client in the selected month
-    const clientProjects = filteredProjects
+    // Filter projects for this client in the selected month, then split
+    // active vs cancelled. Active projects drive billing/totals;
+    // cancelled appear in a separate section below.
+    const allClientProjectsThisMonth = filteredProjects
       .filter(p => p.clientId === clientId && parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => b.date.localeCompare(a.date));
+    const cancelledClientProjects = allClientProjectsThisMonth.filter(p => p.status === "cancelled");
+    const clientProjects = allClientProjectsThisMonth.filter(p => p.status !== "cancelled");
 
     // Calculate billable hours (with role multipliers + editorBilling)
     const totalProductionHours = clientProjects.reduce((s, p) =>
@@ -875,6 +901,21 @@ export default function ReportsPage() {
       <!-- Projects & Activity -->
       <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 16px; border: none;">Projects & Activity</h2>
       ${projectCards || "<p>No projects this period</p>"}
+
+      ${cancelledClientProjects.length > 0 ? `
+      <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 12px; border: none; color: #dc2626;">Cancelled Projects (${cancelledClientProjects.length})</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">These projects were cancelled and are not billed on this report.</p>
+      <table class="pay-table">
+        <thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reason</th><th style="text-align:right">Cancelled On</th></tr></thead>
+        <tbody>${cancelledClientProjects.map(p => {
+          const t = data.projectTypes.find(t => t.id === p.projectTypeId);
+          const l = data.locations.find(l => l.id === p.locationId);
+          const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const cancelStr = p.cancelledAt ? new Date(p.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+          return `<tr><td>${dateStr}</td><td>${t?.name ?? "Project"}</td><td>${l?.name ?? "—"}</td><td style="font-style:italic;color:#666">${p.cancellationReason || "(no reason recorded)"}</td><td style="text-align:right">${cancelStr}</td></tr>`;
+        }).join("")}</tbody>
+      </table>
+      ` : ""}
 
       <!-- Footer -->
       <div class="report-footer">
@@ -1097,6 +1138,27 @@ export default function ReportsPage() {
         <thead><tr><th>Person</th><th style="text-align:right">Hours</th><th style="text-align:right">Annual Pay</th></tr></thead>
         <tbody>${personRows || "<tr><td colspan='3' style='text-align:center;color:#888'>No crew activity</td></tr>"}</tbody>
       </table>
+
+      ${(() => {
+        const cancelled = filteredProjects.filter(p => p.status === "cancelled").sort((a, b) => a.date.localeCompare(b.date));
+        if (cancelled.length === 0) return "";
+        const rows = cancelled.map(p => {
+          const c = data.clients.find(cl => cl.id === p.clientId);
+          const t = data.projectTypes.find(t => t.id === p.projectTypeId);
+          const l = data.locations.find(l => l.id === p.locationId);
+          const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const cancelStr = p.cancelledAt ? new Date(p.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+          return `<tr><td>${dateStr}</td><td>${t?.name ?? "Project"}</td><td>${c?.company ?? "—"}</td><td>${l?.name ?? "—"}</td><td style="font-style:italic;color:#666">${p.cancellationReason || "(no reason recorded)"}</td><td style="text-align:right">${cancelStr}</td></tr>`;
+        }).join("");
+        return `
+          <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none; color: #dc2626;">Cancelled Projects (${cancelled.length})</h2>
+          <p class="subtitle" style="margin-bottom: 12px;">Cancelled projects do not contribute to revenue, hours, or partner splits for the year.</p>
+          <table class="pay-table">
+            <thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Location</th><th>Reason</th><th style="text-align:right">Cancelled On</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      })()}
     ` });
   }
 
@@ -1106,9 +1168,11 @@ export default function ReportsPage() {
     const yr = parseInt(selectedYear);
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    const clientProjects = filteredProjects
+    const allClientProjects = filteredProjects
       .filter(p => p.clientId === clientId)
       .sort((a, b) => a.date.localeCompare(b.date));
+    const cancelledClientProjects = allClientProjects.filter(p => p.status === "cancelled");
+    const clientProjects = allClientProjects.filter(p => p.status !== "cancelled");
 
     const totalProductionHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).crewBillable, 0);
     const totalEditorHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).postBillable, 0);
@@ -1185,6 +1249,21 @@ export default function ReportsPage() {
         <thead><tr><th>Date</th><th>Type</th><th>Location</th><th style="text-align:right">Hours</th><th style="text-align:right">Billed</th></tr></thead>
         <tbody>${projectRows || "<tr><td colspan='5' style='text-align:center;color:#888'>No projects</td></tr>"}</tbody>
       </table>
+
+      ${cancelledClientProjects.length > 0 ? `
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none; color: #dc2626;">Cancelled Projects (${cancelledClientProjects.length})</h2>
+      <p class="subtitle" style="margin-bottom: 12px;">These projects were cancelled and are not billed on this report.</p>
+      <table class="pay-table">
+        <thead><tr><th>Date</th><th>Type</th><th>Location</th><th>Reason</th><th style="text-align:right">Cancelled On</th></tr></thead>
+        <tbody>${cancelledClientProjects.map(p => {
+          const t = data.projectTypes.find(t => t.id === p.projectTypeId);
+          const l = data.locations.find(l => l.id === p.locationId);
+          const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const cancelStr = p.cancelledAt ? new Date(p.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+          return `<tr><td>${dateStr}</td><td>${t?.name ?? "Project"}</td><td>${l?.name ?? "—"}</td><td style="font-style:italic;color:#666">${p.cancellationReason || "(no reason recorded)"}</td><td style="text-align:right">${cancelStr}</td></tr>`;
+        }).join("")}</tbody>
+      </table>
+      ` : ""}
 
       <div class="report-footer">
         <div class="contact">Questions? ${client.email || client.phone || "(contact not provided)"}</div>
