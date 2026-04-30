@@ -254,22 +254,46 @@ function DeliveryDetail({ id }: { id: string }) {
     [data.deliverySelections, id]
   );
 
-  // Fetch signed GET URLs for in-app previews. Re-runs whenever the file
-  // count changes (covers both initial load and post-upload). Signed URLs
-  // are valid for 1 hour, so re-fetching is cheap and keeps them fresh.
+  // Fetch signed GET URLs for in-app previews. Two-phase to keep the
+  // cover image fast while the photos grid loads in the background.
+  // Phase 1: eager fetch just the cover photo's signed URL (single
+  //   signature → milliseconds). Cover Design previews load instantly.
+  // Phase 2: bulk fetch every file's signed URL for the photos grid.
+  // Both populate the same signedUrls map; phase 2 overwrites phase 1.
+  // Signed URLs are valid for 1 hour, so re-fetching is cheap.
+  const coverFileIdForFetch = delivery?.coverFileId || files[0]?.id || null;
   useEffect(() => {
     if (files.length === 0) {
       setSignedUrls(new Map());
       return;
     }
     let cancelled = false;
-    (async () => {
+    const run = async () => {
       try {
         const sess = await supabase.auth.getSession();
         const accessToken = sess.data.session?.access_token || "";
+        const headers = { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` };
+
+        // Phase 1: eager cover URL — completes fast, paints the preview tiles.
+        if (coverFileIdForFetch) {
+          fetch("/api/deliveries", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ action: "signed-urls", deliveryId: id, fileIds: [coverFileIdForFetch] }),
+          }).then(r => r.ok ? r.json() : null).then(body => {
+            if (!body?.urls || cancelled) return;
+            setSignedUrls(prev => {
+              const next = new Map(prev);
+              for (const u of body.urls as { id: string; url: string }[]) next.set(u.id, u.url);
+              return next;
+            });
+          }).catch(() => {});
+        }
+
+        // Phase 2: full set for the photos grid.
         const res = await fetch("/api/deliveries", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          headers,
           body: JSON.stringify({ action: "signed-urls", deliveryId: id }),
         });
         const body = await res.json();
@@ -278,9 +302,10 @@ function DeliveryDetail({ id }: { id: string }) {
         for (const u of body.urls as { id: string; url: string }[]) map.set(u.id, u.url);
         setSignedUrls(map);
       } catch { /* swallow — placeholder remains */ }
-    })();
+    };
+    run();
     return () => { cancelled = true; };
-  }, [id, files.length]);
+  }, [id, files.length, coverFileIdForFetch]);
 
   if (!delivery) {
     return (

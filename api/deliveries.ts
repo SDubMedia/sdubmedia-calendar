@@ -93,6 +93,10 @@ async function deleteFile(body: Record<string, unknown>, orgId: string, res: Ver
 async function signedUrls(body: Record<string, unknown>, orgId: string, res: VercelResponse) {
   const deliveryId = typeof body.deliveryId === "string" ? body.deliveryId : "";
   if (!deliveryId) return res.status(400).json({ error: "Missing deliveryId" });
+  // Optional filter — pass `fileIds` to only sign a subset (e.g. just the
+  // cover photo) for fast eager loading.
+  const fileIdsRaw = Array.isArray(body.fileIds) ? body.fileIds : null;
+  const fileIds = fileIdsRaw ? fileIdsRaw.filter((x): x is string => typeof x === "string") : null;
 
   const { data: delivery } = await supabase
     .from("deliveries")
@@ -102,10 +106,12 @@ async function signedUrls(body: Record<string, unknown>, orgId: string, res: Ver
   if (!delivery) return res.status(404).json({ error: "Delivery not found" });
   if (delivery.org_id !== orgId) return res.status(403).json({ error: "Not your delivery" });
 
-  const { data: files } = await supabase
+  let query = supabase
     .from("delivery_files")
     .select("id, storage_path")
     .eq("delivery_id", deliveryId);
+  if (fileIds && fileIds.length > 0) query = query.in("id", fileIds);
+  const { data: files } = await query;
 
   const urls = (files || []).map((f: { id: string; storage_path: string }) => ({
     id: f.id,
