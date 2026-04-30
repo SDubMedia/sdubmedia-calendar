@@ -154,7 +154,15 @@ export default function ReportsPage() {
       ? (visiblePartnerSplitClients[0].partnerSplit?.partnerName || null)
       : null;
     const partnerName = split?.partnerName || fallbackPartnerName;
-    const useNewSplitLogic = split && (yr > 2026 || (yr === 2026 && monthNum >= 3));
+    // Run partner-split logic when ANY visible project belongs to a partner client,
+    // not just when a single partner client is selected. Otherwise viewing "All
+    // Clients" with a partner client present falls into the no-partner branch and
+    // dumps everything to admin while still rendering the partner row at $0.
+    const hasPartnerProjects = projects.some(p => {
+      const c = data.clients.find(cl => cl.id === p.clientId);
+      return !!c?.partnerSplit;
+    });
+    const useNewSplitLogic = hasPartnerProjects && (yr > 2026 || (yr === 2026 && monthNum >= 3));
 
     let ownerCut = 0;
     let adminCut = 0;
