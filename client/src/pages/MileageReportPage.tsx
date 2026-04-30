@@ -240,8 +240,7 @@ export default function MileageReportPage() {
             <span className="text-xs text-muted-foreground">Rate/mi:</span>
             <span className="text-muted-foreground text-sm">$</span>
             <input
-              type="number"
-              step="0.01"
+              type="text" inputMode="decimal"
               min="0"
               value={ratePerMile}
               onChange={e => setRatePerMile(parseFloat(e.target.value) || 0)}
@@ -427,9 +426,7 @@ export default function MileageReportPage() {
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Round-Trip Miles</Label>
               <Input
-                type="number"
-                min="0"
-                step="0.1"
+                type="text" inputMode="decimal"
                 value={tripForm.miles || ""}
                 onChange={e => setTripForm(f => ({ ...f, miles: parseFloat(e.target.value) || 0 }))}
                 className="bg-secondary border-border"

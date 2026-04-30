@@ -402,7 +402,7 @@ export default function SettingsPage() {
                 {billingModel === "hourly" ? "Default Rate ($/hr)" : "Default Rate ($/project)"}
               </Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={billingRate || ""}
                 onChange={e => setBillingRate(parseFloat(e.target.value) || 0)}
                 className="bg-secondary border-border w-32"
@@ -654,7 +654,7 @@ export default function SettingsPage() {
                     placeholder="Service name"
                   />
                   <Input
-                    type="number"
+                    type="text" inputMode="decimal"
                     value={svc.defaultPrice || ""}
                     onChange={e => setServices(s => s.map(x => x.id === svc.id ? { ...x, defaultPrice: Number(e.target.value) || 0 } : x))}
                     className="bg-secondary border-border text-sm w-24"

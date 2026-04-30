@@ -815,7 +815,7 @@ export default function BusinessExpensesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Amount ($)</Label>
-                <Input type="number" min="0" step="0.01" value={addForm.amount || ""} onChange={e => setAddForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border" />
+                <Input type="text" inputMode="decimal" value={addForm.amount || ""} onChange={e => setAddForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border" />
               </div>
             </div>
             <div className="space-y-1.5">

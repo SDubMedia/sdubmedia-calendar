@@ -490,9 +490,7 @@ export default function StaffPage() {
                       <div className="flex items-center flex-1 gap-1">
                         <span className="text-muted-foreground text-sm">$</span>
                         <Input
-                          type="number"
-                          min="0"
-                          step="5"
+                          type="text" inputMode="decimal"
                           className="h-7 text-sm bg-transparent border-border w-20"
                           value={rr.payRatePerHour || ""}
                           onChange={e => updateRoleRate(rr.role, Number(e.target.value))}
@@ -527,9 +525,7 @@ export default function StaffPage() {
                 <div className="flex items-center gap-1">
                   <span className="text-muted-foreground text-sm">$</span>
                   <Input
-                    type="number"
-                    min="0"
-                    step="5"
+                    type="text" inputMode="decimal"
                     placeholder="0"
                     className="h-9 w-20 bg-secondary border-border text-sm"
                     value={newRate || ""}
@@ -551,9 +547,7 @@ export default function StaffPage() {
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                 <Input
-                  type="number"
-                  min="0"
-                  step="5"
+                  type="text" inputMode="decimal"
                   placeholder="0"
                   className="pl-7"
                   value={form.defaultPayRatePerHour || ""}

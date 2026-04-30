@@ -116,11 +116,11 @@ function LineItemEditor({ items, setter, services }: { items: ProposalLineItem[]
           />
           <div className="flex gap-2 items-center">
             <div className="w-16">
-              <Input type="number" value={li.quantity} onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs text-center" min={1} />
+              <Input type="text" inputMode="decimal" value={li.quantity} onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs text-center" min={1} />
               <span className="text-[9px] text-muted-foreground">Qty</span>
             </div>
             <div className="flex-1">
-              <Input type="number" value={li.unitPrice || ""} onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs" placeholder="0.00" min={0} step={0.01} />
+              <Input type="text" inputMode="decimal" value={li.unitPrice || ""} onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs" placeholder="0.00" min={0} step={0.01} />
               <span className="text-[9px] text-muted-foreground">Price</span>
             </div>
             <div className="text-right">
@@ -171,7 +171,7 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <Input
-              type="number"
+              type="text" inputMode="decimal"
               value={config.depositPercent}
               onChange={e => {
                 const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0));

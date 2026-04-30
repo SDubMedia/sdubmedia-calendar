@@ -254,7 +254,7 @@ export default function OwnerOnboardingWizard() {
                   {billingModel === "hourly" ? "Default rate per hour ($)" : "Default rate per project ($)"}
                 </label>
                 <Input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={billingRate || ""}
                   onChange={e => setBillingRate(parseFloat(e.target.value) || 0)}
                   className="bg-secondary border-border text-center h-10 w-32 mx-auto"

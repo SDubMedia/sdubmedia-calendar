@@ -502,8 +502,7 @@ export default function MarketingBudgetPage() {
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Amount ($)</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text" inputMode="decimal"
                   min="0"
                   value={formData.amount}
                   onChange={e => setFormData(f => ({ ...f, amount: e.target.value }))}

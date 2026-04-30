@@ -147,7 +147,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
   const { data } = useApp();
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
-  // String state so leading zeros don't get stuck (React + type="number" quirk).
+  // String state so leading zeros don't get stuck (React + type="text" inputMode="decimal" quirk).
   const [selectionLimit, setSelectionLimit] = useState("");
   const [perExtraDollars, setPerExtraDollars] = useState("");
   const [flatDollars, setFlatDollars] = useState("");

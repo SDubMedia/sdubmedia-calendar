@@ -567,11 +567,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Project Rate ($)</Label>
               <Input
-                type="number"
-                min="0"
-                step="25"
+                type="text"
+                inputMode="decimal"
                 value={projectRate ?? ""}
-                onChange={(e) => setProjectRate(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^\d.]/g, "");
+                  setProjectRate(cleaned === "" ? 0 : parseFloat(cleaned) || 0);
+                }}
                 className="bg-secondary border-border"
                 placeholder="e.g. 300"
               />
@@ -622,11 +624,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     {billingModelOverride === "hourly" ? "Hourly rate ($/hr)" : "Project rate ($)"}
                   </Label>
                   <Input
-                    type="number"
-                    min="0"
-                    step={billingModelOverride === "hourly" ? "5" : "25"}
+                    type="text"
+                    inputMode="decimal"
                     value={billingRateOverride ?? ""}
-                    onChange={(e) => setBillingRateOverride(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[^\d.]/g, "");
+                      setBillingRateOverride(cleaned === "" ? 0 : parseFloat(cleaned) || 0);
+                    }}
                     className="bg-secondary border-border"
                     placeholder={billingModelOverride === "hourly" ? "e.g. 150" : "e.g. 500"}
                   />
@@ -691,11 +695,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <div className="flex gap-2 sm:contents">
                   <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
-                    <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updateCrewEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
-                    <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updateCrewEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -769,11 +773,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <div className="flex gap-2 sm:contents">
                   <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
-                    <Input type="number" placeholder="0" min="0" step="0.5" value={entry.hoursWorked || ""} onChange={(e) => updatePostEntry(idx, "hoursWorked", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
-                    <Input type="number" placeholder="0.00" min="0" step="5" value={entry.payRatePerHour || ""} onChange={(e) => updatePostEntry(idx, "payRatePerHour", parseFloat(e.target.value) || 0)} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
                     <Trash2 className="w-3.5 h-3.5" />

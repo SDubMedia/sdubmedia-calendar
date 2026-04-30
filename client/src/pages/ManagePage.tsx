@@ -129,7 +129,7 @@ function CrewTab() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Default Pay Rate ($/hr)</Label>
-              <Input type="number" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
+              <Input type="text" inputMode="decimal" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
             </div>
             <p className="text-xs text-muted-foreground">To assign roles and per-role pay rates, go to the <strong>Staff</strong> page after saving.</p>
           </div>

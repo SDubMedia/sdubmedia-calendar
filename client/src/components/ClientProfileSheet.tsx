@@ -226,7 +226,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Billing Rate ($/hr)</Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={form.billingRatePerHour}
                 onChange={(e) => setForm({ ...form, billingRatePerHour: parseFloat(e.target.value) || 0 })}
                 className="bg-secondary border-border"
@@ -238,7 +238,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Default Rate Per Project ($)</Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={form.perProjectRate}
                 onChange={(e) => setForm({ ...form, perProjectRate: parseFloat(e.target.value) || 0 })}
                 className="bg-secondary border-border"
@@ -277,8 +277,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     ))}
                   </select>
                   <Input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
                     value={ptr.rate || ""}
                     onChange={e => {
                       const updated = [...form.projectTypeRates];
@@ -334,8 +333,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   placeholder="e.g. 2nd Videographer"
                 />
                 <Input
-                  type="number"
-                  step="0.1"
+                  type="text" inputMode="decimal"
                   min="0"
                   value={m.multiplier}
                   onChange={e => {
@@ -392,7 +390,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Partner %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.partnerPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, partnerPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -400,7 +398,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Admin %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.adminPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, adminPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -408,7 +406,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.marketingPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, marketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -422,7 +420,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Crew Cost Threshold</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.crewSplitThreshold}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewSplitThreshold: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -431,7 +429,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Crew Marketing %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.crewMarketingPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -446,7 +444,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Partner %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorPartnerPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorPartnerPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -454,7 +452,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Admin %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorAdminPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorAdminPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -462,7 +460,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorMarketingPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"

@@ -667,7 +667,7 @@ export default function TemplateEditorPage() {
                             placeholder="Service"
                           />
                           <Input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={li.unitPrice || ""}
                             onChange={e => updatePackageLineItem(pkg.id, li.id, "unitPrice", Number(e.target.value) || 0)}
                             className="bg-secondary border-border text-[10px] w-20"
@@ -707,7 +707,7 @@ export default function TemplateEditorPage() {
                             placeholder="Label"
                           />
                           <Input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={ms.percent || ""}
                             onChange={e => updateMilestone(pkg.id, ms.id, "percent", Number(e.target.value) || 0)}
                             className="bg-secondary border-border text-[10px] w-14"
@@ -725,7 +725,7 @@ export default function TemplateEditorPage() {
                           </select>
                           {ms.dueType === "relative_days" && (
                             <Input
-                              type="number"
+                              type="text" inputMode="decimal"
                               value={ms.dueDays || ""}
                               onChange={e => updateMilestone(pkg.id, ms.id, "dueDays", Number(e.target.value) || 0)}
                               className="bg-secondary border-border text-[10px] w-12"
