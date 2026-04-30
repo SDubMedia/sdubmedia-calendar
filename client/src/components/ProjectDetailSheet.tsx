@@ -83,6 +83,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
@@ -120,6 +122,23 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     (e) => e.role === "Photo Editor"
   );
   const photoEditorName = photoEditorEntry ? getCrewName(photoEditorEntry.crewMemberId) : null;
+
+  const submitRestore = async () => {
+    setRestoring(true);
+    try {
+      await updateProject(project.id, {
+        status: "upcoming",
+        cancellationReason: "",
+        cancelledAt: null,
+      });
+      toast.success("Project restored to Upcoming");
+      setRestoreOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to restore project");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const submitCancel = async () => {
     setCancelling(true);
@@ -678,10 +697,42 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   Cancel Project
                 </Button>
               )}
+              {isOwner && project.status === "cancelled" && (
+                <Button
+                  variant="outline"
+                  onClick={() => setRestoreOpen(true)}
+                  className="w-full border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:text-emerald-200 gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Restore Project
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Restore (uncancel) project confirm */}
+      <AlertDialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Restore this project?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              The project will move back to Upcoming and start counting toward invoices, hours, and partner splits again. The previous cancellation reason will be cleared. You can advance the status from the detail sheet.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restoring}>Keep cancelled</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={submitRestore}
+              disabled={restoring}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {restoring ? "Restoring…" : "Restore project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Cancel project confirm — captures the reason and stamps cancelled_at */}
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
