@@ -6,6 +6,7 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Project, Client } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost, getMonthlyEarningsBreakdown } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -56,6 +57,7 @@ interface ClientBillingStat {
 
 export default function ReportsPage() {
   const { data, loading } = useApp();
+  const { effectiveProfile } = useAuth();
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
@@ -889,32 +891,62 @@ export default function ReportsPage() {
   function generateAnnualInternalReport() {
     const yr = parseInt(selectedYear);
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const projects = filteredProjects.slice().sort((a, b) => a.date.localeCompare(b.date));
+    const ownerCrewMemberId = effectiveProfile?.crewMemberId || "";
 
-    const monthlyAgg = MONTHS.map((monthName, idx) => {
-      const mNum = idx + 1;
-      const mp = projects.filter(p => parseInt(p.date.split("-")[1]) === mNum);
-      const revenue = mp.reduce((s, p) => {
-        const c = data.clients.find(cl => cl.id === p.clientId);
-        return s + (c ? getProjectInvoiceAmount(p, c) : 0);
-      }, 0);
-      const crewCost = mp.reduce((s, p) => s + getProjectCrewCost(p), 0);
-      const hours = mp.reduce((s, p) => {
-        const c = data.clients.find(cl => cl.id === p.clientId);
-        if (!c) return s + getProjectHours(p).totalHours;
-        return s + getProjectBillableHours(p, c).totalBillable;
-      }, 0);
-      return { monthName, count: mp.length, revenue, crewCost, hours };
+    // Use the canonical earnings breakdown helper — same one P&L uses — so
+    // partner/admin splits, non-partner profit, and net profit numbers all
+    // match the P&L view exactly.
+    const scopedExpenses = selectedClientId === "all"
+      ? data.marketingExpenses
+      : data.marketingExpenses.filter(e => e.clientId === selectedClientId);
+
+    const monthlyBreakdowns = MONTHS.map((monthName, idx) => ({
+      monthName,
+      ...getMonthlyEarningsBreakdown(filteredProjects, data.clients, scopedExpenses, ownerCrewMemberId, yr, idx + 1),
+    }));
+
+    const totals = monthlyBreakdowns.reduce((acc, m) => ({
+      projectCount: acc.projectCount + m.projectCount,
+      revenue: acc.revenue + m.revenue,
+      crewCost: acc.crewCost + m.crewCost,
+      ownerCrewPay: acc.ownerCrewPay + m.ownerCrewPay,
+      travelCost: acc.travelCost + m.travelCost,
+      marketingExpenses: acc.marketingExpenses + m.marketingExpenses,
+      partnerPayout: acc.partnerPayout + m.partnerPayout,
+      adminSplit: acc.adminSplit + m.adminSplit,
+      nonPartnerProfit: acc.nonPartnerProfit + m.nonPartnerProfit,
+      grossProfit: acc.grossProfit + m.grossProfit,
+      netProfit: acc.netProfit + m.netProfit,
+    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, grossProfit: 0, netProfit: 0 });
+
+    // Allocate the year's total partnerPayout across partners by their share
+    // of profit-weighted-by-partnerPercent. Mirrors ProfitLossPage logic so
+    // partner totals match the P&L view.
+    const partnerWeights = new Map<string, number>();
+    let totalWeight = 0;
+    filteredProjects.forEach(p => {
+      const client = data.clients.find(c => c.id === p.clientId);
+      if (!client?.partnerSplit) return;
+      const revenue = getProjectInvoiceAmount(p, client);
+      const crewCost = getProjectCrewCost(p);
+      const profit = Math.max(0, revenue - crewCost);
+      const weight = profit * (client.partnerSplit.partnerPercent ?? 0);
+      if (weight <= 0) return;
+      const name = client.partnerSplit.partnerName;
+      partnerWeights.set(name, (partnerWeights.get(name) || 0) + weight);
+      totalWeight += weight;
     });
+    const partnerPayouts: { name: string; payout: number }[] = [];
+    if (totalWeight > 0 && totals.partnerPayout > 0) {
+      partnerWeights.forEach((weight, name) => {
+        partnerPayouts.push({ name, payout: totals.partnerPayout * (weight / totalWeight) });
+      });
+      partnerPayouts.sort((a, b) => b.payout - a.payout);
+    }
 
-    const totalProjects = projects.length;
-    const totalRevenue = monthlyAgg.reduce((s, m) => s + m.revenue, 0);
-    const totalCrewCost = monthlyAgg.reduce((s, m) => s + m.crewCost, 0);
-    const totalHours = monthlyAgg.reduce((s, m) => s + m.hours, 0);
-    const totalProfit = totalRevenue - totalCrewCost;
-
+    // Per-person crew pay for the year
     const personPay: Record<string, { name: string; hours: number; pay: number }> = {};
-    projects.forEach(p => {
+    filteredProjects.forEach(p => {
       [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const name = member?.name ?? "Unknown";
@@ -922,7 +954,7 @@ export default function ReportsPage() {
         const isPhotoEditorBilling = e.role === "Photo Editor" && p.editorBilling;
         if (isPhotoEditorBilling) {
           personPay[e.crewMemberId].pay += p.editorBilling!.imageCount * (p.editorBilling!.perImageRate ?? 6);
-        } else {
+        } else if (e.role !== "Travel") {
           const hrs = Number(e.hoursWorked ?? 0);
           const rate = Number(e.payRatePerHour ?? 0);
           personPay[e.crewMemberId].hours += hrs;
@@ -930,23 +962,25 @@ export default function ReportsPage() {
         }
       });
     });
-    const personList = Object.values(personPay).sort((a, b) => b.pay - a.pay);
+    const personList = Object.values(personPay).filter(p => p.pay > 0 || p.hours > 0).sort((a, b) => b.pay - a.pay);
 
+    // By-client breakdown (revenue + crew cost + profit)
     const clientAgg = data.clients.map(client => {
-      const cp = projects.filter(p => p.clientId === client.id);
+      const cp = filteredProjects.filter(p => p.clientId === client.id);
       const rev = cp.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
       const cc = cp.reduce((s, p) => s + getProjectCrewCost(p), 0);
       return { client, count: cp.length, revenue: rev, crewCost: cc, profit: rev - cc };
     }).filter(a => a.count > 0).sort((a, b) => b.revenue - a.revenue);
 
-    const monthlyRows = monthlyAgg.map(m => `
+    const monthlyRows = monthlyBreakdowns.map(m => `
       <tr>
         <td>${m.monthName}</td>
-        <td style="text-align:right">${m.count || "—"}</td>
-        <td style="text-align:right">${m.hours > 0 ? m.hours.toFixed(2) : "—"}</td>
+        <td style="text-align:right">${m.projectCount || "—"}</td>
         <td style="text-align:right">${m.revenue > 0 ? formatCurrency(m.revenue) : "—"}</td>
         <td style="text-align:right">${m.crewCost > 0 ? formatCurrency(m.crewCost) : "—"}</td>
-        <td style="text-align:right;font-weight:700">${m.revenue - m.crewCost !== 0 ? formatCurrency(m.revenue - m.crewCost) : "—"}</td>
+        <td style="text-align:right">${m.partnerPayout > 0 ? formatCurrency(m.partnerPayout) : "—"}</td>
+        <td style="text-align:right">${m.adminSplit > 0 ? formatCurrency(m.adminSplit) : "—"}</td>
+        <td style="text-align:right;font-weight:700">${m.grossProfit !== 0 ? formatCurrency(m.grossProfit) : "—"}</td>
       </tr>
     `).join("");
 
@@ -960,12 +994,23 @@ export default function ReportsPage() {
 
     const clientRows = clientAgg.map(c => `
       <tr>
-        <td>${c.client.company}</td>
+        <td>${c.client.company}${c.client.partnerSplit ? ` <span style="color:#888;font-size:11px">(${c.client.partnerSplit.partnerName})</span>` : ""}</td>
         <td style="text-align:right">${c.count}</td>
         <td style="text-align:right">${formatCurrency(c.revenue)}</td>
         <td style="text-align:right">${formatCurrency(c.crewCost)}</td>
         <td style="text-align:right;font-weight:700">${formatCurrency(c.profit)}</td>
       </tr>
+    `).join("");
+
+    const partnerCards = partnerPayouts.map(p => `
+      <div class="earnings-card owner">
+        <div class="card-label" style="color: #22c55e; font-weight: 600;">${p.name} (Partner)</div>
+        <div class="card-value">${formatCurrency(p.payout)}</div>
+      </div>
+    `).join("");
+
+    const partnerPayoutRows = partnerPayouts.map(p => `
+      <tr><td>${p.name} (Partner)</td><td style="text-align:right">${formatCurrency(p.payout)}</td></tr>
     `).join("");
 
     const clientFilterLabel = selectedClientId !== "all"
@@ -986,34 +1031,59 @@ export default function ReportsPage() {
       <div class="earnings-grid-2">
         <div class="earnings-card admin">
           <div class="card-label" style="color: #3b82f6; font-weight: 600;">Total Revenue</div>
-          <div class="card-value">${formatCurrency(totalRevenue)}</div>
+          <div class="card-value">${formatCurrency(totals.revenue)}</div>
         </div>
-        <div class="earnings-card owner">
-          <div class="card-label" style="color: #22c55e; font-weight: 600;">Profit (Revenue − Crew)</div>
-          <div class="card-value">${formatCurrency(totalProfit)}</div>
+        <div class="earnings-card">
+          <div class="card-label" style="color: #888; font-weight: 600;">Crew Cost</div>
+          <div class="card-value">${formatCurrency(totals.crewCost)}</div>
         </div>
       </div>
       <div class="earnings-grid-2">
         <div class="earnings-card">
           <div class="card-label">Projects</div>
-          <div class="card-value">${totalProjects}</div>
+          <div class="card-value">${totals.projectCount}</div>
         </div>
         <div class="earnings-card">
-          <div class="card-label">Total Hours Billed</div>
-          <div class="card-value">${totalHours.toFixed(2)} hrs</div>
+          <div class="card-label" style="color: #22c55e; font-weight: 600;">Gross Profit</div>
+          <div class="card-value">${formatCurrency(totals.grossProfit)}</div>
         </div>
+      </div>
+
+      <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">Earnings Splits</h2>
+      ${partnerCards}
+      <div class="earnings-grid-2">
+        <div class="earnings-card admin">
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">SDub Media LLC (Admin Split)</div>
+          <div class="card-value">${formatCurrency(totals.adminSplit)}</div>
+        </div>
+        ${totals.nonPartnerProfit !== 0 ? `<div class="earnings-card admin">
+          <div class="card-label" style="color: #3b82f6; font-weight: 600;">Non-Partner Profit (Owner)</div>
+          <div class="card-value">${formatCurrency(totals.nonPartnerProfit)}</div>
+        </div>` : ""}
       </div>
 
       <div class="section">
         <div class="section-header">Monthly Breakdown</div>
         <div class="section-body" style="padding: 0;">
           <table class="pay-table">
-            <thead><tr><th>Month</th><th style="text-align:right">Projects</th><th style="text-align:right">Hours</th><th style="text-align:right">Revenue</th><th style="text-align:right">Crew Cost</th><th style="text-align:right">Profit</th></tr></thead>
+            <thead><tr><th>Month</th><th style="text-align:right">Projects</th><th style="text-align:right">Revenue</th><th style="text-align:right">Crew</th><th style="text-align:right">Partner</th><th style="text-align:right">Admin</th><th style="text-align:right">Gross Profit</th></tr></thead>
             <tbody>${monthlyRows}</tbody>
-            <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totalProjects}</td><td style="text-align:right">${totalHours.toFixed(2)}</td><td style="text-align:right">${formatCurrency(totalRevenue)}</td><td style="text-align:right">${formatCurrency(totalCrewCost)}</td><td style="text-align:right">${formatCurrency(totalProfit)}</td></tr></tfoot>
+            <tfoot><tr class="pay-total"><td><strong>TOTAL</strong></td><td style="text-align:right">${totals.projectCount}</td><td style="text-align:right">${formatCurrency(totals.revenue)}</td><td style="text-align:right">${formatCurrency(totals.crewCost)}</td><td style="text-align:right">${formatCurrency(totals.partnerPayout)}</td><td style="text-align:right">${formatCurrency(totals.adminSplit)}</td><td style="text-align:right">${formatCurrency(totals.grossProfit)}</td></tr></tfoot>
           </table>
         </div>
       </div>
+
+      ${partnerPayouts.length > 0 ? `
+      <div class="section">
+        <div class="section-header">Partner Payouts</div>
+        <div class="section-body" style="padding: 0;">
+          <table class="pay-table">
+            <thead><tr><th>Partner</th><th style="text-align:right">Annual Payout</th></tr></thead>
+            <tbody>${partnerPayoutRows}</tbody>
+          </table>
+        </div>
+      </div>
+      ` : ""}
 
       <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">By Client</h2>
       <table class="pay-table">
@@ -1022,7 +1092,7 @@ export default function ReportsPage() {
       </table>
 
       <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">By Person — Annual Pay</h2>
-      <p class="subtitle" style="margin-bottom: 12px;">Aggregated from project Internal Pay Allocation rows. Owner/admin/marketing splits are separate.</p>
+      <p class="subtitle" style="margin-bottom: 12px;">Aggregated from project Internal Pay Allocation rows. Partner/admin splits above are separate.</p>
       <table class="pay-table">
         <thead><tr><th>Person</th><th style="text-align:right">Hours</th><th style="text-align:right">Annual Pay</th></tr></thead>
         <tbody>${personRows || "<tr><td colspan='3' style='text-align:center;color:#888'>No crew activity</td></tr>"}</tbody>
