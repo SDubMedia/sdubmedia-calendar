@@ -80,6 +80,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
@@ -117,6 +120,24 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     (e) => e.role === "Photo Editor"
   );
   const photoEditorName = photoEditorEntry ? getCrewName(photoEditorEntry.crewMemberId) : null;
+
+  const submitCancel = async () => {
+    setCancelling(true);
+    try {
+      await updateProject(project.id, {
+        status: "cancelled",
+        cancellationReason: cancelReason.trim(),
+        cancelledAt: new Date().toISOString(),
+      });
+      toast.success("Project cancelled");
+      setCancelOpen(false);
+      setCancelReason("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel project");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const advanceStatus = async () => {
     const next = STATUS_NEXT[project.status];
@@ -647,10 +668,52 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   Edit Project
                 </Button>
               )}
+              {isOwner && project.status !== "cancelled" && (
+                <Button
+                  variant="outline"
+                  onClick={() => { setCancelReason(""); setCancelOpen(true); }}
+                  className="w-full border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200 gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Cancel Project
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Cancel project confirm — captures the reason and stamps cancelled_at */}
+      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Cancel this project?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              The project will move to Cancelled status and stop counting toward invoices, hours, and partner splits. It still appears on the calendar (in red) and on reports under Cancelled Projects.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5 py-2">
+            <label className="text-xs text-muted-foreground">Reason for cancellation</label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. client postponed, weather, scope changed"
+              rows={3}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Keep project</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={submitCancel}
+              disabled={cancelling}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {cancelling ? "Cancelling…" : "Cancel project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Create & Send Invoice dialog */}
       <AlertDialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
