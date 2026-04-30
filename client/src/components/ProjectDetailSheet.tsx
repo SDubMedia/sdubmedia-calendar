@@ -295,6 +295,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                     project.status === "filming_done" && "bg-purple-500/20 text-purple-300 border-purple-500/30",
                     project.status === "in_editing" && "bg-amber-500/20 text-amber-300 border-amber-500/30",
                     project.status === "completed" && "bg-green-500/20 text-green-300 border-green-500/30",
+                    project.status === "cancelled" && "bg-red-500/20 text-red-300 border-red-500/30",
                   )}>
                     {STATUS_LABELS[project.status]}
                   </Badge>
@@ -319,6 +320,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
           </SheetHeader>
 
           <div className="space-y-5">
+            {/* Cancellation banner — read-only, shown only on cancelled projects */}
+            {project.status === "cancelled" && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-300">Cancelled{project.cancelledAt ? ` · ${new Date(project.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}</p>
+                {project.cancellationReason && (
+                  <p className="text-sm text-red-100/90 mt-1.5 whitespace-pre-wrap">{project.cancellationReason}</p>
+                )}
+              </div>
+            )}
+
             {/* Date, Time, Client, Location */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-secondary rounded-lg p-3 space-y-1">

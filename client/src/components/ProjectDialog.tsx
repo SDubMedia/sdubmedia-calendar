@@ -59,6 +59,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [editTypes, setEditTypes] = useState<string[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
+  const [cancellationReason, setCancellationReason] = useState(project?.cancellationReason ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
   const [billingModelOverride, setBillingModelOverride] = useState<BillingModel | null>(project?.billingModel ?? null);
   const [billingRateOverride, setBillingRateOverride] = useState<number | null>(project?.billingRate ?? null);
@@ -94,6 +95,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
+      setCancellationReason(project?.cancellationReason ?? "");
       // For new projects, pre-fill project rate from client default
       if (project?.projectRate != null) {
         setProjectRate(project.projectRate);
@@ -345,6 +347,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       billingModel: billingModelOverride,
       billingRate: billingModelOverride ? billingRateOverride : null,
       editTypes, notes, deliverableUrl,
+      cancellationReason: status === "cancelled" ? cancellationReason.trim() : "",
+      cancelledAt: status === "cancelled" ? (project?.cancelledAt ?? null) : null,
     };
     try {
       if (isEdit && project) {
@@ -561,6 +565,25 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </Select>
             </div>}
           </div>
+
+          {/* Cancellation reason — surfaces only when status is cancelled.
+              Saved alongside cancelled_at; shown read-only on the project
+              detail so future viewers can see why this didn't go forward. */}
+          {!isLightweight && status === "cancelled" && (
+            <div className="space-y-1.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+              <Label className="text-xs font-medium text-red-300">Reason for cancellation</Label>
+              <Textarea
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                placeholder="Why was this project cancelled? (e.g. client postponed, weather, scope changed)"
+                className="bg-background/50 border-red-500/30 resize-none"
+                rows={2}
+              />
+              {project?.cancelledAt && (
+                <p className="text-[10px] text-muted-foreground">Cancelled on {new Date(project.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+              )}
+            </div>
+          )}
 
           {/* Project Rate (per-project billing clients only, legacy field) */}
           {!isLightweight && selectedClient?.billingModel === "per_project" && !billingModelOverride && (

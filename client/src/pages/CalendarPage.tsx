@@ -537,6 +537,7 @@ export default function CalendarPage() {
                             p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
                             p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
                             p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                            p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
                           )}
                         >
                           {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}

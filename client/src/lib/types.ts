@@ -333,6 +333,8 @@ export interface Project {
   editTypes: string[]; // edit_type IDs
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables
+  cancellationReason: string; // populated when status === "cancelled"
+  cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
   createdAt: string;
 }
 

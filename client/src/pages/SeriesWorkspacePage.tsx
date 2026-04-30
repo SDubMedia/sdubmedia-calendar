@@ -98,6 +98,8 @@ export default function SeriesWorkspacePage() {
           editTypes: [],
           notes: `[Series: ${series!.name}] Episode ${ep.episodeNumber}: ${ep.title}\n\n${ep.concept}`,
           deliverableUrl: "",
+          cancellationReason: "",
+          cancelledAt: null,
         });
         await updateEpisode(ep.id, { projectId: newProject.id, status: "scheduled" });
         setEpisodes(prev => prev.map(e => e.id === ep.id ? { ...e, projectId: newProject.id, status: "scheduled" } : e));

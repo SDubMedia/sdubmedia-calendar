@@ -363,6 +363,8 @@ function rowToProject(r: any): Project {
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     deliverableUrl: r.deliverable_url || "",
+    cancellationReason: r.cancellation_reason || "",
+    cancelledAt: r.cancelled_at || null,
     createdAt: r.created_at,
   };
 }
@@ -1697,6 +1699,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       edit_types: p.editTypes,
       notes: p.notes,
       deliverable_url: p.deliverableUrl || "",
+      cancellation_reason: p.cancellationReason || "",
+      cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -1730,6 +1734,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
+    if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
+    if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;
+    // Auto-stamp cancelled_at the first time status flips to "cancelled" if
+    // the caller didn't supply one explicitly. Doesn't fire if status is
+    // already cancelled or unchanged.
+    if (p.status === "cancelled" && p.cancelledAt === undefined) {
+      const { data: current } = await supabase.from("projects").select("status,cancelled_at").eq("id", id).single();
+      if (current && current.status !== "cancelled" && !current.cancelled_at) {
+        patch.cancelled_at = new Date().toISOString();
+      }
+    }
     const { data: updated, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     if (!updated) throw new Error("Update failed — row not returned (possible RLS restriction)");

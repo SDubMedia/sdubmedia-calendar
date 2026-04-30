@@ -76,6 +76,8 @@ export const seedData: AppData = {
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -95,6 +97,8 @@ export const seedData: AppData = {
       editTypes: ["Podcast Edit"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -111,6 +115,8 @@ export const seedData: AppData = {
       editTypes: [],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -127,6 +133,8 @@ export const seedData: AppData = {
       editTypes: ["Social Vertical"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -143,6 +151,8 @@ export const seedData: AppData = {
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
   ],
