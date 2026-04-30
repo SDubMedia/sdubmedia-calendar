@@ -771,6 +771,23 @@ export interface PersonalEvent {
   createdAt: string;
 }
 
+// Lightweight unpaid calendar entry. Optionally tied to a client; when the
+// visibleToClient flag is on, the assigned client sees it on their calendar.
+export interface Meeting {
+  id: string;
+  ownerUserId: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  clientId: string | null;
+  locationText: string;
+  notes: string;
+  visibleToClient: boolean;
+  orgId: string;
+  createdAt: string;
+}
+
 // ----------------------------------------------------------------------
 // Galleries (deliveries)
 // ----------------------------------------------------------------------
@@ -871,6 +888,7 @@ export interface AppData {
   pipelineLeads: PipelineLead[];
   series: Series[];
   personalEvents: PersonalEvent[];
+  meetings: Meeting[];
   deliveries: Delivery[];
   deliveryFiles: DeliveryFile[];
   deliverySelections: DeliverySelection[];

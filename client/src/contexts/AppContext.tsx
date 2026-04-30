@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Meeting, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -103,6 +103,9 @@ interface AppContextValue {
   addPersonalEvent: (e: Omit<PersonalEvent, "id" | "createdAt">) => Promise<PersonalEvent>;
   updatePersonalEvent: (id: string, e: Partial<PersonalEvent>) => Promise<void>;
   deletePersonalEvent: (id: string) => Promise<void>;
+  addMeeting: (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">) => Promise<Meeting>;
+  updateMeeting: (id: string, m: Partial<Meeting>) => Promise<void>;
+  deleteMeeting: (id: string) => Promise<void>;
   // Deliveries (galleries)
   addDelivery: (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">) => Promise<Delivery>;
   updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
@@ -476,6 +479,23 @@ function rowToPersonalEvent(r: any): PersonalEvent {
   };
 }
 
+function rowToMeeting(r: any): Meeting {
+  return {
+    id: r.id,
+    ownerUserId: r.owner_user_id || "",
+    title: r.title || "",
+    date: r.date,
+    startTime: r.start_time || "",
+    endTime: r.end_time || "",
+    clientId: r.client_id || null,
+    locationText: r.location_text || "",
+    notes: r.notes || "",
+    visibleToClient: r.visible_to_client ?? false,
+    orgId: r.org_id || "",
+    createdAt: r.created_at,
+  };
+}
+
 function rowToDeliveryCollection(r: any): DeliveryCollection {
   return {
     id: r.id,
@@ -569,7 +589,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], meetings: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -614,6 +634,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const allowedClientIds = new Set(clientIds);
       const allowedProjects = rawData.projects.filter(p => allowedClientIds.has(p.clientId));
       const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
+      // Meetings: client role gets only meetings explicitly shared
+      // (visibleToClient=true) AND tied to one of their clients.
+      // Partner role gets meetings on their clients OR unattached.
+      const allowedMeetings = targetRole === "client"
+        ? rawData.meetings.filter(m => m.visibleToClient && m.clientId && allowedClientIds.has(m.clientId))
+        : rawData.meetings.filter(m => !m.clientId || allowedClientIds.has(m.clientId));
       return {
         ...rawData,
         clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
@@ -622,6 +648,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
         proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
         deliveries: rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId)),
+        meetings: allowedMeetings,
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],
         marketingExpenses: [],
@@ -664,6 +691,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
         { data: personalEventsData, error: _e8b },
+        { data: meetingsData, error: _e8b2 },
         { data: deliveriesData, error: _e8c },
         { data: deliveryFilesData, error: _e8d },
         { data: deliverySelectionsData, error: _e8e },
@@ -691,6 +719,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         supabase.from("personal_events").select("*").order("date"),
+        supabase.from("meetings").select("*").order("date"),
         supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
         supabase.from("delivery_files").select("*").order("position"),
         supabase.from("delivery_selections").select("*").order("created_at"),
@@ -723,6 +752,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
+        meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
         deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
         deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
@@ -773,6 +803,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
       series: { key: "series", convert: rowToSeries },
       personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
       deliveries: { key: "deliveries", convert: rowToDelivery },
       delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
       delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
@@ -1225,6 +1256,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("personal_events").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, personalEvents: d.personalEvents.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Meetings (lightweight unpaid calendar entries) ----
+  const addMeeting = useCallback(async (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">): Promise<Meeting> => {
+    if (!profile?.id) throw new Error("Not signed in");
+    const id = `mtg_${Date.now()}`;
+    const { data: row, error } = await supabase.from("meetings").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      owner_user_id: profile.id,
+      title: m.title,
+      date: m.date,
+      start_time: m.startTime || "",
+      end_time: m.endTime || "",
+      client_id: m.clientId || null,
+      location_text: m.locationText || "",
+      notes: m.notes || "",
+      visible_to_client: m.visibleToClient ?? false,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const meeting = rowToMeeting(row);
+    setRawData(d => ({ ...d, meetings: [...d.meetings, meeting].sort((a, b) => a.date.localeCompare(b.date)) }));
+    return meeting;
+  }, [orgId, profile?.id]);
+
+  const updateMeeting = useCallback(async (id: string, m: Partial<Meeting>) => {
+    const patch: any = {};
+    if (m.title !== undefined) patch.title = m.title;
+    if (m.date !== undefined) patch.date = m.date;
+    if (m.startTime !== undefined) patch.start_time = m.startTime;
+    if (m.endTime !== undefined) patch.end_time = m.endTime;
+    if (m.clientId !== undefined) patch.client_id = m.clientId || null;
+    if (m.locationText !== undefined) patch.location_text = m.locationText;
+    if (m.notes !== undefined) patch.notes = m.notes;
+    if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
+    const { error } = await supabase.from("meetings").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));
+  }, []);
+
+  const deleteMeeting = useCallback(async (id: string) => {
+    const { error } = await supabase.from("meetings").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, meetings: d.meetings.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Deliveries (galleries) ----
@@ -1941,6 +2016,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposal, updateProposal, deleteProposal,
       addPipelineLead, updatePipelineLead, deletePipelineLead,
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
+      addMeeting, updateMeeting, deleteMeeting,
       addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
       registerDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,

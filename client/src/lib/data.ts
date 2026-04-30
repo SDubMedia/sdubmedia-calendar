@@ -161,6 +161,7 @@ export const seedData: AppData = {
   pipelineLeads: [],
   series: [],
   personalEvents: [],
+  meetings: [],
   deliveries: [],
   deliveryFiles: [],
   deliverySelections: [],

@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, PersonalEvent, PersonalEventTemplate } from "@/lib/types";
+import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
+import MeetingDialog from "@/components/MeetingDialog";
 import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
 import { Settings } from "lucide-react";
 
@@ -53,6 +54,8 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   // Bulk-apply template to multiple dates
@@ -216,6 +219,16 @@ export default function CalendarPage() {
       .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
   };
 
+  const monthMeetings = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return data.meetings.filter((m) => m.date.startsWith(prefix));
+  }, [data.meetings, year, month]);
+
+  const getMeetingsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return monthMeetings.filter((m) => m.date === dateStr);
+  };
+
   // Projects filtered by selected date, or scope (month/all) and status
   const filteredProjects = useMemo(() => {
     let projects;
@@ -323,6 +336,17 @@ export default function CalendarPage() {
                   <option key={t.id} value={t.id}>{t.label}</option>
                 ))}
               </select>
+            )}
+            {!isClient && (
+              <Button
+                variant="outline"
+                onClick={() => { setEditingMeeting(null); setMeetingOpen(true); }}
+                className="gap-2 border-slate-500/40 text-slate-700 dark:text-slate-300 hover:bg-slate-500/10"
+                title="Schedule a meeting (unpaid)"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Meeting</span>
+              </Button>
             )}
             {!isClient && (
               <Button
@@ -437,6 +461,7 @@ export default function CalendarPage() {
               const isToday = isCurrentMonth && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
               const dayProjects = isCurrentMonth ? getProjectsForDay(day) : [];
               const dayEvents = isCurrentMonth ? getPersonalEventsForDay(day) : [];
+              const dayMeetings = isCurrentMonth ? getMeetingsForDay(day) : [];
               const dateStr = isCurrentMonth
                 ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                 : null;
@@ -521,6 +546,30 @@ export default function CalendarPage() {
                       ))}
                       {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Meeting chips — slate-blue, always shown regardless of calendarMode */}
+                  {dayMeetings.length > 0 && (
+                    <div className="space-y-0.5">
+                      {dayMeetings.slice(0, 2).map((m) => {
+                        const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={(ev) => { ev.stopPropagation(); setEditingMeeting(m); setMeetingOpen(true); }}
+                            onPointerDown={(ev) => ev.stopPropagation()}
+                            className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity bg-slate-500/25 text-slate-700 dark:text-slate-300 border border-slate-500/30"
+                            title={m.title}
+                          >
+                            <span className="hidden sm:inline">{m.startTime ? `${m.startTime} ` : ""}{m.title}{client ? ` · ${client.company}` : ""}</span>
+                            <span className="sm:hidden">{m.title}</span>
+                          </div>
+                        );
+                      })}
+                      {dayMeetings.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayMeetings.length - 2} mtg</div>
                       )}
                     </div>
                   )}
@@ -834,6 +883,14 @@ export default function CalendarPage() {
         open={newProjectOpen}
         onClose={() => { setNewProjectOpen(false); setSelectedDate(null); }}
         defaultDate={selectedDate ?? undefined}
+      />
+
+      {/* Meeting Dialog */}
+      <MeetingDialog
+        open={meetingOpen}
+        onClose={() => { setMeetingOpen(false); setEditingMeeting(null); }}
+        initialDate={selectedDate}
+        editing={editingMeeting}
       />
 
       {/* Project Detail Sheet */}
