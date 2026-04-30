@@ -821,7 +821,7 @@ export interface DeliverySelection {
   createdAt: string;
 }
 
-export type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+export type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
 
 export interface DeliveryCollection {
   id: string;

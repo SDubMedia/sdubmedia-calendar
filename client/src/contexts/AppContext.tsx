@@ -519,7 +519,8 @@ function rowToDelivery(r: any): Delivery {
     coverFileId: r.cover_file_id || null,
     watermarkText: r.watermark_text || null,
     printsEnabled: !!r.prints_enabled,
-    coverLayout: (r.cover_layout || "center") as Delivery["coverLayout"],
+    // Coerce unknown / removed layouts (e.g. "outline" pre-2026-04-30) → "center".
+    coverLayout: (["center","vintage","minimal","left","stripe","frame","divider","stamp"].includes(r.cover_layout) ? r.cover_layout : "center") as Delivery["coverLayout"],
     coverFont: r.cover_font || "",
     coverSubtitle: r.cover_subtitle || null,
     coverDate: r.cover_date || null,

@@ -33,7 +33,7 @@ interface DeliveryInfo {
   id: string;
   title: string;
   coverFileId: string | null;
-  coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+  coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
   coverFont?: string;
   coverSubtitle: string | null;
   coverDate: string | null;
@@ -519,7 +519,7 @@ export default function DeliverGalleryPage() {
       {/* Inline font for the hero — Cormorant for that Pixieset serif feel */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Lora:wght@400;600&family=Marcellus&family=Italiana&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Marcellus&family=Inter:wght@300;400;500&family=Montserrat:wght@300;400;500&family=EB+Garamond:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
       {/* HERO */}
       {layoutHasHero ? (
@@ -928,17 +928,18 @@ export default function DeliverGalleryPage() {
 // Cover layouts — each renders the title/subtitle/date over a hero image
 // in a different visual style. Inspired by Pixieset's cover designs.
 // ----------------------------------------------------------------------
-type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
 
 // Keep these in sync with COVER_FONTS in DeliveriesPage. Public bundle
 // can't import from the admin page, so the list is duplicated by design.
 const COVER_HERO_FONTS: Record<string, { family: string; weight: number }> = {
-  "":          { family: "'Cormorant Garamond', Georgia, serif",  weight: 300 },
-  "playfair":  { family: "'Playfair Display', Georgia, serif",    weight: 400 },
-  "lora":      { family: "'Lora', Georgia, serif",                weight: 400 },
-  "marcellus": { family: "'Marcellus', Georgia, serif",           weight: 400 },
-  "italiana":  { family: "'Italiana', Georgia, serif",            weight: 400 },
-  "inter":     { family: "'Inter', system-ui, sans-serif",        weight: 300 },
+  "":                { family: "'Cormorant Garamond', Georgia, serif",  weight: 300 },
+  "playfair":        { family: "'Playfair Display', Georgia, serif",    weight: 400 },
+  "marcellus":       { family: "'Marcellus', Georgia, serif",           weight: 400 },
+  "inter":           { family: "'Inter', system-ui, sans-serif",        weight: 300 },
+  "sans":            { family: "'Montserrat', system-ui, sans-serif",   weight: 300 },
+  "serif-timeless":  { family: "'EB Garamond', Georgia, serif",         weight: 400 },
+  "serif-modern":    { family: "'DM Serif Display', Georgia, serif",    weight: 400 },
 };
 function getCoverHeroFontFamily(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).family; }
 function getCoverHeroFontWeight(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).weight; }
@@ -965,7 +966,6 @@ function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue }: {
       case "frame":
       case "divider":
       case "stamp":
-      case "outline":
         return "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)";
       default: return "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)";
     }
@@ -988,11 +988,6 @@ function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue }: {
     color: "white",
   };
 
-  if (layout === "outline") {
-    titleStyle.color = "transparent";
-    titleStyle.WebkitTextStroke = "1.5px white";
-    titleStyle.textShadow = "none";
-  }
 
   // The title element with optional decorative bits per layout
   const titleEl = (() => {

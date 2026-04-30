@@ -686,18 +686,20 @@ function DeliveryDetail({ id }: { id: string }) {
   );
 }
 
-type CoverLayoutId = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+type CoverLayoutId = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
 
-// Top 6 hand-picked fonts for gallery covers. Empty value = the original
-// Cormorant Garamond default. The same value lives in DeliverGalleryPage —
-// keep them in sync if you add/remove options.
+// Hand-picked cover fonts. Empty value = the original Cormorant Garamond
+// default. The same map lives in DeliverGalleryPage — keep them in sync
+// if you add/remove options. Existing galleries pinned to a removed
+// value fall back to default (getCoverFont).
 export const COVER_FONTS: Array<{ value: string; label: string; family: string; weight: number }> = [
-  { value: "",          label: "Cormorant",       family: "'Cormorant Garamond', Georgia, serif",        weight: 300 },
-  { value: "playfair",  label: "Playfair",        family: "'Playfair Display', Georgia, serif",          weight: 400 },
-  { value: "lora",      label: "Lora",            family: "'Lora', Georgia, serif",                      weight: 400 },
-  { value: "marcellus", label: "Marcellus",       family: "'Marcellus', Georgia, serif",                 weight: 400 },
-  { value: "italiana",  label: "Italiana",        family: "'Italiana', Georgia, serif",                  weight: 400 },
-  { value: "inter",     label: "Inter",           family: "'Inter', system-ui, sans-serif",              weight: 300 },
+  { value: "",                label: "Cormorant",      family: "'Cormorant Garamond', Georgia, serif",        weight: 300 },
+  { value: "playfair",        label: "Playfair",       family: "'Playfair Display', Georgia, serif",          weight: 400 },
+  { value: "marcellus",       label: "Marcellus",      family: "'Marcellus', Georgia, serif",                 weight: 400 },
+  { value: "inter",           label: "Inter",          family: "'Inter', system-ui, sans-serif",              weight: 300 },
+  { value: "sans",            label: "Sans",           family: "'Montserrat', system-ui, sans-serif",         weight: 300 },
+  { value: "serif-timeless",  label: "Serif Timeless", family: "'EB Garamond', Georgia, serif",               weight: 400 },
+  { value: "serif-modern",    label: "Serif Modern",   family: "'DM Serif Display', Georgia, serif",          weight: 400 },
 ];
 
 export function getCoverFont(value: string) {
@@ -722,7 +724,6 @@ const STOCK_COVERS: Record<CoverLayoutId, string> = {
   frame:    "https://picsum.photos/seed/slate-cover-frame/400/220",
   divider:  "https://picsum.photos/seed/slate-cover-divider/400/220",
   stamp:    "https://picsum.photos/seed/slate-cover-stamp/400/220",
-  outline:  "https://picsum.photos/seed/slate-cover-outline/400/220",
   minimal:  "",
 };
 
@@ -763,9 +764,6 @@ function CoverThumb({ layout, imageUrl, title, meta, fontValue, size = "sm", sho
     color: "white",
     maxWidth: "90%",
     textShadow: showImage ? "0 1px 6px rgba(0,0,0,0.4)" : "none",
-    ...(layout === "outline"
-      ? { color: "transparent", WebkitTextStroke: isLg ? "1px white" : "0.6px white", textShadow: "none" }
-      : {}),
   };
 
   const stripeWidth = isLg ? "w-12 sm:w-16" : "w-3";
@@ -864,7 +862,6 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
     { id: "frame", label: "Frame", hint: "Title inside a bordered frame" },
     { id: "divider", label: "Divider", hint: "Title with horizontal divider line" },
     { id: "stamp", label: "Stamp", hint: "Title in circular badge" },
-    { id: "outline", label: "Outline", hint: "Outline-only typography" },
     { id: "minimal", label: "Minimal", hint: "Typography only, no hero image" },
   ];
 
@@ -874,7 +871,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
 
       {/* Font picker — six hand-picked options. Loads Google Fonts inline so
           the swatches and previews render in the actual face. */}
-      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Lora:wght@400;600&family=Marcellus&family=Italiana&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Marcellus&family=Inter:wght@300;400;500&family=Montserrat:wght@300;400;500&family=EB+Garamond:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />
       <div className="mb-5">
         <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cover font</label>
         <div className="flex flex-wrap gap-2">
