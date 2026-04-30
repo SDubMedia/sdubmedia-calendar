@@ -359,7 +359,7 @@ export default function CalendarPage() {
                 className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
               >
                 <Plus className="w-4 h-4" />
-                <span>New</span>
+                <span>Project</span>
               </Button>
             )}
           </div>
