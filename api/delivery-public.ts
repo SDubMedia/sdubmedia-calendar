@@ -193,6 +193,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       title: delivery.title,
       coverFileId: delivery.cover_file_id,
       coverLayout: (delivery as unknown as { cover_layout?: string }).cover_layout || "center",
+      coverFont: (delivery as unknown as { cover_font?: string }).cover_font || "",
       coverSubtitle: (delivery as unknown as { cover_subtitle?: string }).cover_subtitle || null,
       coverDate: (delivery as unknown as { cover_date?: string }).cover_date || null,
       watermarkText: (delivery as unknown as { watermark_text?: string }).watermark_text || null,

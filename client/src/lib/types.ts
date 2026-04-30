@@ -841,6 +841,7 @@ export interface Delivery {
   watermarkText: string | null;
   printsEnabled: boolean;
   coverLayout: CoverLayout;
+  coverFont: string;             // "" = Cormorant Garamond default; see COVER_FONTS in MeetingDialog... err, DeliveriesPage
   coverSubtitle: string | null;  // tagline / location / event subtitle
   coverDate: string | null;      // free-form date string ("16th March, 2026")
   slug: string | null;           // vanity URL — /g/<slug>; null = use /deliver/<token> only

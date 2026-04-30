@@ -34,6 +34,7 @@ interface DeliveryInfo {
   title: string;
   coverFileId: string | null;
   coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
+  coverFont?: string;
   coverSubtitle: string | null;
   coverDate: string | null;
   watermarkText: string | null;
@@ -518,7 +519,7 @@ export default function DeliverGalleryPage() {
       {/* Inline font for the hero — Cormorant for that Pixieset serif feel */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Lora:wght@400;600&family=Marcellus&family=Italiana&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
 
       {/* HERO */}
       {layoutHasHero ? (
@@ -528,13 +529,14 @@ export default function DeliverGalleryPage() {
           title={delivery.title}
           subtitle={delivery.coverSubtitle}
           date={delivery.coverDate}
+          fontValue={delivery.coverFont || ""}
         />
       ) : (
         // Minimal layout: typography-only on white
         <section className="text-center py-20 sm:py-28 px-6 border-b border-slate-200">
           <h1 className="text-black" style={{
-            fontFamily: "'Cormorant Garamond', Georgia, serif",
-            fontWeight: 300,
+            fontFamily: getCoverHeroFontFamily(delivery.coverFont || ""),
+            fontWeight: getCoverHeroFontWeight(delivery.coverFont || ""),
             fontSize: "clamp(2.5rem, 6vw, 5rem)",
             letterSpacing: "0.02em",
             lineHeight: 1.1,
@@ -928,12 +930,26 @@ export default function DeliverGalleryPage() {
 // ----------------------------------------------------------------------
 type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
 
-function CoverHero({ layout, imageUrl, title, subtitle, date }: {
+// Keep these in sync with COVER_FONTS in DeliveriesPage. Public bundle
+// can't import from the admin page, so the list is duplicated by design.
+const COVER_HERO_FONTS: Record<string, { family: string; weight: number }> = {
+  "":          { family: "'Cormorant Garamond', Georgia, serif",  weight: 300 },
+  "playfair":  { family: "'Playfair Display', Georgia, serif",    weight: 400 },
+  "lora":      { family: "'Lora', Georgia, serif",                weight: 400 },
+  "marcellus": { family: "'Marcellus', Georgia, serif",           weight: 400 },
+  "italiana":  { family: "'Italiana', Georgia, serif",            weight: 400 },
+  "inter":     { family: "'Inter', system-ui, sans-serif",        weight: 300 },
+};
+function getCoverHeroFontFamily(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).family; }
+function getCoverHeroFontWeight(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).weight; }
+
+function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue }: {
   layout: CoverLayout;
   imageUrl: string;
   title: string;
   subtitle: string | null;
   date: string | null;
+  fontValue: string;
 }) {
   const meta = (date || subtitle)
     ? <>{date}{date && subtitle && " · "}{subtitle}</>
@@ -962,8 +978,8 @@ function CoverHero({ layout, imageUrl, title, subtitle, date }: {
 
   // Title styling per layout
   const titleStyle: React.CSSProperties = {
-    fontFamily: "'Cormorant Garamond', Georgia, serif",
-    fontWeight: 300,
+    fontFamily: getCoverHeroFontFamily(fontValue),
+    fontWeight: getCoverHeroFontWeight(fontValue),
     fontSize: layout === "vintage" || layout === "left" ? "clamp(2.5rem, 7vw, 5.5rem)" : "clamp(3rem, 8vw, 6rem)",
     letterSpacing: layout === "vintage" ? "0.04em" : "0.02em",
     lineHeight: 1.05,

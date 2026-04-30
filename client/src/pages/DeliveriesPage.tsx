@@ -134,6 +134,7 @@ interface CreateInput {
   status: DeliveryStatus;
   coverFileId: string | null;
   coverLayout: "center" | "vintage" | "minimal";
+  coverFont: string;
   coverSubtitle: string | null;
   coverDate: string | null;
   slug: string | null;
@@ -215,6 +216,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               status: "draft",
               coverFileId: null,
               coverLayout: "center",
+              coverFont: "",
               coverSubtitle: null,
               coverDate: null,
               slug: null,
@@ -686,22 +688,40 @@ function DeliveryDetail({ id }: { id: string }) {
 
 type CoverLayoutId = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
 
+// Top 6 hand-picked fonts for gallery covers. Empty value = the original
+// Cormorant Garamond default. The same value lives in DeliverGalleryPage —
+// keep them in sync if you add/remove options.
+export const COVER_FONTS: Array<{ value: string; label: string; family: string; weight: number }> = [
+  { value: "",          label: "Cormorant",       family: "'Cormorant Garamond', Georgia, serif",        weight: 300 },
+  { value: "playfair",  label: "Playfair",        family: "'Playfair Display', Georgia, serif",          weight: 400 },
+  { value: "lora",      label: "Lora",            family: "'Lora', Georgia, serif",                      weight: 400 },
+  { value: "marcellus", label: "Marcellus",       family: "'Marcellus', Georgia, serif",                 weight: 400 },
+  { value: "italiana",  label: "Italiana",        family: "'Italiana', Georgia, serif",                  weight: 400 },
+  { value: "inter",     label: "Inter",           family: "'Inter', system-ui, sans-serif",              weight: 300 },
+];
+
+export function getCoverFont(value: string) {
+  return COVER_FONTS.find(f => f.value === value) || COVER_FONTS[0];
+}
+
 interface CoverDesignProps {
-  delivery: { title: string; coverFileId: string | null; coverLayout: CoverLayoutId; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  delivery: { title: string; coverFileId: string | null; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
   files: Array<{ id: string; originalName: string }>;
   signedUrls: Map<string, string>;
-  onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+  onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
 }
 
 // Thumbnail-sized cover preview. Mirrors the CoverHero logic on
 // DeliverGalleryPage at miniature scale so the user can SEE what each
 // layout will look like before picking it.
-function CoverThumb({ layout, imageUrl, title, meta }: {
+function CoverThumb({ layout, imageUrl, title, meta, fontValue }: {
   layout: CoverLayoutId;
   imageUrl?: string;
   title: string;
   meta: string;
+  fontValue: string;
 }) {
+  const fontDef = getCoverFont(fontValue);
   const showImage = layout !== "minimal" && !!imageUrl;
   const overlayBg = (() => {
     switch (layout) {
@@ -715,8 +735,8 @@ function CoverThumb({ layout, imageUrl, title, meta }: {
     : "items-center justify-center text-center";
 
   const titleStyle: React.CSSProperties = {
-    fontFamily: "'Cormorant Garamond', Georgia, serif",
-    fontWeight: 300,
+    fontFamily: fontDef.family,
+    fontWeight: fontDef.weight,
     fontSize: layout === "stamp" ? "9px" : "13px",
     letterSpacing: "0.02em",
     lineHeight: 1.05,
@@ -816,6 +836,30 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Cover & Design</h3>
 
+      {/* Font picker — six hand-picked options. Loads Google Fonts inline so
+          the swatches and previews render in the actual face. */}
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Lora:wght@400;600&family=Marcellus&family=Italiana&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+      <div className="mb-5">
+        <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cover font</label>
+        <div className="flex flex-wrap gap-2">
+          {COVER_FONTS.map(f => (
+            <button
+              key={f.value || "default"}
+              onClick={() => onUpdate({ coverFont: f.value })}
+              className={`px-3 py-2 rounded-lg border transition-colors ${
+                delivery.coverFont === f.value
+                  ? "border-[#0088ff] bg-[#0088ff]/10 ring-1 ring-[#0088ff]/40"
+                  : "border-white/10 hover:border-white/30"
+              }`}
+              style={{ fontFamily: f.family, fontWeight: f.weight }}
+              title={f.label}
+            >
+              <span className="text-base text-white">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Layout previews — live thumbnails using the gallery's actual cover image + title */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         {layouts.map(l => (
@@ -833,6 +877,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
               imageUrl={coverUrl}
               title={delivery.title}
               meta={[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
+              fontValue={delivery.coverFont}
             />
             <div className="mt-2 px-0.5">
               <div className="text-xs font-semibold text-white">{l.label}</div>

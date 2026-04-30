@@ -520,6 +520,7 @@ function rowToDelivery(r: any): Delivery {
     watermarkText: r.watermark_text || null,
     printsEnabled: !!r.prints_enabled,
     coverLayout: (r.cover_layout || "center") as Delivery["coverLayout"],
+    coverFont: r.cover_font || "",
     coverSubtitle: r.cover_subtitle || null,
     coverDate: r.cover_date || null,
     slug: r.slug || null,
@@ -1325,6 +1326,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, ...(orgId ? { org_id: orgId } : {}),
       project_id: d.projectId, title: d.title, cover_file_id: d.coverFileId,
       cover_layout: d.coverLayout || "center",
+      cover_font: d.coverFont || "",
       cover_subtitle: d.coverSubtitle,
       cover_date: d.coverDate,
       token, expires_at: d.expiresAt,
@@ -1343,6 +1345,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.title !== undefined) patch.title = d.title;
     if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
     if (d.coverLayout !== undefined) patch.cover_layout = d.coverLayout;
+    if (d.coverFont !== undefined) patch.cover_font = d.coverFont;
     if (d.coverSubtitle !== undefined) patch.cover_subtitle = d.coverSubtitle;
     if (d.coverDate !== undefined) patch.cover_date = d.coverDate;
     if (d.slug !== undefined) patch.slug = d.slug;
