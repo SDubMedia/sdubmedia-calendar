@@ -711,16 +711,34 @@ interface CoverDesignProps {
   onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
 }
 
-// Thumbnail-sized cover preview. Mirrors the CoverHero logic on
-// DeliverGalleryPage at miniature scale so the user can SEE what each
-// layout will look like before picking it.
-function CoverThumb({ layout, imageUrl, title, meta, fontValue }: {
+// Stock photos per layout — used in the small chooser thumbnails so each
+// layout has a visually distinct sample image (Pixieset-style). Picsum
+// returns a stable image per seed.
+const STOCK_COVERS: Record<CoverLayoutId, string> = {
+  center:   "https://picsum.photos/seed/slate-cover-center/400/220",
+  vintage:  "https://picsum.photos/seed/slate-cover-vintage/400/220",
+  left:     "https://picsum.photos/seed/slate-cover-left/400/220",
+  stripe:   "https://picsum.photos/seed/slate-cover-stripe/400/220",
+  frame:    "https://picsum.photos/seed/slate-cover-frame/400/220",
+  divider:  "https://picsum.photos/seed/slate-cover-divider/400/220",
+  stamp:    "https://picsum.photos/seed/slate-cover-stamp/400/220",
+  outline:  "https://picsum.photos/seed/slate-cover-outline/400/220",
+  minimal:  "",
+};
+
+// Cover preview component. Renders a miniature of any layout for the
+// chooser ("sm") OR a large live-preview pane mirroring what the public
+// gallery hero will look like ("lg"). Same component, scaled fonts.
+function CoverThumb({ layout, imageUrl, title, meta, fontValue, size = "sm", showCta = false }: {
   layout: CoverLayoutId;
   imageUrl?: string;
   title: string;
   meta: string;
   fontValue: string;
+  size?: "sm" | "lg";
+  showCta?: boolean;
 }) {
+  const isLg = size === "lg";
   const fontDef = getCoverFont(fontValue);
   const showImage = layout !== "minimal" && !!imageUrl;
   const overlayBg = (() => {
@@ -731,65 +749,73 @@ function CoverThumb({ layout, imageUrl, title, meta, fontValue }: {
     }
   })();
   const align = layout === "vintage" || layout === "left"
-    ? "items-start justify-end text-left p-2"
+    ? `items-start justify-end text-left ${isLg ? "p-8 sm:p-10" : "p-2"}`
     : "items-center justify-center text-center";
 
   const titleStyle: React.CSSProperties = {
     fontFamily: fontDef.family,
     fontWeight: fontDef.weight,
-    fontSize: layout === "stamp" ? "9px" : "13px",
+    fontSize: isLg
+      ? (layout === "stamp" ? "clamp(1.5rem, 3vw, 2.25rem)" : "clamp(2rem, 4.5vw, 3.5rem)")
+      : (layout === "stamp" ? "9px" : "14px"),
     letterSpacing: "0.02em",
     lineHeight: 1.05,
     color: "white",
     maxWidth: "90%",
-    textShadow: showImage ? "0 1px 4px rgba(0,0,0,0.4)" : "none",
+    textShadow: showImage ? "0 1px 6px rgba(0,0,0,0.4)" : "none",
     ...(layout === "outline"
-      ? { color: "transparent", WebkitTextStroke: "0.6px white", textShadow: "none" }
+      ? { color: "transparent", WebkitTextStroke: isLg ? "1px white" : "0.6px white", textShadow: "none" }
       : {}),
   };
+
+  const stripeWidth = isLg ? "w-12 sm:w-16" : "w-3";
+  const frameInset = isLg ? "px-6 py-5 sm:px-10 sm:py-7" : "px-2 py-1.5";
+  const stampSize = isLg ? "w-32 h-32 sm:w-40 sm:h-40" : "w-12 h-12";
+  const dividerLineW = isLg ? "w-12" : "w-6";
+  const metaSize = isLg ? "text-[10px] sm:text-xs" : "text-[6px]";
 
   const titleNode = (() => {
     if (layout === "stripe") {
       return (
-        <div className="flex items-center gap-1.5">
-          <div className="h-px w-3 bg-white/60" />
-          <span style={titleStyle}>{title || "Title"}</span>
-          <div className="h-px w-3 bg-white/60" />
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className={`h-px ${stripeWidth} bg-white/60`} />
+          <span style={titleStyle}>{title || "TITLE"}</span>
+          <div className={`h-px ${stripeWidth} bg-white/60`} />
         </div>
       );
     }
     if (layout === "frame") {
       return (
-        <div className="border border-white/60 px-2 py-1.5">
-          <span style={titleStyle}>{title || "Title"}</span>
+        <div className={`border ${isLg ? "border-2" : ""} border-white/70 ${frameInset}`}>
+          <span style={titleStyle}>{title || "TITLE"}</span>
         </div>
       );
     }
     if (layout === "stamp") {
       return (
-        <div className="border border-white rounded-full w-12 h-12 flex items-center justify-center px-1">
-          <span style={titleStyle}>{title || "Title"}</span>
+        <div className={`border ${isLg ? "border-2" : ""} border-white rounded-full ${stampSize} flex items-center justify-center px-1`}>
+          <span style={titleStyle}>{title || "TITLE"}</span>
         </div>
       );
     }
-    return <span style={titleStyle}>{title || "Title"}</span>;
+    return <span style={titleStyle}>{title || "TITLE"}</span>;
   })();
 
   const metaNode = meta ? (
     layout === "divider" ? (
-      <div className="flex flex-col items-center mt-1.5">
-        <div className="h-px w-6 bg-white/60 mb-1" />
-        <span className="text-[6px] text-white/85 uppercase" style={{ letterSpacing: "0.2em" }}>{meta}</span>
+      <div className={`flex flex-col items-center ${isLg ? "mt-4" : "mt-1.5"}`}>
+        <div className={`h-px ${dividerLineW} bg-white/60 ${isLg ? "mb-3" : "mb-1"}`} />
+        <span className={`${metaSize} text-white/85 uppercase`} style={{ letterSpacing: "0.25em" }}>{meta}</span>
       </div>
     ) : (
-      <span className="text-[6px] text-white/85 uppercase mt-1" style={{ letterSpacing: "0.2em" }}>{meta}</span>
+      <span className={`${metaSize} text-white/85 uppercase ${isLg ? "mt-3" : "mt-1"}`} style={{ letterSpacing: "0.25em" }}>{meta}</span>
     )
   ) : null;
 
   return (
-    <div className="relative w-full aspect-[3/1] rounded-md overflow-hidden bg-zinc-800">
+    <div className={`relative w-full ${isLg ? "aspect-[16/10]" : "aspect-[2/1]"} rounded-md overflow-hidden bg-zinc-800`}>
       {showImage ? (
-        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" loading={isLg ? "eager" : "lazy"} />
       ) : (
         <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #1a1a2e, #2a2a3e)" }} />
       )}
@@ -797,6 +823,16 @@ function CoverThumb({ layout, imageUrl, title, meta, fontValue }: {
       <div className={`absolute inset-0 flex flex-col ${align}`}>
         {titleNode}
         {metaNode}
+        {showCta && (
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            className="mt-6 inline-block text-white border border-white/70 hover:border-white px-6 py-2 text-[10px] sm:text-xs uppercase pointer-events-none"
+            style={{ letterSpacing: "0.25em" }}
+          >
+            View Gallery
+          </a>
+        )}
       </div>
     </div>
   );
@@ -860,31 +896,53 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
         </div>
       </div>
 
-      {/* Layout previews — live thumbnails using the gallery's actual cover image + title */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-        {layouts.map(l => (
-          <button
-            key={l.id}
-            onClick={() => onUpdate({ coverLayout: l.id })}
-            className={`text-left p-2 rounded-lg border transition-colors ${
-              delivery.coverLayout === l.id
-                ? "border-[#0088ff] bg-[#0088ff]/10 ring-1 ring-[#0088ff]/40"
-                : "border-white/10 hover:border-white/30"
-            }`}
-          >
-            <CoverThumb
-              layout={l.id}
-              imageUrl={coverUrl}
-              title={delivery.title}
-              meta={[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
-              fontValue={delivery.coverFont}
-            />
-            <div className="mt-2 px-0.5">
-              <div className="text-xs font-semibold text-white">{l.label}</div>
-              <div className="text-slate-500 text-[10px] mt-0.5">{l.hint}</div>
-            </div>
-          </button>
-        ))}
+      {/* Pixieset-style chooser: 2-col thumbnail grid on the left, big live
+          preview on the right. The thumbs use stock photos + "TITLE" placeholder
+          so the layout is the focus; the right pane shows the actual gallery's
+          cover, title, font, and subtitle/date. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-4 mb-4">
+        {/* Layout thumbnails */}
+        <div className="grid grid-cols-2 gap-3">
+          {layouts.map(l => (
+            <button
+              key={l.id}
+              onClick={() => onUpdate({ coverLayout: l.id })}
+              className={`text-left p-2 rounded-lg border transition-colors ${
+                delivery.coverLayout === l.id
+                  ? "border-[#0088ff] bg-[#0088ff]/10 ring-1 ring-[#0088ff]/40"
+                  : "border-white/10 hover:border-white/30"
+              }`}
+            >
+              <CoverThumb
+                layout={l.id}
+                imageUrl={STOCK_COVERS[l.id]}
+                title="TITLE"
+                meta=""
+                fontValue={delivery.coverFont}
+                size="sm"
+              />
+              <div className="mt-2 text-center">
+                <div className="text-xs font-semibold text-white">{l.label}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Live preview pane — sticky on desktop so it stays visible while
+            scrolling thumbnails. Uses the actual cover image, title, and meta. */}
+        <div className="lg:sticky lg:top-4 self-start">
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Live preview</div>
+          <CoverThumb
+            layout={delivery.coverLayout}
+            imageUrl={coverUrl}
+            title={delivery.title}
+            meta={[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
+            fontValue={delivery.coverFont}
+            size="lg"
+            showCta
+          />
+          <p className="text-[10px] text-slate-500 mt-2 text-center">This is what your client sees.</p>
+        </div>
       </div>
 
       {/* Cover image picker */}
