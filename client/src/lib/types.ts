@@ -786,6 +786,7 @@ export interface Meeting {
   locationText: string;
   notes: string;
   visibleToClient: boolean;
+  color: string; // "" = default slate; otherwise one of MEETING_COLORS values
   orgId: string;
   createdAt: string;
 }

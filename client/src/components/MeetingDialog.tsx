@@ -16,6 +16,24 @@ import { useApp } from "@/contexts/AppContext";
 import type { Meeting } from "@/lib/types";
 import { Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+// Color palette for meeting chips on the calendar. Empty string = default
+// slate. Same swatch shape as PersonalEventDialog so it feels consistent.
+export const MEETING_COLORS = [
+  { value: "", label: "Slate", bg: "bg-slate-500/25", text: "text-slate-700 dark:text-slate-300", border: "border-slate-500/30", dot: "bg-slate-400" },
+  { value: "blue", label: "Blue", bg: "bg-sky-500/25", text: "text-sky-700 dark:text-sky-300", border: "border-sky-500/30", dot: "bg-sky-400" },
+  { value: "green", label: "Green", bg: "bg-emerald-500/25", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-500/30", dot: "bg-emerald-400" },
+  { value: "purple", label: "Purple", bg: "bg-violet-500/25", text: "text-violet-700 dark:text-violet-300", border: "border-violet-500/30", dot: "bg-violet-400" },
+  { value: "amber", label: "Amber", bg: "bg-amber-500/25", text: "text-amber-700 dark:text-amber-300", border: "border-amber-500/30", dot: "bg-amber-400" },
+  { value: "pink", label: "Pink", bg: "bg-pink-500/25", text: "text-pink-700 dark:text-pink-300", border: "border-pink-500/30", dot: "bg-pink-400" },
+  { value: "rose", label: "Rose", bg: "bg-rose-500/25", text: "text-rose-700 dark:text-rose-300", border: "border-rose-500/30", dot: "bg-rose-400" },
+  { value: "cyan", label: "Cyan", bg: "bg-cyan-500/25", text: "text-cyan-700 dark:text-cyan-300", border: "border-cyan-500/30", dot: "bg-cyan-400" },
+];
+
+export function getMeetingColor(value: string) {
+  return MEETING_COLORS.find(c => c.value === value) || MEETING_COLORS[0];
+}
 
 interface Props {
   open: boolean;
@@ -35,6 +53,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
   const [locationText, setLocationText] = useState("");
   const [notes, setNotes] = useState("");
   const [visibleToClient, setVisibleToClient] = useState(false);
+  const [color, setColor] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Reset form on open transition only — never on prop changes mid-edit
@@ -50,6 +69,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setLocationText(editing.locationText || "");
       setNotes(editing.notes || "");
       setVisibleToClient(editing.visibleToClient);
+      setColor(editing.color || "");
     } else {
       setTitle("");
       setDate(initialDate || new Date().toISOString().slice(0, 10));
@@ -59,6 +79,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setLocationText("");
       setNotes("");
       setVisibleToClient(false);
+      setColor("");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -77,6 +98,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
         locationText: locationText.trim(),
         notes: notes.trim(),
         visibleToClient: clientId !== "none" && visibleToClient,
+        color,
       };
       if (editing) {
         await updateMeeting(editing.id, payload);
@@ -176,6 +198,27 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Notes (optional)</Label>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Agenda, attendees, anything to remember" rows={3} className="bg-secondary border-border" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Calendar color</Label>
+            <div className="flex flex-wrap gap-2">
+              {MEETING_COLORS.map(c => (
+                <button
+                  key={c.value || "default"}
+                  type="button"
+                  onClick={() => setColor(c.value)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs transition-colors",
+                    color === c.value ? "ring-2 ring-primary border-primary" : "border-border hover:bg-secondary"
+                  )}
+                  title={c.label}
+                >
+                  <span className={cn("w-3 h-3 rounded-full", c.dot)} />
+                  <span>{c.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -493,6 +493,7 @@ function rowToMeeting(r: any): Meeting {
     locationText: r.location_text || "",
     notes: r.notes || "",
     visibleToClient: r.visible_to_client ?? false,
+    color: r.color || "",
     orgId: r.org_id || "",
     createdAt: r.created_at,
   };
@@ -1285,6 +1286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       location_text: m.locationText || "",
       notes: m.notes || "",
       visible_to_client: m.visibleToClient ?? false,
+      color: m.color || "",
     }).select().single();
     if (error) throw new Error(error.message);
     const meeting = rowToMeeting(row);
@@ -1302,6 +1304,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.locationText !== undefined) patch.location_text = m.locationText;
     if (m.notes !== undefined) patch.notes = m.notes;
     if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
+    if (m.color !== undefined) patch.color = m.color;
     const { error } = await supabase.from("meetings").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));

@@ -16,7 +16,7 @@ import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
-import MeetingDialog from "@/components/MeetingDialog";
+import MeetingDialog, { getMeetingColor } from "@/components/MeetingDialog";
 import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
 import { Settings } from "lucide-react";
 
@@ -221,8 +221,13 @@ export default function CalendarPage() {
 
   const monthMeetings = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return data.meetings.filter((m) => m.date.startsWith(prefix));
-  }, [data.meetings, year, month]);
+    return data.meetings.filter((m) =>
+      m.date.startsWith(prefix) &&
+      // When a client is filtered, show meetings for that client OR meetings
+      // with no client (general meetings stay visible across filter views).
+      (clientFilter === "all" || m.clientId === clientFilter || !m.clientId)
+    );
+  }, [data.meetings, year, month, clientFilter]);
 
   const getMeetingsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -398,6 +403,32 @@ export default function CalendarPage() {
             Both
           </button>
         </div>}
+
+        {/* Filters box — applies to both projects and meetings on the grid */}
+        {!isClient && !isFamily && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Filter</span>
+            <span className="text-xs text-muted-foreground">Client</span>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className="bg-background border border-border rounded px-2 py-1 text-xs font-medium text-foreground outline-none focus:border-primary max-w-[180px]"
+            >
+              <option value="all">All clients</option>
+              {data.clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.company}</option>
+              ))}
+            </select>
+            {clientFilter !== "all" && (
+              <button
+                onClick={() => setClientFilter("all")}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -551,17 +582,21 @@ export default function CalendarPage() {
                     </div>
                   )}
 
-                  {/* Meeting chips — slate-blue, always shown regardless of calendarMode */}
+                  {/* Meeting chips — color per meeting (default slate). Always shown regardless of calendarMode. */}
                   {dayMeetings.length > 0 && (
                     <div className="space-y-0.5">
                       {dayMeetings.slice(0, 2).map((m) => {
                         const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
+                        const mc = getMeetingColor(m.color);
                         return (
                           <div
                             key={m.id}
                             onClick={(ev) => { ev.stopPropagation(); setEditingMeeting(m); setMeetingOpen(true); }}
                             onPointerDown={(ev) => ev.stopPropagation()}
-                            className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity bg-slate-500/25 text-slate-700 dark:text-slate-300 border border-slate-500/30"
+                            className={cn(
+                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity border",
+                              mc.bg, mc.text, mc.border
+                            )}
                             title={m.title}
                           >
                             <span className="hidden sm:inline">{m.startTime ? `${m.startTime} ` : ""}{m.title}{client ? ` · ${client.company}` : ""}</span>
