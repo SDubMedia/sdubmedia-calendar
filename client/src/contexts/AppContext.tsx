@@ -642,6 +642,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const allowedMeetings = targetRole === "client"
         ? rawData.meetings.filter(m => m.visibleToClient && m.clientId && allowedClientIds.has(m.clientId))
         : rawData.meetings.filter(m => !m.clientId || allowedClientIds.has(m.clientId));
+      // Galleries: clients keep access to their own deliveries; partners
+      // and family don't get the gallery feature at all (owner-only).
+      const allowedDeliveries = targetRole === "client"
+        ? rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId))
+        : [];
+      const allowedDeliveryIds = new Set(allowedDeliveries.map(d => d.id));
       return {
         ...rawData,
         clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
@@ -649,7 +655,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
         contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
         proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
-        deliveries: rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId)),
+        deliveries: allowedDeliveries,
+        deliveryFiles: rawData.deliveryFiles.filter(f => allowedDeliveryIds.has(f.deliveryId)),
+        deliverySelections: rawData.deliverySelections.filter(s => allowedDeliveryIds.has(s.deliveryId)),
+        deliveryCollections: targetRole === "client" ? rawData.deliveryCollections : [],
         meetings: allowedMeetings,
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],

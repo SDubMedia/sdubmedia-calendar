@@ -86,7 +86,7 @@ const navStructure: NavEntry[] = [
     { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner", "partner"], feature: "pipeline" },
     { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner", "partner"], feature: "proposals" },
     { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
-    { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "partner"], feature: "deliveries" },
+    { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner"], feature: "deliveries" },
   ]},
 
   // Production — owner, partner, client (Series), staff (Series)
