@@ -84,6 +84,9 @@ export function buildLineItems(
     if (p.date < periodStart || p.date > periodEnd) return false;
     // Don't invoice upcoming projects (no work done yet)
     if (p.status === "upcoming") return false;
+    // Don't invoice cancelled projects — they bill nothing and shouldn't
+    // appear as a line item at all.
+    if (p.status === "cancelled") return false;
     // Don't double-bill projects already on another invoice
     if (invoicedProjectIds.has(p.id)) return false;
     return true;

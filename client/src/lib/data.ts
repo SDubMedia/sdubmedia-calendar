@@ -249,6 +249,10 @@ export function getProjectBillableHours(project: Project, client: Client): {
   postBillable: number;
   totalBillable: number;
 } {
+  // Cancelled projects don't bill — zero hours surface everywhere.
+  if (project.status === "cancelled") {
+    return { crewBillable: 0, postBillable: 0, totalBillable: 0 };
+  }
   const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
 
   if (project.editorBilling?.finalHours != null) {
@@ -269,6 +273,8 @@ export function getProjectBillableHours(project: Project, client: Client): {
  * Per-project: project-level override → type-specific rate → client default rate.
  */
 export function getProjectInvoiceAmount(project: Project, client: Client): number {
+  // Cancelled projects bill nothing — applies to per-project and hourly alike.
+  if (project.status === "cancelled") return 0;
   const effectiveModel = project.billingModel ?? client.billingModel;
   if (effectiveModel === "per_project") {
     // 1. Project-level billing override (new: per-project flat rate)
