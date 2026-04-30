@@ -122,6 +122,7 @@ export interface Organization {
   name: string;
   slug: string;
   logoUrl: string;
+  faviconUrl: string;
   plan: string;
   features: OrgFeatures;
   productionType: ProductionType;
@@ -839,6 +840,7 @@ export interface Delivery {
   title: string;
   coverFileId: string | null;
   watermarkText: string | null;
+  watermarkUseLogo: boolean;
   printsEnabled: boolean;
   coverLayout: CoverLayout;
   coverFont: string;             // "" = Cormorant Garamond default; see COVER_FONTS in MeetingDialog... err, DeliveriesPage

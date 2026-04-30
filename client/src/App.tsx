@@ -163,9 +163,32 @@ function AuthGate() {
   if (!profile?.hasCompletedOnboarding && profile?.role !== "owner") return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
   return (
     <AppProvider>
+      <FaviconSync />
       <Router />
     </AppProvider>
   );
+}
+
+// Keep the browser tab icon in sync with the org's chosen favicon. Empty
+// string clears any custom icon (browser falls back to default).
+function FaviconSync() {
+  const { data } = useApp();
+  const url = data.organization?.faviconUrl || "";
+  useEffect(() => {
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    if (url) {
+      link.href = url;
+    } else if (link.href) {
+      // Remove any previously-set icon so the browser uses its default.
+      link.removeAttribute("href");
+    }
+  }, [url]);
+  return null;
 }
 
 function App() {

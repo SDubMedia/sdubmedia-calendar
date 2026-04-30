@@ -141,6 +141,7 @@ interface CreateInput {
   requireEmail: boolean;
   collectionId: string | null;
   watermarkText: string | null;
+  watermarkUseLogo: boolean;
   printsEnabled: boolean;
 }
 
@@ -223,6 +224,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               requireEmail: false,
               collectionId: null,
               watermarkText: null,
+              watermarkUseLogo: false,
               printsEnabled: false,
             })}
             disabled={!title.trim()}
@@ -537,7 +539,9 @@ function DeliveryDetail({ id }: { id: string }) {
           />
           <WatermarkPanel
             watermarkText={delivery.watermarkText}
-            onUpdate={(v) => updateDelivery(id, { watermarkText: v })}
+            watermarkUseLogo={delivery.watermarkUseLogo}
+            orgLogoUrl={data.organization?.logoUrl || ""}
+            onUpdate={(patch) => updateDelivery(id, patch)}
           />
           <PrintsPanel
             printsEnabled={delivery.printsEnabled}
@@ -1158,17 +1162,61 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
   );
 }
 
-function WatermarkPanel({ watermarkText, onUpdate }: { watermarkText: string | null; onUpdate: (v: string | null) => Promise<void> }) {
+function WatermarkPanel({ watermarkText, watermarkUseLogo, orgLogoUrl, onUpdate }: {
+  watermarkText: string | null;
+  watermarkUseLogo: boolean;
+  orgLogoUrl: string;
+  onUpdate: (patch: { watermarkText?: string | null; watermarkUseLogo?: boolean }) => Promise<void>;
+}) {
   const [val, setVal] = useState(watermarkText || "");
   useEffect(() => { setVal(watermarkText || ""); }, [watermarkText]);
+  const canUseLogo = !!orgLogoUrl;
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Watermark</h3>
+
+      {/* Logo toggle — preferred when org has a logo set */}
+      <label className={`flex items-start gap-3 mb-3 cursor-pointer ${!canUseLogo ? "opacity-50 cursor-not-allowed" : ""}`}>
+        <input
+          type="checkbox"
+          checked={watermarkUseLogo && canUseLogo}
+          disabled={!canUseLogo}
+          onChange={(e) => onUpdate({ watermarkUseLogo: e.target.checked })}
+          className="mt-1"
+        />
+        <div className="flex-1">
+          <div className="text-sm text-white font-medium">Use my logo as watermark</div>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {canUseLogo
+              ? "Tiles your business logo across the public gallery at low opacity."
+              : "Upload a logo in Settings → Business to enable this."}
+          </p>
+        </div>
+      </label>
+
+      {watermarkUseLogo && canUseLogo && (
+        <div className="rounded-lg border border-white/10 bg-zinc-900 p-4 mb-3 relative overflow-hidden h-24">
+          <div
+            aria-hidden
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: `url("${orgLogoUrl}")`,
+              backgroundRepeat: "repeat",
+              backgroundSize: "120px",
+              opacity: 0.18,
+            }}
+          />
+          <p className="text-[10px] text-slate-500 relative z-10 text-center mt-7">Preview — your logo tiled at ~18% opacity</p>
+        </div>
+      )}
+
+      {/* Text watermark — kept as a fallback / supplemental option */}
+      <label className="block text-[11px] text-slate-500 uppercase tracking-wider mb-1">Text watermark (optional)</label>
       <input
         type="text"
         value={val}
         onChange={(e) => setVal(e.target.value)}
-        onBlur={() => { if (val !== (watermarkText || "")) onUpdate(val || null); }}
+        onBlur={() => { if (val !== (watermarkText || "")) onUpdate({ watermarkText: val || null }); }}
         placeholder="© Your Name 2026"
         className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
       />

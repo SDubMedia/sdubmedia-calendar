@@ -97,6 +97,10 @@ export default function SettingsPage() {
   const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
     address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
   });
+  const [logoUrl, setLogoUrl] = useState(org?.logoUrl || "");
+  const [faviconUrl, setFaviconUrl] = useState(org?.faviconUrl || "");
+  const [logoErr, setLogoErr] = useState<string | null>(null);
+  const [faviconErr, setFaviconErr] = useState<string | null>(null);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
     org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
   );
@@ -171,15 +175,58 @@ export default function SettingsPage() {
       setBillingRate(org.defaultBillingRate);
       setFeatures(org.features);
       setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" });
+      setLogoUrl(org.logoUrl || "");
+      setFaviconUrl(org.faviconUrl || "");
       setDashboardWidgets(org.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS);
     }
   }, [org]);
+
+  // File → data URL with size cap. Logos up to 250KB, favicons up to 50KB.
+  // Stored inline on the org row — no upload endpoint needed.
+  function readImageAsDataUrl(file: File, maxBytes: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/")) return reject(new Error("Must be an image"));
+      if (file.size > maxBytes) return reject(new Error(`Too large (max ${Math.round(maxBytes / 1024)}KB)`));
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(new Error("Failed to read file"));
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setLogoErr(null);
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const url = await readImageAsDataUrl(f, 250 * 1024);
+      setLogoUrl(url);
+    } catch (err: any) {
+      setLogoErr(err.message || "Failed to load image");
+    }
+  }
+
+  async function handleFaviconFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setFaviconErr(null);
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const url = await readImageAsDataUrl(f, 50 * 1024);
+      setFaviconUrl(url);
+    } catch (err: any) {
+      setFaviconErr(err.message || "Failed to load image");
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
     try {
       await updateOrganization({
         name,
+        logoUrl,
+        faviconUrl,
         productionType,
         defaultBillingModel: billingModel,
         defaultBillingRate: billingRate,
@@ -282,6 +329,83 @@ export default function SettingsPage() {
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Branding — logo + favicon */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Building2 className="w-4 h-4 text-primary" />
+              Branding
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Logo */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Business Logo</Label>
+              <p className="text-[11px] text-muted-foreground">Used on contracts, gallery covers, and as a watermark option. PNG with transparency works best. Max 250KB.</p>
+              <div className="flex items-start gap-3">
+                <div className="w-32 h-20 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo preview" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">No logo</span>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <label className="inline-block">
+                    <input type="file" accept="image/*" onChange={handleLogoFile} className="hidden" />
+                    <span className="inline-block px-3 py-1.5 rounded-md border border-border bg-secondary text-sm cursor-pointer hover:bg-secondary/80">
+                      {logoUrl ? "Replace logo" : "Upload logo"}
+                    </span>
+                  </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl("")}
+                      className="ml-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {logoErr && <p className="text-xs text-destructive">{logoErr}</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Favicon */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label className="text-xs text-muted-foreground">Favicon</Label>
+              <p className="text-[11px] text-muted-foreground">Tab icon shown in the browser. Square PNG/ICO recommended (32×32 or 64×64). Max 50KB.</p>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                  {faviconUrl ? (
+                    <img src={faviconUrl} alt="Favicon preview" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-muted-foreground">None</span>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <label className="inline-block">
+                    <input type="file" accept="image/png,image/x-icon,image/svg+xml,image/jpeg" onChange={handleFaviconFile} className="hidden" />
+                    <span className="inline-block px-3 py-1.5 rounded-md border border-border bg-secondary text-sm cursor-pointer hover:bg-secondary/80">
+                      {faviconUrl ? "Replace favicon" : "Upload favicon"}
+                    </span>
+                  </label>
+                  {faviconUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFaviconUrl("")}
+                      className="ml-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {faviconErr && <p className="text-xs text-destructive">{faviconErr}</p>}
+                </div>
               </div>
             </div>
           </CardContent>

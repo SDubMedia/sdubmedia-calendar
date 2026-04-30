@@ -38,6 +38,7 @@ interface DeliveryInfo {
   coverSubtitle: string | null;
   coverDate: string | null;
   watermarkText: string | null;
+  watermarkUseLogo?: boolean;
   printsEnabled: boolean;
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
   selectionLimit: number;
@@ -608,9 +609,24 @@ export default function DeliverGalleryPage() {
       {/* PHOTO GRID — flush, full-bleed, no gaps */}
       <div
         className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-px bg-slate-200"
-        onContextMenu={(e) => { if (delivery.watermarkText) e.preventDefault(); }}
+        onContextMenu={(e) => {
+          if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
+        }}
       >
-        {/* Tiled watermark overlay (CSS only — doesn't modify the underlying images) */}
+        {/* Logo watermark — tiled at low opacity. Preferred over text when enabled. */}
+        {delivery.watermarkUseLogo && org?.logoUrl && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-10 select-none"
+            style={{
+              backgroundImage: `url("${org.logoUrl}")`,
+              backgroundRepeat: "repeat",
+              backgroundSize: "180px",
+              opacity: 0.18,
+            }}
+          />
+        )}
+        {/* Text watermark — runs alongside logo OR alone, same tiled style. */}
         {delivery.watermarkText && (
           <div
             aria-hidden

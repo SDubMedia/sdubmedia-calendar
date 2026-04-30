@@ -518,6 +518,7 @@ function rowToDelivery(r: any): Delivery {
     title: r.title || "",
     coverFileId: r.cover_file_id || null,
     watermarkText: r.watermark_text || null,
+    watermarkUseLogo: !!r.watermark_use_logo,
     printsEnabled: !!r.prints_enabled,
     // Coerce unknown / removed layouts (e.g. "outline" pre-2026-04-30) → "center".
     coverLayout: (["center","vintage","minimal","left","stripe","frame","divider","stamp"].includes(r.cover_layout) ? r.cover_layout : "center") as Delivery["coverLayout"],
@@ -575,7 +576,7 @@ function rowToDeliverySelection(r: any): DeliverySelection {
 
 function rowToOrg(r: any): Organization {
   return {
-    id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
+    id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", faviconUrl: r.favicon_url || "", plan: r.plan,
     features: { ...DEFAULT_FEATURES, ...(r.features || {}) },
     productionType: r.production_type || "both",
     defaultBillingModel: r.default_billing_model || "hourly",
@@ -1353,6 +1354,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.requireEmail !== undefined) patch.require_email = d.requireEmail;
     if (d.collectionId !== undefined) patch.collection_id = d.collectionId;
     if (d.watermarkText !== undefined) patch.watermark_text = d.watermarkText;
+    if (d.watermarkUseLogo !== undefined) patch.watermark_use_logo = d.watermarkUseLogo;
     if (d.printsEnabled !== undefined) patch.prints_enabled = d.printsEnabled;
     if (d.projectId !== undefined) patch.project_id = d.projectId;
     if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
@@ -1502,6 +1504,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!orgId) return;
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
+    if (updates.logoUrl !== undefined) patch.logo_url = updates.logoUrl;
+    if (updates.faviconUrl !== undefined) patch.favicon_url = updates.faviconUrl;
     if (updates.features !== undefined) patch.features = updates.features;
     if (updates.productionType !== undefined) patch.production_type = updates.productionType;
     if (updates.defaultBillingModel !== undefined) patch.default_billing_model = updates.defaultBillingModel;

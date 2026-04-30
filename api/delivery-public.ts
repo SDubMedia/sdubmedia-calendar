@@ -197,6 +197,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       coverSubtitle: (delivery as unknown as { cover_subtitle?: string }).cover_subtitle || null,
       coverDate: (delivery as unknown as { cover_date?: string }).cover_date || null,
       watermarkText: (delivery as unknown as { watermark_text?: string }).watermark_text || null,
+      watermarkUseLogo: (delivery as unknown as { watermark_use_logo?: boolean }).watermark_use_logo === true,
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       selectionLimit: delivery.selection_limit,
