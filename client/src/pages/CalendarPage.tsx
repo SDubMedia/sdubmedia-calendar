@@ -45,6 +45,7 @@ export default function CalendarPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [clientFilter, setClientFilter] = useState<string>("all");
   const [viewScope, setViewScope] = useState<"month" | "all">("month");
   const [calendarMode, setCalendarMode] = useState<"production" | "personal" | "both">(isFamily ? "personal" : "production");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -191,11 +192,16 @@ export default function CalendarPage() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
 
-  // Projects for this month
+  // Projects for this month — already pre-filtered by clientFilter so every
+  // downstream consumer (grid cells, status counts, hours totals, list view)
+  // reflects the picked client without each one having to re-filter.
   const monthProjects = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return data.projects.filter((p) => p.date.startsWith(prefix));
-  }, [data.projects, year, month]);
+    return data.projects.filter((p) =>
+      p.date.startsWith(prefix) &&
+      (clientFilter === "all" || p.clientId === clientFilter)
+    );
+  }, [data.projects, year, month, clientFilter]);
 
   // Personal events for this month
   const monthPersonalEvents = useMemo(() => {
@@ -218,10 +224,14 @@ export default function CalendarPage() {
     } else {
       projects = viewScope === "month" ? monthProjects : data.projects;
     }
+    // Apply clientFilter when viewing "all" — monthProjects is already filtered.
+    if (viewScope === "all" && clientFilter !== "all") {
+      projects = projects.filter((p) => p.clientId === clientFilter);
+    }
     const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate]);
+  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate, clientFilter]);
 
   const filteredPersonalEvents = useMemo(() => {
     if (selectedDate) {
@@ -281,7 +291,7 @@ export default function CalendarPage() {
             {!(isFamily && calendarMode !== "personal") && (
               <p className="text-sm text-muted-foreground mt-0.5">
                 {calendarMode === "production"
-                  ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
+                  ? `${clientFilter !== "all" ? `${data.clients.find(c => c.id === clientFilter)?.company || ""} · ` : ""}${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
                   : calendarMode === "personal"
                   ? `${monthPersonalEvents.length} events this month`
                   : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
@@ -586,6 +596,19 @@ export default function CalendarPage() {
                   >
                     All Projects
                   </button>
+                </div>
+                {/* Client filter */}
+                <div className="sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
+                  <select
+                    value={clientFilter}
+                    onChange={(e) => setClientFilter(e.target.value)}
+                    className="bg-secondary border border-border rounded px-2 py-1.5 text-xs font-medium text-foreground outline-none focus:border-primary max-w-[200px]"
+                  >
+                    <option value="all">All clients</option>
+                    {data.clients.map((c) => (
+                      <option key={c.id} value={c.id}>{c.company}</option>
+                    ))}
+                  </select>
                 </div>
                 {/* Status filters */}
                 <div className="flex gap-1 overflow-x-auto">
