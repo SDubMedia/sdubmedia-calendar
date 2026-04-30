@@ -662,10 +662,99 @@ function DeliveryDetail({ id }: { id: string }) {
 type CoverLayoutId = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp" | "outline";
 
 interface CoverDesignProps {
-  delivery: { coverFileId: string | null; coverLayout: CoverLayoutId; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  delivery: { title: string; coverFileId: string | null; coverLayout: CoverLayoutId; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
   files: Array<{ id: string; originalName: string }>;
   signedUrls: Map<string, string>;
   onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+}
+
+// Thumbnail-sized cover preview. Mirrors the CoverHero logic on
+// DeliverGalleryPage at miniature scale so the user can SEE what each
+// layout will look like before picking it.
+function CoverThumb({ layout, imageUrl, title, meta }: {
+  layout: CoverLayoutId;
+  imageUrl?: string;
+  title: string;
+  meta: string;
+}) {
+  const showImage = layout !== "minimal" && !!imageUrl;
+  const overlayBg = (() => {
+    switch (layout) {
+      case "vintage": return "linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.55) 100%)";
+      case "left": return "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.05) 100%)";
+      default: return "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)";
+    }
+  })();
+  const align = layout === "vintage" || layout === "left"
+    ? "items-start justify-end text-left p-2"
+    : "items-center justify-center text-center";
+
+  const titleStyle: React.CSSProperties = {
+    fontFamily: "'Cormorant Garamond', Georgia, serif",
+    fontWeight: 300,
+    fontSize: layout === "stamp" ? "9px" : "13px",
+    letterSpacing: "0.02em",
+    lineHeight: 1.05,
+    color: "white",
+    maxWidth: "90%",
+    textShadow: showImage ? "0 1px 4px rgba(0,0,0,0.4)" : "none",
+    ...(layout === "outline"
+      ? { color: "transparent", WebkitTextStroke: "0.6px white", textShadow: "none" }
+      : {}),
+  };
+
+  const titleNode = (() => {
+    if (layout === "stripe") {
+      return (
+        <div className="flex items-center gap-1.5">
+          <div className="h-px w-3 bg-white/60" />
+          <span style={titleStyle}>{title || "Title"}</span>
+          <div className="h-px w-3 bg-white/60" />
+        </div>
+      );
+    }
+    if (layout === "frame") {
+      return (
+        <div className="border border-white/60 px-2 py-1.5">
+          <span style={titleStyle}>{title || "Title"}</span>
+        </div>
+      );
+    }
+    if (layout === "stamp") {
+      return (
+        <div className="border border-white rounded-full w-12 h-12 flex items-center justify-center px-1">
+          <span style={titleStyle}>{title || "Title"}</span>
+        </div>
+      );
+    }
+    return <span style={titleStyle}>{title || "Title"}</span>;
+  })();
+
+  const metaNode = meta ? (
+    layout === "divider" ? (
+      <div className="flex flex-col items-center mt-1.5">
+        <div className="h-px w-6 bg-white/60 mb-1" />
+        <span className="text-[6px] text-white/85 uppercase" style={{ letterSpacing: "0.2em" }}>{meta}</span>
+      </div>
+    ) : (
+      <span className="text-[6px] text-white/85 uppercase mt-1" style={{ letterSpacing: "0.2em" }}>{meta}</span>
+    )
+  ) : null;
+
+  return (
+    <div className="relative w-full aspect-[3/1] rounded-md overflow-hidden bg-zinc-800">
+      {showImage ? (
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #1a1a2e, #2a2a3e)" }} />
+      )}
+      {showImage && <div className="absolute inset-0" style={{ background: overlayBg }} />}
+      <div className={`absolute inset-0 flex flex-col ${align}`}>
+        {titleNode}
+        {metaNode}
+      </div>
+    </div>
+  );
 }
 
 function slugify(s: string): string {
@@ -702,20 +791,28 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Cover & Design</h3>
 
-      {/* Layout chips */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      {/* Layout previews — live thumbnails using the gallery's actual cover image + title */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         {layouts.map(l => (
           <button
             key={l.id}
             onClick={() => onUpdate({ coverLayout: l.id })}
-            className={`text-left px-3 py-2 rounded-lg border text-xs ${
+            className={`text-left p-2 rounded-lg border transition-colors ${
               delivery.coverLayout === l.id
-                ? "border-[#0088ff] bg-[#0088ff]/10"
-                : "border-white/10 hover:border-white/20"
+                ? "border-[#0088ff] bg-[#0088ff]/10 ring-1 ring-[#0088ff]/40"
+                : "border-white/10 hover:border-white/30"
             }`}
           >
-            <div className="font-semibold text-white">{l.label}</div>
-            <div className="text-slate-500 text-[10px] mt-0.5">{l.hint}</div>
+            <CoverThumb
+              layout={l.id}
+              imageUrl={coverUrl}
+              title={delivery.title}
+              meta={[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
+            />
+            <div className="mt-2 px-0.5">
+              <div className="text-xs font-semibold text-white">{l.label}</div>
+              <div className="text-slate-500 text-[10px] mt-0.5">{l.hint}</div>
+            </div>
           </button>
         ))}
       </div>
