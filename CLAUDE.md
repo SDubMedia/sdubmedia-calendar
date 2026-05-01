@@ -267,3 +267,43 @@ Format: add the rule where it belongs (API section, Security section, etc.) and 
 - **Never trust silent catch blocks.** If a catch block swallows errors, fix it — log or surface the error.
 - **Test the actual endpoint** (`curl`) before assuming the problem is in the frontend.
 - **When the user reports a symptom, find the root cause.** Don't fix the surface-level error message — trace it back to what's actually broken.
+
+## Stable Slate Conventions
+
+Things baked into the codebase. Re-using these saves re-discovering them.
+
+### Forms
+- **Numeric inputs use `type="text" inputMode="decimal"`**, not `type="number"`. The native iOS numeric keypad has no Done button. There are 30+ inputs in the codebase using this pattern; don't break it on new forms.
+- **Don't define React components inside other components.** Extract to top-level. Causes focus loss + state reset on every parent render (we got burned by this on the LineItemEditor).
+
+### Cancellation (projects)
+- **Cancelled projects bill $0.** `getProjectInvoiceAmount` and `getProjectBillableHours` short-circuit to 0 when `status === "cancelled"`. Any new billing surface that does its own math must respect this.
+- **`buildLineItems` filters out cancelled.** Don't add cancelled to invoices/reports/totals.
+- **Reports surface cancelled in a separate section.** Monthly + annual reports (both internal and client-facing) include a "Cancelled Projects" block — don't merge it into active project lists.
+
+### Contracts
+- **Contract editor route:** `/contracts/:id/edit` (full-page, autosaves every 800ms after hydration).
+- **New contract wizard route:** `/contracts/new` — 3 steps (Client → Project → Template). Accepts `?template=<id>` to pre-select.
+- **`hydrated` state gate.** EditContractPage doesn't mount the WysiwygContractEditor until local state is hydrated from the contract row. Don't introduce a different mount pattern — the race causes a render loop.
+- **Multi-signer tokens.** `api/contract-sign.ts`'s `findContractByToken` resolves a token by trying `contracts.sign_token` first, then scanning `additional_signers` JSONB. Never write a sign-flow that only checks the primary token.
+- **Status flow:** `draft → sent → client_signed → completed`. Owner countersign is gated on `clientSignedAt && additionalSigners.every(s => s.signedAt)` — don't let the owner countersign while other signers are pending.
+- **`useSignatureCanvas` hook.** Use `client/src/hooks/useSignatureCanvas.ts` for any signature drawing surface. Don't reinvent canvas event handlers — three sites already used the duplicated version before extraction.
+
+### Galleries
+- **Cover layouts:** `center | vintage | minimal | left | stripe | frame | divider | stamp` (Outline was removed 2026-04-30). Any new layout needs entries in `Delivery` type, `DeliveriesPage` chooser, `DeliverGalleryPage` `CoverHero`, and the Delivery row sanitizer in AppContext.
+- **Cover fonts:** Cormorant (default) / Playfair / Marcellus / Inter / Sans / Serif Timeless / Serif Modern. Stored in `cover_font` column. Two parallel arrays keep admin + public in sync (`COVER_FONTS` in DeliveriesPage, `COVER_HERO_FONTS` in DeliverGalleryPage). Update both.
+- **Watermark:** logo (org `logo_url`) tiles at 18% opacity when `watermark_use_logo=true`. Text watermark still works alongside.
+- **Eager cover signed URL.** Cover thumbnails fetch the cover photo's signed URL in a separate fast call before the bulk fetch. Don't regress this — galleries with 200+ photos noticeably degrade.
+
+### Calendar
+- **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.
+- **Per-meeting color.** Use `getMeetingColor(value)` from `MeetingDialog.tsx` — same swatch shape as `getEventColor` for personal events. Empty value = slate default.
+
+### Cron pattern
+- **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
+- **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
+- **Idempotency.** Persist last-fired timestamp on the row (`last_reminder_sent_at`, `reminder_sent_at`, etc.) so reruns don't double-send.
+
+### Branding (org logo + favicon)
+- **Stored as data URLs on the `organizations` row.** No upload endpoint, no R2, no expiring URLs. Logos ≤250KB, favicons ≤50KB.
+- **`<FaviconSync />`** in `App.tsx` reflects `org.faviconUrl` onto the live `<link rel="icon">`. Don't add a separate favicon mechanism.
