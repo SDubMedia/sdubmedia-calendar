@@ -2,26 +2,23 @@
 // ContractsPage — Create, send, and manage contracts with e-signatures
 // ============================================================
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Contract, ContractTemplate, ContractStatus } from "@/lib/types";
+import type { ContractTemplate, ContractStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, ArrowRight, Sparkles, MoreHorizontal } from "lucide-react";
+import { Plus, FileText, Trash2, Edit3, Copy, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, Sparkles, MoreHorizontal, ArrowRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { LucideIcon } from "lucide-react";
-import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
+import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { nanoid } from "nanoid";
-import { getAuthToken } from "@/lib/supabase";
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -136,57 +133,6 @@ export default function ContractsPage() {
   // Template detail panel — opens before edit so user can preview + see usage stats
   const [detailTplId, setDetailTplId] = useState<string | null>(null);
 
-  // Contract dialog
-  const [contractDialogOpen, setContractDialogOpen] = useState(false);
-  const [contractTitle, setContractTitle] = useState("");
-  const [contractClientId, setContractClientId] = useState("");
-  const [contractProjectId, setContractProjectId] = useState("");
-  const [contractTemplateId, setContractTemplateId] = useState("");
-  const [contractContent, setContractContent] = useState("");
-  const [contractClientEmail, setContractClientEmail] = useState("");
-  const [contractFieldValues, setContractFieldValues] = useState<Record<string, string>>({});
-  const [contractPlaceholders, setContractPlaceholders] = useState<string[]>([]);
-  const contractEditorRef = useRef<WysiwygContractEditorHandle>(null);
-
-  // Quick-add client
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickAddName, setQuickAddName] = useState("");
-  const [quickAddEmail, setQuickAddEmail] = useState("");
-
-  async function quickAddClient() {
-    if (!quickAddName.trim() || !quickAddEmail.trim()) { toast.error("Name and email required"); return; }
-    try {
-      const client = await addClient({
-        company: quickAddName.trim(), contactName: quickAddName.trim(), email: quickAddEmail.trim(), phone: "",
-        address: "", city: "", state: "", zip: "",
-        billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
-        projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
-      });
-      setContractClientId(client.id);
-      setContractClientEmail(quickAddEmail.trim());
-      setQuickAddOpen(false);
-      setQuickAddName(""); setQuickAddEmail("");
-      toast.success(`Client "${client.company}" created`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to create client");
-    }
-  }
-
-  // View contract
-  const [viewContract, setViewContract] = useState<Contract | null>(null);
-
-  // Signature dialog
-  const [signDialogOpen, setSignDialogOpen] = useState(false);
-  const [signingContractId, setSigningContractId] = useState<string | null>(null);
-  const [signatureType, setSignatureType] = useState<"drawn" | "typed">("typed");
-  const [typedName, setTypedName] = useState("");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  // Upload PDF
-  const pdfRef = useRef<HTMLInputElement>(null);
-  const [uploadingPdf, setUploadingPdf] = useState(false);
-
   function openEditTemplate(tpl: ContractTemplate) {
     setEditingTplId(tpl.id);
     setTplName(tpl.name);
@@ -206,33 +152,11 @@ export default function ContractsPage() {
     setTplDialogOpen(false);
   }
 
-  function openNewContract() {
-    setContractTitle("");
-    setContractClientId("");
-    setContractProjectId("");
-    setContractTemplateId("");
-    setContractContent("");
-    setContractClientEmail("");
-    setContractFieldValues({});
-    setContractDialogOpen(true);
-  }
-
-  function applyTemplate(templateId: string) {
-    setContractTemplateId(templateId);
-    const tpl = data.contractTemplates.find(t => t.id === templateId);
-    if (tpl) {
-      setContractContent(tpl.content);
-      if (!contractTitle) setContractTitle(tpl.name);
-    }
-  }
-
-  // Open the new-contract dialog pre-loaded with this template
+  // From the template detail panel, "Use in new contract" sends the user
+  // to the wizard. The wizard's step-3 list pre-selects via ?template=<id>.
   function applyTemplateToNewContract(tpl: ContractTemplate) {
     setDetailTplId(null);
-    openNewContract();
-    setContractTemplateId(tpl.id);
-    setContractContent(tpl.content);
-    setContractTitle(tpl.name);
+    setLocation(`/contracts/new?template=${encodeURIComponent(tpl.id)}`);
   }
 
   // Stats for detail panel
@@ -245,237 +169,6 @@ export default function ContractsPage() {
       : null;
     return { count: matching.length, lastUsed };
   }, [detailTpl, data.contracts]);
-
-  function resolveMergeFields(content: string): string {
-    const client = data.clients.find(c => c.id === contractClientId);
-    const project = contractProjectId ? data.projects.find(p => p.id === contractProjectId) : null;
-    const projectType = project ? data.projectTypes.find(t => t.id === project.projectTypeId) : null;
-    const location = project ? data.locations.find(l => l.id === project.locationId) : null;
-    const replacements: Record<string, string> = {
-      client_name: client?.contactName || "",
-      client_company: client?.company || "",
-      client_email: client?.email || "",
-      project_type: projectType?.name || "",
-      project_date: project?.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "TBD",
-      project_location: location?.name || "TBD",
-      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
-      owner_name: profile?.name || "",
-      company_name: data.organization?.name || "",
-    };
-    return content
-      // Replace WYSIWYG chip spans with their resolved value (drops the styling).
-      .replace(/<span\s+data-merge-field="(\w+)"[^>]*>\s*\{\{\1\}\}\s*<\/span>/g, (_, field) => replacements[field] ?? "")
-      // Then any unwrapped {{token}} in plain text or pasted content.
-      .replace(/\{\{(\w+)\}\}/g, (_, field) => replacements[field] ?? "");
-  }
-
-  async function createContract() {
-    if (!contractTitle.trim()) { toast.error("Title required"); return; }
-    if (!contractClientId) { toast.error("Select a client"); return; }
-    if (!contractClientEmail.trim()) { toast.error("Client email required"); return; }
-
-    // Soft-block: warn if the contract still has unfilled bracket placeholders.
-    // User can override (some templates have intentionally optional fields).
-    const unfilled = contractPlaceholders.filter(p => (contractFieldValues[p] || "").trim() === "");
-    if (unfilled.length > 0) {
-      const sample = unfilled.slice(0, 3).join(", ") + (unfilled.length > 3 ? ` +${unfilled.length - 3} more` : "");
-      const ok = confirm(`${unfilled.length} bracket placeholder${unfilled.length === 1 ? "" : "s"} still empty (${sample}).\n\nCreate the draft anyway? You can fill them later.`);
-      if (!ok) return;
-    }
-
-    const resolved = resolveMergeFields(contractContent);
-    const token = nanoid(32);
-
-    await addContract({
-      templateId: contractTemplateId || null,
-      clientId: contractClientId,
-      projectId: contractProjectId || null,
-      title: contractTitle.trim(),
-      content: resolved,
-      status: "draft",
-      sentAt: null,
-      clientSignedAt: null,
-      ownerSignedAt: null,
-      clientSignature: null,
-      ownerSignature: null,
-      clientEmail: contractClientEmail.trim(),
-      signToken: token,
-      fieldValues: contractFieldValues,
-      additionalSigners: [],
-      documentExpiresAt: null,
-      remindersEnabled: false,
-      lastReminderSentAt: null,
-    });
-    toast.success("Contract created as draft");
-    setContractDialogOpen(false);
-  }
-
-  async function sendContract(contractId: string) {
-    const contract = data.contracts.find(c => c.id === contractId);
-    if (!contract) return;
-
-    // Send email with signing link
-    try {
-      const token = await getAuthToken();
-      const signUrl = `${window.location.origin}/sign/${contract.signToken}`;
-      const orgName = data.organization?.name || "Your production company";
-      const res = await fetch("/api/send-contract-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          to: contract.clientEmail,
-          cc: profile?.email || "",
-          subject: `Contract: ${contract.title} — ${orgName}`,
-          signUrl,
-          contractTitle: contract.title,
-          orgName,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed" }));
-        throw new Error(err.error || "Failed to send email");
-      }
-      await updateContract(contractId, { status: "sent", sentAt: new Date().toISOString() });
-      toast.success("Contract sent to " + contract.clientEmail);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send");
-    }
-  }
-
-  // Owner countersign
-  function openSignDialog(contractId: string) {
-    setSigningContractId(contractId);
-    setTypedName(profile?.name || "");
-    setSignatureType("typed");
-    setSignDialogOpen(true);
-  }
-
-  async function submitSignature() {
-    if (!signingContractId) return;
-
-    let signatureData: string;
-    if (signatureType === "typed") {
-      if (!typedName.trim()) { toast.error("Type your name"); return; }
-      signatureData = typedName.trim();
-    } else {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      signatureData = canvas.toDataURL("image/png");
-    }
-
-    const sig = {
-      name: profile?.name || "",
-      email: profile?.email || "",
-      ip: "server-side",
-      timestamp: new Date().toISOString(),
-      signatureData,
-      signatureType,
-    };
-
-    await updateContract(signingContractId, {
-      ownerSignature: sig,
-      ownerSignedAt: new Date().toISOString(),
-      status: "completed",
-    });
-    toast.success("Contract signed and completed!");
-    setSignDialogOpen(false);
-    setViewContract(null);
-  }
-
-  // Canvas drawing handlers
-  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    setIsDrawing(true);
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  }, []);
-
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  }, [isDrawing]);
-
-  const stopDraw = useCallback(() => setIsDrawing(false), []);
-
-  function clearCanvas() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // Auto-fill client email
-  function handleClientChange(clientId: string) {
-    setContractClientId(clientId);
-    const client = data.clients.find(c => c.id === clientId);
-    if (client?.email) setContractClientEmail(client.email);
-  }
-
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-
-    const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
-
-    if (isPdf) {
-      setUploadingPdf(true);
-      try {
-        const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const base64 = btoa(binary);
-
-        const token = await getAuthToken();
-        const res = await fetch("/api/parse-pdf", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ fileData: base64 }),
-        });
-        if (!res.ok) throw new Error("Failed to parse PDF");
-        const { text } = await res.json();
-        if (text) {
-          setContractContent(text);
-          toast.success("PDF content imported — review and edit as needed");
-        } else {
-          toast.error("No text found in PDF");
-        }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to upload");
-      } finally {
-        setUploadingPdf(false);
-      }
-    } else {
-      // Text file
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        if (text) {
-          setContractContent(text);
-          toast.success("Document imported");
-        }
-      };
-      reader.readAsText(file);
-    }
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -504,73 +197,83 @@ export default function ContractsPage() {
             </Button>
 
             {data.contracts.length === 0 ? (
-              <div className="space-y-4">
-                {(data.contractTemplates.length > 0 || data.proposalTemplates.length > 0) && (
-                  <button
-                    onClick={() => setTab("templates")}
-                    className="group relative w-full overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5 text-left transition-all hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="shrink-0 rounded-lg bg-primary/15 p-2.5">
-                        <Sparkles className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                          Start with a template
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {data.contractTemplates.length + data.proposalTemplates.length} ready to use — NDAs, releases, production contracts. Pick one and we'll auto-fill your client and project details.
-                        </p>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-primary opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 mt-3" />
-                    </div>
-                  </button>
-                )}
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">No contracts yet. {data.contractTemplates.length === 0 && data.proposalTemplates.length === 0 ? "Create one above or build a template first." : "Pick a template above, or click \"New Contract\" to start blank."}</p>
+              <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-10 text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary/15 mb-4">
+                  <Sparkles className="w-6 h-6 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold text-foreground mb-1.5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  You haven't sent your first contract
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+                  {data.contractTemplates.length === 0
+                    ? "Build a reusable template first, then create + send your first contract."
+                    : `Pick from ${data.contractTemplates.length} lawyer-vetted templates and send your first contract in under a minute.`}
+                </p>
+                <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
+                  <Plus className="w-4 h-4" /> Start your first contract
+                </Button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {data.contracts.map(c => {
-                  const client = data.clients.find(cl => cl.id === c.clientId);
-                  return (
-                    <div key={c.id} className="bg-card border border-border rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-foreground text-sm">{c.title}</span>
+              <div className="space-y-2">
+                {(() => {
+                  // Action-required rows pinned to the top (Pixieset-style)
+                  // so the user sees what's blocking them first.
+                  const sorted = [...data.contracts].sort((a, b) => {
+                    const aPriority = a.status === "client_signed" ? 0 : a.status === "sent" ? 1 : a.status === "draft" ? 2 : 3;
+                    const bPriority = b.status === "client_signed" ? 0 : b.status === "sent" ? 1 : b.status === "draft" ? 2 : 3;
+                    if (aPriority !== bPriority) return aPriority - bPriority;
+                    return b.updatedAt.localeCompare(a.updatedAt);
+                  });
+                  return sorted.map(c => {
+                    const client = data.clients.find(cl => cl.id === c.clientId);
+                    const isActionRequired = c.status === "client_signed";
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setLocation(`/contracts/${c.id}/edit`)}
+                        className={cn(
+                          "group w-full text-left bg-card border rounded-xl p-3 sm:p-4 transition-all hover:border-primary/40 hover:shadow-md flex items-stretch gap-3",
+                          isActionRequired ? "border-amber-500/40 bg-amber-500/[0.04]" : "border-border",
+                        )}
+                      >
+                        {/* Cream-paper thumbnail — ties the list to the wizard/editor visual language */}
+                        <div className="hidden sm:flex shrink-0 w-12 h-16 rounded bg-[#f6f2e8] border border-zinc-300/40 items-center justify-center">
+                          <FileText className="w-5 h-5 text-zinc-700/60" strokeWidth={1.5} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-semibold text-foreground text-sm truncate">{c.title}</span>
                             <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[c.status])}>
                               {STATUS_LABELS[c.status]}
                             </span>
+                            {isActionRequired && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300">⚡ Action required</span>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground">{client?.company || "Unknown"} · {c.clientEmail}</p>
-                          {c.clientSignedAt && <p className="text-xs text-green-400 mt-1">Client signed {new Date(c.clientSignedAt).toLocaleDateString()}</p>}
-                          {c.ownerSignedAt && <p className="text-xs text-green-400">You signed {new Date(c.ownerSignedAt).toLocaleDateString()}</p>}
+                          <p className="text-xs text-muted-foreground truncate">{client?.company || "Unknown"} · {c.clientEmail}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                            {c.sentAt && <span className="text-[10px] text-muted-foreground">Sent {new Date(c.sentAt).toLocaleDateString()}</span>}
+                            {c.clientSignedAt && <span className="text-[10px] text-green-400">Client ✓ {new Date(c.clientSignedAt).toLocaleDateString()}</span>}
+                            {c.ownerSignedAt && <span className="text-[10px] text-green-400">You ✓ {new Date(c.ownerSignedAt).toLocaleDateString()}</span>}
+                            {c.additionalSigners.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                +{c.additionalSigners.filter(s => s.signedAt).length}/{c.additionalSigners.length} co-signers
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setLocation(`/contracts/${c.id}/edit`)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Open contract"><Eye className="w-4 h-4" /></button>
-                          {c.status === "draft" && (
-                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
-                          )}
-                          {c.status === "sent" && (
-                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
-                          )}
-                          {c.status === "client_signed" && (
-                            <button onClick={() => openSignDialog(c.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
-                          )}
+                        <div className="flex items-start gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           {c.status !== "completed" && (
-                            <button onClick={async () => { await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>
+                            <button onClick={async (e) => { e.stopPropagation(); await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Void"><X className="w-4 h-4" /></button>
                           )}
                           {(c.status === "draft" || c.status === "void") && (
-                            <button onClick={async () => { await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={async (e) => { e.stopPropagation(); await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
@@ -843,260 +546,6 @@ export default function ContractsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* New Contract Dialog */}
-      <Dialog open={contractDialogOpen} onOpenChange={setContractDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>New Contract</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Title</Label>
-              <Input value={contractTitle} onChange={e => setContractTitle(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Video Production Agreement — CBSR" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Client</Label>
-                  <button onClick={() => setQuickAddOpen(!quickAddOpen)} className="text-[10px] text-primary hover:text-primary/80">
-                    {quickAddOpen ? "Cancel" : "+ New Client"}
-                  </button>
-                </div>
-                {quickAddOpen ? (
-                  <div className="space-y-2 p-2 bg-secondary/50 rounded-lg border border-border">
-                    <Input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Client name" />
-                    <Input value={quickAddEmail} onChange={e => setQuickAddEmail(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Email" />
-                    <Button size="sm" onClick={quickAddClient} className="w-full text-xs">Create & Select</Button>
-                  </div>
-                ) : (
-                  <Select value={contractClientId} onValueChange={handleClientChange}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {data.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Client Email</Label>
-                <Input value={contractClientEmail} onChange={e => setContractClientEmail(e.target.value)} className="bg-secondary border-border" placeholder="client@email.com" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Start from Template (optional)</Label>
-              <Select value={contractTemplateId} onValueChange={applyTemplate}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Blank contract" /></SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {data.contractTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Contract Content</Label>
-                <div className="flex gap-2">
-                  <input ref={pdfRef} type="file" accept=".pdf,.txt,.doc,.docx,text/plain,application/pdf" onChange={handlePdfUpload} className="hidden" />
-                  <button
-                    onClick={() => pdfRef.current?.click()}
-                    disabled={uploadingPdf}
-                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-                  >
-                    <Upload className="w-3 h-3" />
-                    {uploadingPdf ? "Uploading..." : "Upload PDF/Doc"}
-                  </button>
-                </div>
-              </div>
-              {/* Progress UI — visible only when the contract has bracket
-                  placeholders to fill. Filled count comes from contractFieldValues. */}
-              {contractPlaceholders.length > 0 && (() => {
-                const total = contractPlaceholders.length;
-                const filled = contractPlaceholders.filter(p => (contractFieldValues[p] || "").trim() !== "").length;
-                const remaining = total - filled;
-                const pct = total === 0 ? 0 : Math.round((filled / total) * 100);
-                return (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className={cn("font-semibold", remaining === 0 ? "text-emerald-300" : "text-amber-300")}>
-                          {filled} of {total} fields filled
-                        </span>
-                        {remaining > 0 && (
-                          <span className="text-muted-foreground">— {remaining} to go</span>
-                        )}
-                        {remaining === 0 && (
-                          <span className="text-muted-foreground">— ready to send</span>
-                        )}
-                      </div>
-                      {remaining > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => contractEditorRef.current?.focusFirstEmpty()}
-                          className="text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25"
-                        >
-                          Next empty field →
-                        </button>
-                      )}
-                    </div>
-                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className={cn("h-full transition-all", remaining === 0 ? "bg-emerald-500" : "bg-amber-500")}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-              <WysiwygContractEditor
-                ref={contractEditorRef}
-                value={contractContent}
-                onChange={setContractContent}
-                placeholder="Enter or paste contract text, or upload a PDF. Pick a template above to start from a legal-vetted draft."
-                minHeight="45vh"
-                fieldValues={contractFieldValues}
-                onFieldValuesChange={setContractFieldValues}
-                onPlaceholdersChange={setContractPlaceholders}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setContractDialogOpen(false)}>Cancel</Button>
-            <Button onClick={createContract}>Create Draft</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Contract Dialog */}
-      <Dialog open={!!viewContract} onOpenChange={o => !o && setViewContract(null)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{viewContract?.title}</DialogTitle>
-          </DialogHeader>
-          {viewContract && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className={cn("text-xs font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[viewContract.status])}>
-                  {STATUS_LABELS[viewContract.status]}
-                </span>
-                <span className="text-xs text-muted-foreground">{data.clients.find(c => c.id === viewContract.clientId)?.company}</span>
-              </div>
-              <div className="bg-white rounded-lg max-h-[60vh] overflow-y-auto border border-gray-200">
-                <ContractLetterhead
-                  orgName={data.organization?.name}
-                  ownerName={profile?.name}
-                  orgLogo={data.organization?.logoUrl}
-                  businessInfo={data.organization?.businessInfo}
-                  intro="The contract is ready for review and signature. If you have any questions, just ask."
-                />
-                {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(viewContract.content) ? (
-                  <div
-                    className="px-6 sm:px-10 py-8 contract-html-light"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }}
-                  />
-                ) : (
-                  <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {viewContract.content}
-                  </div>
-                )}
-              </div>
-              {viewContract.clientSignature && (
-                <div className="bg-secondary/50 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Client Signature</p>
-                  {viewContract.clientSignature.signatureType === "drawn" ? (
-                    <img src={viewContract.clientSignature.signatureData} alt="Client signature" className="h-12" />
-                  ) : (
-                    <p className="text-lg font-cursive italic text-foreground">{viewContract.clientSignature.signatureData}</p>
-                  )}
-                  <p className="text-[10px] text-muted-foreground mt-1">{viewContract.clientSignature.name} · {new Date(viewContract.clientSignature.timestamp).toLocaleString()}</p>
-                </div>
-              )}
-              {viewContract.ownerSignature && (
-                <div className="bg-secondary/50 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Owner Signature</p>
-                  {viewContract.ownerSignature.signatureType === "drawn" ? (
-                    <img src={viewContract.ownerSignature.signatureData} alt="Owner signature" className="h-12" />
-                  ) : (
-                    <p className="text-lg font-cursive italic text-foreground">{viewContract.ownerSignature.signatureData}</p>
-                  )}
-                  <p className="text-[10px] text-muted-foreground mt-1">{viewContract.ownerSignature.name} · {new Date(viewContract.ownerSignature.timestamp).toLocaleString()}</p>
-                </div>
-              )}
-              <div className="flex gap-2">
-                {viewContract.status === "draft" && (
-                  <Button onClick={() => { sendContract(viewContract.id); setViewContract(null); }} className="gap-2">
-                    <Send className="w-4 h-4" /> Send to Client
-                  </Button>
-                )}
-                {viewContract.status === "client_signed" && (
-                  <Button onClick={() => { openSignDialog(viewContract.id); }} className="gap-2">
-                    <PenTool className="w-4 h-4" /> Countersign
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Signature Dialog (Owner Countersign) */}
-      <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Sign Contract</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex gap-2">
-              <button onClick={() => setSignatureType("typed")} className={cn("flex-1 py-2 rounded-lg border text-sm font-medium", signatureType === "typed" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
-                Type Name
-              </button>
-              <button onClick={() => setSignatureType("drawn")} className={cn("flex-1 py-2 rounded-lg border text-sm font-medium", signatureType === "drawn" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
-                Draw Signature
-              </button>
-            </div>
-
-            {signatureType === "typed" ? (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Full Legal Name</Label>
-                <Input value={typedName} onChange={e => setTypedName(e.target.value)} className="bg-secondary border-border text-lg" placeholder="Your full name" />
-                {typedName && (
-                  <div className="p-4 bg-white rounded-lg text-center">
-                    <p className="text-2xl italic text-black" style={{ fontFamily: "cursive" }}>{typedName}</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Draw your signature below</Label>
-                <div className="border border-border rounded-lg bg-[#1a1a2e] overflow-hidden">
-                  <canvas
-                    ref={canvasRef}
-                    width={350}
-                    height={120}
-                    className="w-full cursor-crosshair touch-none"
-                    onMouseDown={startDraw}
-                    onMouseMove={draw}
-                    onMouseUp={stopDraw}
-                    onMouseLeave={stopDraw}
-                    onTouchStart={startDraw}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDraw}
-                  />
-                </div>
-                <button onClick={clearCanvas} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
-              </div>
-            )}
-
-            <p className="text-[10px] text-muted-foreground">
-              By signing, you agree this is your legal signature and you accept the terms of this contract. Timestamp and IP will be recorded.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSignDialogOpen(false)}>Cancel</Button>
-            <Button onClick={submitSignature} className="gap-2">
-              <CheckCircle className="w-4 h-4" /> Sign Contract
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

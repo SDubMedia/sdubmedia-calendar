@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { ArrowLeft, Send, Eye, MoreHorizontal, Plus, X, Trash2, ExternalLink, PenTool, Copy, AlertCircle } from "lucide-react";
 import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
+import { useSignatureCanvas } from "@/hooks/useSignatureCanvas";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,8 @@ export default function EditContractPage() {
   const [sending, setSending] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [addSignerOpen, setAddSignerOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   const editorRef = useRef<WysiwygContractEditorHandle>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -175,6 +178,45 @@ export default function EditContractPage() {
     }
   }
 
+  // Derived activity log — chronological list of every event we can
+  // reconstruct from the contract row. No new schema required.
+  const activityEntries = useMemo(() => {
+    if (!contract) return [] as { ts: string; label: string; detail: string }[];
+    const entries: { ts: string; label: string; detail: string }[] = [];
+    entries.push({ ts: contract.createdAt, label: "Draft created", detail: `By ${profile?.name || "owner"}` });
+    if (contract.sentAt) {
+      const recipientCount = 1 + additionalSigners.length;
+      entries.push({ ts: contract.sentAt, label: "Sent", detail: `To ${recipientCount} signer${recipientCount === 1 ? "" : "s"}` });
+    }
+    if (contract.lastReminderSentAt) {
+      entries.push({ ts: contract.lastReminderSentAt, label: "Reminder sent", detail: "Unsigned signers were re-emailed" });
+    }
+    if (contract.clientSignedAt && contract.clientSignature) {
+      entries.push({
+        ts: contract.clientSignedAt,
+        label: "Client signed",
+        detail: `${contract.clientSignature.name || "Client"} · IP ${contract.clientSignature.ip || "unknown"}`,
+      });
+    }
+    for (const s of additionalSigners) {
+      if (s.signedAt && s.signature) {
+        entries.push({
+          ts: s.signedAt,
+          label: `${s.role || "Signer"} signed`,
+          detail: `${s.signature.name || s.name} · IP ${s.signature.ip || "unknown"}`,
+        });
+      }
+    }
+    if (contract.ownerSignedAt && contract.ownerSignature) {
+      entries.push({
+        ts: contract.ownerSignedAt,
+        label: "Owner countersigned",
+        detail: `${contract.ownerSignature.name || profile?.name || "Owner"} · contract completed`,
+      });
+    }
+    return entries.sort((a, b) => a.ts.localeCompare(b.ts));
+  }, [contract, profile, additionalSigners]);
+
   function copySignLink() {
     if (!contract) return;
     const url = `${window.location.origin}/sign/${contract.signToken}`;
@@ -231,6 +273,9 @@ export default function EditContractPage() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setActivityOpen(true)}>
+                <AlertCircle className="w-4 h-4 mr-2" /> View activity log
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={copySignLink}>
                 <Copy className="w-4 h-4 mr-2" /> Copy sign link
               </DropdownMenuItem>
@@ -262,8 +307,9 @@ export default function EditContractPage() {
           </DropdownMenu>
 
           <button
-            onClick={() => window.open(`/sign/${contract.signToken}`, "_blank")}
+            onClick={() => setPreviewOpen(true)}
             className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md border border-border hover:bg-secondary inline-flex items-center gap-1.5"
+            title="Preview the signing surface as your client will see it"
           >
             <Eye className="w-3.5 h-3.5" /> Preview
           </button>
@@ -273,11 +319,23 @@ export default function EditContractPage() {
               <Send className="w-4 h-4" /> {sending ? "Sending…" : "Send Contract"}
             </Button>
           )}
-          {contract.status === "client_signed" && (
-            <Button onClick={() => setSignOpen(true)} className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white">
-              <PenTool className="w-4 h-4" /> Countersign
-            </Button>
-          )}
+          {contract.status === "client_signed" && (() => {
+            const additionalUnsigned = additionalSigners.filter(s => !s.signedAt);
+            const blocked = additionalUnsigned.length > 0;
+            return blocked ? (
+              <Button
+                disabled
+                className="gap-1.5 cursor-not-allowed opacity-60"
+                title={`Waiting on: ${additionalUnsigned.map(s => s.name).join(", ")}`}
+              >
+                <PenTool className="w-4 h-4" /> Awaiting other signers ({additionalUnsigned.length})
+              </Button>
+            ) : (
+              <Button onClick={() => setSignOpen(true)} className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white">
+                <PenTool className="w-4 h-4" /> Countersign
+              </Button>
+            );
+          })()}
           {contract.status === "sent" && (
             <Button onClick={sendContract} disabled={sending} variant="outline" className="gap-1.5">
               <Send className="w-4 h-4" /> Resend
@@ -391,6 +449,14 @@ export default function EditContractPage() {
             <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 text-xs">
               <p className="text-blue-300 font-medium mb-1">Awaiting client signature</p>
               <p className="text-muted-foreground leading-relaxed">Sent to {clientEmail} {contract.sentAt ? `on ${new Date(contract.sentAt).toLocaleDateString()}` : ""}.</p>
+              {remindersEnabled && (() => {
+                // Compute next reminder fire from lastReminderSentAt + 3d (or
+                // sentAt + 3d if no reminder has fired yet).
+                const base = contract.lastReminderSentAt || contract.sentAt;
+                if (!base) return null;
+                const next = new Date(new Date(base).getTime() + 3 * 86400_000);
+                return <p className="text-muted-foreground leading-relaxed mt-1.5 text-[11px]">Next reminder: {next.toLocaleDateString()}</p>;
+              })()}
             </div>
           )}
           {contract.status === "client_signed" && (
@@ -401,9 +467,34 @@ export default function EditContractPage() {
           )}
         </aside>
 
-        {/* Main canvas */}
-        <main className="overflow-y-auto p-4 sm:p-8">
+        {/* Main canvas — subtle paper-grain texture ties the editor to
+            the cream-paper letterhead reading surface. */}
+        <main
+          className="overflow-y-auto p-4 sm:p-8"
+          style={{
+            backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
+              `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>`,
+            )}")`,
+            backgroundRepeat: "repeat",
+          }}
+        >
           <div className="max-w-4xl mx-auto">
+            {/* Read-only sticky banner — clear cue that the document is sealed. */}
+            {!isDraft && (
+              <div className={cn(
+                "sticky top-0 z-10 mb-4 rounded-lg px-4 py-2.5 text-xs flex items-center gap-2 shadow-sm backdrop-blur",
+                contract.status === "sent" && "bg-blue-500/10 border border-blue-500/30 text-blue-200",
+                contract.status === "client_signed" && "bg-amber-500/10 border border-amber-500/30 text-amber-200",
+                contract.status === "completed" && "bg-emerald-500/10 border border-emerald-500/30 text-emerald-200",
+                contract.status === "void" && "bg-red-500/10 border border-red-500/30 text-red-200",
+              )}>
+                {contract.status === "sent" && <>📤 Sent {contract.sentAt ? `on ${new Date(contract.sentAt).toLocaleDateString()}` : ""} — awaiting signatures. Read-only.</>}
+                {contract.status === "client_signed" && <>✍️ Client signed {contract.clientSignedAt ? `on ${new Date(contract.clientSignedAt).toLocaleDateString()}` : ""} — your countersign is needed. Read-only.</>}
+                {contract.status === "completed" && <>✅ Completed {contract.ownerSignedAt ? `on ${new Date(contract.ownerSignedAt).toLocaleDateString()}` : ""} — fully executed.</>}
+                {contract.status === "void" && <>🚫 Voided — no longer signable.</>}
+              </div>
+            )}
+
             {/* Bracket placeholder progress (only meaningful while editing) */}
             {isDraft && placeholders.length > 0 && (() => {
               const total = placeholders.length;
@@ -471,6 +562,59 @@ export default function EditContractPage() {
         </main>
       </div>
 
+      {/* Activity log — chronological derived timeline */}
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Activity log</DialogTitle>
+            <p className="text-xs text-muted-foreground">Chronological record of every event on this contract.</p>
+          </DialogHeader>
+          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+            {activityEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No activity yet.</p>
+            ) : (
+              activityEntries.map((e, i) => (
+                <div key={i} className="flex gap-3 pb-3 border-b border-border last:border-b-0 last:pb-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{e.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{e.detail}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">{new Date(e.ts).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setActivityOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview — renders the read-only client view inside the app */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="px-6 pt-5 pb-3 border-b border-border">
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Client preview</DialogTitle>
+            <p className="text-xs text-muted-foreground">This is how the client sees the contract on the public sign page.</p>
+          </DialogHeader>
+          <div className="bg-white text-black">
+            <ContractLetterhead
+              orgName={data.organization?.name}
+              ownerName={profile?.name}
+              orgLogo={data.organization?.logoUrl}
+              businessInfo={data.organization?.businessInfo}
+              intro="The contract is ready for review and signature. If you have any questions, just ask."
+            />
+            {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(content) ? (
+              <div className="px-6 sm:px-10 py-6 contract-html-light" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content) }} />
+            ) : (
+              <div className="px-6 sm:px-10 py-6 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{content || <em className="text-gray-400">Empty contract — start typing in the editor.</em>}</div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Add signer modal */}
       <AddSignerModal
         open={addSignerOpen}
@@ -495,6 +639,16 @@ export default function EditContractPage() {
           });
           toast.success("Contract signed and completed!");
           setSignOpen(false);
+          // Fire "fully executed" emails to all parties. Best-effort —
+          // failure here doesn't roll back the signature.
+          try {
+            const t = await getAuthToken();
+            await fetch("/api/send-completed-contract-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+              body: JSON.stringify({ contractId: contract.id, baseUrl: window.location.origin }),
+            });
+          } catch { /* silent — owner sees in toast already */ }
         }}
       />
     </div>
@@ -629,34 +783,9 @@ function CountersignModal({ open, onClose, defaultName, ownerEmail, onSign }: {
 }) {
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState(defaultName);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [drawing, setDrawing] = useState(false);
+  const sig = useSignatureCanvas();
 
   useEffect(() => { if (open) setTypedName(defaultName); }, [open, defaultName]);
-
-  function start(e: React.MouseEvent | React.TouchEvent) {
-    setDrawing(true);
-    const c = canvasRef.current; if (!c) return;
-    const ctx = c.getContext("2d"); if (!ctx) return;
-    const rect = c.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath(); ctx.moveTo(x, y);
-  }
-  function move(e: React.MouseEvent | React.TouchEvent) {
-    if (!drawing) return;
-    const c = canvasRef.current; if (!c) return;
-    const ctx = c.getContext("2d"); if (!ctx) return;
-    const rect = c.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#ffffff";
-    ctx.lineTo(x, y); ctx.stroke();
-  }
-  function clearCanvas() {
-    const c = canvasRef.current; if (!c) return;
-    c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
-  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -674,16 +803,9 @@ function CountersignModal({ open, onClose, defaultName, ownerEmail, onSign }: {
           ) : (
             <div>
               <div className="border border-border rounded-lg bg-[#1a1a2e] overflow-hidden">
-                <canvas
-                  ref={canvasRef}
-                  width={350}
-                  height={120}
-                  className="w-full cursor-crosshair touch-none"
-                  onMouseDown={start} onMouseMove={move} onMouseUp={() => setDrawing(false)} onMouseLeave={() => setDrawing(false)}
-                  onTouchStart={start} onTouchMove={move} onTouchEnd={() => setDrawing(false)}
-                />
+                <canvas {...sig.canvasProps} width={350} height={120} className="w-full cursor-crosshair touch-none" />
               </div>
-              <button onClick={clearCanvas} className="text-xs text-muted-foreground hover:text-foreground mt-1">Clear</button>
+              <button onClick={sig.clear} className="text-xs text-muted-foreground hover:text-foreground mt-1">Clear</button>
             </div>
           )}
           <p className="text-[10px] text-muted-foreground">By signing, you agree this is your legal signature and you accept the contract terms.</p>
@@ -696,8 +818,8 @@ function CountersignModal({ open, onClose, defaultName, ownerEmail, onSign }: {
               if (!typedName.trim()) { toast.error("Type your name"); return; }
               signatureData = typedName.trim();
             } else {
-              const c = canvasRef.current; if (!c) return;
-              signatureData = c.toDataURL("image/png");
+              if (!sig.hasInk) { toast.error("Draw your signature"); return; }
+              signatureData = sig.toDataUrl();
             }
             await onSign({
               name: typedName.trim() || defaultName,

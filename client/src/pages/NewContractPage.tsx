@@ -26,6 +26,13 @@ export default function NewContractPage() {
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
 
+  // Pre-select template from ?template=<id> query param (sent from the
+  // template detail panel's "Use in new contract" CTA).
+  const initialTemplateId = useMemo(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("template") || null;
+  }, []);
+
   const [step, setStep] = useState<Step>(1);
 
   // Step 1 — Client
@@ -161,7 +168,10 @@ export default function NewContractPage() {
         fieldValues: {},
         additionalSigners: [],
         documentExpiresAt: null,
-        remindersEnabled: false,
+        // Default reminders ON for new contracts. The cron only fires for
+        // contracts whose status is `sent` or `client_signed`, so this is
+        // harmless until the user actually sends.
+        remindersEnabled: true,
         lastReminderSentAt: null,
       });
 
@@ -381,22 +391,27 @@ export default function NewContractPage() {
                 {data.contractTemplates.length === 0 && (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">No templates yet. Pick Blank to start writing.</div>
                 )}
-                {data.contractTemplates.map((tpl, i) => (
-                  <button
-                    key={tpl.id}
-                    onClick={() => handleCreate(tpl)}
-                    disabled={creating}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/60 transition-colors",
-                      i > 0 && "border-t border-border",
-                    )}
-                  >
-                    <div className="w-9 h-9 rounded bg-[#f6f2e8] flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-zinc-700" />
-                    </div>
-                    <span className="text-sm text-foreground">{tpl.name}</span>
-                  </button>
-                ))}
+                {data.contractTemplates.map((tpl, i) => {
+                  const preselected = initialTemplateId === tpl.id;
+                  return (
+                    <button
+                      key={tpl.id}
+                      onClick={() => handleCreate(tpl)}
+                      disabled={creating}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                        i > 0 && "border-t border-border",
+                        preselected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-secondary/60",
+                      )}
+                    >
+                      <div className="w-9 h-9 rounded bg-[#f6f2e8] flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-zinc-700" />
+                      </div>
+                      <span className="text-sm text-foreground">{tpl.name}</span>
+                      {preselected && <span className="ml-auto text-[10px] uppercase tracking-wider text-primary">Pre-selected</span>}
+                    </button>
+                  );
+                })}
               </div>
 
               {creating && <p className="text-xs text-muted-foreground mt-4 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Creating contract…</p>}

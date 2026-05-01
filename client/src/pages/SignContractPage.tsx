@@ -3,11 +3,12 @@
 // No auth required — accessed via unique token link
 // ============================================================
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { CheckCircle, AlertCircle } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
+import { useSignatureCanvas } from "@/hooks/useSignatureCanvas";
 
 export default function SignContractPage() {
   const params = useParams<{ token: string }>();
@@ -22,8 +23,7 @@ export default function SignContractPage() {
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
   const [signerEmail, setSignerEmail] = useState("");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const sigCanvas = useSignatureCanvas({ strokeStyle: "#000000" });
 
   useEffect(() => {
     fetch(`/api/contract-sign?action=get&token=${token}`)
@@ -44,37 +44,6 @@ export default function SignContractPage() {
       .catch(() => { setError("Failed to load contract"); setLoading(false); });
   }, [token]);
 
-  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    setIsDrawing(true);
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  }, []);
-
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#000000";
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  }, [isDrawing]);
-
-  const stopDraw = useCallback(() => setIsDrawing(false), []);
-
   async function handleSign() {
     if (!typedName.trim() && signatureType === "typed") return;
 
@@ -82,9 +51,8 @@ export default function SignContractPage() {
     if (signatureType === "typed") {
       signatureData = typedName.trim();
     } else {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      signatureData = canvas.toDataURL("image/png");
+      if (!sigCanvas.hasInk) return;
+      signatureData = sigCanvas.toDataUrl();
     }
 
     setSigning(true);
@@ -230,20 +198,13 @@ export default function SignContractPage() {
               <div>
                 <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
                   <canvas
-                    ref={canvasRef}
+                    {...sigCanvas.canvasProps}
                     width={600}
                     height={150}
                     className="w-full cursor-crosshair touch-none"
-                    onMouseDown={startDraw}
-                    onMouseMove={draw}
-                    onMouseUp={stopDraw}
-                    onMouseLeave={stopDraw}
-                    onTouchStart={startDraw}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDraw}
                   />
                 </div>
-                <button onClick={() => { const c = canvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); }} className="text-xs text-gray-400 mt-1 hover:text-gray-600">
+                <button onClick={sigCanvas.clear} className="text-xs text-gray-400 mt-1 hover:text-gray-600">
                   Clear
                 </button>
               </div>
