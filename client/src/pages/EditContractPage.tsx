@@ -77,16 +77,21 @@ export default function EditContractPage() {
   const [addSignerOpen, setAddSignerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // Hydrated = local state has been seeded from the contract row. Until
+  // this is true we don't mount the editor (avoids a mount-with-empty
+  // value → setContent race) and we don't autosave (avoids round-tripping
+  // the template content back to the server before the user edits anything).
+  const [hydrated, setHydrated] = useState(false);
 
   const editorRef = useRef<WysiwygContractEditorHandle>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const wasLoaded = useRef(false);
+  const hydratedIdRef = useRef<string | null>(null);
 
   // Hydrate from contract row on first load + when id changes.
   useEffect(() => {
     if (!contract) return;
-    if (wasLoaded.current && id === contract.id) return;
-    wasLoaded.current = true;
+    if (hydratedIdRef.current === contract.id) return;
+    hydratedIdRef.current = contract.id;
     setTitle(contract.title);
     setContent(contract.content);
     setClientEmail(contract.clientEmail);
@@ -95,13 +100,14 @@ export default function EditContractPage() {
     setDocumentExpiresAt(contract.documentExpiresAt);
     setRemindersEnabled(contract.remindersEnabled);
     setSaveStatus("idle");
-  }, [contract, id]);
+    setHydrated(true);
+  }, [contract]);
 
   // Debounced autosave for draft contracts. Pushes title/content/email/
-  // field values/signers/settings on any change.
+  // field values/signers/settings on any change. Skipped until the local
+  // state has been hydrated from the contract row.
   useEffect(() => {
-    if (!contract || !isDraft) return;
-    if (!wasLoaded.current) return;
+    if (!contract || !isDraft || !hydrated) return;
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
     saveTimerRef.current = window.setTimeout(async () => {
@@ -124,7 +130,7 @@ export default function EditContractPage() {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, content, clientEmail, fieldValues, additionalSigners, documentExpiresAt, remindersEnabled, isDraft]);
+  }, [title, content, clientEmail, fieldValues, additionalSigners, documentExpiresAt, remindersEnabled, isDraft, hydrated]);
 
   // ----- Send / sign actions -----
   async function sendContract() {
@@ -528,16 +534,23 @@ export default function EditContractPage() {
             })()}
 
             {isDraft ? (
-              <WysiwygContractEditor
-                ref={editorRef}
-                value={content}
-                onChange={setContent}
-                placeholder="Start typing your contract, paste from Word, or upload a PDF using the toolbar."
-                minHeight="60vh"
-                fieldValues={fieldValues}
-                onFieldValuesChange={setFieldValues}
-                onPlaceholdersChange={setPlaceholders}
-              />
+              hydrated ? (
+                <WysiwygContractEditor
+                  ref={editorRef}
+                  value={content}
+                  onChange={setContent}
+                  placeholder="Start typing your contract, paste from Word, or upload a PDF using the toolbar."
+                  minHeight="60vh"
+                  fieldValues={fieldValues}
+                  onFieldValuesChange={setFieldValues}
+                  onPlaceholdersChange={setPlaceholders}
+                />
+              ) : (
+                <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-3" />
+                  Loading contract…
+                </div>
+              )
             ) : (
               // Read-only — render the contract as it appears to the client.
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

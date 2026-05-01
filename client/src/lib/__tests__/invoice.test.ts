@@ -331,3 +331,36 @@ describe("buildInvoice edge cases", () => {
     expect(invoice.total).toBe(expectedSubtotal); // no tax
   });
 });
+
+describe("buildLineItems — cancellation exclusion", () => {
+  it("excludes cancelled projects from line items entirely", () => {
+    const projects = [
+      makeProject({ id: "p-good", date: "2026-04-10", status: "completed", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 4, payRatePerHour: 50 }] }),
+      makeProject({ id: "p-cancelled", date: "2026-04-12", status: "cancelled", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 6, payRatePerHour: 50 }] }),
+    ];
+    const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
+    const ids = items.map(li => li.projectId);
+    expect(ids).toContain("p-good");
+    expect(ids).not.toContain("p-cancelled");
+  });
+
+  it("invoice total ignores cancelled projects even if hours are present", () => {
+    const projects = [
+      makeProject({ id: "p1", date: "2026-04-05", status: "completed", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 50 }], postProduction: [] }),
+      makeProject({ id: "p2", date: "2026-04-12", status: "cancelled", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 10, payRatePerHour: 50 }], postProduction: [] }),
+    ];
+    const inv = buildInvoice(makeClient({ billingRatePerHour: 200 }), projects, projectTypes, locations, [], "2026-04-01", "2026-04-30");
+    expect(inv.subtotal).toBe(400); // only p1's 2 hrs * $200
+  });
+
+  it("excludes upcoming projects too (existing behavior preserved)", () => {
+    const projects = [
+      makeProject({ id: "p-upcoming", date: "2026-04-10", status: "upcoming" }),
+      makeProject({ id: "p-completed", date: "2026-04-12", status: "completed" }),
+    ];
+    const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
+    const ids = items.map(li => li.projectId);
+    expect(ids).toContain("p-completed");
+    expect(ids).not.toContain("p-upcoming");
+  });
+});

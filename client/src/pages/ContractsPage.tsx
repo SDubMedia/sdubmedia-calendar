@@ -119,7 +119,7 @@ function templatePreviewText(content: string): string {
 }
 
 export default function ContractsPage() {
-  const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
+  const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");

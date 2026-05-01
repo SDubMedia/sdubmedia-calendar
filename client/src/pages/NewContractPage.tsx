@@ -7,7 +7,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
-import { useAuth } from "@/contexts/AuthContext";
 import type { Client, ContractTemplate, Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +22,6 @@ type Step = 1 | 2 | 3;
 
 export default function NewContractPage() {
   const { data, addContract, addProject } = useApp();
-  const { profile } = useAuth();
   const [, setLocation] = useLocation();
 
   // Pre-select template from ?template=<id> query param (sent from the
