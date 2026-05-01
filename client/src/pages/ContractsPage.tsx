@@ -301,6 +301,10 @@ export default function ContractsPage() {
       clientEmail: contractClientEmail.trim(),
       signToken: token,
       fieldValues: contractFieldValues,
+      additionalSigners: [],
+      documentExpiresAt: null,
+      remindersEnabled: false,
+      lastReminderSentAt: null,
     });
     toast.success("Contract created as draft");
     setContractDialogOpen(false);
@@ -495,7 +499,7 @@ export default function ContractsPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "contracts" ? (
           <div className="space-y-4">
-            <Button onClick={openNewContract} className="gap-2">
+            <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
               <Plus className="w-4 h-4" /> New Contract
             </Button>
 
@@ -546,7 +550,7 @@ export default function ContractsPage() {
                           {c.ownerSignedAt && <p className="text-xs text-green-400">You signed {new Date(c.ownerSignedAt).toLocaleDateString()}</p>}
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setViewContract(c)} className="p-1.5 text-muted-foreground hover:text-foreground"><Eye className="w-4 h-4" /></button>
+                          <button onClick={() => setLocation(`/contracts/${c.id}/edit`)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Open contract"><Eye className="w-4 h-4" /></button>
                           {c.status === "draft" && (
                             <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
                           )}

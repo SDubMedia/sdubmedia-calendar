@@ -9,6 +9,8 @@
   "crons": [
     { "path": "/api/daily-summary", "schedule": "0 11 * * *" },
     { "path": "/api/cleanup-orphans", "schedule": "0 4 * * *" },
-    { "path": "/api/cron-gallery-expiry-reminders", "schedule": "0 13 * * *" }
+    { "path": "/api/cron-gallery-expiry-reminders", "schedule": "0 13 * * *" },
+    { "path": "/api/cron-contract-reminders", "schedule": "0 14 * * *" },
+    { "path": "/api/cron-contract-expiry", "schedule": "0 5 * * *" }
   ]
 }

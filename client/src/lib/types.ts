@@ -598,6 +598,19 @@ export interface ContractSignature {
   signatureType: "drawn" | "typed";
 }
 
+// Extra signers beyond the always-present client + owner. Each gets their
+// own sign URL via a unique signToken so the UX matches what the primary
+// client sees today. Stored inline on the contract row as JSONB.
+export interface AdditionalSigner {
+  id: string;
+  name: string;
+  email: string;
+  role: string;        // free-form label: "Business Partner", "Second Shooter", etc.
+  signToken: string;
+  signature: ContractSignature | null;
+  signedAt: string | null;
+}
+
 export interface Contract {
   id: string;
   templateId: string | null;
@@ -621,6 +634,10 @@ export interface Contract {
    * chip fills every duplicate.
    */
   fieldValues: Record<string, string>;
+  additionalSigners: AdditionalSigner[];
+  documentExpiresAt: string | null;   // ISO date — auto-void after this date
+  remindersEnabled: boolean;          // when true, scheduled cron pings unsigned signers
+  lastReminderSentAt: string | null;  // last time the reminder cron emailed unsigned signers
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

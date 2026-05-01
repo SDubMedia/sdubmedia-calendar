@@ -29,21 +29,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// Look up a contract by token. Tries the primary `sign_token` first, then
+// searches `additional_signers` JSONB for an entry with a matching token.
+// Returns the contract row plus a `signer` descriptor identifying which
+// signer this token represents.
+type SignerInfo =
+  | { type: "client"; id: null; name: string; email: string; signedAt: string | null }
+  | { type: "additional"; id: string; name: string; email: string; role: string; signedAt: string | null };
+
+async function findContractByToken(token: string): Promise<{ contract: Record<string, unknown>; signer: SignerInfo } | null> {
+  if (!token) return null;
+  // Try primary signer first.
+  const primary = await supabase
+    .from("contracts")
+    .select("id, title, content, status, client_email, client_signed_at, owner_signed_at, additional_signers")
+    .eq("sign_token", token)
+    .maybeSingle();
+  if (primary.data) {
+    return {
+      contract: primary.data as unknown as Record<string, unknown>,
+      signer: {
+        type: "client",
+        id: null,
+        name: "",
+        email: (primary.data as Record<string, unknown>).client_email as string || "",
+        signedAt: (primary.data as Record<string, unknown>).client_signed_at as string | null,
+      },
+    };
+  }
+  // Fall back: scan additional_signers JSONB. We use a containment query
+  // on the array shape `[{ "signToken": token }]` so PostgREST can index it.
+  const additional = await supabase
+    .from("contracts")
+    .select("id, title, content, status, client_email, client_signed_at, owner_signed_at, additional_signers")
+    .filter("additional_signers", "cs", JSON.stringify([{ signToken: token }]))
+    .maybeSingle();
+  if (!additional.data) return null;
+  const signers = (additional.data as Record<string, unknown>).additional_signers as Array<Record<string, unknown>> | null;
+  const match = (signers || []).find(s => s.signToken === token);
+  if (!match) return null;
+  return {
+    contract: additional.data as unknown as Record<string, unknown>,
+    signer: {
+      type: "additional",
+      id: match.id as string,
+      name: (match.name as string) || "",
+      email: (match.email as string) || "",
+      role: (match.role as string) || "Co-signer",
+      signedAt: (match.signedAt as string | null) || null,
+    },
+  };
+}
+
 async function getContract(token: string, res: VercelResponse) {
   if (!token) return res.status(400).json({ error: "Missing token" });
 
-  const { data: contract, error } = await supabase
-    .from("contracts")
-    .select("id, title, content, status, client_email, client_signed_at, owner_signed_at")
-    .eq("sign_token", token)
-    .single();
+  const found = await findContractByToken(token);
+  if (!found) return res.status(404).json({ error: "Contract not found" });
+  const { contract, signer } = found;
 
-  if (error || !contract) return res.status(404).json({ error: "Contract not found" });
   if (contract.status === "void") return res.status(400).json({ error: "This contract has been voided" });
-  if (contract.client_signed_at) return res.status(200).json({ ...contract, alreadySigned: true });
+  if (signer.signedAt) return res.status(200).json({ ...contract, alreadySigned: true, signer });
 
-  // Get org branding + owner identity for the letterhead.
-  const { data: org } = await supabase.from("contracts").select("org_id").eq("sign_token", token).single();
+  // Get org branding + owner identity for the letterhead. Look up by
+  // contract id (token may belong to an additional signer, not the primary).
+  const { data: org } = await supabase.from("contracts").select("org_id").eq("id", contract.id as string).single();
   let orgName = "";
   let orgLogo = "";
   let orgBusinessInfo: Record<string, unknown> | null = null;
@@ -68,7 +118,7 @@ async function getContract(token: string, res: VercelResponse) {
     ownerName = (ownerProfiles?.[0]?.name as string) || "";
   }
 
-  return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, ownerName, alreadySigned: false });
+  return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, ownerName, signer, alreadySigned: false });
 }
 
 async function signContract(req: VercelRequest, res: VercelResponse) {
@@ -77,45 +127,63 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
   const { token, signature } = req.body;
   if (!token || !signature) return res.status(400).json({ error: "Missing token or signature" });
 
-  // Verify contract exists and is in correct status
-  const { data: contract } = await supabase
-    .from("contracts")
-    .select("id, status, client_signed_at")
-    .eq("sign_token", token)
-    .single();
+  const found = await findContractByToken(token);
+  if (!found) return res.status(404).json({ error: "Contract not found" });
+  const { contract, signer } = found;
 
-  if (!contract) return res.status(404).json({ error: "Contract not found" });
-  if (contract.client_signed_at) return res.status(400).json({ error: "Already signed" });
-  if (contract.status !== "sent") return res.status(400).json({ error: "Contract is not available for signing" });
+  if (contract.status === "void") return res.status(400).json({ error: "Contract is voided" });
+  if (signer.signedAt) return res.status(400).json({ error: "Already signed" });
 
-  // Add IP address to signature
+  // Primary client may only sign once status === "sent". Additional signers
+  // can sign any time after the contract has been sent (sent / client_signed).
+  if (signer.type === "client" && contract.status !== "sent") {
+    return res.status(400).json({ error: "Contract is not available for signing" });
+  }
+  if (signer.type === "additional" && contract.status === "draft") {
+    return res.status(400).json({ error: "Contract has not been sent yet" });
+  }
+
   const ip = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
   const fullSignature = {
     ...signature,
     ip: Array.isArray(ip) ? ip[0] : ip,
     timestamp: new Date().toISOString(),
   };
+  const now = new Date().toISOString();
 
-  // Update contract
-  const { error } = await supabase.from("contracts").update({
-    client_signature: fullSignature,
-    client_signed_at: new Date().toISOString(),
-    status: "client_signed",
-    updated_at: new Date().toISOString(),
-  }).eq("id", contract.id);
+  if (signer.type === "client") {
+    const { error } = await supabase.from("contracts").update({
+      client_signature: fullSignature,
+      client_signed_at: now,
+      status: "client_signed",
+      updated_at: now,
+    }).eq("id", contract.id as string);
+    if (error) return res.status(500).json({ error: error.message });
+  } else {
+    // Update the matching entry in additional_signers JSONB.
+    const signers = (contract.additional_signers as Array<Record<string, unknown>>) || [];
+    const updated = signers.map(s => s.id === signer.id
+      ? { ...s, signature: fullSignature, signedAt: now }
+      : s,
+    );
+    const { error } = await supabase.from("contracts").update({
+      additional_signers: updated,
+      updated_at: now,
+    }).eq("id", contract.id as string);
+    if (error) return res.status(500).json({ error: error.message });
+  }
 
-  if (error) return res.status(500).json({ error: error.message });
-
-  // Notify owner
-  const { data: fullContract } = await supabase.from("contracts").select("org_id, title").eq("id", contract.id).single();
+  // Notify owner.
+  const { data: fullContract } = await supabase.from("contracts").select("org_id, title").eq("id", contract.id as string).single();
   if (fullContract?.org_id) {
     const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", fullContract.org_id).eq("role", "owner");
     const ownerEmail = profiles?.[0]?.email;
     if (ownerEmail) {
+      const signerLabel = signer.type === "client" ? "client" : `${signer.role.toLowerCase()} (${signer.name})`;
       resend.emails.send({
         from: FROM_EMAIL, to: ownerEmail,
         subject: `Contract Signed: ${fullContract.title}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Contract Signed!</h2><p style="color:#1e293b;"><strong>${escapeHtml(signature.name || "")}</strong> has signed your contract: <strong>${escapeHtml(fullContract.title || "")}</strong>.</p><p style="color:#64748b;">Log in to Slate to countersign and complete the agreement.</p></div>`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Contract signed</h2><p style="color:#1e293b;"><strong>${escapeHtml(signature.name || "")}</strong> just signed as ${escapeHtml(signerLabel)} on <strong>${escapeHtml(fullContract.title || "")}</strong>.</p><p style="color:#64748b;">Log in to Slate to review.</p></div>`,
       }).catch(() => {});
     }
   }

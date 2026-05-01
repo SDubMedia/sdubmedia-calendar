@@ -41,6 +41,8 @@ const ProfitLossPage = lazy(() => import("./pages/ProfitLossPage"));
 const BusinessExpensesPage = lazy(() => import("./pages/BusinessExpensesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ContractsPage = lazy(() => import("./pages/ContractsPage"));
+const NewContractPage = lazy(() => import("./pages/NewContractPage"));
+const EditContractPage = lazy(() => import("./pages/EditContractPage"));
 const DeliveriesPage = lazy(() => import("./pages/DeliveriesPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
@@ -140,6 +142,8 @@ function Router() {
         <Route path="/profit-loss" component={ProfitLossPage} />
         <Route path="/expenses" component={BusinessExpensesPage} />
         <Route path="/contracts" component={ContractsPage} />
+        {isOwner && <Route path="/contracts/new" component={NewContractPage} />}
+        {isOwner && <Route path="/contracts/:id/edit" component={EditContractPage} />}
         <Route path="/deliveries" component={DeliveriesPage} />
         <Route path="/deliveries/:id" component={DeliveriesPage} />
         <Route path="/proposals" component={ProposalsPage} />

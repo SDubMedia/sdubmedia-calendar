@@ -208,6 +208,10 @@ function rowToContract(r: any): Contract {
     clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
     clientEmail: r.client_email || "", signToken: r.sign_token || "",
     fieldValues: (r.field_values && typeof r.field_values === "object") ? r.field_values : {},
+    additionalSigners: Array.isArray(r.additional_signers) ? r.additional_signers : [],
+    documentExpiresAt: r.document_expires_at || null,
+    remindersEnabled: !!r.reminders_enabled,
+    lastReminderSentAt: r.last_reminder_sent_at || null,
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -1052,6 +1056,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       client_signature: c.clientSignature, owner_signature: c.ownerSignature,
       client_signed_at: c.clientSignedAt, owner_signed_at: c.ownerSignedAt,
       field_values: c.fieldValues || {},
+      additional_signers: c.additionalSigners || [],
+      document_expires_at: c.documentExpiresAt || null,
+      reminders_enabled: c.remindersEnabled ?? false,
       updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -1075,6 +1082,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.clientId !== undefined) patch.client_id = c.clientId;
     if (c.projectId !== undefined) patch.project_id = c.projectId;
     if (c.fieldValues !== undefined) patch.field_values = c.fieldValues;
+    if (c.additionalSigners !== undefined) patch.additional_signers = c.additionalSigners;
+    if (c.documentExpiresAt !== undefined) patch.document_expires_at = c.documentExpiresAt;
+    if (c.remindersEnabled !== undefined) patch.reminders_enabled = c.remindersEnabled;
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));

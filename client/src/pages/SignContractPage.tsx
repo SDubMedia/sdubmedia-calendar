@@ -32,7 +32,11 @@ export default function SignContractPage() {
         if (data.error) setError(data.error);
         else {
           setContract(data);
-          setSignerEmail(data.client_email || "");
+          setSignerEmail(data.signer?.email || data.client_email || "");
+          // For additional signers, pre-fill the typed name from their record.
+          if (data.signer?.type === "additional" && data.signer?.name) {
+            setTypedName(data.signer.name);
+          }
           if (data.alreadySigned) setSigned(true);
         }
         setLoading(false);
@@ -144,11 +148,18 @@ export default function SignContractPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div>
             <p className="text-sm text-gray-400">{contract?.orgName || "Contract"}</p>
             <h1 className="text-lg font-bold text-gray-900">{contract?.title}</h1>
           </div>
+          {contract?.signer?.type === "additional" && (
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400">Signing as</p>
+              <p className="text-sm font-medium text-gray-900">{contract.signer.name}</p>
+              <p className="text-xs text-gray-500">{contract.signer.role}</p>
+            </div>
+          )}
         </div>
       </div>
 
