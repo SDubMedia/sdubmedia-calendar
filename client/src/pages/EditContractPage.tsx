@@ -22,6 +22,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { ArrowLeft, Send, Eye, MoreHorizontal, Plus, X, Trash2, ExternalLink, PenTool, Copy, AlertCircle } from "lucide-react";
 import { WysiwygContractEditor, type WysiwygContractEditorHandle } from "@/components/WysiwygContractEditor";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
+import { ContractPDF } from "@/components/ContractPDF";
+import { pdf } from "@react-pdf/renderer";
 import { useSignatureCanvas } from "@/hooks/useSignatureCanvas";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
@@ -632,23 +634,59 @@ export default function EditContractPage() {
         defaultName={profile?.name || ""}
         ownerEmail={profile?.email || ""}
         onSign={async (sig) => {
+          const completedAt = new Date().toISOString();
           await updateContract(contract.id, {
             ownerSignature: sig,
-            ownerSignedAt: new Date().toISOString(),
+            ownerSignedAt: completedAt,
             status: "completed",
           });
           toast.success("Contract signed and completed!");
           setSignOpen(false);
-          // Fire "fully executed" emails to all parties. Best-effort —
-          // failure here doesn't roll back the signature.
+
+          // Fire "fully executed" emails to all parties — with the rendered
+          // PDF attached. Best-effort; failure here doesn't roll back the
+          // signature. Builds a complete contract snapshot from local state
+          // so the PDF includes the signature we just captured (the
+          // realtime-updated context row may not yet include it).
           try {
+            const completedContract = {
+              ...contract,
+              ownerSignature: sig,
+              ownerSignedAt: completedAt,
+              status: "completed" as const,
+            };
+            const blob = await pdf(
+              <ContractPDF
+                contract={completedContract}
+                org={data.organization}
+                ownerName={profile?.name || ""}
+                clientCompany={client?.company || client?.contactName || ""}
+              />,
+            ).toBlob();
+            const reader = new FileReader();
+            const base64 = await new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const r = String(reader.result || "");
+                // strip the "data:application/pdf;base64," prefix
+                const i = r.indexOf(",");
+                resolve(i >= 0 ? r.slice(i + 1) : r);
+              };
+              reader.onerror = () => reject(new Error("PDF read failed"));
+              reader.readAsDataURL(blob);
+            });
+
             const t = await getAuthToken();
             await fetch("/api/send-completed-contract-email", {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-              body: JSON.stringify({ contractId: contract.id, baseUrl: window.location.origin }),
+              body: JSON.stringify({
+                contractId: contract.id,
+                baseUrl: window.location.origin,
+                pdfBase64: base64,
+                pdfFilename: `${contract.title.replace(/[^\w\s-]/g, "").trim().slice(0, 80) || "contract"}-signed.pdf`,
+              }),
             });
-          } catch { /* silent — owner sees in toast already */ }
+          } catch { /* silent — owner sees the toast already; the contract is still completed */ }
         }}
       />
     </div>

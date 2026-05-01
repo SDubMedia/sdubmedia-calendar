@@ -30,9 +30,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { contractId, baseUrl } = req.body;
+  const { contractId, baseUrl, pdfBase64, pdfFilename } = req.body;
   if (!contractId) return res.status(400).json({ error: "Missing contractId" });
   if (!baseUrl || !isAllowedUrl(baseUrl)) return res.status(400).json({ error: "Invalid baseUrl" });
+  // Sanity-check the PDF if provided. Resend's max attachment size is ~40MB;
+  // typical contracts are well under 1MB. Reject anything obviously huge so
+  // bad inputs don't tip us into a Resend error.
+  const hasPdf = typeof pdfBase64 === "string" && pdfBase64.length > 0;
+  if (hasPdf && pdfBase64.length > 8 * 1024 * 1024) {
+    return res.status(400).json({ error: "PDF too large" });
+  }
+  const safeFilename = (typeof pdfFilename === "string" && /^[\w\s.-]+$/.test(pdfFilename))
+    ? pdfFilename
+    : "contract-signed.pdf";
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -92,11 +102,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             </div>
             <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:32px;text-align:center;">
               <h2 style="color:#15803d;font-size:20px;margin:0 0 8px;">Contract fully executed</h2>
-              <p style="color:#1e293b;font-size:14px;margin:0 0 24px;">All parties have signed <strong>${escapeHtml(contract.title as string)}</strong>. You can view the completed contract anytime using the link below.</p>
+              <p style="color:#1e293b;font-size:14px;margin:0 0 24px;">All parties have signed <strong>${escapeHtml(contract.title as string)}</strong>.${hasPdf ? " A signed PDF is attached for your records." : ""} You can also view the contract online below.</p>
               <a href="${escapeHtml(viewUrl)}" style="display:inline-block;padding:12px 28px;background:#15803d;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View Signed Contract</a>
             </div>
             <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:24px;">Save this email for your records. Sent via Slate by ${escapeHtml(orgName)}.</p>
           </div>`,
+          ...(hasPdf ? { attachments: [{ filename: safeFilename, content: pdfBase64 }] } : {}),
         });
         sent++;
       } catch { /* swallow per-recipient — try the rest */ }
