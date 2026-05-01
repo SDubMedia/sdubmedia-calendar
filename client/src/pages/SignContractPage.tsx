@@ -94,7 +94,23 @@ export default function SignContractPage() {
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Contract Unavailable</h1>
-          <p className="text-gray-500">{error}</p>
+          <p className="text-gray-500 mb-5">{error}</p>
+          <button
+            onClick={async () => {
+              // Force a fresh fetch — bypasses any stale service worker
+              // cache for the sign page.
+              try {
+                if (typeof caches !== "undefined") {
+                  const keys = await caches.keys();
+                  await Promise.all(keys.map(k => caches.delete(k)));
+                }
+              } catch { /* ignore — fall through to reload */ }
+              window.location.reload();
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

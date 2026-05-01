@@ -38,9 +38,24 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
+        cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
         globPatterns: ["**/*.{js,css,html,svg,woff2}"],
         navigateFallback: "/index.html",
+        // Public routes that recipients might hit before the SW is registered
+        // (or while it has a stale cache from a prior deploy). Skip the
+        // navigation fallback so they always fetch a fresh index.html from
+        // the server, with the current asset hashes. Otherwise a recipient
+        // can land on a "loaded" page whose JS bundle 404s — looks exactly
+        // like "lost connection."
+        navigateFallbackDenylist: [
+          /^\/sign\//,       // contract signing
+          /^\/deliver\//,    // gallery (token)
+          /^\/g\//,          // gallery (slug)
+          /^\/proposal\//,   // proposal viewing
+          /^\/c\//,          // collection
+          /^\/api\//,        // never intercept API calls
+        ],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
