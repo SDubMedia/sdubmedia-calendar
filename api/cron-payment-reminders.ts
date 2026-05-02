@@ -20,6 +20,7 @@ import { Resend } from "resend";
 import Stripe from "stripe";
 import { errorMessage, escapeHtml, isAllowedUrl } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
+import { brandedEmailWrapper } from "./_emailBranding.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -156,6 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const html = renderEmail({
           contractTitle: c.title,
           orgName: org.name,
+          businessInfo: org.business_info,
           label: ms.label || "Payment",
           amount,
           dueIso,
@@ -264,10 +266,11 @@ function formatHumanDate(iso: string): string {
 }
 
 function renderEmail({
-  contractTitle, orgName, label, amount, dueIso, daysUntilDue, payUrl,
+  contractTitle, orgName, businessInfo, label, amount, dueIso, daysUntilDue, payUrl,
 }: {
   contractTitle: string;
   orgName: string;
+  businessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null;
   label: string;
   amount: number;
   dueIso: string;
@@ -283,17 +286,17 @@ function renderEmail({
   const cta = payUrl
     ? `<p style="margin: 24px 0;"><a href="${escapeHtml(payUrl)}" style="display: inline-block; background: #059669; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Pay $${amount.toFixed(2)} now</a></p>`
     : `<p style="margin: 16px 0; color: #475569;">Reply to this email and we'll send you a payment link.</p>`;
-  return `<!DOCTYPE html><html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1e293b;">
+  const body = `
     <h2 style="margin: 0 0 4px; font-size: 18px;">${escapeHtml(headline)}</h2>
-    <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">${escapeHtml(orgName)} · ${escapeHtml(contractTitle)}</p>
+    <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">${escapeHtml(contractTitle)}</p>
     <table style="border-collapse: collapse; margin: 16px 0; font-size: 14px;">
       <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Milestone</td><td style="padding: 4px 0;">${escapeHtml(label)}</td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Amount</td><td style="padding: 4px 0; font-weight: 600;">$${amount.toFixed(2)}</td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Due</td><td style="padding: 4px 0;">${escapeHtml(dueLabel)}</td></tr>
     </table>
     ${cta}
-    <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>
-  </body></html>`;
+    <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>`;
+  return brandedEmailWrapper({ orgName, businessInfo }, body);
 }
 
 async function createPaymentLink(

@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { verifyAuth, getUserOrgId, errorMessage, escapeHtml, isAllowedUrl } from "./_auth.js";
+import { brandedEmailWrapper } from "./_emailBranding.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -144,17 +145,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `<p style="margin: 24px 0;"><a href="${escapeHtml(payUrl)}" style="display: inline-block; background: #059669; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">Pay $${amount.toFixed(2)} now</a></p>`
       : `<p style="margin: 16px 0; color: #475569;">Reply to this email and we'll send you a payment link.</p>`;
 
-    const html = `<!DOCTYPE html><html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1e293b;">
+    const body = `
       <h2 style="margin: 0 0 4px; font-size: 18px;">${escapeHtml(headline)}</h2>
-      <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">${escapeHtml(org.name || "")} · ${escapeHtml(contract.title || "")}</p>
+      <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">${escapeHtml(contract.title || "")}</p>
       <table style="border-collapse: collapse; margin: 16px 0; font-size: 14px;">
         <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Milestone</td><td style="padding: 4px 0;">${escapeHtml(ms.label || "Payment")}</td></tr>
         <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Amount</td><td style="padding: 4px 0; font-weight: 600;">$${amount.toFixed(2)}</td></tr>
         <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Due</td><td style="padding: 4px 0;">${escapeHtml(formatHumanDate(dueIso))}</td></tr>
       </table>
       ${cta}
-      <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>
-    </body></html>`;
+      <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>`;
+    const html = brandedEmailWrapper({ orgName: org.name, businessInfo: businessInfo as { email?: string; phone?: string } }, body);
 
     await resend.emails.send({
       from: fromHeader,

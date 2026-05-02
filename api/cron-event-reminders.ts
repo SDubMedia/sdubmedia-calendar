@@ -15,6 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
+import { brandedEmailWrapper } from "./_emailBranding.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -121,6 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const html = renderEventReminderEmail({
         clientName: client.contact_name || client.company || "",
         orgName: org.name || "",
+        businessInfo: org.business_info,
         projectType: projectTypeName,
         date: p.date,
         startTime: p.start_time,
@@ -174,6 +176,7 @@ function daysBetween(aIso: string, bIso: string): number {
 function renderEventReminderEmail(input: {
   clientName: string;
   orgName: string;
+  businessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null;
   projectType: string;
   date: string;
   startTime: string;
@@ -191,9 +194,8 @@ function renderEventReminderEmail(input: {
       ? "Tomorrow's the day"
       : "Today's the day!";
   const greeting = input.clientName.split(/\s+/)[0] || "there";
-  return `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+  const body = `
     <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${escapeHtml(headline)}</h2>
-    <p style="margin:0 0 20px;color:#64748b;font-size:14px;">${escapeHtml(input.orgName)}</p>
     <p style="margin:0 0 16px;font-size:14px;">Hi ${escapeHtml(greeting)},</p>
     <p style="margin:0 0 16px;font-size:14px;">Just a friendly reminder about your ${escapeHtml(input.projectType.toLowerCase())} ${input.daysUntilEvent === 0 ? "today" : input.daysUntilEvent === 1 ? "tomorrow" : `on ${dateLabel}`}:</p>
     <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
@@ -201,8 +203,8 @@ function renderEventReminderEmail(input: {
       ${timeLabel ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">🕐 Time</td><td style="padding:4px 0;">${escapeHtml(timeLabel)}</td></tr>` : ""}
       ${input.location ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">📍 Location</td><td style="padding:4px 0;">${escapeHtml(input.location)}</td></tr>` : ""}
     </table>
-    <p style="margin:16px 0 0;font-size:14px;">If anything changes or you have questions, just reply to this email.</p>
-  </body></html>`;
+    <p style="margin:16px 0 0;font-size:14px;">If anything changes or you have questions, just reply to this email.</p>`;
+  return brandedEmailWrapper({ orgName: input.orgName, businessInfo: input.businessInfo }, body);
 }
 
 function formatHumanDate(iso: string): string {

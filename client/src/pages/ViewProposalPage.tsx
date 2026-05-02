@@ -271,13 +271,23 @@ export default function ViewProposalPage() {
   const agreementPages = (proposal?.pages || []).filter((p: any) => p.type === "agreement" || p.type === "custom");
   const hasPages = agreementPages.length > 0;
 
+  // Branding extracted once per render — header + footer both consume it.
+  const orgLogo: string = proposal?.orgLogo || "";
+  const orgBI: Record<string, string> = proposal?.orgBusinessInfo || {};
+  const orgAddressLine = [orgBI.address, orgBI.city, orgBI.state, orgBI.zip].filter(Boolean).join(", ");
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="max-w-3xl mx-auto">
-          <p className="text-sm text-gray-400">{proposal?.orgName || "Proposal"}</p>
-          <h1 className="text-lg font-bold text-gray-900">{proposal?.title}</h1>
+      {/* Branded header — logo if set, otherwise the company name */}
+      <div className="bg-white border-b px-6 py-5">
+        <div className="max-w-3xl mx-auto flex items-center gap-4">
+          {orgLogo ? (
+            <img src={orgLogo} alt={proposal?.orgName || ""} className="h-10 w-auto object-contain" />
+          ) : null}
+          <div className="min-w-0">
+            <p className="text-sm text-gray-500">{proposal?.orgName || "Proposal"}</p>
+            <h1 className="text-lg font-bold text-gray-900 truncate">{proposal?.title}</h1>
+          </div>
         </div>
       </div>
 
@@ -479,8 +489,21 @@ export default function ViewProposalPage() {
         </div>
       </div>
 
-      <div className="text-center py-6">
-        <p className="text-xs text-gray-300">Powered by Slate</p>
+      {/* Business info footer — clients see the contractor's company name,
+          address, phone, and email instead of just "Powered by Slate". */}
+      <div className="border-t border-gray-200 mt-6">
+        <div className="max-w-3xl mx-auto px-6 py-5 text-center text-xs text-gray-500 space-y-1">
+          {proposal?.orgName && (
+            <p className="font-semibold text-gray-700">{proposal.orgName}</p>
+          )}
+          {orgAddressLine && <p>{orgAddressLine}</p>}
+          <p>
+            {orgBI.phone && <span>{orgBI.phone}</span>}
+            {orgBI.phone && orgBI.email && <span className="mx-1.5">·</span>}
+            {orgBI.email && <span>{orgBI.email}</span>}
+          </p>
+          <p className="text-gray-300 pt-2">Powered by Slate</p>
+        </div>
       </div>
     </div>
   );

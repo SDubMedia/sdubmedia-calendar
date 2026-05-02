@@ -30,6 +30,7 @@ import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
 import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
+import { brandedEmailWrapper } from "./_emailBranding.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
@@ -361,17 +362,17 @@ async function sendMilestoneReceiptEmail(input: {
 
   const portalUrl = `${process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com"}/sign/${input.signToken}`;
 
-  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+  const body = `
     <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
-    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(orgName)} · ${escapeHtml(input.contractTitle)}</p>
+    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(input.contractTitle)}</p>
     <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${paidAmount.toFixed(2)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Date</td><td style="padding:4px 0;">${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</td></tr>
     </table>
     <p style="margin:16px 0;font-size:14px;">${stillOwedLine}</p>
     <p style="margin:24px 0;"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#059669;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your contract + payment status</a></p>
-    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">Stripe also sent you a separate receipt for tax / accounting purposes. Reply to this email if you have any questions.</p>
-  </body></html>`;
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">Stripe also sent you a separate receipt for tax / accounting purposes. Reply to this email if you have any questions.</p>`;
+  const html = brandedEmailWrapper({ orgName, businessInfo: businessInfo as { email?: string; phone?: string } }, body);
 
   await resend.emails.send({
     from: `${orgName} <${orgEmail}>`,

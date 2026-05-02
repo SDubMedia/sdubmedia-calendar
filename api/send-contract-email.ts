@@ -6,6 +6,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, isAllowedUrl, escapeHtml, errorMessage } from "./_auth.js";
+import { emailFooter } from "./_emailBranding.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
@@ -31,6 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // payment-reminders + event-reminders + receipt emails for consistency
   // across all client-facing transactional mail.
   let replyToEmail = FROM_EMAIL;
+  // Fetch the org's full business info so we can render the branded footer
+  // with company address, phone, email, website at the bottom of the email.
+  let orgBusinessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null = null;
   if (supabaseUrl && supabaseServiceKey) {
     try {
       const callerOrgId = await getUserOrgId(user.userId);
@@ -41,13 +45,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select("business_info")
           .eq("id", callerOrgId)
           .single();
-        const bi = (org?.business_info as { email?: string } | null) || {};
-        if (bi.email?.trim()) replyToEmail = bi.email.trim();
+        orgBusinessInfo = (org?.business_info as typeof orgBusinessInfo) || null;
+        if (orgBusinessInfo?.email?.trim()) replyToEmail = orgBusinessInfo.email.trim();
       }
     } catch { /* best-effort — fall back to FROM_EMAIL */ }
   }
 
   const fromHeader = orgName ? `${orgName} <${FROM_EMAIL}>` : FROM_EMAIL;
+  const brandedFooter = emailFooter({ orgName, businessInfo: orgBusinessInfo });
 
   try {
     const { error } = await resend.emails.send({
@@ -80,8 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             </p>
           </div>
 
-          <p style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 24px;">
-            Sent via Slate by ${esc(orgName)}
+          ${brandedFooter}
+
+          <p style="color: #cbd5e1; font-size: 10px; text-align: center; margin-top: 12px;">
+            Sent via Slate
           </p>
         </div>
       `,

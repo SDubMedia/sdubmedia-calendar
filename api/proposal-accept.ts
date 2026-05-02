@@ -61,12 +61,21 @@ async function getProposal(token: string, res: VercelResponse) {
     }
   }
 
-  // Get org name + branding
+  // Get org name + branding (logo + business info shown on the public
+  // proposal page as a header + footer so the proposal feels branded).
   let orgName = "";
+  let orgLogo = "";
+  let orgBusinessInfo: Record<string, unknown> | null = null;
   let stripeConnected = false;
   if (proposal.org_id) {
-    const { data: org } = await supabase.from("organizations").select("name, stripe_account_id").eq("id", proposal.org_id).single();
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("name, logo_url, business_info, stripe_account_id")
+      .eq("id", proposal.org_id)
+      .single();
     orgName = org?.name || "";
+    orgLogo = org?.logo_url || "";
+    orgBusinessInfo = (org?.business_info as Record<string, unknown>) || null;
     stripeConnected = !!org?.stripe_account_id;
   }
 
@@ -92,6 +101,8 @@ async function getProposal(token: string, res: VercelResponse) {
     ownerSignature: proposal.owner_signature,
     paidAt: proposal.paid_at,
     orgName,
+    orgLogo,
+    orgBusinessInfo,
     stripeConnected,
     alreadyAccepted,
   });
