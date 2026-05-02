@@ -4,10 +4,13 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
-import { verifyAuth, isAllowedUrl, escapeHtml, errorMessage } from "./_auth.js";
+import { createClient } from "@supabase/supabase-js";
+import { verifyAuth, getUserOrgId, isAllowedUrl, escapeHtml, errorMessage } from "./_auth.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
@@ -22,9 +25,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isAllowedUrl(signUrl)) return res.status(400).json({ error: "Invalid sign URL" });
   const safeSignUrl = escapeHtml(signUrl);
 
+  // Resolve the org's business email so we can use it as reply-to. Reply-to
+  // routes the client's questions back to the contractor, not Slate.
+  // Display name uses orgName (passed in by the caller). Same pattern as
+  // payment-reminders + event-reminders + receipt emails for consistency
+  // across all client-facing transactional mail.
+  let replyToEmail = FROM_EMAIL;
+  if (supabaseUrl && supabaseServiceKey) {
+    try {
+      const callerOrgId = await getUserOrgId(user.userId);
+      if (callerOrgId) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("business_info")
+          .eq("id", callerOrgId)
+          .single();
+        const bi = (org?.business_info as { email?: string } | null) || {};
+        if (bi.email?.trim()) replyToEmail = bi.email.trim();
+      }
+    } catch { /* best-effort — fall back to FROM_EMAIL */ }
+  }
+
+  const fromHeader = orgName ? `${orgName} <${FROM_EMAIL}>` : FROM_EMAIL;
+
   try {
     const { error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: fromHeader,
+      replyTo: replyToEmail,
       to,
       ...(cc ? { cc } : {}),
       subject: subject || `Contract: ${esc(contractTitle)}`,
