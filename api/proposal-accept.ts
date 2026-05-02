@@ -47,6 +47,19 @@ async function getProposal(token: string, res: VercelResponse) {
 
   if (error || !proposal) return res.status(404).json({ error: "Proposal not found" });
   if (proposal.status === "void") return res.status(400).json({ error: "This proposal has been voided" });
+  // Expired-link guard. Owners can optionally set expires_at when sending;
+  // we treat anything past that timestamp as expired so old links can't be
+  // re-used long after the deal cooled. Already-accepted proposals bypass
+  // this so the client can still see what they signed.
+  if (proposal.expires_at && !proposal.accepted_at) {
+    const expired = new Date(proposal.expires_at).getTime() < Date.now();
+    if (expired) {
+      return res.status(410).json({
+        error: "This proposal link has expired. Please contact the sender for a new link.",
+        expired: true,
+      });
+    }
+  }
 
   // Get org name + branding
   let orgName = "";
@@ -100,6 +113,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (!proposal) return res.status(404).json({ error: "Proposal not found" });
   if (proposal.accepted_at) return res.status(400).json({ error: "Already accepted" });
   if (proposal.status !== "sent") return res.status(400).json({ error: "Proposal is not available for acceptance" });
+  // Expired-link guard — same logic as the get path so a stale tab can't
+  // bypass by submitting after expiration.
+  if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+    return res.status(410).json({ error: "This proposal link has expired. Please contact the sender for a new link." });
+  }
 
   // Add IP address to signature
   const ip = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";

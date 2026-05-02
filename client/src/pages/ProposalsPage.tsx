@@ -17,7 +17,7 @@ import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload,
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
-import { getAuthToken } from "@/lib/supabase";
+import { getAuthToken, supabase } from "@/lib/supabase";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 
 const STATUS_COLORS: Record<ProposalStatus, string> = {
@@ -409,6 +409,24 @@ export default function ProposalsPage() {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         throw new Error(err.error || "Failed to send email");
       }
+      // Append to send_history (light versioning — total + selected packages
+       // + milestone count snapshotted per send). Best-effort; failure here
+       // doesn't block the user-facing success path.
+       try {
+         const { data: cur } = await supabase.from("proposals").select("send_history").eq("id", proposalId).single();
+         const history = Array.isArray((cur as { send_history?: unknown[] } | null)?.send_history)
+           ? ((cur as { send_history: unknown[] }).send_history as Array<Record<string, unknown>>)
+           : [];
+         history.push({
+           sentAt: new Date().toISOString(),
+           total: proposal.total,
+           packageIds: (proposal.packages || []).map(p => p.id),
+           milestoneCount: (proposal.paymentMilestones || []).length,
+         });
+         await supabase.from("proposals").update({ send_history: history }).eq("id", proposalId);
+       } catch (err) {
+         console.warn("[proposals] send_history append failed:", err);
+       }
       await updateProposal(proposalId, { status: "sent", sentAt: new Date().toISOString() });
       toast.success("Proposal sent to " + proposal.clientEmail);
     } catch (e: any) {
