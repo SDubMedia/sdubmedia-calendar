@@ -708,13 +708,21 @@ export default function ProposalsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {data.proposalTemplates.map(tpl => (
                   <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
-                    {/* Cover Image */}
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                    {/* Cover Image — falls back to cream paper with serif
+                        italic title to match the contract template thumbnail
+                        style (kept the dark-gradient previously, but the
+                        cream is more on-brand and matches contracts page). */}
+                    <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
                       {tpl.coverImageUrl ? (
                         <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <FileText className="w-10 h-10 text-primary/30" />
+                        <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                          <div>
+                            <FileText className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                            <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                              {tpl.name}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {/* Hover overlay with actions */}
