@@ -157,13 +157,28 @@ export default function NewContractPage() {
       // them, and a visible token is a better warning than blank text.
       const project = projectId ? data.projects.find(p => p.id === projectId) : null;
       const location = project?.locationId ? data.locations.find(l => l.id === project.locationId) : null;
-      const substitutedContent = substituteManualContractFields(template?.content || "", {
+      const substituteInput = {
         client: selectedClient,
         project,
         location,
         org: data.organization,
         projectTitle: title,
-      });
+      };
+      const substitutedContent = substituteManualContractFields(template?.content || "", substituteInput);
+
+      // Multi-page templates: copy pages with per-page substitution so
+      // the manual contract preserves Invoice / Payment / Custom pages
+      // alongside the Agreement. Without this, multi-page templates
+      // silently collapse to single-page contracts on the manual path.
+      // Invoice pages copy as-is — they render from milestones at view
+      // time (and manual contracts have no milestones, so the page
+      // shows its empty state, which is correct).
+      const substitutedPages = Array.isArray(template?.pages) && template.pages.length > 0
+        ? template.pages.map(p => {
+            if (p.type === "invoice") return { ...p, blocks: [], content: "" };
+            return { ...p, blocks: [], content: substituteManualContractFields(p.content || "", substituteInput) };
+          })
+        : [];
 
       const contract = await addContract({
         templateId: template?.id || null,
@@ -193,6 +208,7 @@ export default function NewContractPage() {
         sendBackReason: "",
         paymentMilestones: [],
         inboundReplies: [],
+        pages: substitutedPages,
       });
 
       toast.success("Contract draft created");
