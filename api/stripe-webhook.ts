@@ -288,9 +288,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               // Send a branded "thanks for paying" receipt to the client
               // (Stripe also sends its own receipt; this one ties the
               // payment to the contract + portal link). Best-effort —
-              // don't block the webhook on email send failure. SKIP on
-              // webhook retries (when the milestone was already paid).
-              if (!wasAlreadyPaid && contract?.client_email && contract?.org_id) {
+              // don't block the webhook on email send failure. Three
+              // gates here:
+              //   1. wasAlreadyPaid: skip on webhook retries.
+              //   2. targetIdx >= 0: only send when we actually matched a
+              //      milestone. Without this, a Stripe event with a stale
+              //      milestoneId would still email "payment received" even
+              //      though no milestone got marked paid -- false positive
+              //      that erodes client trust.
+              //   3. has client_email + org_id: can't send without them.
+              if (!wasAlreadyPaid && targetIdx >= 0 && contract?.client_email && contract?.org_id) {
                 sendMilestoneReceiptEmail({
                   contractId: contract.id as string,
                   contractTitle: contract.title as string,
