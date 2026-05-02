@@ -123,7 +123,11 @@ describe("extractPaymentScheduleMilestones", () => {
     expect(out[1].label).toBe("Final Payment");
   });
 
-  it("handles multiple payment_schedule blocks (each contributes deposit + balance)", () => {
+  it("dedupes multiple payment_schedule blocks — only the first is honored", () => {
+    // Multi-page templates can accidentally drop a payment_schedule on
+    // both the agreement page AND a dedicated Payment page. Without dedup
+    // the client would owe double. We honor the first one and ignore
+    // subsequent ones.
     const blocks = [
       {
         type: "payment_schedule",
@@ -138,8 +142,8 @@ describe("extractPaymentScheduleMilestones", () => {
       },
     ];
     const out = extractPaymentScheduleMilestones(blocks, "2026-06-14", 1000);
-    expect(out).toHaveLength(4);
-    expect(out[2].label).toBe("Travel deposit");
-    expect(out[3].label).toBe("Travel balance");
+    expect(out).toHaveLength(2);
+    expect(out[0].label).toBe("Deposit");
+    expect(out[1].label).toBe("Balance");
   });
 });

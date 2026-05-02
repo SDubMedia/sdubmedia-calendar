@@ -49,10 +49,17 @@ export function extractPaymentScheduleMilestones(
 ): PartialMilestone[] {
   if (!Array.isArray(blocks)) return [];
   const result: PartialMilestone[] = [];
+  // Honor only the FIRST payment_schedule block. Multi-page templates can
+  // accidentally drop a payment_schedule on the agreement page AND a
+  // dedicated Payment page — without dedup we'd produce two deposit + two
+  // balance milestones, doubling what the client owes.
+  let alreadySeenSchedule = false;
   for (const b of blocks) {
     if (!b || typeof b !== "object") continue;
     const block = b as { type?: string; deposit?: PaymentScheduleDeposit; balance?: PaymentScheduleBalance };
     if (block.type !== "payment_schedule" || !block.deposit || !block.balance) continue;
+    if (alreadySeenSchedule) continue;
+    alreadySeenSchedule = true;
 
     const dep = block.deposit;
     const bal = block.balance;
