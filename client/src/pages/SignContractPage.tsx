@@ -19,6 +19,10 @@ export default function SignContractPage() {
   const [error, setError] = useState<string | null>(null);
   const [signed, setSigned] = useState(false);
   const [signing, setSigning] = useState(false);
+  // Set when the contract was signed but the Stripe Checkout session creation
+  // failed. We still treat the sign as success and tell the client a payment
+  // link will be emailed shortly. The owner can resend manually if it doesn't.
+  const [paymentSoftError, setPaymentSoftError] = useState<string | null>(null);
 
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
@@ -72,6 +76,20 @@ export default function SignContractPage() {
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
+      // Three branches:
+      // 1) Server returned a Stripe Checkout URL → redirect immediately so
+      //    the client pays the deposit on the Stripe-hosted page. Their
+      //    signature is already saved server-side.
+      // 2) Server reports paymentError → signature recorded but Stripe
+      //    failed. Show a soft success with a payment-link-coming message.
+      // 3) Plain success → no payment required, show signed confirmation.
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
+      if (result.paymentError) {
+        setPaymentSoftError(result.paymentError);
+      }
       setSigned(true);
     } catch (e: any) {
       setError(e.message);
@@ -123,6 +141,14 @@ export default function SignContractPage() {
           <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Contract Signed!</h1>
           <p className="text-gray-500">Thank you for signing. The contract owner will be notified and will countersign shortly.</p>
+          {paymentSoftError && (
+            <div className="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
+              <p className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">Payment link pending</p>
+              <p className="text-sm text-amber-800">
+                We couldn't load the payment page just now. Your signature is saved — we'll email you a payment link shortly. No action needed on your part.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );

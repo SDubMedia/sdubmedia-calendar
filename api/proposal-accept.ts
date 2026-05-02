@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { errorMessage } from "./_auth.js";
+import { errorMessage, escapeHtml } from "./_auth.js";
 import { generateContractContent } from "./_contractGenerator.js";
 import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
 import { nanoid } from "nanoid";
@@ -151,6 +151,12 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         resolvedMilestones,
         proposalTotal,
       );
+      // Fire-and-forget owner notification with deep-link to review the draft.
+      // Critical for conversion — without it, owners don't know to act.
+      // Errors don't block the client's success response.
+      const signerName = signature.name || proposal.client_email || "Your client";
+      notifyOwnerContractReady(proposal.org_id, draftId, proposal.title, signerName, proposalTotal)
+        .catch(err => console.error(`[proposal-accept] owner notify failed: ${errorMessage(err)}`));
       return res.status(200).json({
         success: true,
         paymentRequired: false,
@@ -313,6 +319,42 @@ async function notifyOwner(orgId: string, title: string, signerName: string, eve
   await resend.emails.send({
     from: FROM_EMAIL, to: ownerEmail, subject,
     html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Proposal ${event === "signed" ? "Signed" : "Viewed"}!</h2><p style="color:#1e293b;">${body}</p></div>`,
+  });
+}
+
+/**
+ * Notify the owner that a proposal was accepted AND a draft contract is now
+ * waiting in the approval queue. Deep-links to the review page so they can
+ * one-tap into "approve and send" or "edit before sending". This is the
+ * critical conversion-driver email — without it, owners don't know to act
+ * and deals cool off.
+ */
+async function notifyOwnerContractReady(
+  orgId: string,
+  contractId: string,
+  proposalTitle: string,
+  signerName: string,
+  total: number,
+) {
+  if (!orgId) return;
+  const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", orgId).eq("role", "owner");
+  const ownerEmail = profiles?.[0]?.email;
+  if (!ownerEmail) return;
+  const appBase = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
+  const reviewUrl = `${appBase}/contracts/${contractId}/review`;
+  const subject = `${signerName} accepted — contract ready for review`;
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+    <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Proposal accepted ✓</h2>
+    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(signerName)} just accepted <strong>${escapeHtml(proposalTitle)}</strong>${total ? ` for $${total.toFixed(2)}` : ""}.</p>
+    <p style="margin:0 0 16px;font-size:14px;">A draft contract has been auto-generated from their selections and is waiting in your approval queue. Review and send for signature in one tap.</p>
+    <p style="margin:24px 0;"><a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#059669;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Review draft contract</a></p>
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">The faster you send, the higher your conversion rate. Most clients sign within hours of receiving the contract email.</p>
+  </body></html>`;
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: ownerEmail,
+    subject,
+    html,
   });
 }
 

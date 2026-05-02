@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -685,6 +686,32 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               {isOwner && (
                 <Button variant="outline" onClick={() => setEditOpen(true)} className="w-full border-border">
                   Edit Project
+                </Button>
+              )}
+              {isOwner && client?.email && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const url = buildProjectMailto({
+                      to: client.email,
+                      orgName: data.organization?.name || "",
+                      ownerName: data.organization?.businessInfo?.ownerName || "",
+                      clientName: client.contactName || client.company || "",
+                      projectType: pType?.name || "Project",
+                      date: project.date,
+                      startTime: project.startTime,
+                      endTime: project.endTime,
+                      location: location?.name || "",
+                      cancelled: project.status === "cancelled",
+                      cancellationReason: project.cancellationReason || "",
+                    });
+                    window.location.assign(url);
+                  }}
+                  className="w-full border-border gap-2"
+                  title="Open your email app with a pre-filled confirmation message"
+                >
+                  <Mail className="w-4 h-4" />
+                  {project.status === "cancelled" ? "Email cancellation to client" : "Email project details to client"}
                 </Button>
               )}
               {isOwner && project.status !== "cancelled" && (
