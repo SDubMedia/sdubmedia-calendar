@@ -3,17 +3,20 @@
 // 3-column layout: page sidebar | document editor | properties
 // ============================================================
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
-import type { ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
+import type { ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, ChevronUp, ChevronDown, Save, X, Image } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
+import { LibraryPanel, type LibraryDragData } from "@/components/proposal-editor/LibraryPanel";
+import type { ProposalBlock } from "@/lib/types";
+import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 
 const MERGE_FIELDS = [
   { key: "{{client_name}}", label: "Client Name" },
@@ -49,6 +52,20 @@ function emptyMilestone(): PaymentMilestone {
   return { id: nanoid(6), label: "Deposit", type: "percent", percent: 50, dueType: "at_signing", status: "pending" };
 }
 
+// When an existing template page has only legacy `content` HTML (no blocks
+// yet), seed the block editor with a single prose block so the user's existing
+// content is preserved and can be split/extended into more specific blocks.
+// This is purely view-time — the actual blocks aren't persisted until the
+// user makes any edit, at which point the seeded block is saved as part of
+// the new structure.
+function effectiveBlocks(page: ProposalPage): ProposalBlock[] {
+  if (page.blocks && page.blocks.length > 0) return page.blocks;
+  if (page.content && page.content.trim()) {
+    return [{ id: "imported-content", type: "prose", html: page.content }];
+  }
+  return [];
+}
+
 function emptyPackage(): ProposalPackage {
   return {
     id: nanoid(6), name: "", description: "",
@@ -71,21 +88,25 @@ export default function TemplateEditorPage() {
   const [coverImageUrl, setCoverImageUrl] = useState("");
   const [pages, setPages] = useState<ProposalPage[]>([emptyPage("agreement", 0)]);
   const [packages, setPackages] = useState<ProposalPackage[]>([]);
+  // Master contract that auto-generates a draft on client acceptance.
+  const [contractTemplateId, setContractTemplateId] = useState<string | null>(null);
   const [activePageId, setActivePageId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [showProperties, setShowProperties] = useState(true);
+  // Left sidebar (page list) — collapse to maximize canvas width on desktop.
+  const [showPageList, setShowPageList] = useState(true);
 
   // Legacy fields for backward compat
   const [legacyPayment, setLegacyPayment] = useState<ProposalPaymentConfig>({ option: "none", depositPercent: 50, depositAmount: 0 });
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load existing template
   useEffect(() => {
     if (existing) {
       setName(existing.name);
       setCoverImageUrl(existing.coverImageUrl || "");
+      setContractTemplateId(existing.contractTemplateId ?? null);
       // Migrate: if old template has contractContent but no pages, create a page from it
       if (existing.pages.length > 0) {
         setPages(existing.pages);
@@ -151,97 +172,43 @@ export default function TemplateEditorPage() {
     setPages(arr.map((p, i) => ({ ...p, sortOrder: i })));
   }
 
-  function updatePageContent(id: string, content: string) {
-    setPages(pages.map(p => p.id === id ? { ...p, content } : p));
+  function updatePageBlocks(id: string, blocks: ProposalBlock[]) {
+    setPages(pages.map(p => p.id === id ? { ...p, blocks } : p));
+  }
+
+  // ---- dnd-kit: library → canvas drop ----
+  // Sensor with a small activation distance so single-clicks on cards still
+  // open the picker rather than starting a phantom drag.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+
+  function handleLibraryDrop(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || !active) return;
+    const drag = active.data.current as LibraryDragData | undefined;
+    const drop = over.data.current as { insertIndex?: number } | undefined;
+    if (!drag || typeof drop?.insertIndex !== "number") return;
+    if (!activePageId) return;
+    const page = pages.find(p => p.id === activePageId);
+    if (!page) return;
+    const currentBlocks = effectiveBlocks(page);
+
+    let newBlock: ProposalBlock | null = null;
+    if (drag.source === "package" && drag.packageId) {
+      newBlock = { id: nanoid(6), type: "package_row", packageId: drag.packageId };
+    } else if (drag.source === "image" && drag.imageDataUrl) {
+      newBlock = { id: nanoid(6), type: "image", imageDataUrl: drag.imageDataUrl, caption: "" };
+    }
+    if (!newBlock) return;
+
+    const next = [...currentBlocks];
+    next.splice(drop.insertIndex, 0, newBlock);
+    updatePageBlocks(activePageId, next);
   }
 
   function updatePageLabel(id: string, label: string) {
     setPages(pages.map(p => p.id === id ? { ...p, label } : p));
-  }
-
-  // ---- Insert merge field at cursor ----
-  function insertField(fieldKey: string) {
-    const el = textareaRef.current;
-    if (!activePage || activePage.type !== "agreement") return;
-    const content = activePage.content;
-    if (!el) { updatePageContent(activePage.id, content + fieldKey); return; }
-    const start = el.selectionStart ?? content.length;
-    const end = el.selectionEnd ?? content.length;
-    const newContent = content.slice(0, start) + fieldKey + content.slice(end);
-    updatePageContent(activePage.id, newContent);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = start + fieldKey.length;
-    });
-  }
-
-  // ---- Package management ----
-  function addPackageItem() {
-    setPackages([...packages, emptyPackage()]);
-  }
-
-  function removePackage(id: string) {
-    setPackages(packages.filter(p => p.id !== id));
-  }
-
-  function updatePackage(id: string, field: string, value: any) {
-    setPackages(packages.map(p => {
-      if (p.id !== id) return p;
-      const updated = { ...p, [field]: value };
-      if (field === "lineItems") {
-        updated.totalPrice = (value as ProposalLineItem[]).reduce((s: number, li: ProposalLineItem) => s + li.quantity * li.unitPrice, 0);
-      }
-      return updated;
-    }));
-  }
-
-  function updatePackageLineItem(pkgId: string, liId: string, field: keyof ProposalLineItem, value: any) {
-    setPackages(packages.map(pkg => {
-      if (pkg.id !== pkgId) return pkg;
-      const newItems = pkg.lineItems.map(li => {
-        if (li.id !== liId) return li;
-        const updated = { ...li, [field]: value };
-        updated.amount = updated.quantity * updated.unitPrice;
-        return updated;
-      });
-      return { ...pkg, lineItems: newItems, totalPrice: newItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0) };
-    }));
-  }
-
-  function addLineItemToPackage(pkgId: string) {
-    setPackages(packages.map(pkg => pkg.id === pkgId ? { ...pkg, lineItems: [...pkg.lineItems, emptyLineItem()] } : pkg));
-  }
-
-  function addServiceToPackage(pkgId: string, svc: ServiceItem) {
-    const li: ProposalLineItem = { id: nanoid(6), description: svc.name, details: svc.description, quantity: 1, unitPrice: svc.defaultPrice, amount: svc.defaultPrice };
-    setPackages(packages.map(pkg => {
-      if (pkg.id !== pkgId) return pkg;
-      const newItems = [...pkg.lineItems, li];
-      return { ...pkg, lineItems: newItems, totalPrice: newItems.reduce((s, l) => s + l.quantity * l.unitPrice, 0) };
-    }));
-  }
-
-  function removeLineItemFromPackage(pkgId: string, liId: string) {
-    setPackages(packages.map(pkg => {
-      if (pkg.id !== pkgId || pkg.lineItems.length <= 1) return pkg;
-      const newItems = pkg.lineItems.filter(li => li.id !== liId);
-      return { ...pkg, lineItems: newItems, totalPrice: newItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0) };
-    }));
-  }
-
-  // ---- Milestone management ----
-  function addMilestone(pkgId: string) {
-    setPackages(packages.map(pkg => pkg.id === pkgId ? { ...pkg, paymentMilestones: [...pkg.paymentMilestones, emptyMilestone()] } : pkg));
-  }
-
-  function removeMilestone(pkgId: string, msId: string) {
-    setPackages(packages.map(pkg => pkg.id === pkgId ? { ...pkg, paymentMilestones: pkg.paymentMilestones.filter(m => m.id !== msId) } : pkg));
-  }
-
-  function updateMilestone(pkgId: string, msId: string, field: string, value: any) {
-    setPackages(packages.map(pkg => pkg.id === pkgId ? {
-      ...pkg, paymentMilestones: pkg.paymentMilestones.map(m => m.id === msId ? { ...m, [field]: value } : m),
-    } : pkg));
   }
 
   // ---- Cover image upload ----
@@ -276,6 +243,7 @@ export default function TemplateEditorPage() {
         coverImageUrl,
         pages,
         packages,
+        contractTemplateId,
         // Legacy fields — derive from first agreement page + first package
         lineItems: packages[0]?.lineItems || [],
         contractContent: pages.find(p => p.type === "agreement")?.content || "",
@@ -320,8 +288,17 @@ export default function TemplateEditorPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPageList(!showPageList)}
+            className="text-xs hidden sm:inline-flex gap-1"
+            title="Toggle page list"
+          >
+            {showPageList ? "Hide pages" : "Show pages"}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowProperties(!showProperties)} className="text-xs">
-            {showProperties ? "Hide" : "Properties"}
+            {showProperties ? "Hide library" : "Show library"}
           </Button>
           <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">
             <Save className="w-3.5 h-3.5" />
@@ -357,10 +334,17 @@ export default function TemplateEditorPage() {
         </div>
       </div>
 
-      {/* 3-Column Layout */}
+      {/* 3-Column Layout — wrapped in DndContext so the right-sidebar
+          LibraryPanel can drag Packages/Images onto the canvas's
+          InsertBar drop zones (desktop fast-path; mobile uses + button). */}
+      <DndContext sensors={dndSensors} onDragEnd={handleLibraryDrop}>
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar — Page Thumbnails (desktop) */}
-        <div className="w-48 border-r border-border bg-card/30 flex flex-col overflow-hidden shrink-0 hidden sm:flex">
+        {/* Left Sidebar — Page Thumbnails (desktop). Collapsible via the
+            "Hide pages" header toggle so the canvas can claim the full width. */}
+        <div className={cn(
+          "border-r border-border bg-card/30 flex flex-col overflow-hidden shrink-0",
+          showPageList ? "w-48 hidden sm:flex" : "hidden",
+        )}>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page) => {
               const Icon = PAGE_ICONS[page.type];
@@ -422,29 +406,39 @@ export default function TemplateEditorPage() {
 
               {activePage.type === "agreement" || activePage.type === "custom" ? (
                 <>
-                  {/* Merge fields */}
+                  {/* Merge field reference — copy a token into a Text block to
+                      have it filled with the client's data when sent. */}
                   {activePage.type === "agreement" && (
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {MERGE_FIELDS.map(f => (
-                        <button key={f.key} onClick={() => insertField(f.key)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
+                    <details className="mb-3 text-xs">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                        Merge fields (click to copy)
+                      </summary>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {MERGE_FIELDS.map(f => (
+                          <button
+                            key={f.key}
+                            onClick={() => {
+                              navigator.clipboard?.writeText(f.key).catch(() => {});
+                              toast.success(`Copied ${f.key}`);
+                            }}
+                            className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+                            title={`Copy ${f.key}`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </details>
                   )}
-                  {/* Document-style editor */}
-                  <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-                    <textarea
-                      ref={textareaRef}
-                      value={activePage.content}
-                      onChange={e => updatePageContent(activePage.id, e.target.value)}
-                      className="w-full min-h-[600px] p-8 text-sm text-gray-800 leading-relaxed resize-y outline-none font-serif"
-                      placeholder={activePage.type === "agreement"
-                        ? "Enter your agreement text here...\n\nUse merge fields above to insert dynamic content like {{client_name}} and {{package_price}}."
-                        : "Enter page content..."}
-                      style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
-                    />
-                  </div>
+                  {/* Live canvas — what you see is what the client sees.
+                      Hover any block for move/delete; click to edit inline.
+                      Hover between blocks for the + button to insert a new
+                      block, package from your library, or image. */}
+                  <BlockEditor
+                    blocks={effectiveBlocks(activePage)}
+                    onChange={blocks => updatePageBlocks(activePage.id, blocks)}
+                    libraryPackages={data.packages}
+                  />
                 </>
               ) : activePage.type === "invoice" ? (
                 <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
@@ -606,6 +600,47 @@ export default function TemplateEditorPage() {
               <button onClick={() => setShowProperties(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-6">
+              {/* Library — drag a Package or Image from here onto any
+                  agreement/custom page to drop it as a new block. */}
+              <LibraryPanel
+                packages={data.packages}
+                images={data.proposalImages}
+                onAddPackage={(packageId) => {
+                  if (!activePageId) return;
+                  const page = pages.find(p => p.id === activePageId);
+                  if (!page) return;
+                  const next = [...effectiveBlocks(page), { id: nanoid(6), type: "package_row" as const, packageId }];
+                  updatePageBlocks(activePageId, next);
+                }}
+                onAddImage={(img) => {
+                  if (!activePageId) return;
+                  const page = pages.find(p => p.id === activePageId);
+                  if (!page) return;
+                  const next = [...effectiveBlocks(page), { id: nanoid(6), type: "image" as const, imageDataUrl: img.imageDataUrl, caption: "" }];
+                  updatePageBlocks(activePageId, next);
+                }}
+              />
+
+              {/* Linked Contract — when the client accepts a proposal built
+                  from this template, this is the master contract that auto-
+                  generates a draft for owner approval. */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Linked Contract</Label>
+                <select
+                  value={contractTemplateId ?? ""}
+                  onChange={e => setContractTemplateId(e.target.value || null)}
+                  className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background"
+                >
+                  <option value="">— None (legacy embedded content) —</option>
+                  {data.contractTemplates.map(ct => (
+                    <option key={ct.id} value={ct.id}>{ct.name}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Auto-generates a draft contract for your review when a client accepts.
+                </p>
+              </div>
+
               {/* Cover Image */}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Cover Image</Label>
@@ -623,129 +658,12 @@ export default function TemplateEditorPage() {
                 </div>
               </div>
 
-              {/* Packages */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Packages</Label>
-                  <button onClick={addPackageItem} className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-0.5">
-                    <Plus className="w-3 h-3" /> Add
-                  </button>
-                </div>
-
-                {packages.length === 0 && (
-                  <p className="text-[10px] text-muted-foreground">No packages yet. Add packages that clients can choose from.</p>
-                )}
-
-                {packages.map((pkg, pkgIdx) => (
-                  <div key={pkg.id} className="bg-secondary/50 rounded-lg border border-border p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground font-semibold">PACKAGE {pkgIdx + 1}</span>
-                      <button onClick={() => removePackage(pkg.id)} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
-                    </div>
-                    <Input
-                      value={pkg.name}
-                      onChange={e => updatePackage(pkg.id, "name", e.target.value)}
-                      className="bg-secondary border-border text-xs"
-                      placeholder="Package name (e.g. Mini Session)"
-                    />
-                    <Input
-                      value={pkg.description}
-                      onChange={e => updatePackage(pkg.id, "description", e.target.value)}
-                      className="bg-secondary border-border text-[10px]"
-                      placeholder="Short description"
-                    />
-
-                    {/* Line items */}
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-muted-foreground">Services</span>
-                      {pkg.lineItems.map(li => (
-                        <div key={li.id} className="flex gap-1 items-center">
-                          <Input
-                            value={li.description}
-                            onChange={e => updatePackageLineItem(pkg.id, li.id, "description", e.target.value)}
-                            className="bg-secondary border-border text-[10px] flex-1"
-                            placeholder="Service"
-                          />
-                          <Input
-                            type="text" inputMode="decimal"
-                            value={li.unitPrice || ""}
-                            onChange={e => updatePackageLineItem(pkg.id, li.id, "unitPrice", Number(e.target.value) || 0)}
-                            className="bg-secondary border-border text-[10px] w-20"
-                            placeholder="Price"
-                          />
-                          <button onClick={() => removeLineItemFromPackage(pkg.id, li.id)} className="text-muted-foreground hover:text-destructive p-0.5">
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => addLineItemToPackage(pkg.id)} className="text-[10px] text-primary hover:text-primary/80">+ Blank</button>
-                        {(data.organization?.services || []).map(svc => (
-                          <button key={svc.id} onClick={() => addServiceToPackage(pkg.id, svc)} className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                            {svc.name} · ${svc.defaultPrice}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-xs font-semibold text-foreground text-right font-mono">
-                      Total: ${pkg.totalPrice.toFixed(2)}
-                    </div>
-
-                    {/* Payment milestones */}
-                    <div className="space-y-1 pt-1 border-t border-border/50">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground">Payment Schedule</span>
-                        <button onClick={() => addMilestone(pkg.id)} className="text-[10px] text-primary hover:text-primary/80">+ Add</button>
-                      </div>
-                      {pkg.paymentMilestones.map(ms => (
-                        <div key={ms.id} className="flex gap-1 items-center">
-                          <Input
-                            value={ms.label}
-                            onChange={e => updateMilestone(pkg.id, ms.id, "label", e.target.value)}
-                            className="bg-secondary border-border text-[10px] flex-1"
-                            placeholder="Label"
-                          />
-                          <Input
-                            type="text" inputMode="decimal"
-                            value={ms.percent || ""}
-                            onChange={e => updateMilestone(pkg.id, ms.id, "percent", Number(e.target.value) || 0)}
-                            className="bg-secondary border-border text-[10px] w-14"
-                            placeholder="%"
-                          />
-                          <span className="text-[10px] text-muted-foreground">%</span>
-                          <select
-                            value={ms.dueType}
-                            onChange={e => updateMilestone(pkg.id, ms.id, "dueType", e.target.value)}
-                            className="bg-secondary border border-border rounded text-[10px] text-foreground px-1 py-1"
-                          >
-                            <option value="at_signing">At signing</option>
-                            <option value="relative_days">Days after</option>
-                            <option value="absolute_date">Fixed date</option>
-                          </select>
-                          {ms.dueType === "relative_days" && (
-                            <Input
-                              type="text" inputMode="decimal"
-                              value={ms.dueDays || ""}
-                              onChange={e => updateMilestone(pkg.id, ms.id, "dueDays", Number(e.target.value) || 0)}
-                              className="bg-secondary border-border text-[10px] w-12"
-                              placeholder="Days"
-                            />
-                          )}
-                          <button onClick={() => removeMilestone(pkg.id, ms.id)} className="text-muted-foreground hover:text-destructive p-0.5">
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
           </>
         )}
       </div>
+      </DndContext>
     </div>
   );
 }

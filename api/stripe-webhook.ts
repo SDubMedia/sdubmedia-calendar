@@ -250,6 +250,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         } else if (session.mode === "payment" && session.metadata?.kind === "delivery_extras") {
           await handleDeliveryExtrasPaid(session);
+        } else if (session.mode === "payment" && session.metadata?.kind === "milestone_payment") {
+          // Cron-emailed payment link → stamp `paidAt` on the matching
+          // milestone so the payment-reminders cron skips it on subsequent
+          // runs. The milestone is identified by the `milestoneId` we set
+          // when creating the Checkout session.
+          const contractId = session.metadata.contractId;
+          const milestoneId = session.metadata.milestoneId;
+          if (contractId && milestoneId) {
+            const { data: contract } = await supabase
+              .from("contracts")
+              .select("payment_milestones")
+              .eq("id", contractId)
+              .maybeSingle();
+            const ms = (contract?.payment_milestones as Array<Record<string, unknown>> | null) || null;
+            if (Array.isArray(ms)) {
+              const nowIso = new Date().toISOString();
+              const next = ms.map((m, i) => {
+                const idMatch = m.id ? m.id === milestoneId : `ms_${i}` === milestoneId;
+                return idMatch ? { ...m, paidAt: nowIso } : m;
+              });
+              await supabase.from("contracts").update({
+                payment_milestones: next,
+                updated_at: nowIso,
+              }).eq("id", contractId);
+            }
+          }
         }
         break;
       }

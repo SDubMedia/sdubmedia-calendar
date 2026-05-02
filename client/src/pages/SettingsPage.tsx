@@ -95,7 +95,7 @@ export default function SettingsPage() {
   const [partnerFeatures, setPartnerFeatures] = useState<Record<string, boolean>>((org?.features?.partnerFeatures as any) || {});
   const [clientFeatures, setClientFeatures] = useState<Record<string, boolean>>((org?.features?.clientFeatures as any) || {});
   const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
-    address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
+    address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "", ownerName: "",
   });
   const [logoUrl, setLogoUrl] = useState(org?.logoUrl || "");
   const [faviconUrl, setFaviconUrl] = useState(org?.faviconUrl || "");
@@ -174,7 +174,7 @@ export default function SettingsPage() {
       setBillingModel(org.defaultBillingModel);
       setBillingRate(org.defaultBillingRate);
       setFeatures(org.features);
-      setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" });
+      setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "", ownerName: "" });
       setLogoUrl(org.logoUrl || "");
       setFaviconUrl(org.faviconUrl || "");
       setDashboardWidgets(org.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS);
@@ -308,6 +308,16 @@ export default function SettingsPage() {
                 className="bg-secondary border-border"
                 placeholder="Your company name"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Owner Name</Label>
+              <Input
+                value={businessInfo.ownerName ?? ""}
+                onChange={e => setBusinessInfo(b => ({ ...b, ownerName: e.target.value }))}
+                className="bg-secondary border-border"
+                placeholder="Your full name (printed on contract signatures)"
+              />
+              <p className="text-[11px] text-muted-foreground">Auto-fills the Vendor signature block on contract templates.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Production Type</Label>

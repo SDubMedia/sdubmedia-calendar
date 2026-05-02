@@ -88,6 +88,10 @@ export interface OrgBusinessInfo {
   email: string;
   website: string;
   ein: string;
+  // The signing/owner's name — printed on vendor signature blocks. Distinct
+  // from `Organization.name` (the company name shown elsewhere). Optional
+  // for back-compat with rows saved before this field existed.
+  ownerName?: string;
 }
 
 export interface ServiceItem {
@@ -109,6 +113,7 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageConfig[] = [
   { id: "follow_up", label: "Follow-up", color: "cyan" },
   { id: "proposal_sent", label: "Proposal Sent", color: "indigo" },
   { id: "proposal_signed", label: "Proposal Signed", color: "amber" },
+  { id: "awaiting_approval", label: "Awaiting Approval", color: "yellow" },
   { id: "retainer_paid", label: "Retainer Paid", color: "green" },
   { id: "final_payment", label: "Final Payment", color: "emerald" },
   { id: "in_production", label: "In Production", color: "orange" },
@@ -583,7 +588,11 @@ export type ContractStatus = "draft" | "sent" | "client_signed" | "completed" | 
 export interface ContractTemplate {
   id: string;
   name: string;
-  content: string; // HTML content
+  // Block-based authoring (Phase B). When non-empty, the editor uses these
+  // blocks and `content` is kept in sync as the rendered HTML for backward
+  // compat with rendering surfaces that read the flat string.
+  blocks?: ProposalBlock[];
+  content: string; // HTML content (legacy + render output)
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -638,9 +647,30 @@ export interface Contract {
   documentExpiresAt: string | null;   // ISO date — auto-void after this date
   remindersEnabled: boolean;          // when true, scheduled cron pings unsigned signers
   lastReminderSentAt: string | null;  // last time the reminder cron emailed unsigned signers
+  // Phase A — auto-generated drafts from proposal acceptance.
+  proposalId: string | null;          // links back to the source proposal (null for standalone contracts)
+  masterTemplateVersionId: string;    // audit stamp of which master template version produced this draft
+  firingLog: ConditionalRuleFiring[]; // future use — which conditional clauses fired and why (Phase B)
+  sendBackReason: string;             // populated when owner clicks "Send Back"; empty otherwise
+  // Per-milestone payment tracking — same shape as proposals.payment_milestones
+  // plus `id`, `lastReminderSentAt`, and `paidAt` populated by the proposal-
+  // accept handler and the Stripe webhook respectively. Drives the payment-
+  // reminders cron + Outstanding Payments page + pipeline lateness badge.
+  paymentMilestones: PaymentMilestone[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+}
+
+// One entry per conditional clause that fired (or was suppressed) when the
+// rule engine generated a draft contract. Reserved for Phase B (conditional
+// clauses); Phase A always produces an empty array.
+export interface ConditionalRuleFiring {
+  clauseLabel: string;
+  rule: "always" | "if_package" | "if_not_package";
+  packageId?: string;
+  fired: boolean;
+  reason: string;
 }
 
 // ---- Proposals ----
@@ -649,6 +679,7 @@ export type ProposalPaymentOption = "none" | "deposit" | "full";
 
 export type PipelineStage =
   | "inquiry" | "follow_up" | "proposal_sent" | "proposal_signed"
+  | "awaiting_approval"
   | "retainer_paid" | "final_payment" | "in_production"
   | "delivered" | "review" | "archived";
 
@@ -670,11 +701,131 @@ export interface ProposalPaymentConfig {
   depositAmount: number;
 }
 
+// ---- Proposal blocks (block-based template editor — sub-phase 1A) ----
+//
+// Pages are rendered via `blocks[]` when present. When `blocks` is undefined
+// or empty, the renderer falls back to `content` (legacy raw HTML/text). This
+// preserves every existing template untouched while letting new templates use
+// the block-based editor.
+//
+// Future blocks (package_row variants pulling from a reusable Packages library,
+// conditional clauses, etc.) ship in sub-phases 1B+1C — not here.
+
+export type ProposalBlock =
+  | {
+      id: string;
+      type: "hero";
+      // Data URL for v1; R2/Supabase storage migration is a separate task.
+      imageDataUrl: string;
+      height?: "sm" | "md" | "lg";
+    }
+  | {
+      id: string;
+      type: "image";
+      imageDataUrl: string;
+      caption?: string;
+    }
+  | {
+      id: string;
+      type: "centered_title";
+      text: string;
+      // Defaults to "center" if omitted (legacy blocks).
+      align?: "left" | "center" | "right";
+      // Visual scale: "sm" subheading, "md" heading, "lg" hero (default).
+      size?: "sm" | "md" | "lg";
+      // Inline formatting flags — applied to the whole heading.
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+    }
+  | {
+      id: string;
+      type: "section_divider";
+      // Uppercase letter-spaced section header, e.g. "FILM COLLECTION".
+      text: string;
+      // Defaults to "center" if omitted (legacy blocks).
+      align?: "left" | "center" | "right";
+    }
+  | {
+      id: string;
+      type: "prose";
+      // Sanitised HTML produced by TipTap. Renderer must DOMPurify before injecting.
+      html: string;
+    }
+  | {
+      // Inline payment-schedule editor (contract templates only). User
+      // configures deposit + balance terms in the canvas; at signing time
+      // the contract generator converts percentages to dollar amounts using
+      // the proposal's package total.
+      id: string;
+      type: "payment_schedule";
+      deposit: {
+        kind: "percent" | "fixed";
+        value: number;             // percent (0-100) or fixed dollars
+        dueType: "at_signing" | "absolute_date" | "relative_days";
+        dueDays?: number;          // for relative_days: days from signing
+        dueDate?: string;          // for absolute_date: ISO YYYY-MM-DD
+        label?: string;            // override default "Deposit"
+      };
+      balance: {
+        dueType: "at_signing" | "absolute_date" | "relative_days" | "on_event_date";
+        dueDays?: number;          // for relative_days: days BEFORE event (positive number)
+        dueDate?: string;          // for absolute_date
+        label?: string;            // override default "Balance"
+      };
+    }
+  | {
+      id: string;
+      type: "package_row";
+      // References a Package in the org's central Packages library. The
+      // renderer is given the library list and resolves the lookup at render
+      // time. For sent proposals, pin-by-default semantics will snapshot the
+      // resolved data at send time (Sub-Phase 1B/1C concern).
+      packageId: string;
+      // Optional icon override; when blank, the renderer uses the Package's
+      // own icon. Lets a template highlight a package with a different icon
+      // without mutating the library entry.
+      icon?: string;
+    }
+  | {
+      id: string;
+      type: "divider";
+    }
+  | {
+      id: string;
+      type: "spacer";
+      size: "sm" | "md" | "lg";
+    }
+  | {
+      id: string;
+      type: "signature";
+      // Renders the existing signature surface — the actual signing flow lives in ViewProposalPage.
+      label?: string;
+      // Distinguishes who signs on this line. "client" → client signing UI;
+      // "vendor" → owner/vendor counter-signing UI; undefined → legacy
+      // generic line (kept for back-compat with old templates).
+      role?: "client" | "vendor";
+    }
+  | {
+      id: string;
+      type: "merge_field";
+      // One of the SUPPORTED_MERGE_FIELDS keys defined in api/_contractGenerator.ts —
+      // e.g. "client_name", "event_date", "packages_block", "payment_schedule_block".
+      // Renders inline as the literal token `{{key}}` so the contract generator's
+      // server-side substitution can find and replace it. In the editor, displays
+      // as a styled chip showing the human-readable label.
+      field: string;
+    };
+
 export interface ProposalPage {
   id: string;
   type: ProposalPageType;
   label: string;
+  // Legacy raw content (HTML or plain text). Required for backward compat with
+  // every existing template. New templates set `blocks[]` and leave this empty.
   content: string;
+  // Block-based content. When non-empty, the renderer uses this and ignores `content`.
+  blocks?: ProposalBlock[];
   sortOrder: number;
 }
 
@@ -690,6 +841,10 @@ export interface PaymentMilestone {
   status: MilestoneStatus;
   paidAt?: string | null;
   stripeSessionId?: string | null;
+  // ISO timestamp the payment-reminders cron last emailed about this
+  // milestone. Used to dedupe sends within a single day. Optional — older
+  // milestones written before the cron existed won't have this set.
+  lastReminderSentAt?: string;
 }
 
 export interface ProposalPackage {
@@ -707,6 +862,10 @@ export interface ProposalTemplate {
   coverImageUrl: string;
   pages: ProposalPage[];
   packages: ProposalPackage[];
+  // Master contract template used by Phase A auto-generation. When a client
+  // accepts a proposal built from this template, the server resolves the
+  // linked contract template and renders a draft Contract for owner review.
+  contractTemplateId: string | null;
   // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   contractContent: string;
@@ -730,6 +889,10 @@ export interface Proposal {
   pipelineStage: PipelineStage;
   viewedAt: string | null;
   leadSource: string;
+  // Master contract template used to auto-generate the draft contract when
+  // this proposal is accepted. Inherited from the proposal template at send
+  // time; null falls back to the legacy embedded contractContent flow.
+  contractTemplateId: string | null;
   // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   subtotal: number;
@@ -807,6 +970,50 @@ export interface Meeting {
   color: string; // "" = default slate; otherwise one of MEETING_COLORS values
   orgId: string;
   createdAt: string;
+}
+
+// ----------------------------------------------------------------------
+// Packages library — reusable services that drop into proposal templates
+// as `package_row` blocks. Owner-administered org-wide list. The icon key
+// resolves against the curated Lucide vocabulary in
+// client/src/components/proposal/icons.ts.
+// ----------------------------------------------------------------------
+
+export interface Package {
+  id: string;
+  orgId: string;
+  name: string;
+  icon: string;                        // ICON_VOCABULARY key (used when iconCustomDataUrl is empty)
+  iconCustomDataUrl: string;           // optional custom PNG/SVG data URL (≤50KB); takes precedence over `icon`
+  description: string;
+  defaultPrice: number;
+  discountFromPrice: number | null;    // null = no strikethrough crossed-out price
+  photoDataUrl: string;                // v1 data URL ≤500KB; R2 migration deferred
+  deliverables: string[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+// ----------------------------------------------------------------------
+// Proposal image library — uploaded images saved org-wide so they can be
+// re-picked across proposal templates without re-uploading. Each block
+// type that takes an image (hero / image / package photo) can pick from
+// this library. Data URLs in v1; R2 migration is its own task.
+// ----------------------------------------------------------------------
+
+export interface ProposalImage {
+  id: string;
+  orgId: string;
+  name: string;
+  imageDataUrl: string;
+  width: number;
+  height: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
 }
 
 // ----------------------------------------------------------------------
@@ -912,6 +1119,8 @@ export interface AppData {
   series: Series[];
   personalEvents: PersonalEvent[];
   meetings: Meeting[];
+  packages: Package[];
+  proposalImages: ProposalImage[];
   deliveries: Delivery[];
   deliveryFiles: DeliveryFile[];
   deliverySelections: DeliverySelection[];

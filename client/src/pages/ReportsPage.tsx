@@ -474,7 +474,7 @@ export default function ReportsPage() {
           <div class="project-meta-value">${p.startTime} - ${p.endTime}</div>
         ` : "";
 
-        const deliverables = (p.editTypes || []).map(et => `<li>${et}</li>`).join("");
+        const deliverables = (p.editTypes || []).map(et => `<li>${data.editTypes.find(t => t.id === et)?.name || et}</li>`).join("");
         const deliverablesHtml = deliverables ? `
           <div class="project-meta-label">Deliverables</div>
           <ul class="deliverables-list">${deliverables}</ul>
@@ -735,13 +735,22 @@ export default function ReportsPage() {
     });
     const crewSet = new Map<string, string[]>();
     clientProjects.forEach(p => {
-      [...(p.crew || []), ...(p.postProduction || [])].forEach(e => {
-        const member = data.crewMembers.find(c => c.id === e.crewMemberId);
-        if (member && !crewSet.has(member.id)) crewSet.set(member.id, [member.name, e.role]);
-      });
+      // Travel role is internal-only — never list a Travel entry on the
+      // client-facing crew roster.
+      [...(p.crew || []), ...(p.postProduction || [])]
+        .filter(e => e.role !== "Travel")
+        .forEach(e => {
+          const member = data.crewMembers.find(c => c.id === e.crewMemberId);
+          if (member && !crewSet.has(member.id)) crewSet.set(member.id, [member.name, e.role]);
+        });
     });
+    // editTypes on a project is `string[]` of EditType IDs — resolve to names
+    // via data.editTypes. Falling back to the raw ID protects reports from
+    // breaking if an edit-type was deleted, but normally readers see the name.
+    const editTypeName = (id: string) =>
+      data.editTypes.find(t => t.id === id)?.name || id;
     const allDeliverables = new Set<string>();
-    clientProjects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(et)));
+    clientProjects.forEach(p => (p.editTypes || []).forEach(et => allDeliverables.add(editTypeName(et))));
 
     const isPerProject = client.billingModel === "per_project";
 
@@ -757,13 +766,16 @@ export default function ReportsPage() {
         <div class="project-meta-value">${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>
       ` : "";
 
-      const deliverables = (p.editTypes || []).map(et => `<li>${et}</li>`).join("");
+      const deliverables = (p.editTypes || []).map(et => `<li>${data.editTypes.find(t => t.id === et)?.name || et}</li>`).join("");
       const deliverablesHtml = deliverables ? `
         <div class="project-meta-label">Deliverables</div>
         <ul class="deliverables-list">${deliverables}</ul>
       ` : "";
 
-      const crewEntries = (p.crew || []).map(e => {
+      // Travel entries are internal-only — never render them in the client
+      // report's per-project crew list. (Travel is tracked separately via
+      // getProjectTravelCost and shown on the internal report only.)
+      const crewEntries = (p.crew || []).filter(e => e.role !== "Travel").map(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         return `
           <div class="crew-entry">
@@ -773,7 +785,7 @@ export default function ReportsPage() {
         `;
       }).join("");
 
-      const postEntries = (p.postProduction || []).map(e => {
+      const postEntries = (p.postProduction || []).filter(e => e.role !== "Travel").map(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const isPhotoEditorWithBilling = e.role === "Photo Editor" && p.editorBilling?.finalHours;
         const displayHours = isPhotoEditorWithBilling ? p.editorBilling!.finalHours : getBillableHours(e, client);

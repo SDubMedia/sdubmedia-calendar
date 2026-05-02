@@ -35,6 +35,8 @@ import {
   CreditCard,
   Mail,
   Image as ImageIcon,
+  Package as PackageIcon,
+  AlertCircle,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -85,6 +87,8 @@ const navStructure: NavEntry[] = [
   { label: "Sales", icon: TrendingUp, roles: ["owner", "partner"], items: [
     { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner", "partner"], feature: "pipeline" },
     { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner", "partner"], feature: "proposals" },
+    // Templates & Inquiry Pipeline — owner-only per PRD RBAC
+    { label: "Packages", href: "/packages", icon: PackageIcon, roles: ["owner"], feature: "proposals" },
     { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
     { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner"], feature: "deliveries" },
   ]},
@@ -108,6 +112,7 @@ const navStructure: NavEntry[] = [
   { label: "Finance", icon: Receipt, roles: ["owner", "partner"], items: [
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Outstanding Payments", href: "/outstanding-payments", icon: AlertCircle, roles: ["owner", "partner"] },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "budget" },
   ]},
@@ -127,7 +132,7 @@ const navStructure: NavEntry[] = [
   // Admin
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
   { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "staff", "family"], feature: "calendar" },
-  { label: "Trash", href: "/trash", icon: Trash2, roles: ["owner"] },
+  { label: "Archive", href: "/trash", icon: Trash2, roles: ["owner"] },
   { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff", "family"] },
 ];

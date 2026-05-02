@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch } from "wouter";
 import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 
 export default function ViewProposalPage() {
   const params = useParams<{ token: string }>();
@@ -316,23 +317,32 @@ export default function ViewProposalPage() {
           </div>
         )}
 
-        {/* ---- AGREEMENT PAGES (V2 multi-page) ---- */}
+        {/* ---- AGREEMENT PAGES (V2 multi-page) ----
+             Each page renders via ProposalBlockRenderer, which uses page.blocks
+             when present and falls back to sanitized page.content for legacy
+             templates. Fixes the original rendering bug where raw HTML tags
+             were displayed as text in a whitespace-pre-wrap div. */}
         {hasPages && agreementPages.map((page: any) => (
-          <div key={page.id} className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">{page.label || "Agreement"}</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
-              {page.content}
-            </div>
+          <div key={page.id} className="space-y-2">
+            <h2 className="text-lg font-bold text-gray-900 px-2">{page.label || "Agreement"}</h2>
+            <ProposalBlockRenderer page={page} libraryPackages={proposal?.libraryPackages || []} />
           </div>
         ))}
 
-        {/* Fallback: legacy contractContent */}
+        {/* Fallback: legacy contractContent (proposal has no pages array yet) */}
         {!hasPages && proposal?.contractContent && (
-          <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Agreement</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
-              {proposal.contractContent}
-            </div>
+          <div className="space-y-2">
+            <h2 className="text-lg font-bold text-gray-900 px-2">Agreement</h2>
+            <ProposalBlockRenderer
+              page={{
+                id: "legacy",
+                type: "agreement",
+                label: "Agreement",
+                content: proposal.contractContent,
+                sortOrder: 0,
+              }}
+              libraryPackages={proposal?.libraryPackages || []}
+            />
           </div>
         )}
 

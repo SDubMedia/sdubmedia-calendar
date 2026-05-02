@@ -4,8 +4,9 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import type { PipelineStage, Proposal } from "@/lib/types";
+import type { PipelineStage, Proposal, Contract } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ const COLOR_MAP: Record<string, string> = {
 
 interface PipelineEntry {
   id: string;
-  type: "lead" | "proposal";
+  type: "lead" | "proposal" | "contract_draft";
   name: string;
   email: string;
   phone: string;
@@ -46,12 +47,17 @@ interface PipelineEntry {
   pipelineStage: PipelineStage;
   recentActivity: string;
   proposalId?: string;
+  contractId?: string;
   viewedAt?: string | null;
   total?: number;
+  draftAge?: number;        // for contract_draft cards: days since draft was created (for the aging indicator)
+  paymentLateDays?: number; // max days-late across unpaid past-due milestones on the underlying contract
+  paymentLateAmount?: number; // dollar amount of the most-overdue unpaid milestone (for badge tooltip)
 }
 
 export default function PipelinePage() {
   const { data, addClient, addProposal, addPipelineLead, updatePipelineLead, deletePipelineLead } = useApp();
+  const [, setLocation] = useLocation();
   const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
   const [activeStage, setActiveStage] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -74,8 +80,20 @@ export default function PipelinePage() {
   const entries = useMemo<PipelineEntry[]>(() => {
     const result: PipelineEntry[] = [];
 
+    // Index contracts by proposalId so we can attach payment-lateness info
+    // to the corresponding pipeline card. Only signed contracts (client_signed
+    // or completed) can have overdue payments; drafts/voided don't.
+    const liveContractsByProposalId = new Map(
+      data.contracts
+        .filter(c => c.proposalId && (c.status === "client_signed" || c.status === "completed"))
+        .map(c => [c.proposalId as string, c]),
+    );
+
     // Add pipeline leads
     for (const lead of data.pipelineLeads) {
+      const late = lead.proposalId
+        ? computePaymentLateness(liveContractsByProposalId.get(lead.proposalId))
+        : null;
       result.push({
         id: lead.id,
         type: "lead",
@@ -89,14 +107,23 @@ export default function PipelinePage() {
         pipelineStage: lead.pipelineStage,
         recentActivity: lead.recentActivity,
         proposalId: lead.proposalId || undefined,
+        paymentLateDays: late?.days,
+        paymentLateAmount: late?.amount,
       });
     }
 
-    // Add proposals that aren't linked to a lead
+    // Add proposals that aren't linked to a lead. Skip proposals that have
+    // a draft contract awaiting approval — those surface as contract_draft
+    // cards in the "Awaiting Approval" column instead.
     const linkedProposalIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
+    const proposalIdsWithDraftContract = new Set(
+      data.contracts.filter(c => c.status === "draft" && c.proposalId).map(c => c.proposalId as string),
+    );
     for (const prop of data.proposals) {
       if (linkedProposalIds.has(prop.id)) continue;
+      if (proposalIdsWithDraftContract.has(prop.id)) continue;
       const client = data.clients.find(c => c.id === prop.clientId);
+      const late = computePaymentLateness(liveContractsByProposalId.get(prop.id));
       result.push({
         id: `prop-${prop.id}`,
         type: "proposal",
@@ -112,11 +139,45 @@ export default function PipelinePage() {
         proposalId: prop.id,
         viewedAt: prop.viewedAt,
         total: prop.total,
+        paymentLateDays: late?.days,
+        paymentLateAmount: late?.amount,
+      });
+    }
+
+    // Add auto-generated draft contracts as their own card type. These
+    // surface in "Awaiting Approval" and link directly to the approval UI.
+    const now = Date.now();
+    for (const contract of data.contracts) {
+      if (contract.status !== "draft" || !contract.proposalId) continue;
+      const prop = data.proposals.find(p => p.id === contract.proposalId);
+      if (!prop) continue;
+      const client = data.clients.find(c => c.id === prop.clientId);
+      const ageDays = (now - new Date(contract.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      result.push({
+        id: `contract-${contract.id}`,
+        type: "contract_draft",
+        name: client?.contactName || contract.title,
+        email: contract.clientEmail || prop.clientEmail,
+        phone: client?.phone || "",
+        projectType: "",
+        eventDate: null,
+        location: "",
+        leadSource: prop.leadSource || "",
+        pipelineStage: "awaiting_approval",
+        recentActivity: ageDays < 1
+          ? "Draft contract just created"
+          : ageDays < 3
+          ? `Draft created ${Math.floor(ageDays)} day${Math.floor(ageDays) === 1 ? "" : "s"} ago`
+          : `Draft pending ${Math.floor(ageDays)} days — needs review`,
+        proposalId: prop.id,
+        contractId: contract.id,
+        total: prop.total,
+        draftAge: ageDays,
       });
     }
 
     return result;
-  }, [data.pipelineLeads, data.proposals, data.clients]);
+  }, [data.pipelineLeads, data.proposals, data.clients, data.contracts]);
 
   // Stage counts
   const stageCounts = useMemo(() => {
@@ -212,6 +273,7 @@ export default function PipelinePage() {
         pipelineStage: "proposal_sent",
         viewedAt: null,
         leadSource: lead.leadSource,
+        contractTemplateId: tpl?.contractTemplateId ?? null,
         lineItems: tpl?.lineItems || [],
         subtotal: 0, taxRate: 0, taxAmount: 0, total: 0,
         contractContent: tpl?.contractContent || "",
@@ -332,7 +394,17 @@ export default function PipelinePage() {
                 return (
                   <tr key={entry.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-foreground">{entry.name}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-foreground">{entry.name}</span>
+                        {entry.paymentLateDays != null && entry.paymentLateDays > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 tabular-nums"
+                            title={`Payment of $${(entry.paymentLateAmount ?? 0).toFixed(2)} is ${entry.paymentLateDays} days past due`}
+                          >
+                            {entry.paymentLateDays}d late
+                          </span>
+                        )}
+                      </div>
                       {entry.total != null && entry.total > 0 && (
                         <span className="text-[10px] font-mono text-muted-foreground">${entry.total.toFixed(2)}</span>
                       )}
@@ -373,6 +445,22 @@ export default function PipelinePage() {
                       {entry.type === "lead" && (
                         <button onClick={() => deleteLead(entry.id)} className="p-1 text-muted-foreground hover:text-destructive">
                           <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {entry.type === "contract_draft" && entry.contractId && (
+                        <button
+                          onClick={() => setLocation(`/contracts/${entry.contractId}/review`)}
+                          className={cn(
+                            "px-2 py-1 text-[10px] font-semibold rounded border",
+                            (entry.draftAge ?? 0) >= 3
+                              ? "bg-red-500/10 text-red-400 border-red-500/30"
+                              : (entry.draftAge ?? 0) >= 1
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                              : "bg-green-500/10 text-green-400 border-green-500/30"
+                          )}
+                          title="Review draft contract"
+                        >
+                          Review
                         </button>
                       )}
                     </td>
@@ -492,4 +580,51 @@ function getProposalActivity(p: Proposal): string {
   if (p.viewedAt) return "Viewed";
   if (p.sentAt) return "Sent";
   return "Draft";
+}
+
+/**
+ * Walk a contract's payment_milestones, find the most-overdue unpaid one,
+ * and return how many days late it is + its amount. Returns null if the
+ * contract has no overdue unpaid milestones (or no contract at all).
+ */
+function computePaymentLateness(contract: Contract | undefined): { days: number; amount: number } | null {
+  if (!contract) return null;
+  const milestones = contract.paymentMilestones;
+  if (!Array.isArray(milestones) || milestones.length === 0) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayMs = today.getTime();
+
+  // Quickly compute the contract total from fixed milestones (used to
+  // resolve percent milestone amounts).
+  let total = 0;
+  for (const m of milestones) {
+    if (m.type === "fixed") total += Number(m.fixedAmount ?? 0);
+  }
+
+  let maxDaysLate = 0;
+  let maxDaysAmount = 0;
+  for (const m of milestones) {
+    if (m.paidAt) continue;
+    if (m.dueType === "at_signing") continue;
+    let dueIso: string | null = null;
+    if (m.dueType === "absolute_date") dueIso = m.dueDate || null;
+    else if (m.dueType === "relative_days" && contract.clientSignedAt) {
+      const d = new Date(contract.clientSignedAt);
+      d.setDate(d.getDate() + (m.dueDays ?? 0));
+      dueIso = d.toISOString().slice(0, 10);
+    }
+    if (!dueIso) continue;
+    const dueMs = new Date(dueIso + "T00:00:00").getTime();
+    const daysLate = Math.floor((todayMs - dueMs) / 86_400_000);
+    if (daysLate <= 0) continue;
+    const amount = m.type === "percent"
+      ? Math.round(total * (m.percent ?? 0) / 100 * 100) / 100
+      : Number(m.fixedAmount ?? 0);
+    if (daysLate > maxDaysLate) {
+      maxDaysLate = daysLate;
+      maxDaysAmount = amount;
+    }
+  }
+  return maxDaysLate > 0 ? { days: maxDaysLate, amount: maxDaysAmount } : null;
 }

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, FileText, Trash2, Edit3, Copy, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, Sparkles, MoreHorizontal, ArrowRight } from "lucide-react";
+import { Plus, FileText, Trash2, Edit3, Copy, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, Sparkles, MoreHorizontal, ArrowRight, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
@@ -19,6 +19,7 @@ import { ContractLetterhead } from "@/components/ContractLetterhead";
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -50,8 +51,34 @@ const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing">
   "Music License Request": "Releases & Licensing",
 };
 
-const CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
-type CategoryName = typeof CATEGORY_ORDER[number];
+const DEFAULT_CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
+type CategoryName = typeof DEFAULT_CATEGORY_ORDER[number];
+
+// LocalStorage key for the user's preferred category ordering. Stored as
+// JSON (array of category names). Falls back to default if missing or
+// stale (e.g., a category got renamed in a future release).
+const CATEGORY_ORDER_KEY = "slate.contracts.categoryOrder.v1";
+
+function loadCategoryOrder(): readonly CategoryName[] {
+  try {
+    const raw = localStorage.getItem(CATEGORY_ORDER_KEY);
+    if (!raw) return DEFAULT_CATEGORY_ORDER;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_CATEGORY_ORDER;
+    // Reconcile: keep saved order, but append any default categories the
+    // saved order doesn't know about (forward-compat with future seeds).
+    const known = new Set(DEFAULT_CATEGORY_ORDER as readonly string[]);
+    const filtered = parsed.filter((x): x is CategoryName => known.has(x));
+    const missing = DEFAULT_CATEGORY_ORDER.filter(c => !filtered.includes(c));
+    return [...filtered, ...missing];
+  } catch {
+    return DEFAULT_CATEGORY_ORDER;
+  }
+}
+
+function saveCategoryOrder(order: readonly CategoryName[]): void {
+  try { localStorage.setItem(CATEGORY_ORDER_KEY, JSON.stringify(order)); } catch { /* private mode */ }
+}
 
 // Visual identity per category. Icon in a tinted box, short subtitle.
 const CATEGORY_META: Record<CategoryName, { icon: LucideIcon; subtitle: string; tint: string; iconColor: string }> = {
@@ -98,25 +125,6 @@ function templateIcon(name: string): LucideIcon {
   return TEMPLATE_ICONS[name] || FileText;
 }
 
-// Strip HTML tags for the cream-paper thumbnail preview while keeping
-// {{merge_field}} tokens visible. Falls through cleanly for legacy
-// plain-text templates.
-function templatePreviewText(content: string): string {
-  if (!content) return "";
-  // Drop chip wrappers but keep the {{token}} text inside.
-  return content
-    .replace(/<br\s*\/?>(\s*)/gi, "\n$1")
-    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
-    .replace(/<\/(h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 export default function ContractsPage() {
   const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, updateContract, deleteContract, addProposalTemplate } = useApp();
@@ -133,11 +141,31 @@ export default function ContractsPage() {
   // Template detail panel — opens before edit so user can preview + see usage stats
   const [detailTplId, setDetailTplId] = useState<string | null>(null);
 
+  // Custom category ordering — persisted to localStorage so it sticks
+  // across sessions on the same device. Use ↑↓ buttons on each category
+  // header to reorder.
+  const [categoryOrder, setCategoryOrder] = useState<readonly CategoryName[]>(() => loadCategoryOrder());
+
+  function moveCategory(name: CategoryName, dir: -1 | 1) {
+    setCategoryOrder(prev => {
+      const idx = prev.indexOf(name);
+      const newIdx = idx + dir;
+      if (idx < 0 || newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      saveCategoryOrder(next);
+      return next;
+    });
+  }
+
   function openEditTemplate(tpl: ContractTemplate) {
-    setEditingTplId(tpl.id);
-    setTplName(tpl.name);
-    setTplContent(tpl.content);
-    setTplDialogOpen(true);
+    // Phase B: route to the full-page block-based editor instead of the
+    // legacy WysiwygContractEditor dialog.
+    setLocation(`/contracts/templates/${tpl.id}/edit`);
+  }
+
+  function openNewTemplate() {
+    setLocation("/contracts/templates/new/edit");
   }
 
   async function saveTemplate() {
@@ -185,6 +213,9 @@ export default function ContractsPage() {
           </button>
           <button onClick={() => setTab("templates")} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors", tab === "templates" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             Templates
+          </button>
+          <button onClick={() => setLocation("/trash")} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary" title="View archived items">
+            Archive
           </button>
         </div>
       </div>
@@ -267,7 +298,7 @@ export default function ContractsPage() {
                             <button onClick={async (e) => { e.stopPropagation(); await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Void"><X className="w-4 h-4" /></button>
                           )}
                           {(c.status === "draft" || c.status === "void") && (
-                            <button onClick={async (e) => { e.stopPropagation(); await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={async (e) => { e.stopPropagation(); await deleteContract(c.id); toast.success("Archived — restore from Archive"); }} className="p-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Archive"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
                       </button>
@@ -282,7 +313,10 @@ export default function ContractsPage() {
           <div className="space-y-6">
             <div className="flex gap-2">
               <Button onClick={() => setLocation("/proposals/templates/new/edit")} className="gap-2">
-                <Plus className="w-4 h-4" /> New Template
+                <Plus className="w-4 h-4" /> New Proposal Template
+              </Button>
+              <Button onClick={openNewTemplate} variant="outline" className="gap-2">
+                <Plus className="w-4 h-4" /> New Contract Template
               </Button>
             </div>
 
@@ -292,7 +326,7 @@ export default function ContractsPage() {
                 <p className="text-sm">No templates yet. Create a reusable template.</p>
               </div>
             ) : (
-              CATEGORY_ORDER.map(cat => {
+              categoryOrder.map((cat, catIdx) => {
                 const proposalsForCat = cat === "Proposals" ? data.proposalTemplates : [];
                 const contractsForCat = data.contractTemplates.filter(t => {
                   const c = TEMPLATE_CATEGORIES[t.name];
@@ -306,7 +340,7 @@ export default function ContractsPage() {
                 const CatIcon = meta.icon;
                 return (
                   <div key={cat} className="space-y-4">
-                    <div className="flex items-center gap-3 pb-2 border-b border-border/60">
+                    <div className="group flex items-center gap-3 pb-2 border-b border-border/60">
                       <div className={cn("shrink-0 rounded-lg border p-2", meta.tint)}>
                         <CatIcon className={cn("w-5 h-5", meta.iconColor)} strokeWidth={1.75} />
                       </div>
@@ -315,6 +349,24 @@ export default function ContractsPage() {
                         <p className="text-xs text-muted-foreground mt-0.5">{meta.subtitle}</p>
                       </div>
                       <span className="text-xs text-muted-foreground tabular-nums">{total} {total === 1 ? "template" : "templates"}</span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => moveCategory(cat, -1)}
+                          disabled={catIdx === 0}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move category up"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => moveCategory(cat, 1)}
+                          disabled={catIdx === categoryOrder.length - 1}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move category down"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {/* Proposal templates (V2 - full editor) */}
@@ -341,7 +393,7 @@ export default function ContractsPage() {
                               )}
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                 <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                                <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                                <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, contractTemplateId: tpl.contractTemplateId ?? null, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
                               </div>
                             </div>
                             <div className="p-3 flex items-start gap-2">
@@ -354,7 +406,8 @@ export default function ContractsPage() {
                           </div>
                         );
                       })}
-                      {/* Contract templates — serif preview on cream paper */}
+                      {/* Contract templates — match proposal card style: centered
+                          serif title on cream paper, no raw HTML excerpt. */}
                       {contractsForCat.map(tpl => {
                         const Icon = templateIcon(tpl.name);
                         return (
@@ -364,15 +417,14 @@ export default function ContractsPage() {
                             onClick={() => setDetailTplId(tpl.id)}
                           >
                             <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
-                              <div className="absolute inset-0 px-4 py-3 overflow-hidden pointer-events-none">
-                                <div
-                                  className="text-[7.5px] text-zinc-800 leading-[1.55] line-clamp-[14] whitespace-pre-wrap"
-                                  style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif" }}
-                                >
-                                  {templatePreviewText(tpl.content) || "Empty template"}
+                              <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                                <div>
+                                  <Icon className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                                  <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                                    {tpl.name}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#f6f2e8] to-transparent pointer-events-none" />
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                 <span className="text-white/90 text-xs font-medium">Click to preview</span>
                               </div>
@@ -449,10 +501,10 @@ export default function ContractsPage() {
               setDetailTplId(copy.id);
             };
             const delCta = async () => {
-              if (!confirm(`Delete "${detailTpl.name}"?`)) return;
+              if (!confirm(`Archive "${detailTpl.name}"? You can restore it from the Archive page.`)) return;
               await deleteContractTemplate(detailTpl.id);
               setDetailTplId(null);
-              toast.success("Template deleted");
+              toast.success("Template archived");
             };
             return (
               <>
@@ -486,7 +538,7 @@ export default function ContractsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={delCta} className="text-destructive focus:text-destructive">
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                        <Trash2 className="w-4 h-4 mr-2" /> Archive
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -517,7 +569,12 @@ export default function ContractsPage() {
                     {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
                       <div
                         className="px-6 sm:px-10 py-8 contract-html-light"
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailTpl.content) }}
+                        dangerouslySetInnerHTML={{
+                          __html: DOMPurify.sanitize(
+                            renderTemplatePreviewHtml(detailTpl.content, data.organization),
+                            { ADD_ATTR: ["class"] },
+                          ),
+                        }}
                       />
                     ) : (
                       <div

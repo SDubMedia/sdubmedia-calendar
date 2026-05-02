@@ -9,6 +9,9 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage } from "./_auth.js";
+import { generateContractContent } from "./_contractGenerator.js";
+import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
+import { nanoid } from "nanoid";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -134,6 +137,41 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (updateError) return res.status(500).json({ error: updateError.message });
   if (count === 0) return res.status(409).json({ error: "Proposal already accepted" });
 
+  // ---------- Phase A: auto-generate draft contract ----------
+  // If the proposal links to a master contract template, render a draft
+  // contract from the master + selected packages and drop it in the owner's
+  // approval queue. Deposit collection moves to contract signing time.
+  // Legacy proposals (no contract_template_id) keep the old immediate-Stripe
+  // flow below for backward compat.
+  if (proposal.contract_template_id) {
+    try {
+      const draftId = await generateDraftContractFromProposal(
+        proposal,
+        selectedPkg,
+        resolvedMilestones,
+        proposalTotal,
+      );
+      return res.status(200).json({
+        success: true,
+        paymentRequired: false,
+        contractDraftCreated: true,
+        contractDraftId: draftId,
+        message: "We'll review your selections and send your contract for signature within 24 hours.",
+      });
+    } catch (err) {
+      // If contract generation fails, surface to the client but do NOT roll
+      // back the proposal acceptance — the owner can still manually create
+      // a contract from the queue.
+      return res.status(200).json({
+        success: true,
+        paymentRequired: false,
+        contractDraftCreated: false,
+        message: `Acceptance recorded. (Draft contract generation deferred: ${errorMessage(err)})`,
+      });
+    }
+  }
+
+  // ---------- Legacy flow: immediate Stripe Checkout ----------
   // Check if payment required: first via milestones, then legacy paymentConfig
   const hasAtSigningMilestone = resolvedMilestones.some(m => m.dueType === "at_signing");
   const paymentConfig = proposal.payment_config || { option: "none" };
@@ -277,3 +315,165 @@ async function notifyOwner(orgId: string, title: string, signerName: string, eve
     html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Proposal ${event === "signed" ? "Signed" : "Viewed"}!</h2><p style="color:#1e293b;">${body}</p></div>`,
   });
 }
+
+// ============================================================
+// Phase A — auto-generate draft contract from accepted proposal.
+// ============================================================
+
+interface PartialPackage {
+  id: string;
+  name?: string;
+  description?: string;
+  totalPrice?: number;
+  defaultPrice?: number;
+  discountFromPrice?: number | null;
+  lineItems?: Array<{ description?: string; quantity?: number; unitPrice?: number }>;
+}
+
+
+async function generateDraftContractFromProposal(
+  proposal: Record<string, unknown>,
+  selectedPkg: PartialPackage | null,
+  milestones: PartialMilestone[],
+  total: number,
+): Promise<string> {
+  // 1. Load the master contract template
+  const { data: tpl, error: tplErr } = await supabase
+    .from("contract_templates")
+    .select("*")
+    .eq("id", proposal.contract_template_id)
+    .single();
+  if (tplErr || !tpl) throw new Error("Linked contract template not found");
+
+  // 2. Load org info for vendor merge fields
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, business_info")
+    .eq("id", proposal.org_id)
+    .single();
+  const businessInfo = (org?.business_info as Record<string, string> | undefined) || {};
+
+  // 3. Load client info if linked
+  let clientName = "";
+  let clientEmail = proposal.client_email || "";
+  let clientAddress = "";
+  let clientPhone = "";
+  if (proposal.client_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("company, contact_name, email, phone, address, city, state, zip")
+      .eq("id", proposal.client_id)
+      .single();
+    if (client) {
+      clientName = client.contact_name || client.company || "";
+      clientEmail = client.email || clientEmail;
+      clientPhone = client.phone || "";
+      const addressBits = [client.address, client.city, client.state, client.zip].filter(Boolean);
+      clientAddress = addressBits.join(", ");
+    }
+  }
+
+  // 4. Project info — pull project date/location if a project is linked
+  let eventDate = "";
+  let eventLocation = "";
+  if (proposal.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("date, location_id")
+      .eq("id", proposal.project_id)
+      .single();
+    if (project) {
+      eventDate = project.date || "";
+      if (project.location_id) {
+        const { data: loc } = await supabase
+          .from("locations")
+          .select("name, address, city, state, zip")
+          .eq("id", project.location_id)
+          .single();
+        if (loc) {
+          eventLocation = loc.name || `${loc.address || ""} ${loc.city || ""}`.trim();
+        }
+      }
+    }
+  }
+
+  // 5. Build the input for the renderer
+  const selectedPackages = selectedPkg ? [{
+    id: selectedPkg.id,
+    name: selectedPkg.name || "",
+    description: selectedPkg.description || "",
+    defaultPrice: Number(selectedPkg.defaultPrice ?? selectedPkg.totalPrice ?? 0),
+    totalPrice: Number(selectedPkg.totalPrice ?? selectedPkg.defaultPrice ?? 0),
+    discountFromPrice: selectedPkg.discountFromPrice ?? null,
+    quantity: 1,
+  }] : [];
+
+  // If the template defines payment_schedule blocks, those override the
+  // legacy package-based milestones. Lets the master contract own the
+  // payment terms, which is the new flow Geoff wants.
+  const blockMilestones = extractPaymentScheduleMilestones(tpl.blocks, eventDate, total);
+  const finalMilestones = blockMilestones.length > 0
+    ? blockMilestones
+    : milestones.map(m => ({
+        label: m.label || "",
+        type: m.type || "fixed",
+        percent: m.percent,
+        fixedAmount: m.fixedAmount,
+        amount: m.amount,
+        dueType: m.dueType || "at_signing",
+        dueDays: m.dueDays,
+        dueDate: m.dueDate,
+      }));
+
+  const renderedHtml = generateContractContent({
+    masterTemplateHtml: tpl.content || "",
+    proposalTitle: proposal.title || "",
+    clientName, clientEmail, clientAddress, clientPhone,
+    vendorName: org?.name || businessInfo.companyName || "",
+    vendorEmail: businessInfo.email || "",
+    vendorAddress: [businessInfo.address, businessInfo.city, businessInfo.state, businessInfo.zip].filter(Boolean).join(", "),
+    vendorPhone: businessInfo.phone || "",
+    vendorSignerName: businessInfo.ownerName || "",
+    eventDate, eventLocation,
+    selectedPackages,
+    totalPrice: total,
+    milestones: finalMilestones,
+  });
+
+  // Assign stable IDs to each milestone so the Stripe webhook + payment
+  // reminders cron can address them individually for paidAt stamping.
+  const stampedMilestones = finalMilestones.map((m, i) => ({
+    ...m,
+    id: `ms_${nanoid(6)}_${i}`,
+  }));
+
+  // 6. INSERT the draft contract row
+  const id = `ctr_${Date.now()}_${nanoid(6)}`;
+  const signToken = nanoid(32);
+  const now = new Date().toISOString();
+  const { error: insErr } = await supabase.from("contracts").insert({
+    id,
+    org_id: proposal.org_id,
+    template_id: tpl.id,
+    proposal_id: proposal.id,
+    master_template_version_id: `${tpl.id}@${tpl.updated_at || tpl.created_at}`,
+    client_id: proposal.client_id || null,
+    project_id: proposal.project_id || null,
+    title: proposal.title || tpl.name,
+    content: renderedHtml,
+    status: "draft",
+    client_email: clientEmail,
+    sign_token: signToken,
+    field_values: {},
+    additional_signers: [],
+    payment_milestones: stampedMilestones,
+    document_expires_at: null,
+    reminders_enabled: false,
+    firing_log: [],
+    send_back_reason: "",
+    updated_at: now,
+  });
+  if (insErr) throw new Error(insErr.message);
+  return id;
+}
+

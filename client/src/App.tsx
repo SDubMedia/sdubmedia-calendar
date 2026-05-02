@@ -25,6 +25,7 @@ const MySchedulePage = lazy(() => import("./pages/MySchedulePage"));
 const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const ContractorInvoicesPage = lazy(() => import("./pages/ContractorInvoicesPage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
+const OutstandingPaymentsPage = lazy(() => import("./pages/OutstandingPaymentsPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SeriesPage = lazy(() => import("./pages/SeriesPage"));
 const ClientHealthPage = lazy(() => import("./pages/ClientHealthPage"));
@@ -47,6 +48,9 @@ const DeliveriesPage = lazy(() => import("./pages/DeliveriesPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
+const PackagesPage = lazy(() => import("./pages/PackagesPage"));
+const ReviewContractPage = lazy(() => import("./pages/ReviewContractPage"));
+const EditContractTemplatePage = lazy(() => import("./pages/EditContractTemplatePage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
@@ -124,6 +128,9 @@ function Router() {
         {isOwner && <Route path="/users" component={UsersPage} />}
         {isOwner && <Route path="/trash" component={TrashPage} />}
         {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
+        {isOwner && <Route path="/packages" component={PackagesPage} />}
+        {isOwner && <Route path="/contracts/:id/review" component={ReviewContractPage} />}
+        {isOwner && <Route path="/contracts/templates/:id/edit" component={EditContractTemplatePage} />}
 
         {/* Feature-gated pages — sidebar toggles control visibility, routes always available */}
         <Route path="/calendar" component={CalendarPage} />
@@ -133,6 +140,7 @@ function Router() {
         <Route path="/clients" component={ClientsPage} />
         <Route path="/staff" component={StaffPage} />
         <Route path="/invoices" component={InvoicesPage} />
+        <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />
         <Route path="/series" component={SeriesPage} />
         <Route path="/series/:id" component={SeriesWorkspacePage} />
         <Route path="/marketing-budget" component={MarketingBudgetPage} />

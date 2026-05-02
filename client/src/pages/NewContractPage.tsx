@@ -17,6 +17,7 @@ import AddContactModal from "@/components/AddContactModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { substituteManualContractFields } from "@/lib/manualContractSubstitute";
 
 type Step = 1 | 2 | 3;
 
@@ -149,12 +150,27 @@ export default function NewContractPage() {
         ? `${template.name} — ${selectedClient.company || selectedClient.contactName}`
         : `Contract — ${selectedClient.company || selectedClient.contactName}`;
 
+      // Substitute plain merge fields client-side before persisting so the
+      // client never sees literal `{{tokens}}` on a manually-created contract.
+      // Block tokens (parties_block, packages_block, payment_schedule_block)
+      // remain visible — the manual flow has no proposal context to resolve
+      // them, and a visible token is a better warning than blank text.
+      const project = projectId ? data.projects.find(p => p.id === projectId) : null;
+      const location = project?.locationId ? data.locations.find(l => l.id === project.locationId) : null;
+      const substitutedContent = substituteManualContractFields(template?.content || "", {
+        client: selectedClient,
+        project,
+        location,
+        org: data.organization,
+        projectTitle: title,
+      });
+
       const contract = await addContract({
         templateId: template?.id || null,
         clientId: selectedClient.id,
         projectId,
         title,
-        content: template?.content || "",
+        content: substitutedContent,
         status: "draft",
         sentAt: null,
         clientSignedAt: null,
@@ -171,6 +187,11 @@ export default function NewContractPage() {
         // harmless until the user actually sends.
         remindersEnabled: true,
         lastReminderSentAt: null,
+        proposalId: null,
+        masterTemplateVersionId: "",
+        firingLog: [],
+        sendBackReason: "",
+        paymentMilestones: [],
       });
 
       toast.success("Contract draft created");

@@ -306,6 +306,82 @@
   border-bottom-color: rgb(156 163 175);
 }
 
+/* Merge-field preview chips — used by the template detail modal so the
+   master template renders the way it looks in the builder (vendor fields
+   resolved from Settings, client/event fields shown as labelled placeholders). */
+.contract-html-light .merge-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-size: 0.875em;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.contract-html-light .merge-chip-resolved {
+  background: rgb(16 185 129 / 0.10);
+  color: rgb(4 120 87);
+  border-color: rgb(16 185 129 / 0.35);
+}
+.contract-html-light .merge-chip-resolved .merge-chip-marker {
+  color: rgb(4 120 87 / 0.6);
+  margin-left: 2px;
+  font-size: 0.85em;
+}
+.contract-html-light .merge-chip-placeholder {
+  background: rgb(59 130 246 / 0.08);
+  color: rgb(29 78 216);
+  border-color: rgb(59 130 246 / 0.35);
+  border-style: dashed;
+}
+.contract-html-light .merge-chip-block {
+  background: rgb(245 158 11 / 0.10);
+  color: rgb(146 64 14);
+  border-color: rgb(245 158 11 / 0.40);
+}
+
+/* Preserve empty paragraphs so Enter-to-add-spacing in the builder
+   actually shows up at preview/render time (browsers collapse empty <p>
+   to 0 height by default). The editor injects <br> on save, but this
+   is a belt-and-suspenders fallback for older saved templates. */
+.contract-html-light p:empty::before {
+  content: "\00a0";
+}
+
+/* Merge-field chip rendering inside the prose editor + the prose block's
+   non-edit "rendered" view. Same visual language as the contract preview
+   chips so authoring and preview surfaces feel consistent. */
+.merge-chip-host .merge-chip,
+[contenteditable] .merge-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-size: 0.85em;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+  vertical-align: baseline;
+}
+.merge-chip-host .merge-chip-placeholder,
+[contenteditable] .merge-chip-placeholder {
+  background: rgb(59 130 246 / 0.10);
+  color: rgb(29 78 216);
+  border-color: rgb(59 130 246 / 0.40);
+  border-style: dashed;
+}
+.merge-chip-host .merge-chip-resolved,
+[contenteditable] .merge-chip-resolved {
+  background: rgb(16 185 129 / 0.12);
+  color: rgb(4 120 87);
+  border-color: rgb(16 185 129 / 0.40);
+}
+
 /* Rendered contract on the public sign page — Honeybook-style clean sans
    typography: big bold ALL-CAPS section headers, generous line height, lots
    of breathing room. */

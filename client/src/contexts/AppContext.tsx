@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Meeting, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -106,6 +106,14 @@ interface AppContextValue {
   addMeeting: (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">) => Promise<Meeting>;
   updateMeeting: (id: string, m: Partial<Meeting>) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
+  // Packages library
+  addPackage: (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<Package>;
+  updatePackage: (id: string, p: Partial<Package>) => Promise<void>;
+  deletePackage: (id: string) => Promise<void>;
+  // Proposal images library
+  addProposalImage: (i: Omit<ProposalImage, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<ProposalImage>;
+  updateProposalImage: (id: string, i: Partial<ProposalImage>) => Promise<void>;
+  deleteProposalImage: (id: string) => Promise<void>;
   // Deliveries (galleries)
   addDelivery: (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">) => Promise<Delivery>;
   updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
@@ -196,7 +204,11 @@ function rowToTimeEntry(r: any): TimeEntry {
 }
 
 function rowToContractTemplate(r: any): ContractTemplate {
-  return { id: r.id, name: r.name || "", content: r.content || "", createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null };
+  return {
+    id: r.id, name: r.name || "", content: r.content || "",
+    blocks: Array.isArray(r.blocks) ? r.blocks : [],
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
 }
 
 function rowToContract(r: any): Contract {
@@ -212,6 +224,11 @@ function rowToContract(r: any): Contract {
     documentExpiresAt: r.document_expires_at || null,
     remindersEnabled: !!r.reminders_enabled,
     lastReminderSentAt: r.last_reminder_sent_at || null,
+    proposalId: r.proposal_id || null,
+    masterTemplateVersionId: r.master_template_version_id || "",
+    firingLog: Array.isArray(r.firing_log) ? r.firing_log : [],
+    sendBackReason: r.send_back_reason || "",
+    paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -222,6 +239,7 @@ function rowToProposalTemplate(r: any): ProposalTemplate {
     coverImageUrl: r.cover_image_url || "",
     pages: Array.isArray(r.pages) ? r.pages : [],
     packages: Array.isArray(r.packages) ? r.packages : [],
+    contractTemplateId: r.contract_template_id || null,
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     contractContent: r.contract_content || "",
     paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
@@ -241,6 +259,7 @@ function rowToProposal(r: any): Proposal {
     pipelineStage: r.pipeline_stage || "inquiry",
     viewedAt: r.viewed_at || null,
     leadSource: r.lead_source || "",
+    contractTemplateId: r.contract_template_id || null,
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     subtotal: Number(r.subtotal ?? 0), taxRate: Number(r.tax_rate ?? 0),
     taxAmount: Number(r.tax_amount ?? 0), total: Number(r.total ?? 0),
@@ -485,6 +504,32 @@ function rowToPersonalEvent(r: any): PersonalEvent {
   };
 }
 
+function rowToPackage(r: any): Package {
+  return {
+    id: r.id, orgId: r.org_id || "",
+    name: r.name || "", icon: r.icon || "heart",
+    iconCustomDataUrl: r.icon_custom_data_url || "",
+    description: r.description || "",
+    defaultPrice: Number(r.default_price ?? 0),
+    discountFromPrice: r.discount_from_price === null || r.discount_from_price === undefined ? null : Number(r.discount_from_price),
+    photoDataUrl: r.photo_data_url || "",
+    deliverables: Array.isArray(r.deliverables) ? r.deliverables : [],
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToProposalImage(r: any): ProposalImage {
+  return {
+    id: r.id, orgId: r.org_id || "",
+    name: r.name || "",
+    imageDataUrl: r.image_data_url || "",
+    width: Number(r.width ?? 0), height: Number(r.height ?? 0),
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
 function rowToMeeting(r: any): Meeting {
   return {
     id: r.id,
@@ -599,7 +644,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], meetings: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -675,6 +720,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pipelineLeads: [],
         categoryRules: [],
         manualTrips: [],
+        // Templates & Inquiry Pipeline libraries — owner-only per PRD RBAC
+        packages: [],
+        proposalImages: [],
         // Time entries — only show entries on allowed projects
         timeEntries: rawData.timeEntries.filter(t => t.projectId && allowedProjectIds.has(t.projectId)),
       };
@@ -711,6 +759,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: seriesData, error: e8 },
         { data: personalEventsData, error: _e8b },
         { data: meetingsData, error: _e8b2 },
+        { data: packagesData, error: _e8b3 },
+        { data: proposalImagesData, error: _e8b4 },
         { data: deliveriesData, error: _e8c },
         { data: deliveryFilesData, error: _e8d },
         { data: deliverySelectionsData, error: _e8e },
@@ -739,6 +789,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         supabase.from("personal_events").select("*").order("date"),
         supabase.from("meetings").select("*").order("date"),
+        supabase.from("packages").select("*").is("deleted_at", null).order("sort_order"),
+        supabase.from("proposal_images").select("*").is("deleted_at", null).order("sort_order", { ascending: false }),
         supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
         supabase.from("delivery_files").select("*").order("position"),
         supabase.from("delivery_selections").select("*").order("created_at"),
@@ -772,6 +824,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         series: (seriesData || []).map(rowToSeries),
         personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
         meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
+        packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
+        proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
         deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
         deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
@@ -823,6 +877,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       series: { key: "series", convert: rowToSeries },
       personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
       meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      packages: { key: "packages", convert: rowToPackage, softDelete: true, sort: (a: any, b: any) => a.sortOrder - b.sortOrder },
+      proposal_images: { key: "proposalImages", convert: rowToProposalImage, softDelete: true, sort: (a: any, b: any) => b.sortOrder - a.sortOrder },
       deliveries: { key: "deliveries", convert: rowToDelivery },
       delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
       delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
@@ -1022,7 +1078,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const now = new Date().toISOString();
     const { data: row, error } = await supabase.from("contract_templates").insert({
-      id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content, updated_at: now,
+      id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content,
+      blocks: t.blocks ?? [],
+      updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
     const tpl = rowToContractTemplate(row);
@@ -1034,6 +1092,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = { updated_at: new Date().toISOString() };
     if (t.name !== undefined) patch.name = t.name;
     if (t.content !== undefined) patch.content = t.content;
+    if (t.blocks !== undefined) patch.blocks = t.blocks;
     const { error } = await supabase.from("contract_templates").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
@@ -1059,6 +1118,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       additional_signers: c.additionalSigners || [],
       document_expires_at: c.documentExpiresAt || null,
       reminders_enabled: c.remindersEnabled ?? false,
+      proposal_id: c.proposalId ?? null,
+      master_template_version_id: c.masterTemplateVersionId || "",
+      firing_log: c.firingLog || [],
+      send_back_reason: c.sendBackReason || "",
+      payment_milestones: c.paymentMilestones || [],
       updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -1085,6 +1149,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.additionalSigners !== undefined) patch.additional_signers = c.additionalSigners;
     if (c.documentExpiresAt !== undefined) patch.document_expires_at = c.documentExpiresAt;
     if (c.remindersEnabled !== undefined) patch.reminders_enabled = c.remindersEnabled;
+    if (c.proposalId !== undefined) patch.proposal_id = c.proposalId;
+    if (c.masterTemplateVersionId !== undefined) patch.master_template_version_id = c.masterTemplateVersionId;
+    if (c.firingLog !== undefined) patch.firing_log = c.firingLog;
+    if (c.sendBackReason !== undefined) patch.send_back_reason = c.sendBackReason;
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
@@ -1103,6 +1171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("proposal_templates").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: t.name,
       cover_image_url: t.coverImageUrl || "", pages: t.pages || [], packages: t.packages || [],
+      contract_template_id: t.contractTemplateId ?? null,
       line_items: t.lineItems, contract_content: t.contractContent,
       payment_config: t.paymentConfig, notes: t.notes, updated_at: now,
     }).select().single();
@@ -1120,6 +1189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.packages !== undefined) patch.packages = t.packages;
     if (t.lineItems !== undefined) patch.line_items = t.lineItems;
     if (t.contractContent !== undefined) patch.contract_content = t.contractContent;
+    if (t.contractTemplateId !== undefined) patch.contract_template_id = t.contractTemplateId;
     if (t.paymentConfig !== undefined) patch.payment_config = t.paymentConfig;
     if (t.notes !== undefined) patch.notes = t.notes;
     const { error } = await supabase.from("proposal_templates").update(patch).eq("id", id);
@@ -1143,6 +1213,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pages: p.pages || [], packages: p.packages || [],
       selected_package_id: p.selectedPackageId, payment_milestones: p.paymentMilestones || [],
       pipeline_stage: p.pipelineStage || "inquiry", lead_source: p.leadSource || "",
+      contract_template_id: p.contractTemplateId ?? null,
       line_items: p.lineItems, subtotal: p.subtotal, tax_rate: p.taxRate,
       tax_amount: p.taxAmount, total: p.total,
       contract_content: p.contractContent, payment_config: p.paymentConfig,
@@ -1167,6 +1238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.pipelineStage !== undefined) patch.pipeline_stage = p.pipelineStage;
     if (p.viewedAt !== undefined) patch.viewed_at = p.viewedAt;
     if (p.leadSource !== undefined) patch.lead_source = p.leadSource;
+    if (p.contractTemplateId !== undefined) patch.contract_template_id = p.contractTemplateId;
     if (p.lineItems !== undefined) patch.line_items = p.lineItems;
     if (p.subtotal !== undefined) patch.subtotal = p.subtotal;
     if (p.taxRate !== undefined) patch.tax_rate = p.taxRate;
@@ -1327,6 +1399,83 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("meetings").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Packages library ----
+  const addPackage = useCallback(async (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">): Promise<Package> => {
+    const id = `pkg_${Date.now()}_${nanoid(4)}`;
+    const { data: row, error } = await supabase.from("packages").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      name: p.name,
+      icon: p.icon || "heart",
+      icon_custom_data_url: p.iconCustomDataUrl || "",
+      description: p.description || "",
+      default_price: p.defaultPrice || 0,
+      discount_from_price: p.discountFromPrice ?? null,
+      photo_data_url: p.photoDataUrl || "",
+      deliverables: p.deliverables || [],
+      sort_order: p.sortOrder || 0,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const pkg = rowToPackage(row);
+    setRawData(d => ({ ...d, packages: [...d.packages, pkg].sort((a, b) => a.sortOrder - b.sortOrder) }));
+    return pkg;
+  }, [orgId]);
+
+  const updatePackage = useCallback(async (id: string, p: Partial<Package>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (p.name !== undefined) patch.name = p.name;
+    if (p.icon !== undefined) patch.icon = p.icon;
+    if (p.iconCustomDataUrl !== undefined) patch.icon_custom_data_url = p.iconCustomDataUrl;
+    if (p.description !== undefined) patch.description = p.description;
+    if (p.defaultPrice !== undefined) patch.default_price = p.defaultPrice;
+    if (p.discountFromPrice !== undefined) patch.discount_from_price = p.discountFromPrice;
+    if (p.photoDataUrl !== undefined) patch.photo_data_url = p.photoDataUrl;
+    if (p.deliverables !== undefined) patch.deliverables = p.deliverables;
+    if (p.sortOrder !== undefined) patch.sort_order = p.sortOrder;
+    const { error } = await supabase.from("packages").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, packages: d.packages.map(x => x.id === id ? { ...x, ...p } : x) }));
+  }, []);
+
+  const deletePackage = useCallback(async (id: string) => {
+    const { error } = await supabase.from("packages").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, packages: d.packages.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Proposal images library ----
+  const addProposalImage = useCallback(async (i: Omit<ProposalImage, "id" | "orgId" | "createdAt" | "updatedAt">): Promise<ProposalImage> => {
+    const id = `img_${Date.now()}_${nanoid(4)}`;
+    const { data: row, error } = await supabase.from("proposal_images").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      name: i.name,
+      image_data_url: i.imageDataUrl,
+      width: i.width || 0,
+      height: i.height || 0,
+      sort_order: i.sortOrder || Date.now(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const img = rowToProposalImage(row);
+    setRawData(d => ({ ...d, proposalImages: [img, ...d.proposalImages] }));
+    return img;
+  }, [orgId]);
+
+  const updateProposalImage = useCallback(async (id: string, i: Partial<ProposalImage>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (i.name !== undefined) patch.name = i.name;
+    if (i.sortOrder !== undefined) patch.sort_order = i.sortOrder;
+    const { error } = await supabase.from("proposal_images").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, proposalImages: d.proposalImages.map(x => x.id === id ? { ...x, ...i } : x) }));
+  }, []);
+
+  const deleteProposalImage = useCallback(async (id: string) => {
+    const { error } = await supabase.from("proposal_images").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, proposalImages: d.proposalImages.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Deliveries (galleries) ----
@@ -2062,6 +2211,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPipelineLead, updatePipelineLead, deletePipelineLead,
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       addMeeting, updateMeeting, deleteMeeting,
+      addPackage, updatePackage, deletePackage,
+      addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
       registerDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,

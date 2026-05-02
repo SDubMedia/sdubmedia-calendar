@@ -1,5 +1,7 @@
 // ============================================================
-// TrashPage — Recover deleted contracts, proposals, templates, invoices
+// TrashPage (a.k.a. "Archive") — Recover archived contracts, proposals,
+// templates, invoices. The route is /trash for backward-compat; user-facing
+// labels say "Archive".
 // ============================================================
 
 import { useState, useEffect } from "react";
@@ -116,9 +118,9 @@ export default function TrashPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             <Trash2 className="w-5 h-5 text-muted-foreground" />
-            Trash
+            Archive
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{items.length} deleted item{items.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{items.length} archived item{items.length !== 1 ? "s" : ""} · Restore or delete permanently</p>
         </div>
       </div>
 
@@ -126,12 +128,12 @@ export default function TrashPage() {
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            Loading trash...
+            Loading archive...
           </div>
         ) : items.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Trash2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Trash is empty</p>
+            <p className="text-sm">Archive is empty</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -143,7 +145,7 @@ export default function TrashPage() {
                     <Icon className="w-4 h-4 text-muted-foreground" />
                     <div>
                       <p className="text-sm font-medium text-foreground">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.type} · Deleted {formatTimeAgo(item.deletedAt)}</p>
+                      <p className="text-xs text-muted-foreground">{item.type} · Archived {formatTimeAgo(item.deletedAt)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">

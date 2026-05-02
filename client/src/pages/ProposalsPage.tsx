@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { getAuthToken } from "@/lib/supabase";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 
 const STATUS_COLORS: Record<ProposalStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -356,6 +357,7 @@ export default function ProposalsPage() {
       pipelineStage: "inquiry",
       viewedAt: null,
       leadSource: "",
+      contractTemplateId: null,
       lineItems: items,
       subtotal,
       taxRate: 0,
@@ -599,6 +601,9 @@ export default function ProposalsPage() {
           <button onClick={() => setTab("templates")} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors", tab === "templates" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             Templates
           </button>
+          <button onClick={() => setLocation("/trash")} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary" title="View archived items">
+            Archive
+          </button>
         </div>
       </div>
 
@@ -656,7 +661,7 @@ export default function ProposalsPage() {
                             <button onClick={async () => { await updateProposal(p.id, { status: "void" }); toast.success("Proposal voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>
                           )}
                           {(p.status === "draft" || p.status === "void") && (
-                            <button onClick={async () => { await deleteProposal(p.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={async () => { await deleteProposal(p.id); toast.success("Archived — restore from Archive"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Archive"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
                       </div>
@@ -694,9 +699,9 @@ export default function ProposalsPage() {
                       {/* Hover overlay with actions */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, contractTemplateId: tpl.contractTemplateId ?? null, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: tpl.name, content: tpl.contractContent || tpl.pages?.find((p: any) => p.type === "agreement")?.content || "" }); await deleteProposalTemplate(tpl.id); toast.success("Moved to Contracts"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Move to Contracts"><ExternalLink className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Archived — restore from Archive"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Archive"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                     {/* Info */}
@@ -841,9 +846,35 @@ export default function ProposalsPage() {
                 )}
               </div>
 
-              {/* Contract preview */}
-              <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto">
-                {viewProposal.contractContent || <span className="text-gray-400 italic">No contract content</span>}
+              {/* Contract preview — renders block-based pages when present,
+                  falls back to legacy contractContent otherwise. */}
+              <div className="max-h-[40vh] overflow-y-auto space-y-3">
+                {viewProposal.pages && viewProposal.pages.length > 0 ? (
+                  viewProposal.pages
+                    .filter(p => p.type === "agreement" || p.type === "custom")
+                    .map(page => (
+                      <ProposalBlockRenderer
+                        key={page.id}
+                        page={page}
+                        libraryPackages={data.packages}
+                      />
+                    ))
+                ) : viewProposal.contractContent ? (
+                  <ProposalBlockRenderer
+                    page={{
+                      id: "legacy",
+                      type: "agreement",
+                      label: "Agreement",
+                      content: viewProposal.contractContent,
+                      sortOrder: 0,
+                    }}
+                    libraryPackages={data.packages}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg p-6 text-sm">
+                    <span className="text-gray-400 italic">No contract content</span>
+                  </div>
+                )}
               </div>
 
               {/* Signatures */}

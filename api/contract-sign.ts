@@ -4,10 +4,12 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { escapeHtml, errorMessage } from "./_auth.js";
+import { escapeHtml, errorMessage, isAllowedUrl } from "./_auth.js";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
@@ -174,7 +176,7 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
   }
 
   // Notify owner.
-  const { data: fullContract } = await supabase.from("contracts").select("org_id, title").eq("id", contract.id as string).single();
+  const { data: fullContract } = await supabase.from("contracts").select("org_id, title, proposal_id").eq("id", contract.id as string).single();
   if (fullContract?.org_id) {
     const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", fullContract.org_id).eq("role", "owner");
     const ownerEmail = profiles?.[0]?.email;
@@ -188,5 +190,123 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ---------- Phase A: deposit at signing ----------
+  // If this contract was auto-generated from a proposal AND the client just
+  // signed (not an additional signer), kick off Stripe Checkout for the
+  // at-signing milestone. Failure here doesn't block the signature — the
+  // owner can re-issue a payment link from the contract record later.
+  if (signer.type === "client" && fullContract?.proposal_id) {
+    try {
+      const checkoutUrl = await createDepositCheckoutForContract(
+        contract.id as string,
+        fullContract.proposal_id as string,
+        fullContract.org_id as string,
+        req,
+      );
+      if (checkoutUrl) {
+        return res.status(200).json({ success: true, paymentRequired: true, checkoutUrl });
+      }
+    } catch (err) {
+      // Sign succeeded; surface payment-failure as a soft warning.
+      return res.status(200).json({ success: true, paymentRequired: true, paymentError: errorMessage(err) });
+    }
+  }
+
   return res.status(200).json({ success: true });
+}
+
+// ---- Deposit-at-signing helper ----
+
+async function createDepositCheckoutForContract(
+  contractId: string,
+  proposalId: string,
+  orgId: string,
+  req: VercelRequest,
+): Promise<string | null> {
+  // Pull proposal data — milestones + total.
+  const { data: proposal } = await supabase
+    .from("proposals")
+    .select("title, payment_milestones, total, payment_config, client_email")
+    .eq("id", proposalId)
+    .single();
+  if (!proposal) return null;
+
+  type Milestone = {
+    label?: string;
+    type?: "percent" | "fixed";
+    percent?: number;
+    fixedAmount?: number;
+    amount?: number;
+    dueType?: "at_signing" | "relative_days" | "absolute_date";
+  };
+  const milestones: Milestone[] = (proposal.payment_milestones as Milestone[]) || [];
+  const atSigning = milestones.find(m => m.dueType === "at_signing");
+  const total = Number(proposal.total ?? 0);
+
+  let amount = 0;
+  let label = "Deposit";
+  if (atSigning) {
+    amount = atSigning.type === "percent"
+      ? Math.round(total * (atSigning.percent || 0) / 100 * 100) / 100
+      : Number(atSigning.fixedAmount ?? atSigning.amount ?? 0);
+    label = atSigning.label || (atSigning.type === "percent" ? `${atSigning.percent}% deposit` : "Deposit");
+  } else {
+    // Legacy fallback: payment_config.option = "deposit" or "full".
+    const pc = (proposal.payment_config as { option?: string; depositPercent?: number }) || {};
+    if (pc.option === "deposit") {
+      amount = Math.round(total * ((pc.depositPercent || 0) / 100) * 100) / 100;
+      label = `${pc.depositPercent}% Deposit`;
+    } else if (pc.option === "full") {
+      amount = total;
+      label = "Full Payment";
+    }
+  }
+  if (amount <= 0) return null; // Nothing to charge
+
+  // Org's connected Stripe account.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("stripe_account_id, name")
+    .eq("id", orgId)
+    .single();
+  if (!org?.stripe_account_id) {
+    throw new Error("Payment processing not set up. Contact the sender.");
+  }
+
+  // Validate origin to prevent open redirect.
+  const allowedHost = process.env.VERCEL_URL || process.env.VITE_APP_URL || "";
+  const rawOrigin = (req.headers.origin as string) || (req.headers.referer as string)?.replace(/\/[^/]*$/, "") || "";
+  const origin = (rawOrigin && (rawOrigin.includes("sdubmedia") || rawOrigin.includes("localhost") || rawOrigin.includes("vercel.app")))
+    ? rawOrigin
+    : `https://${allowedHost}`;
+
+  const successUrl = `${origin}/sign/${contractId}?paid=true&session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = `${origin}/sign/${contractId}?paid=false`;
+  if (!isAllowedUrl(successUrl) || !isAllowedUrl(cancelUrl)) {
+    throw new Error("Invalid redirect URL");
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: proposal.title || "Contract Deposit",
+          description: `${label} — ${org.name || ""}`,
+        },
+        unit_amount: Math.round(amount * 100),
+      },
+      quantity: 1,
+    }],
+    metadata: {
+      contractId,
+      proposalId,
+      orgId,
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  }, { stripeAccount: org.stripe_account_id });
+
+  return session.url ?? null;
 }

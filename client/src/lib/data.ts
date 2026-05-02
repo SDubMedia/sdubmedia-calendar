@@ -172,6 +172,8 @@ export const seedData: AppData = {
   series: [],
   personalEvents: [],
   meetings: [],
+  packages: [],
+  proposalImages: [],
   deliveries: [],
   deliveryFiles: [],
   deliverySelections: [],
@@ -253,17 +255,23 @@ export function getProjectBillableHours(project: Project, client: Client): {
   if (project.status === "cancelled") {
     return { crewBillable: 0, postBillable: 0, totalBillable: 0 };
   }
-  const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  // Travel role is internal-only — it's tracked as a separate cost via
+  // getProjectTravelCost and is never billed to the client. Mirrors the same
+  // exclusion in getProjectCrewCost above so client invoices and internal
+  // billing stay consistent.
+  const crewBillable = (project.crew || []).filter(e => e.role !== "Travel")
+    .reduce((s, e) => s + getBillableHours(e, client), 0);
 
   if (project.editorBilling?.finalHours != null) {
     // Photo editor hours come from the calculator; exclude photo editor entries from normal calculation
-    const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor");
+    const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor" && e.role !== "Travel");
     const postBillable = nonPhotoEditorPost.reduce((s, e) => s + getBillableHours(e, client), 0);
     const editorBillable = project.editorBilling.finalHours;
     return { crewBillable, postBillable: postBillable + editorBillable, totalBillable: crewBillable + postBillable + editorBillable };
   }
 
-  const postBillable = (project.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  const postBillable = (project.postProduction || []).filter(e => e.role !== "Travel")
+    .reduce((s, e) => s + getBillableHours(e, client), 0);
   return { crewBillable, postBillable, totalBillable: crewBillable + postBillable };
 }
 
