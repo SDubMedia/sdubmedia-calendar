@@ -63,9 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subject: subject || `Contract: ${esc(contractTitle)}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-          <div style="text-align: center; margin-bottom: 32px;">
-            <h1 style="color: #0088ff; font-size: 24px; margin: 0;">SLATE</h1>
-            <p style="color: #64748b; font-size: 12px; margin-top: 4px;">${esc(orgName)}</p>
+          <div style="text-align: center; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
+            <h1 style="color: #1e293b; font-family: 'Georgia', serif; font-size: 22px; font-weight: 600; margin: 0; letter-spacing: 0.02em;">${esc(orgName)}</h1>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; text-align: center;">
