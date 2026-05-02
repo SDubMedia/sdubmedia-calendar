@@ -91,7 +91,14 @@ async function getContract(token: string, res: VercelResponse) {
   const { contract, signer } = found;
 
   if (contract.status === "void") return res.status(400).json({ error: "This contract has been voided" });
-  if (signer.signedAt) return res.status(200).json({ ...contract, alreadySigned: true, signer });
+  if (signer.signedAt) {
+    // Already-signed → return portal-style data: org branding, payment
+    // milestones with paidAt status, linked project date + location.
+    // Lets the client treat the same /sign/<token> URL as their bookmarkable
+    // dashboard for this engagement.
+    const portalData = await loadPortalData(contract);
+    return res.status(200).json({ ...contract, alreadySigned: true, signer, ...portalData });
+  }
 
   // Get org branding + owner identity for the letterhead. Look up by
   // contract id (token may belong to an additional signer, not the primary).
@@ -121,6 +128,65 @@ async function getContract(token: string, res: VercelResponse) {
   }
 
   return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, ownerName, signer, alreadySigned: false });
+}
+
+/**
+ * Build the payload for the post-signing portal view: org branding, project
+ * info, payment milestones. Same /sign/<token> URL becomes bookmarkable.
+ */
+async function loadPortalData(contract: Record<string, unknown>): Promise<{
+  orgName: string;
+  orgLogo: string;
+  projectDate: string | null;
+  projectLocation: string | null;
+}> {
+  let orgName = "";
+  let orgLogo = "";
+  let projectDate: string | null = null;
+  let projectLocation: string | null = null;
+
+  if (contract.org_id) {
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("name, logo_url")
+      .eq("id", contract.org_id as string)
+      .single();
+    orgName = orgData?.name || "";
+    orgLogo = orgData?.logo_url || "";
+  }
+
+  // Resolve project info via the linked proposal (preferred) or directly.
+  let projectId: string | null = null;
+  if (contract.proposal_id) {
+    const { data: prop } = await supabase
+      .from("proposals")
+      .select("project_id")
+      .eq("id", contract.proposal_id as string)
+      .single();
+    projectId = prop?.project_id || null;
+  }
+  if (!projectId && contract.project_id) projectId = contract.project_id as string;
+
+  if (projectId) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("date, location_id")
+      .eq("id", projectId)
+      .single();
+    if (project) {
+      projectDate = project.date || null;
+      if (project.location_id) {
+        const { data: loc } = await supabase
+          .from("locations")
+          .select("name")
+          .eq("id", project.location_id)
+          .single();
+        projectLocation = loc?.name || null;
+      }
+    }
+  }
+
+  return { orgName, orgLogo, projectDate, projectLocation };
 }
 
 async function signContract(req: VercelRequest, res: VercelResponse) {

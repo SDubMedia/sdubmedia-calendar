@@ -135,23 +135,7 @@ export default function SignContractPage() {
   }
 
   if (signed) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Contract Signed!</h1>
-          <p className="text-gray-500">Thank you for signing. The contract owner will be notified and will countersign shortly.</p>
-          {paymentSoftError && (
-            <div className="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
-              <p className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">Payment link pending</p>
-              <p className="text-sm text-amber-800">
-                We couldn't load the payment page just now. Your signature is saved — we'll email you a payment link shortly. No action needed on your part.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <PortalView contract={contract} paymentSoftError={paymentSoftError} />;
   }
 
   return (
@@ -265,6 +249,129 @@ export default function SignContractPage() {
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Portal view ----
+// Renders for already-signed contracts. The same /sign/<token> URL becomes
+// the client's bookmarkable dashboard for this engagement: contract status,
+// project date / location, payment milestones with paid / due / overdue
+// indicators. No login required — the URL token is the auth.
+
+interface PortalMilestone {
+  id?: string;
+  label?: string;
+  type?: "percent" | "fixed";
+  percent?: number;
+  fixedAmount?: number;
+  dueType?: string;
+  dueDate?: string;
+  paidAt?: string;
+}
+
+function PortalView({ contract, paymentSoftError }: { contract: any; paymentSoftError: string | null }) {
+  if (!contract) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Contract Signed!</h1>
+          <p className="text-gray-500">Thank you for signing.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const milestones: PortalMilestone[] = Array.isArray(contract.payment_milestones)
+    ? contract.payment_milestones
+    : Array.isArray(contract.paymentMilestones)
+      ? contract.paymentMilestones
+      : [];
+  const total = milestones.reduce((s, m) => s + (m.type === "fixed" ? Number(m.fixedAmount ?? 0) : 0), 0);
+  const paidTotal = milestones
+    .filter(m => m.paidAt)
+    .reduce((s, m) => s + (m.type === "percent"
+      ? Math.round(total * (m.percent ?? 0) / 100 * 100) / 100
+      : Number(m.fixedAmount ?? 0)), 0);
+  const status = contract.status;
+  const statusLabel = status === "completed"
+    ? "Fully executed"
+    : status === "client_signed"
+      ? "Awaiting countersignature"
+      : "Signed";
+  const projectDateLabel = contract.projectDate
+    ? new Date(contract.projectDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+    : null;
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center gap-3 mb-1">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <p className="text-xs uppercase tracking-wider font-semibold text-green-700">{statusLabel}</p>
+          </div>
+          <h1 className="text-xl font-bold text-gray-900 mb-1">{contract.title}</h1>
+          {contract.orgName && <p className="text-sm text-gray-500">{contract.orgName}</p>}
+          {paymentSoftError && (
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs font-semibold text-amber-900 uppercase tracking-wider mb-1">Payment link pending</p>
+              <p className="text-sm text-amber-800">We'll email you a payment link shortly.</p>
+            </div>
+          )}
+        </div>
+
+        {projectDateLabel && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-3">Your project</h2>
+            <p className="text-base font-semibold text-gray-900">{projectDateLabel}</p>
+            {contract.projectLocation && <p className="text-sm text-gray-500 mt-1">{contract.projectLocation}</p>}
+          </div>
+        )}
+
+        {milestones.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs uppercase tracking-wider font-semibold text-gray-500">Payment schedule</h2>
+              {total > 0 && (
+                <p className="text-xs text-gray-500 tabular-nums">
+                  ${paidTotal.toFixed(2)} of ${total.toFixed(2)} paid
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              {milestones.map((m, i) => {
+                const amount = m.type === "percent"
+                  ? Math.round(total * (m.percent ?? 0) / 100 * 100) / 100
+                  : Number(m.fixedAmount ?? 0);
+                const due = m.dueDate
+                  ? new Date(m.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  : m.dueType === "at_signing" ? "At signing" : "—";
+                const isPaid = !!m.paidAt;
+                return (
+                  <div key={m.id || i} className="flex items-center justify-between py-2 border-b last:border-b-0 border-gray-100">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{m.label || `Payment ${i + 1}`}</p>
+                      <p className="text-xs text-gray-500">{due}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-900 tabular-nums">${amount.toFixed(2)}</p>
+                      {isPaid
+                        ? <p className="text-[10px] uppercase tracking-wider text-green-600 font-semibold">Paid</p>
+                        : <p className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold">Due</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <p className="text-center text-xs text-gray-400 pt-4">
+          Bookmark this page to come back anytime.
+        </p>
       </div>
     </div>
   );
