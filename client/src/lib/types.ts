@@ -657,6 +657,9 @@ export interface Contract {
   // accept handler and the Stripe webhook respectively. Drives the payment-
   // reminders cron + Outstanding Payments page + pipeline lateness badge.
   paymentMilestones: PaymentMilestone[];
+  // Inbound email replies captured by /api/inbound-email and threaded onto
+  // this contract. Each entry: { receivedAt, from, subject, body }.
+  inboundReplies: Array<{ receivedAt: string; from: string; subject: string; body: string }>;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -913,6 +916,15 @@ export interface Proposal {
   clientEmail: string;
   viewToken: string;
   notes: string;
+  // Per-send snapshot history. Appended each time the proposal moves to
+  // "sent" status. Each entry: { sentAt, total, packageIds, milestoneCount }.
+  sendHistory: Array<{ sentAt: string; total?: number; packageIds?: string[]; milestoneCount?: number }>;
+  // Inbound email replies captured by /api/inbound-email and threaded onto
+  // this proposal. Each entry: { receivedAt, from, subject, body }.
+  inboundReplies: Array<{ receivedAt: string; from: string; subject: string; body: string }>;
+  // Optional expiration. When set and elapsed, the public proposal page
+  // shows an "expired" state instead of the live form.
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

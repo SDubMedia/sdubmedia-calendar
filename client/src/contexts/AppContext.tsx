@@ -229,6 +229,7 @@ function rowToContract(r: any): Contract {
     firingLog: Array.isArray(r.firing_log) ? r.firing_log : [],
     sendBackReason: r.send_back_reason || "",
     paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
+    inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -272,6 +273,9 @@ function rowToProposal(r: any): Proposal {
     paidAt: r.paid_at || null,
     clientEmail: r.client_email || "", viewToken: r.view_token || "",
     notes: r.notes || "",
+    sendHistory: Array.isArray(r.send_history) ? r.send_history : [],
+    inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
+    expiresAt: r.expires_at || null,
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }

@@ -192,6 +192,7 @@ export default function NewContractPage() {
         firingLog: [],
         sendBackReason: "",
         paymentMilestones: [],
+        inboundReplies: [],
       });
 
       toast.success("Contract draft created");

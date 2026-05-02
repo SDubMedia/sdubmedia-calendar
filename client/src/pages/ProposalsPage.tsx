@@ -354,6 +354,9 @@ export default function ProposalsPage() {
       packages: [],
       selectedPackageId: null,
       paymentMilestones: [],
+      sendHistory: [],
+      inboundReplies: [],
+      expiresAt: null,
       pipelineStage: "inquiry",
       viewedAt: null,
       leadSource: "",
@@ -916,6 +919,51 @@ export default function ProposalsPage() {
                     <p className="text-lg italic text-foreground" style={{ fontFamily: "cursive" }}>{viewProposal.ownerSignature.signatureData}</p>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{viewProposal.ownerSignature.name} · {new Date(viewProposal.ownerSignature.timestamp).toLocaleString()}</p>
+                </div>
+              )}
+
+              {/* Send history — when this proposal has been sent more than once,
+                  surface the timeline so the owner can see what changed between sends. */}
+              {viewProposal.sendHistory && viewProposal.sendHistory.length > 0 && (
+                <div className="bg-secondary/50 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Sent {viewProposal.sendHistory.length} time{viewProposal.sendHistory.length === 1 ? "" : "s"}
+                  </p>
+                  <div className="space-y-1.5">
+                    {viewProposal.sendHistory.map((entry, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{new Date(entry.sentAt).toLocaleString()}</span>
+                        {typeof entry.total === "number" && (
+                          <span className="tabular-nums">${entry.total.toFixed(2)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Inbound replies — client emails captured by /api/inbound-email
+                  and threaded onto this proposal. Surfaces what would otherwise
+                  be lost in the owner's personal inbox. */}
+              {viewProposal.inboundReplies && viewProposal.inboundReplies.length > 0 && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">
+                    Replies from client ({viewProposal.inboundReplies.length})
+                  </p>
+                  <div className="space-y-3">
+                    {viewProposal.inboundReplies.map((reply, i) => (
+                      <div key={i} className="bg-card rounded p-3 border border-border">
+                        <div className="flex items-baseline justify-between gap-2 mb-1">
+                          <p className="text-xs font-medium text-foreground truncate">{reply.from}</p>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {new Date(reply.receivedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {reply.subject && <p className="text-[11px] text-muted-foreground italic mb-1.5">Re: {reply.subject}</p>}
+                        <p className="text-xs text-foreground whitespace-pre-wrap">{reply.body}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
