@@ -195,12 +195,21 @@ export default function EditContractTemplatePage() {
     setSaving(true);
     if (silent) setAutosaveStatus("saving");
     try {
-      // Backward-compat artifacts: render the FIRST agreement page's blocks
-      // to flat HTML and store as `content`. The contract generator reads
-      // `template.content` for merge-field substitution. Multi-page rendering
-      // happens at view time on /sign/<token>.
-      const agreementPage = currentPages.find(p => p.type === "agreement") || currentPages[0];
-      const renderedHtml = agreementPage ? renderBlocksToHtml(agreementPage.blocks || []) : "";
+      // Render each page's blocks to flat HTML and stash on page.content.
+      // Server-side substitution at proposal-accept time works on HTML
+      // strings, so pre-rendering here lets the multi-page generator
+      // operate per-page without needing React on the server. Invoice
+      // pages skip rendering — they auto-render from milestones at view
+      // time and don't need a flattened HTML version.
+      const pagesWithRenderedContent: ProposalPage[] = currentPages.map(p => {
+        if (p.type === "invoice") return { ...p, content: "" };
+        return { ...p, content: renderBlocksToHtml(p.blocks || []) };
+      });
+
+      // Backward-compat: also render the FIRST agreement page to the legacy
+      // single-blob `content` field so older surfaces still see the document.
+      const agreementPage = pagesWithRenderedContent.find(p => p.type === "agreement") || pagesWithRenderedContent[0];
+      const renderedHtml = agreementPage?.content || "";
       const firstBlocks = agreementPage?.blocks || [];
 
       if (isNew) {
@@ -208,7 +217,7 @@ export default function EditContractTemplatePage() {
           name: currentName.trim(),
           content: renderedHtml,
           blocks: firstBlocks,
-          pages: currentPages,
+          pages: pagesWithRenderedContent,
         } as Omit<ContractTemplate, "id" | "createdAt" | "updatedAt">);
         if (!silent) toast.success("Template created");
         setLocation(`/contracts/templates/${tpl.id}/edit`);
@@ -217,7 +226,7 @@ export default function EditContractTemplatePage() {
           name: currentName.trim(),
           content: renderedHtml,
           blocks: firstBlocks,
-          pages: currentPages,
+          pages: pagesWithRenderedContent,
         });
         if (!silent) toast.success("Template saved");
       }

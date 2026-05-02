@@ -106,13 +106,20 @@ export default function EditContractPage() {
   // Debounced autosave for draft contracts. Pushes title/content/email/
   // field values/signers/settings on any change. Skipped until the local
   // state has been hydrated from the contract row.
+  //
+  // Multi-page contracts: this editor still operates on the flat `content`
+  // HTML for backward compat — the user is editing the agreement page text
+  // here. We mirror the edited content into the contract's first agreement
+  // page so multi-page rendering at /sign/<token> picks up the edit instead
+  // of showing the stale pre-edit version. Other pages (invoice, payment,
+  // custom) are preserved untouched.
   useEffect(() => {
     if (!contract || !isDraft || !hydrated) return;
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
     saveTimerRef.current = window.setTimeout(async () => {
       try {
-        await updateContract(contract.id, {
+        const patch: Record<string, unknown> = {
           title,
           content,
           clientEmail,
@@ -120,7 +127,16 @@ export default function EditContractPage() {
           additionalSigners,
           documentExpiresAt,
           remindersEnabled,
-        });
+        };
+        // Mirror the edit into pages[firstAgreement].content if multi-page.
+        if (Array.isArray(contract.pages) && contract.pages.length > 0) {
+          const nextPages = contract.pages.map(p => p);
+          const agreementIdx = nextPages.findIndex(p => p.type === "agreement");
+          const targetIdx = agreementIdx >= 0 ? agreementIdx : 0;
+          nextPages[targetIdx] = { ...nextPages[targetIdx], content, blocks: [] };
+          patch.pages = nextPages;
+        }
+        await updateContract(contract.id, patch);
         setSaveStatus("saved");
       } catch {
         setSaveStatus("error");
@@ -532,6 +548,12 @@ export default function EditContractPage() {
                 </div>
               );
             })()}
+
+            {Array.isArray(contract?.pages) && contract.pages.length > 1 && (
+              <div className="mb-3 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded text-xs text-blue-300">
+                <strong>Multi-page contract.</strong> You're editing the agreement page here. Invoice and other pages are preserved and will appear in the contract sent to the client. To preview all pages, use the contract review page.
+              </div>
+            )}
 
             {isDraft ? (
               hydrated ? (

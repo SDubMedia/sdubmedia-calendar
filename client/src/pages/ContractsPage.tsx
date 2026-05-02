@@ -20,6 +20,7 @@ import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
+import InvoicePageRenderer from "@/components/proposal/InvoicePageRenderer";
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -558,33 +559,76 @@ export default function ContractsPage() {
                     <span className="mx-1.5">·</span>
                     <span className="text-foreground font-medium tabular-nums">{detailTpl.content.length.toLocaleString()}</span> chars
                   </p>
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                    <ContractLetterhead
-                      orgName={data.organization?.name}
-                      ownerName={profile?.name}
-                      orgLogo={data.organization?.logoUrl}
-                      businessInfo={data.organization?.businessInfo}
-                      intro="The contract is ready for review and signature. If you have any questions, just ask."
-                    />
-                    {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
-                      <div
-                        className="px-6 sm:px-10 py-8 contract-html-light"
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(
-                            renderTemplatePreviewHtml(detailTpl.content, data.organization),
-                            { ADD_ATTR: ["class"] },
-                          ),
-                        }}
+                  {Array.isArray(detailTpl.pages) && detailTpl.pages.length > 0 ? (
+                    // Multi-page template — render each page as its own card.
+                    // Invoice pages auto-render via InvoicePageRenderer with
+                    // sample milestone data so the owner can see what the
+                    // client will see at signing time.
+                    <div className="space-y-3">
+                      {[...detailTpl.pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page, idx) => (
+                        <div key={page.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                          {idx === 0 && (
+                            <ContractLetterhead
+                              orgName={data.organization?.name}
+                              ownerName={profile?.name}
+                              orgLogo={data.organization?.logoUrl}
+                              businessInfo={data.organization?.businessInfo}
+                              intro="Preview — this is what your client will see when you send it."
+                            />
+                          )}
+                          {page.type === "invoice" ? (
+                            <InvoicePageRenderer
+                              contractTitle={detailTpl.name}
+                              org={data.organization}
+                              client={null}
+                              milestones={[
+                                { id: "p1", label: "Deposit (50%)", type: "percent", percent: 50, dueType: "at_signing", status: "due" },
+                                { id: "p2", label: "Balance (50%)", type: "percent", percent: 50, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
+                              ]}
+                            />
+                          ) : (
+                            <div
+                              className="px-6 sm:px-10 py-8 contract-html-light"
+                              dangerouslySetInnerHTML={{
+                                __html: DOMPurify.sanitize(
+                                  renderTemplatePreviewHtml(page.content || "", data.organization),
+                                  { ADD_ATTR: ["class"] },
+                                ),
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                      <ContractLetterhead
+                        orgName={data.organization?.name}
+                        ownerName={profile?.name}
+                        orgLogo={data.organization?.logoUrl}
+                        businessInfo={data.organization?.businessInfo}
+                        intro="The contract is ready for review and signature. If you have any questions, just ask."
                       />
-                    ) : (
-                      <div
-                        className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap"
-                        style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}
-                      >
-                        {detailTpl.content || "Empty template"}
-                      </div>
-                    )}
-                  </div>
+                      {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
+                        <div
+                          className="px-6 sm:px-10 py-8 contract-html-light"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(
+                              renderTemplatePreviewHtml(detailTpl.content, data.organization),
+                              { ADD_ATTR: ["class"] },
+                            ),
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap"
+                          style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}
+                        >
+                          {detailTpl.content || "Empty template"}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <p className="text-[10px] text-muted-foreground/60 text-center pb-1">This is what your client sees when you send it</p>
                 </div>
 

@@ -496,8 +496,8 @@ async function generateDraftContractFromProposal(
         dueDate: m.dueDate,
       }));
 
-  const renderedHtml = generateContractContent({
-    masterTemplateHtml: tpl.content || "",
+  // Shared input for the merge-field generator.
+  const generatorInput = {
     proposalTitle: proposal.title || "",
     clientName, clientEmail, clientAddress, clientPhone,
     vendorName: org?.name || businessInfo.companyName || "",
@@ -509,6 +509,32 @@ async function generateDraftContractFromProposal(
     selectedPackages,
     totalPrice: total,
     milestones: finalMilestones,
+  };
+
+  // Single-page legacy: substitute the flat `content` HTML.
+  const renderedHtml = generateContractContent({
+    ...generatorInput,
+    masterTemplateHtml: tpl.content || "",
+  });
+
+  // Multi-page: if the template has pages, walk each one and substitute
+  // tokens against its pre-rendered content. Invoice pages copy as-is —
+  // they auto-render from contract.payment_milestones at view time, no
+  // text content to substitute. Each substituted page goes onto the
+  // contract row so the client sees the full document with real values.
+  const tplPages: Array<{ id: string; type: string; label: string; content?: string; blocks?: unknown[]; sortOrder: number }> = Array.isArray(tpl.pages) ? tpl.pages : [];
+  const contractPages = tplPages.map(p => {
+    if (p.type === "invoice") {
+      // Drop blocks too — the invoice page renders without them.
+      return { ...p, blocks: [], content: "" };
+    }
+    const substituted = generateContractContent({
+      ...generatorInput,
+      masterTemplateHtml: p.content || "",
+    });
+    // Empty `blocks` so the renderer falls through to the substituted
+    // HTML branch and clients see real values, not literal {{tokens}}.
+    return { ...p, blocks: [], content: substituted };
   });
 
   // Assign stable IDs to each milestone so the Stripe webhook + payment
@@ -538,6 +564,7 @@ async function generateDraftContractFromProposal(
     field_values: {},
     additional_signers: [],
     payment_milestones: stampedMilestones,
+    pages: contractPages,
     document_expires_at: null,
     reminders_enabled: false,
     firing_log: [],
