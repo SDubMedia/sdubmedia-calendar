@@ -27,11 +27,14 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 const resend = new Resend(process.env.RESEND_API_KEY);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-11-20.acacia" });
 
-// Sender — defaults to the org's business email from Settings, so each
-// SaaS customer's reminders look like they come from their own address
-// (requires their domain to be verified in Resend). Falls back to the
-// platform default if the org hasn't configured an email yet.
-const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Geoff@SdubMedia.com";
+// Verified-domain sender. Always send through `slate.sdubmedia.com`
+// (the only domain Resend has DKIM/SPF for) and brand via the From
+// display name + Reply-To. Sending directly from a customer's
+// unverified domain (e.g., `melissa@melissamannrestorations.com`)
+// causes Resend to reject the request — silently breaking the cron
+// for that customer. Display name = org.name, Reply-To = their
+// business email so client replies route to the contractor anyway.
+const VERIFIED_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
 const APP_BASE = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
 const CRONITOR_TELEMETRY_KEY = process.env.CRONITOR_TELEMETRY_KEY || "";
 const CRONITOR_MONITOR = "slate-payment-reminders";
@@ -168,8 +171,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // reminders come from their own address, not a platform default.
         // Display name = org name so the client sees "S-Dub Media" not
         // a raw email handle in their inbox.
-        const orgEmail = org.business_info?.email?.trim() || FALLBACK_FROM_EMAIL;
-        const fromHeader = `${org.name || "Your contractor"} <${orgEmail}>`;
+        const orgEmail = org.business_info?.email?.trim() || VERIFIED_FROM_EMAIL;
+        const fromHeader = `${org.name || "Your contractor"} <${VERIFIED_FROM_EMAIL}>`;
         await resend.emails.send({
           from: fromHeader,
           to: c.client_email,

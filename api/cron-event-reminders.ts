@@ -20,7 +20,10 @@ import { brandedEmailWrapper } from "./_emailBranding.js";
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Geoff@SdubMedia.com";
+// Verified-domain sender — see cron-payment-reminders for context. We
+// must NOT put a customer's unverified email in the `from:` field or
+// Resend rejects the send. Display name + Reply-To carry the brand.
+const VERIFIED_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
 const CRONITOR_TELEMETRY_KEY = process.env.CRONITOR_TELEMETRY_KEY || "";
 const CRONITOR_MONITOR = "slate-event-reminders";
 
@@ -104,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
     if (!org) { skipped++; continue; }
     const businessInfo = (org.business_info as { email?: string } | null) || {};
-    const orgEmail = businessInfo.email?.trim() || FALLBACK_FROM_EMAIL;
+    const orgEmail = businessInfo.email?.trim() || VERIFIED_FROM_EMAIL;
 
     // Resolve location + project type.
     let locationName = "";
@@ -136,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `Reminder: Your ${projectTypeName.toLowerCase()} is tomorrow`
           : `Today's the day! Your ${projectTypeName.toLowerCase()}`;
       await resend.emails.send({
-        from: `${org.name || "Your contractor"} <${orgEmail}>`,
+        from: `${org.name || "Your contractor"} <${VERIFIED_FROM_EMAIL}>`,
         to: client.email,
         subject,
         html,

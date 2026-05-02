@@ -264,7 +264,9 @@ async function sendInboundAck(
   if (!org) return;
 
   const businessInfo = (org.business_info as { email?: string } | null) || {};
-  const orgEmail = businessInfo.email?.trim() || process.env.RESEND_FROM_EMAIL || "noreply@sdubmedia.com";
+  // Verified-domain sender — see cron-payment-reminders for context.
+  const verifiedFrom = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
+  const orgEmail = businessInfo.email?.trim() || verifiedFrom;
   const orgName = (org.name as string) || "Your contractor";
 
   const recipientEmail = extractEmail(payload.from);
@@ -277,7 +279,7 @@ async function sendInboundAck(
   </body></html>`;
 
   await getResend().emails.send({
-    from: `${orgName} <${orgEmail}>`,
+    from: `${orgName} <${verifiedFrom}>`,
     to: recipientEmail,
     subject: `Re: ${payload.subject || "your message"}`,
     html,

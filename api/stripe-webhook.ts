@@ -267,10 +267,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               .maybeSingle();
             const ms = (contract?.payment_milestones as Array<Record<string, unknown>> | null) || null;
             if (Array.isArray(ms)) {
+              // Idempotency: Stripe retries webhooks aggressively on 5xx
+              // errors (and sometimes spuriously even on 200s). If the
+              // milestone was already marked paid, skip the receipt email
+              // entirely — otherwise the client gets 2-3 "Payment received"
+              // emails for one payment. The paidAt update is itself
+              // idempotent (same value re-applied) so re-running is safe.
+              const targetIdx = ms.findIndex((m, i) => (m.id ? m.id === milestoneId : `ms_${i}` === milestoneId));
+              const wasAlreadyPaid = targetIdx >= 0 && !!ms[targetIdx].paidAt;
               const nowIso = new Date().toISOString();
               const next = ms.map((m, i) => {
                 const idMatch = m.id ? m.id === milestoneId : `ms_${i}` === milestoneId;
-                return idMatch ? { ...m, paidAt: nowIso } : m;
+                return idMatch ? { ...m, paidAt: m.paidAt || nowIso } : m;
               });
               await supabase.from("contracts").update({
                 payment_milestones: next,
@@ -280,8 +288,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               // Send a branded "thanks for paying" receipt to the client
               // (Stripe also sends its own receipt; this one ties the
               // payment to the contract + portal link). Best-effort —
-              // don't block the webhook on email send failure.
-              if (contract?.client_email && contract?.org_id) {
+              // don't block the webhook on email send failure. SKIP on
+              // webhook retries (when the milestone was already paid).
+              if (!wasAlreadyPaid && contract?.client_email && contract?.org_id) {
                 sendMilestoneReceiptEmail({
                   contractId: contract.id as string,
                   contractTitle: contract.title as string,
@@ -342,7 +351,10 @@ async function sendMilestoneReceiptEmail(input: {
     .single();
   const orgName = org?.name || "Your contractor";
   const businessInfo = (org?.business_info as { email?: string } | null) || {};
-  const orgEmail = businessInfo.email?.trim() || process.env.RESEND_FROM_EMAIL || "Geoff@SdubMedia.com";
+  // Verified-domain sender (slate.sdubmedia.com) — see cron-payment-reminders
+  // for context. We can't put a customer's unverified email in `from:`.
+  const verifiedFrom = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
+  const orgEmail = businessInfo.email?.trim() || verifiedFrom;
 
   const paidAmount = input.amountCents / 100;
   // Compute remaining balance from milestones (sum of unpaid amounts).
@@ -375,7 +387,7 @@ async function sendMilestoneReceiptEmail(input: {
   const html = brandedEmailWrapper({ orgName, businessInfo: businessInfo as { email?: string; phone?: string } }, body);
 
   await resend.emails.send({
-    from: `${orgName} <${orgEmail}>`,
+    from: `${orgName} <${verifiedFrom}>`,
     to: input.clientEmail,
     subject: `Payment received: $${paidAmount.toFixed(2)} for ${input.contractTitle}`,
     html,

@@ -16,7 +16,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 const resend = new Resend(process.env.RESEND_API_KEY);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-11-20.acacia" });
 
-const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Geoff@SdubMedia.com";
+// Always send through the verified Slate domain — display name + Reply-To
+// carry the contractor's brand. See cron-payment-reminders for context.
+const VERIFIED_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
 const APP_BASE = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
 
 interface Milestone {
@@ -97,8 +99,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const businessInfo = (org.business_info as { email?: string } | null) || {};
-    const orgEmail = businessInfo.email?.trim() || FALLBACK_FROM_EMAIL;
-    const fromHeader = `${org.name || "Your contractor"} <${orgEmail}>`;
+    const orgEmail = businessInfo.email?.trim() || VERIFIED_FROM_EMAIL;
+    const fromHeader = `${org.name || "Your contractor"} <${VERIFIED_FROM_EMAIL}>`;
 
     let payUrl: string | null = null;
     if (org.stripe_account_id && process.env.STRIPE_SECRET_KEY) {
