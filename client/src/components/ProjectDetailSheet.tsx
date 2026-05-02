@@ -86,6 +86,12 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [cancelling, setCancelling] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // Reschedule modal state.
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleStartTime, setRescheduleStartTime] = useState("");
+  const [rescheduleEndTime, setRescheduleEndTime] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
@@ -138,6 +144,46 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       toast.error(err.message || "Failed to restore project");
     } finally {
       setRestoring(false);
+    }
+  };
+
+  // Reschedule: bumps the project's date (and optionally time) on the
+  // calendar, then opens a mailto: with a "moved from previousDate to
+  // newDate" message pre-filled. Owner can edit + send from their own
+  // email account so the conversation stays threaded.
+  const submitReschedule = async () => {
+    if (!rescheduleDate) { toast.error("Pick a new date"); return; }
+    setRescheduling(true);
+    const previousDate = project.date;
+    try {
+      await updateProject(project.id, {
+        date: rescheduleDate,
+        startTime: rescheduleStartTime || project.startTime,
+        endTime: rescheduleEndTime || project.endTime,
+      });
+      toast.success("Project rescheduled");
+      setRescheduleOpen(false);
+      // Open the user's email app with the reschedule message.
+      if (client?.email) {
+        const url = buildProjectMailto({
+          to: client.email,
+          orgName: data.organization?.name || "",
+          ownerName: data.organization?.businessInfo?.ownerName || "",
+          clientName: client.contactName || client.company || "",
+          projectType: pType?.name || "Project",
+          date: rescheduleDate,
+          startTime: rescheduleStartTime || project.startTime,
+          endTime: rescheduleEndTime || project.endTime,
+          location: location?.name || "",
+          cancelled: false,
+          rescheduledFromDate: previousDate,
+        });
+        window.location.assign(url);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
     }
   };
 
@@ -717,6 +763,21 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               {isOwner && project.status !== "cancelled" && (
                 <Button
                   variant="outline"
+                  onClick={() => {
+                    setRescheduleDate(project.date);
+                    setRescheduleStartTime(project.startTime);
+                    setRescheduleEndTime(project.endTime);
+                    setRescheduleOpen(true);
+                  }}
+                  className="w-full border-border gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  Reschedule Project
+                </Button>
+              )}
+              {isOwner && project.status !== "cancelled" && (
+                <Button
+                  variant="outline"
                   onClick={() => { setCancelReason(""); setCancelOpen(true); }}
                   className="w-full border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200 gap-2"
                 >
@@ -756,6 +817,59 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
               {restoring ? "Restoring…" : "Restore project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reschedule project — date+time picker, then opens client mailto:
+          with reschedule message pre-filled. */}
+      <AlertDialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Reschedule project</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              Pick a new date and time. After saving, your email app will open with a "moved to" message pre-filled for {client?.contactName || "the client"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">New date</label>
+              <input
+                type="date"
+                value={rescheduleDate}
+                onChange={e => setRescheduleDate(e.target.value)}
+                className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Start</label>
+                <input
+                  type="time"
+                  value={rescheduleStartTime}
+                  onChange={e => setRescheduleStartTime(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">End</label>
+                <input
+                  type="time"
+                  value={rescheduleEndTime}
+                  onChange={e => setRescheduleEndTime(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); submitReschedule(); }}
+              disabled={rescheduling || !rescheduleDate}
+            >
+              {rescheduling ? "Saving…" : "Save & email client"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

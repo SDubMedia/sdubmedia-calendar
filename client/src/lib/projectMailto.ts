@@ -21,12 +21,17 @@ export interface ProjectMailtoInput {
   location: string;
   cancelled: boolean;
   cancellationReason?: string;
+  // Reschedule mode — when set, we render the "moved from previousDate"
+  // copy and use the rescheduled subject.
+  rescheduledFromDate?: string; // ISO YYYY-MM-DD of the original date
 }
 
 export function buildProjectMailto(input: ProjectMailtoInput): string {
   const subject = input.cancelled
     ? `Cancellation: ${input.projectType} on ${formatDate(input.date)}`
-    : `Confirmed: ${input.projectType} on ${formatDate(input.date)}`;
+    : input.rescheduledFromDate
+      ? `Rescheduled: ${input.projectType} now on ${formatDate(input.date)}`
+      : `Confirmed: ${input.projectType} on ${formatDate(input.date)}`;
 
   const lines: string[] = [];
   lines.push(`Hi ${input.clientName.split(/\s+/)[0] || "there"},`);
@@ -43,6 +48,21 @@ export function buildProjectMailto(input: ProjectMailtoInput): string {
     }
     lines.push("");
     lines.push("Let me know if you'd like to reschedule.");
+  } else if (input.rescheduledFromDate) {
+    lines.push(
+      `Just a heads-up — we've moved your ${input.projectType.toLowerCase()} from ${formatDate(input.rescheduledFromDate)} to ${formatDate(input.date)}.`,
+    );
+    lines.push("");
+    lines.push("Updated details:");
+    lines.push(`📅 ${formatDate(input.date)}`);
+    if (input.startTime || input.endTime) {
+      lines.push(`🕐 ${input.startTime}${input.endTime ? ` – ${input.endTime}` : ""}`);
+    }
+    if (input.location) {
+      lines.push(`📍 ${input.location}`);
+    }
+    lines.push("");
+    lines.push("If this new date doesn't work for you, reply and we'll find another.");
   } else {
     lines.push(`Confirming your ${input.projectType.toLowerCase()}:`);
     lines.push("");
