@@ -138,16 +138,38 @@ function parseInbound(body: unknown): InboundPayload | null {
  *   3. Sender-email match: find a recent open proposal/contract whose
  *      client_email matches the From address.
  */
+// Note: supabase client typed loosely here. The exhaustive generics
+// produced by createClient<...> don't unify with the handler's call site
+// without runtime cost — the SDK methods are dynamically typed on the
+// table name string anyway, so a ReturnType<typeof createClient> would
+// over-constrain rather than help.
+type SupabaseClientLoose = {
+  from: (table: string) => {
+    select: (cols: string) => {
+      ilike: (col: string, val: string) => {
+        neq: (col: string, val: string) => {
+          is: (col: string, val: null) => {
+            order: (col: string, opts: { ascending: boolean }) => {
+              limit: (n: number) => Promise<{ data: Array<{ id: string }> | null }>;
+            };
+          };
+        };
+      };
+    };
+  };
+};
+
 async function resolveTarget(
-  supabase: ReturnType<typeof createClient>,
+  supabase: unknown,
   payload: InboundPayload,
 ): Promise<{ kind: "proposal" | "contract"; id: string } | null> {
+  const sb = supabase as SupabaseClientLoose;
   const fromEmail = extractEmail(payload.from);
   if (!fromEmail) return null;
 
   // Step 3 (the only one wired today): find the most recent proposal sent
   // to this client_email that's still open (not voided / not archived).
-  const { data: proposals } = await supabase
+  const { data: proposals } = await sb
     .from("proposals")
     .select("id, sent_at")
     .ilike("client_email", fromEmail)
@@ -158,7 +180,7 @@ async function resolveTarget(
   const matchedProposal = (proposals as Array<{ id: string }> | null)?.[0];
   if (matchedProposal) return { kind: "proposal", id: matchedProposal.id };
 
-  const { data: contracts } = await supabase
+  const { data: contracts } = await sb
     .from("contracts")
     .select("id, sent_at")
     .ilike("client_email", fromEmail)
@@ -172,7 +194,7 @@ async function resolveTarget(
   return null;
 }
 
-function extractEmail(raw: string): string | null {
+export function extractEmail(raw: string): string | null {
   // Handles "Sarah Adams <sarah@example.com>" → "sarah@example.com"
   const m = raw.match(/<([^>]+)>/);
   if (m) return m[1].trim().toLowerCase();
@@ -184,7 +206,7 @@ function extractEmail(raw: string): string | null {
  * different mail clients use different markers. Conservative: if no
  * marker found, return the whole body.
  */
-function stripQuotedReply(text: string): string {
+export function stripQuotedReply(text: string): string {
   if (!text) return "";
   const markers = [
     /\nOn .* wrote:/i,                    // "On Mon, May 5, 2026 at 2:14 PM Sarah wrote:"
