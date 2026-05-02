@@ -19,6 +19,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import Stripe from "stripe";
 import { errorMessage, escapeHtml, isAllowedUrl } from "./_auth.js";
+import { sendOpsAlert } from "./_opsAlert.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -195,6 +196,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const state = errors.length === 0 ? "complete" : "fail";
     try { await fetch(`https://cronitor.link/p/${CRONITOR_TELEMETRY_KEY}/${CRONITOR_MONITOR}?state=${state}&metric=count:${sent}`); }
     catch { /* best-effort */ }
+  }
+
+  // Surface batch-level errors as an ops alert so a partial cron failure
+  // doesn't go unnoticed. Threshold: any error in the run.
+  if (errors.length > 0) {
+    sendOpsAlert(
+      `Payment reminders cron had ${errors.length} error${errors.length === 1 ? "" : "s"}`,
+      `Sent: ${sent}\nSkipped: ${skipped}\nErrors:\n${errors.join("\n")}`,
+    ).catch(() => {});
   }
 
   return res.status(200).json({ ok: true, sent, skipped, errors });

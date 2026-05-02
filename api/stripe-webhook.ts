@@ -29,6 +29,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
 import { errorMessage, escapeHtml } from "./_auth.js";
+import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
@@ -289,7 +290,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   milestones: next,
                   paidMilestoneId: milestoneId,
                   amountCents: session.amount_total ?? 0,
-                }).catch(err => console.error(`[stripe-webhook] receipt email failed: ${errorMessage(err)}`));
+                }).catch(err => {
+                  console.error(`[stripe-webhook] receipt email failed: ${errorMessage(err)}`);
+                  sendOpsAlertShared(
+                    "Milestone receipt email failed",
+                    `Contract: ${contract.id}\nClient: ${contract.client_email}\nError: ${errorMessage(err)}\n\nThe paidAt was stamped successfully; only the customer's branded receipt failed to send. Stripe's auto-receipt still went out.`,
+                  ).catch(() => {});
+                });
               }
             }
           }
