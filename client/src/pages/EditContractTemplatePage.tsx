@@ -1,26 +1,43 @@
 // ============================================================
-// EditContractTemplatePage — full-page block-based editor for master
-// contract templates. Phase B.
+// EditContractTemplatePage — multi-page contract template editor.
+// HoneyBook-style Smart File: each template can have multiple pages
+// (Agreement / Invoice / Payment / Custom). The Invoice page renders
+// from the contract's payment milestones at view time — no authoring
+// required there.
 //
-// Mirrors the proposal editor's live-canvas UX (no HTML/preview toggle).
-// On save, produces both a structured `blocks[]` (for round-tripping in
-// the editor) AND a flat `content` HTML (so the existing rendering
-// surfaces and the contract generator keep working).
+// Backward compat: legacy templates with only `blocks` get wrapped
+// into a single Agreement page on first open.
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
-import type { ProposalBlock, ContractTemplate } from "@/lib/types";
+import type { ProposalBlock, ProposalPage, ProposalPageType, ContractTemplate, PaymentMilestone } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, FileText, Receipt, DollarSign, Sparkles, ChevronUp, ChevronDown, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
 import { ContractMergeFieldPanel } from "@/components/proposal-editor/ContractMergeFieldPanel";
 import { insertIntoActiveProse } from "@/components/proposal-editor/proseFocusRegistry";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
+import InvoicePageRenderer from "@/components/proposal/InvoicePageRenderer";
 import { renderToStaticMarkup } from "react-dom/server";
 import { nanoid } from "nanoid";
+import { cn } from "@/lib/utils";
+
+const PAGE_ICONS: Record<ProposalPageType, typeof FileText> = {
+  agreement: FileText,
+  invoice: Receipt,
+  payment: DollarSign,
+  custom: Sparkles,
+};
+
+// Sample milestones used for the Invoice page preview in the editor.
+// Real milestones substitute in at signing time on the public portal.
+const PREVIEW_MILESTONES: PaymentMilestone[] = [
+  { id: "preview1", label: "Deposit (50%)", type: "percent", percent: 50, dueType: "at_signing", status: "due" },
+  { id: "preview2", label: "Balance (50%)", type: "percent", percent: 50, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
+];
 
 export default function EditContractTemplatePage() {
   const params = useParams<{ id: string }>();
@@ -31,88 +48,132 @@ export default function EditContractTemplatePage() {
   const existing = isNew ? null : data.contractTemplates.find(t => t.id === params.id);
 
   const [name, setName] = useState("");
-  const [blocks, setBlocks] = useState<ProposalBlock[]>([]);
-  const [legacyContent, setLegacyContent] = useState("");
+  const [pages, setPages] = useState<ProposalPage[]>([]);
+  const [activePageId, setActivePageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showLibrary, setShowLibrary] = useState(true);
-  // Autosave bookkeeping. `hydratedRef` blocks the autosave from firing on
-  // the initial useEffect-driven state load (which would write the existing
-  // content right back to the row, churning updated_at). `lastSavedAt` drives
-  // the "Saved · 12s ago" indicator next to the Save button.
+  const [showPageList, setShowPageList] = useState(true);
+
   const hydratedRef = useRef(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "error">("idle");
-  // Ref on the scrollable canvas. Used by save() to snapshot + restore the
-  // user's scroll position so a save (manual or auto) doesn't yank them
-  // back to the top when the active prose block reflows from edit-mode
-  // (taller, with toolbar) to display-mode.
   const canvasScrollRef = useRef<HTMLDivElement>(null);
 
-  // Refs that mirror current state. save() reads from these so it always
-  // sends the latest content, even when invoked during the mousedown/blur
-  // sequence of clicking Save (which fires before React has committed the
-  // setBlocks() that the blur-triggered prose commit just queued).
-  //
-  // Refs are updated SYNCHRONOUSLY in the wrapper setters below — not via
-  // useEffect — because React 18 batches blur+click events from the same
-  // gesture, so a useEffect-based sync would still see stale data when the
-  // click handler reads the ref mid-batch.
+  // Refs that mirror current state for the save-during-blur race.
   const nameRef = useRef(name);
-  const blocksRef = useRef(blocks);
+  const pagesRef = useRef(pages);
   const setNameAndRef = (next: string) => { nameRef.current = next; setName(next); };
-  const setBlocksAndRef = (next: ProposalBlock[]) => { blocksRef.current = next; setBlocks(next); };
+  const setPagesAndRef = (next: ProposalPage[]) => { pagesRef.current = next; setPages(next); };
 
-  // Click-to-add from the right sidebar.
-  //
-  // 1. Block-typed fields (parties_block, packages_block, etc.) always
-  //    append as a new block — they expand to multi-line content and
-  //    don't make sense inline.
-  // 2. Plain fields (client_name, event_date, etc.) try to insert at the
-  //    cursor position inside the currently-focused prose block. That
-  //    lets users compose paragraphs like "Payment is due one day before
-  //    {{event_date}}" without having to manually move tokens around.
-  // 3. If no prose is focused, fall back to appending a merge_field block.
-  function addMergeField(fieldKey: string, label: string) {
-    const isBlockField = fieldKey.endsWith("_block");
-    if (!isBlockField && insertIntoActiveProse(fieldKey, label)) {
-      return;
-    }
-    setBlocksAndRef([
-      ...blocksRef.current,
-      { id: nanoid(6), type: "merge_field", field: fieldKey } as ProposalBlock,
-    ]);
+  const activePage = pages.find(p => p.id === activePageId) || pages[0] || null;
+
+  function updatePageBlocks(pageId: string, nextBlocks: ProposalBlock[]) {
+    const next = pages.map(p => p.id === pageId ? { ...p, blocks: nextBlocks } : p);
+    setPagesAndRef(next);
   }
 
+  function updatePageLabel(pageId: string, label: string) {
+    const next = pages.map(p => p.id === pageId ? { ...p, label } : p);
+    setPagesAndRef(next);
+  }
+
+  function addPage(type: ProposalPageType) {
+    const labelMap: Record<ProposalPageType, string> = {
+      agreement: "Agreement",
+      invoice: "Invoice",
+      payment: "Payment Schedule",
+      custom: "New Page",
+    };
+    const id = nanoid(8);
+    const newPage: ProposalPage = {
+      id,
+      type,
+      label: labelMap[type],
+      content: "",
+      blocks: type === "invoice" ? [] : [],
+      sortOrder: pages.length,
+    };
+    setPagesAndRef([...pages, newPage]);
+    setActivePageId(id);
+  }
+
+  function removePage(pageId: string) {
+    if (pages.length <= 1) {
+      toast.error("Can't remove the only page");
+      return;
+    }
+    const next = pages.filter(p => p.id !== pageId).map((p, i) => ({ ...p, sortOrder: i }));
+    setPagesAndRef(next);
+    if (activePageId === pageId) setActivePageId(next[0]?.id || null);
+  }
+
+  function movePage(pageId: string, dir: -1 | 1) {
+    const idx = pages.findIndex(p => p.id === pageId);
+    const newIdx = idx + dir;
+    if (idx < 0 || newIdx < 0 || newIdx >= pages.length) return;
+    const next = [...pages];
+    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+    setPagesAndRef(next.map((p, i) => ({ ...p, sortOrder: i })));
+  }
+
+  function addMergeField(fieldKey: string, label: string) {
+    if (!activePage) return;
+    const isBlockField = fieldKey.endsWith("_block");
+    if (!isBlockField && insertIntoActiveProse(fieldKey, label)) return;
+    const nextBlocks = [
+      ...(activePage.blocks || []),
+      { id: nanoid(6), type: "merge_field", field: fieldKey } as ProposalBlock,
+    ];
+    updatePageBlocks(activePage.id, nextBlocks);
+  }
+
+  // Hydrate on first load. Three branches:
+  //  1. existing.pages non-empty → use them (new multi-page templates)
+  //  2. existing.blocks non-empty → wrap into a single Agreement page
+  //  3. existing.content non-empty → wrap as a legacy prose block in
+  //     a single Agreement page
+  //  4. brand new template → start with one empty Agreement page
   useEffect(() => {
     if (existing) {
       setNameAndRef(existing.name);
-      if (existing.blocks && existing.blocks.length > 0) {
-        setBlocksAndRef(existing.blocks);
-        setLegacyContent(existing.content || "");
+      if (existing.pages && existing.pages.length > 0) {
+        setPagesAndRef(existing.pages);
+        setActivePageId(existing.pages[0].id);
+      } else if (existing.blocks && existing.blocks.length > 0) {
+        const wrapped: ProposalPage = { id: nanoid(8), type: "agreement", label: "Agreement", content: "", blocks: existing.blocks, sortOrder: 0 };
+        setPagesAndRef([wrapped]);
+        setActivePageId(wrapped.id);
       } else if (existing.content) {
-        // First open of a legacy template — synthesise a single prose block
-        // from the existing HTML so the user can keep editing.
-        setBlocksAndRef([{ id: "legacy", type: "prose", html: existing.content } as ProposalBlock]);
-        setLegacyContent(existing.content);
+        const wrapped: ProposalPage = {
+          id: nanoid(8),
+          type: "agreement",
+          label: "Agreement",
+          content: "",
+          blocks: [{ id: "legacy", type: "prose", html: existing.content } as ProposalBlock],
+          sortOrder: 0,
+        };
+        setPagesAndRef([wrapped]);
+        setActivePageId(wrapped.id);
       } else {
-        setBlocksAndRef([]);
-        setLegacyContent("");
+        const fresh: ProposalPage = { id: nanoid(8), type: "agreement", label: "Agreement", content: "", blocks: [], sortOrder: 0 };
+        setPagesAndRef([fresh]);
+        setActivePageId(fresh.id);
       }
+    } else if (isNew) {
+      // Brand new — seed with an Agreement page so the canvas isn't empty.
+      const fresh: ProposalPage = { id: nanoid(8), type: "agreement", label: "Agreement", content: "", blocks: [], sortOrder: 0 };
+      setPagesAndRef([fresh]);
+      setActivePageId(fresh.id);
     }
-    // Mark hydration on next tick so the autosave effect's initial fire
-    // (post-state-set) is skipped — otherwise we'd round-trip the existing
-    // content right back to the row on open.
     const t = setTimeout(() => { hydratedRef.current = true; }, 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing?.id]);
+  }, [existing?.id, isNew]);
 
-  // Autosave: 900ms after the last edit, save silently (no toast). Skips
-  // pre-hydration ticks, the "saving in flight" window, and edits where
-  // the name is still blank (validation would fail anyway).
+  // Autosave 900ms after last edit.
   useEffect(() => {
     if (!hydratedRef.current) return;
-    if (isNew) return;                 // new templates require an explicit Save first
+    if (isNew) return;
     if (!name.trim()) return;
     if (saving) return;
     const handle = setTimeout(() => {
@@ -120,36 +181,34 @@ export default function EditContractTemplatePage() {
     }, 900);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, blocks]);
+  }, [name, pages]);
 
   async function save(opts?: { silent?: boolean }) {
     const silent = opts?.silent ?? false;
-    // Read from refs so any state update queued by the prose-blur commit
-    // (which fires just before this click handler) is reflected even if
-    // React hasn't re-rendered yet.
     const currentName = nameRef.current;
-    const currentBlocks = blocksRef.current;
+    const currentPages = pagesRef.current;
     if (!currentName.trim()) {
       if (!silent) toast.error("Template name required");
       return;
     }
-    // Snapshot scroll BEFORE the save → React flushes a re-render that
-    // unmounts/remounts the active prose block (edit → display mode),
-    // which collapses some height. We restore to this position after
-    // the layout settles via two rAFs (one to wait for React commit,
-    // one to wait for the browser layout pass).
     const scrollSnapshot = canvasScrollRef.current?.scrollTop ?? 0;
     setSaving(true);
     if (silent) setAutosaveStatus("saving");
     try {
-      // Render the blocks to a flat HTML string for backward compat
-      // (contract generator + ContractsPage detail view read `content`).
-      const renderedHtml = renderBlocksToHtml(currentBlocks);
+      // Backward-compat artifacts: render the FIRST agreement page's blocks
+      // to flat HTML and store as `content`. The contract generator reads
+      // `template.content` for merge-field substitution. Multi-page rendering
+      // happens at view time on /sign/<token>.
+      const agreementPage = currentPages.find(p => p.type === "agreement") || currentPages[0];
+      const renderedHtml = agreementPage ? renderBlocksToHtml(agreementPage.blocks || []) : "";
+      const firstBlocks = agreementPage?.blocks || [];
+
       if (isNew) {
         const tpl = await addContractTemplate({
           name: currentName.trim(),
           content: renderedHtml,
-          blocks: currentBlocks,
+          blocks: firstBlocks,
+          pages: currentPages,
         } as Omit<ContractTemplate, "id" | "createdAt" | "updatedAt">);
         if (!silent) toast.success("Template created");
         setLocation(`/contracts/templates/${tpl.id}/edit`);
@@ -157,7 +216,8 @@ export default function EditContractTemplatePage() {
         await updateContractTemplate(params.id!, {
           name: currentName.trim(),
           content: renderedHtml,
-          blocks: currentBlocks,
+          blocks: firstBlocks,
+          pages: currentPages,
         });
         if (!silent) toast.success("Template saved");
       }
@@ -168,16 +228,9 @@ export default function EditContractTemplatePage() {
       else setAutosaveStatus("error");
     } finally {
       setSaving(false);
-      // Restore scroll after the post-save re-render. Two rAFs: the first
-      // fires after React commits its update, the second after the browser
-      // does layout. Without both, the assignment runs before the layout
-      // has reflowed and the scrollTop snaps back to whatever the new
-      // (smaller) document allows.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (canvasScrollRef.current) {
-            canvasScrollRef.current.scrollTop = scrollSnapshot;
-          }
+          if (canvasScrollRef.current) canvasScrollRef.current.scrollTop = scrollSnapshot;
         });
       });
     }
@@ -209,18 +262,16 @@ export default function EditContractTemplatePage() {
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             />
             <p className="text-[10px] text-muted-foreground">
-              {isNew ? "New contract template" : "Saved template"} · Master template — auto-fills with client + package data when sent
+              {pages.length} page{pages.length === 1 ? "" : "s"} · {isNew ? "New template" : "Saved"} · Auto-fills with client + package data when sent
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <AutosaveStatus status={autosaveStatus} lastSavedAt={lastSavedAt} isNew={isNew} />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowLibrary(!showLibrary)}
-            className="text-xs"
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowPageList(!showPageList)} className="text-xs hidden md:inline-flex">
+            {showPageList ? "Hide pages" : "Show pages"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowLibrary(!showLibrary)} className="text-xs hidden md:inline-flex">
             {showLibrary ? "Hide library" : "Show library"}
           </Button>
           <Button size="sm" onClick={() => save()} disabled={saving} className="gap-1.5">
@@ -230,27 +281,122 @@ export default function EditContractTemplatePage() {
         </div>
       </div>
 
-      {/* 2-column layout: canvas + library sidebar */}
+      {/* Mobile page-tabs */}
+      <div className="md:hidden flex items-center gap-1.5 px-3 py-2 border-b border-border bg-card/30 overflow-x-auto">
+        {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map(page => {
+          const Icon = PAGE_ICONS[page.type];
+          return (
+            <button
+              key={page.id}
+              onClick={() => setActivePageId(page.id)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap",
+                activePageId === page.id
+                  ? "bg-primary/10 text-primary border border-primary/30"
+                  : "text-muted-foreground",
+              )}
+            >
+              <Icon className="w-3 h-3" />
+              {page.label}
+            </button>
+          );
+        })}
+        <button onClick={() => addPage("agreement")} className="flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+          <Plus className="w-3 h-3" /> Page
+        </button>
+      </div>
+
+      {/* 3-column layout: page list + canvas + library */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Canvas */}
-        <div ref={canvasScrollRef} className="flex-1 overflow-y-auto bg-secondary/30 p-4 sm:p-8">
-          <div className="max-w-3xl mx-auto">
-            {legacyContent && blocks.length === 1 && blocks[0].type === "prose" && (blocks[0] as { id: string }).id === "legacy" && (
-              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
-                Legacy template imported as a single Text block. Split it into structured blocks (use the <strong>+</strong> buttons) and click merge fields in the right sidebar to drop in client / package / payment data.
-              </div>
-            )}
-            <BlockEditor
-              blocks={blocks}
-              onChange={setBlocksAndRef}
-              libraryPackages={data.packages}
-              kind="contract"
-            />
+        {/* Left sidebar — page thumbnails */}
+        {showPageList && (
+          <div className="w-48 border-r border-border bg-card/30 flex-col overflow-hidden shrink-0 hidden md:flex">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {[...pages].sort((a, b) => a.sortOrder - b.sortOrder).map(page => {
+                const Icon = PAGE_ICONS[page.type];
+                return (
+                  <div
+                    key={page.id}
+                    onClick={() => setActivePageId(page.id)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs transition-colors group",
+                      activePageId === page.id
+                        ? "bg-primary/10 text-primary border border-primary/30"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate flex-1">{page.label}</span>
+                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
+                      <button onClick={e => { e.stopPropagation(); movePage(page.id, -1); }} className="p-0.5 hover:text-foreground"><ChevronUp className="w-3 h-3" /></button>
+                      <button onClick={e => { e.stopPropagation(); movePage(page.id, 1); }} className="p-0.5 hover:text-foreground"><ChevronDown className="w-3 h-3" /></button>
+                      {pages.length > 1 && (
+                        <button onClick={e => { e.stopPropagation(); removePage(page.id); }} className="p-0.5 hover:text-destructive"><X className="w-3 h-3" /></button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-2 border-t border-border space-y-1">
+              <button onClick={() => addPage("agreement")} className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary">
+                <FileText className="w-3 h-3" /> Agreement Page
+              </button>
+              <button onClick={() => addPage("invoice")} className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary">
+                <Receipt className="w-3 h-3" /> Invoice Page
+              </button>
+              <button onClick={() => addPage("payment")} className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary">
+                <DollarSign className="w-3 h-3" /> Payment Page
+              </button>
+              <button onClick={() => addPage("custom")} className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary">
+                <Sparkles className="w-3 h-3" /> Custom Page
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Canvas — switches by active page type */}
+        <div ref={canvasScrollRef} className="flex-1 overflow-y-auto bg-secondary/30 p-4 sm:p-8">
+          {activePage ? (
+            <div className="max-w-3xl mx-auto">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  value={activePage.label}
+                  onChange={e => updatePageLabel(activePage.id, e.target.value)}
+                  className="text-sm font-semibold text-foreground bg-transparent border-none outline-none"
+                  placeholder="Page title…"
+                />
+                <span className="text-[10px] text-muted-foreground uppercase">{activePage.type}</span>
+              </div>
+
+              {activePage.type === "invoice" ? (
+                <div className="bg-secondary/50 border border-dashed border-border rounded-xl p-1">
+                  <div className="bg-amber-50 text-amber-900 text-xs rounded-t px-3 py-1.5 mb-1">
+                    Preview — at signing time, this auto-fills with the client's actual milestones.
+                  </div>
+                  <InvoicePageRenderer
+                    contractTitle={name || "Sample Contract"}
+                    org={data.organization}
+                    client={null}
+                    milestones={PREVIEW_MILESTONES}
+                  />
+                </div>
+              ) : (
+                <BlockEditor
+                  blocks={activePage.blocks || []}
+                  onChange={blocks => updatePageBlocks(activePage.id, blocks)}
+                  libraryPackages={data.packages}
+                  kind="contract"
+                />
+              )}
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground p-8">No page selected.</p>
+          )}
         </div>
 
-        {/* Right sidebar — merge field library */}
-        {showLibrary && (
+        {/* Right sidebar — merge field library (hidden on Invoice page) */}
+        {showLibrary && activePage?.type !== "invoice" && (
           <div className="w-72 border-l border-border bg-card overflow-y-auto shrink-0 hidden md:block">
             <div className="p-4">
               <ContractMergeFieldPanel onAddField={addMergeField} />
@@ -263,12 +409,11 @@ export default function EditContractTemplatePage() {
 }
 
 /**
- * Render a blocks array to a flat HTML string for backward compat. Reuses
- * the same `ProposalBlockRenderer` markup the public viewer uses, so the
- * output renders identically wherever it's shown.
+ * Render a blocks array to a flat HTML string for backward compat. The
+ * contract generator reads template.content for merge-field substitution
+ * and the existing single-page renderers read it too.
  */
 function renderBlocksToHtml(blocks: ProposalBlock[]): string {
-  // Wrap in a synthetic "page" since the renderer expects a ProposalPage.
   const fakePage = {
     id: "rendered",
     type: "agreement" as const,
@@ -277,18 +422,9 @@ function renderBlocksToHtml(blocks: ProposalBlock[]): string {
     blocks,
     sortOrder: 0,
   };
-  // libraryPackages is empty here — package_row blocks will show "package
-  // not found" in the rendered HTML, but contract templates shouldn't use
-  // package_row anyway. The contract generator substitutes packages_block
-  // (a merge_field block) at acceptance time.
   return renderToStaticMarkup(<ProposalBlockRenderer page={fakePage} libraryPackages={[]} />);
 }
 
-/**
- * Tiny status pill next to the Save button. Shows "Saving…", "Saved · Xs ago",
- * or "Save failed" depending on the autosave state. Hidden on new templates
- * (no autosave until first explicit Save creates the row).
- */
 function AutosaveStatus({
   status,
   lastSavedAt,
@@ -298,8 +434,6 @@ function AutosaveStatus({
   lastSavedAt: number | null;
   isNew: boolean;
 }) {
-  // Snapshot "now" in state so the relative timestamp stays pure during
-  // render. Tick every 10s while there's a save to display.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (lastSavedAt == null) return;
@@ -309,12 +443,8 @@ function AutosaveStatus({
   }, [lastSavedAt]);
 
   if (isNew) return null;
-  if (status === "saving") {
-    return <span className="text-[11px] text-muted-foreground">Saving…</span>;
-  }
-  if (status === "error") {
-    return <span className="text-[11px] text-destructive">Save failed — retry</span>;
-  }
+  if (status === "saving") return <span className="text-[11px] text-muted-foreground">Saving…</span>;
+  if (status === "error") return <span className="text-[11px] text-destructive">Save failed — retry</span>;
   if (lastSavedAt == null) return null;
   const seconds = Math.max(1, Math.round((now - lastSavedAt) / 1000));
   const label = seconds < 60

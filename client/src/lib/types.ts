@@ -595,6 +595,12 @@ export interface ContractTemplate {
   // compat with rendering surfaces that read the flat string.
   blocks?: ProposalBlock[];
   content: string; // HTML content (legacy + render output)
+  // Multi-page authoring (HoneyBook-style "Smart Files"). When non-empty,
+  // the editor + renderer use these pages and the legacy single-page
+  // blocks/content are ignored. Each page can be agreement / invoice /
+  // payment / custom — invoice pages auto-render from contract milestones.
+  // Reuses ProposalPage shape since the rendering pipeline is the same.
+  pages?: ProposalPage[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -662,6 +668,11 @@ export interface Contract {
   // Inbound email replies captured by /api/inbound-email and threaded onto
   // this contract. Each entry: { receivedAt, from, subject, body }.
   inboundReplies: Array<{ receivedAt: string; from: string; subject: string; body: string }>;
+  // Multi-page contract document. When non-empty, takes precedence over the
+  // legacy single-page blocks/content. Each page renders as its own panel
+  // in the contract editor + on /sign/<token>. Invoice pages auto-render
+  // from paymentMilestones — no user authoring required.
+  pages?: ProposalPage[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

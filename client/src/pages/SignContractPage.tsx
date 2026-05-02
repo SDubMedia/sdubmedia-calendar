@@ -9,6 +9,8 @@ import { CheckCircle, AlertCircle } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ContractLetterhead } from "@/components/ContractLetterhead";
 import { useSignatureCanvas } from "@/hooks/useSignatureCanvas";
+import InvoicePageRenderer from "@/components/proposal/InvoicePageRenderer";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 
 export default function SignContractPage() {
   const params = useParams<{ token: string }>();
@@ -158,27 +160,9 @@ export default function SignContractPage() {
       </div>
 
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-        {/* Contract document — letterhead + body in one paper-like card */}
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <ContractLetterhead
-            orgName={contract?.orgName}
-            ownerName={contract?.ownerName}
-            orgLogo={contract?.orgLogo}
-            businessInfo={contract?.orgBusinessInfo}
-            intro="The contract is ready for review and signature. If you have any questions, just ask."
-          />
-          {/* Body */}
-          {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(contract?.content || "") ? (
-            <div
-              className="px-6 sm:px-10 py-8 text-gray-700 contract-html-light"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contract?.content || "") }}
-            />
-          ) : (
-            <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {contract?.content}
-            </div>
-          )}
-        </div>
+        {/* Contract document — multi-page when contract.pages is set, else
+            falls back to the legacy single-page content. */}
+        <ContractDocumentBody contract={contract} />
 
         {/* Signature Section */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -269,6 +253,96 @@ interface PortalMilestone {
   dueType?: string;
   dueDate?: string;
   paidAt?: string;
+}
+
+/**
+ * Renders the contract body. Multi-page (HoneyBook-style) when
+ * contract.pages is set; falls back to the legacy single-page content
+ * for older contracts. Each page rendered as its own paper card with
+ * letterhead on top of the first agreement page only.
+ */
+function ContractDocumentBody({ contract }: { contract: any }) {
+  const pages: Array<{ id: string; type: string; label: string; content?: string; blocks?: unknown[]; sortOrder: number }> = Array.isArray(contract?.pages) ? contract.pages : [];
+
+  // Legacy single-page fallback.
+  if (pages.length === 0) {
+    const html = contract?.content || "";
+    return (
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <ContractLetterhead
+          orgName={contract?.orgName}
+          ownerName={contract?.ownerName}
+          orgLogo={contract?.orgLogo}
+          businessInfo={contract?.orgBusinessInfo}
+          intro="The contract is ready for review and signature. If you have any questions, just ask."
+        />
+        {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(html) ? (
+          <div className="px-6 sm:px-10 py-8 text-gray-700 contract-html-light"
+               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+        ) : (
+          <div className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{html}</div>
+        )}
+      </div>
+    );
+  }
+
+  // Multi-page render.
+  const sorted = [...pages].sort((a, b) => a.sortOrder - b.sortOrder);
+  const milestones: any[] = Array.isArray(contract?.payment_milestones)
+    ? contract.payment_milestones
+    : Array.isArray(contract?.paymentMilestones)
+      ? contract.paymentMilestones
+      : [];
+
+  return (
+    <div className="space-y-4">
+      {sorted.map((page, idx) => {
+        if (page.type === "invoice") {
+          return (
+            <div key={page.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <InvoicePageRenderer
+                contractTitle={contract?.title || ""}
+                contractId={contract?.id}
+                org={{ name: contract?.orgName || "", businessInfo: contract?.orgBusinessInfo || {}, logoUrl: contract?.orgLogo || "" } as any}
+                client={null}
+                milestones={milestones}
+              />
+            </div>
+          );
+        }
+        // Agreement / payment / custom — render the page's blocks via the
+        // ProposalBlockRenderer (or fall back to inline content HTML).
+        const html = page.content || "";
+        return (
+          <div key={page.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            {/* Only the first page gets the letterhead (avoids duplicating). */}
+            {idx === 0 && (
+              <ContractLetterhead
+                orgName={contract?.orgName}
+                ownerName={contract?.ownerName}
+                orgLogo={contract?.orgLogo}
+                businessInfo={contract?.orgBusinessInfo}
+                intro="The contract is ready for review and signature."
+              />
+            )}
+            {Array.isArray(page.blocks) && page.blocks.length > 0 ? (
+              <div className="px-6 sm:px-10 py-8">
+                <ProposalBlockRenderer
+                  page={{ id: page.id, type: (page.type as any), label: page.label, content: page.content || "", blocks: page.blocks as any, sortOrder: page.sortOrder }}
+                  libraryPackages={[]}
+                />
+              </div>
+            ) : html ? (
+              <div className="px-6 sm:px-10 py-8 text-gray-700 contract-html-light"
+                   dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+            ) : (
+              <div className="px-6 sm:px-10 py-8 text-sm text-gray-400 italic">{page.label} — empty page</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function PortalView({ contract, paymentSoftError }: { contract: any; paymentSoftError: string | null }) {

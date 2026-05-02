@@ -207,6 +207,7 @@ function rowToContractTemplate(r: any): ContractTemplate {
   return {
     id: r.id, name: r.name || "", content: r.content || "",
     blocks: Array.isArray(r.blocks) ? r.blocks : [],
+    pages: Array.isArray(r.pages) ? r.pages : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -230,6 +231,7 @@ function rowToContract(r: any): Contract {
     sendBackReason: r.send_back_reason || "",
     paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
     inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
+    pages: Array.isArray(r.pages) ? r.pages : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -1084,6 +1086,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("contract_templates").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content,
       blocks: t.blocks ?? [],
+      pages: t.pages ?? [],
       updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -1097,6 +1100,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.name !== undefined) patch.name = t.name;
     if (t.content !== undefined) patch.content = t.content;
     if (t.blocks !== undefined) patch.blocks = t.blocks;
+    if (t.pages !== undefined) patch.pages = t.pages;
     const { error } = await supabase.from("contract_templates").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
@@ -1127,6 +1131,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       firing_log: c.firingLog || [],
       send_back_reason: c.sendBackReason || "",
       payment_milestones: c.paymentMilestones || [],
+      pages: c.pages || [],
       updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -1157,6 +1162,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.masterTemplateVersionId !== undefined) patch.master_template_version_id = c.masterTemplateVersionId;
     if (c.firingLog !== undefined) patch.firing_log = c.firingLog;
     if (c.sendBackReason !== undefined) patch.send_back_reason = c.sendBackReason;
+    if (c.pages !== undefined) patch.pages = c.pages;
+    if (c.paymentMilestones !== undefined) patch.payment_milestones = c.paymentMilestones;
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
