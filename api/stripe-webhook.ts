@@ -28,7 +28,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
-import { errorMessage } from "./_auth.js";
+import { errorMessage, escapeHtml } from "./_auth.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
@@ -260,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (contractId && milestoneId) {
             const { data: contract } = await supabase
               .from("contracts")
-              .select("payment_milestones")
+              .select("payment_milestones, title, client_email, org_id, sign_token")
               .eq("id", contractId)
               .maybeSingle();
             const ms = (contract?.payment_milestones as Array<Record<string, unknown>> | null) || null;
@@ -274,6 +274,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 payment_milestones: next,
                 updated_at: nowIso,
               }).eq("id", contractId);
+
+              // Send a branded "thanks for paying" receipt to the client
+              // (Stripe also sends its own receipt; this one ties the
+              // payment to the contract + portal link). Best-effort —
+              // don't block the webhook on email send failure.
+              if (contract?.client_email && contract?.org_id) {
+                sendMilestoneReceiptEmail({
+                  contractId: contract.id as string,
+                  contractTitle: contract.title as string,
+                  clientEmail: contract.client_email as string,
+                  signToken: contract.sign_token as string,
+                  orgId: contract.org_id as string,
+                  milestones: next,
+                  paidMilestoneId: milestoneId,
+                  amountCents: session.amount_total ?? 0,
+                }).catch(err => console.error(`[stripe-webhook] receipt email failed: ${errorMessage(err)}`));
+              }
             }
           }
         }
@@ -291,3 +308,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   await pingCronitor(CRONITOR_MONITOR, "complete", { message: event.type });
   return res.status(200).json({ received: true });
 }
+
+/**
+ * Send a branded receipt to the client when a milestone payment completes.
+ * Stripe also sends its own receipt; this one ties the payment to the
+ * specific contract + remaining balance + portal link, so the client can
+ * see what they paid for and what's still due. Sender uses the org's
+ * configured business email.
+ */
+async function sendMilestoneReceiptEmail(input: {
+  contractId: string;
+  contractTitle: string;
+  clientEmail: string;
+  signToken: string;
+  orgId: string;
+  milestones: Array<Record<string, unknown>>;
+  paidMilestoneId: string;
+  amountCents: number;
+}): Promise<void> {
+  // Lookup org branding for from-line + reply-to.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, business_info")
+    .eq("id", input.orgId)
+    .single();
+  const orgName = org?.name || "Your contractor";
+  const businessInfo = (org?.business_info as { email?: string } | null) || {};
+  const orgEmail = businessInfo.email?.trim() || process.env.RESEND_FROM_EMAIL || "Geoff@SdubMedia.com";
+
+  const paidAmount = input.amountCents / 100;
+  // Compute remaining balance from milestones (sum of unpaid amounts).
+  let total = 0;
+  let unpaidTotal = 0;
+  for (const m of input.milestones) {
+    const amount = m.type === "fixed"
+      ? Number(m.fixedAmount ?? m.amount ?? 0)
+      : 0; // percent milestones contribute to total via fixed siblings
+    total += amount;
+    if (!m.paidAt) unpaidTotal += amount;
+  }
+  // For percent-only schedules, fall back to a simple paid-vs-rest narrative.
+  const stillOwedLine = total > 0 && unpaidTotal > 0
+    ? `Remaining balance: <strong>$${unpaidTotal.toFixed(2)}</strong>`
+    : "All payments are now complete. Thank you!";
+
+  const portalUrl = `${process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com"}/sign/${input.signToken}`;
+
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+    <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
+    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(orgName)} · ${escapeHtml(input.contractTitle)}</p>
+    <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
+      <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${paidAmount.toFixed(2)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Date</td><td style="padding:4px 0;">${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</td></tr>
+    </table>
+    <p style="margin:16px 0;font-size:14px;">${stillOwedLine}</p>
+    <p style="margin:24px 0;"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#059669;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your contract + payment status</a></p>
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">Stripe also sent you a separate receipt for tax / accounting purposes. Reply to this email if you have any questions.</p>
+  </body></html>`;
+
+  await resend.emails.send({
+    from: `${orgName} <${orgEmail}>`,
+    to: input.clientEmail,
+    subject: `Payment received: $${paidAmount.toFixed(2)} for ${input.contractTitle}`,
+    html,
+    replyTo: orgEmail,
+  });
+}
+
