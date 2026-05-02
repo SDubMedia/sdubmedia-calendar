@@ -288,6 +288,10 @@ function ContractDocumentBody({ contract }: { contract: any }) {
 
   // Multi-page render.
   const sorted = [...pages].sort((a, b) => a.sortOrder - b.sortOrder);
+  // Letterhead goes on the first AGREEMENT page (not just the first
+  // sorted page) so reordering can put an Invoice page first without
+  // duplicating the contractor's header on it.
+  const letterheadPageId = sorted.find(p => p.type === "agreement")?.id || sorted[0]?.id;
   const milestones: any[] = Array.isArray(contract?.payment_milestones)
     ? contract.payment_milestones
     : Array.isArray(contract?.paymentMilestones)
@@ -296,7 +300,7 @@ function ContractDocumentBody({ contract }: { contract: any }) {
 
   return (
     <div className="space-y-4">
-      {sorted.map((page, idx) => {
+      {sorted.map(page => {
         if (page.type === "invoice") {
           return (
             <div key={page.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -315,8 +319,8 @@ function ContractDocumentBody({ contract }: { contract: any }) {
         const html = page.content || "";
         return (
           <div key={page.id} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-            {/* Only the first page gets the letterhead (avoids duplicating). */}
-            {idx === 0 && (
+            {/* Only the first AGREEMENT page gets the letterhead. */}
+            {page.id === letterheadPageId && (
               <ContractLetterhead
                 orgName={contract?.orgName}
                 ownerName={contract?.ownerName}
@@ -442,6 +446,19 @@ function PortalView({ contract, paymentSoftError }: { contract: any; paymentSoft
             </div>
           </div>
         )}
+
+        {/* Signed contract document — collapsible. Lets the client re-read
+            the agreement they signed without leaving the portal. Closed by
+            default so the status cards above stay focal. */}
+        <details className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <summary className="px-6 py-4 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-between">
+            <span>View your signed contract</span>
+            <span className="text-[11px] text-gray-400">Click to expand</span>
+          </summary>
+          <div className="border-t border-gray-100">
+            <ContractDocumentBody contract={contract} />
+          </div>
+        </details>
 
         <p className="text-center text-xs text-gray-400 pt-4">
           Bookmark this page to come back anytime.
