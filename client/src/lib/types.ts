@@ -56,7 +56,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
 export type ProductionType = "video" | "photo" | "both";
 
 // Dashboard widget configuration
-export type DashboardWidgetId = "metrics" | "upcoming" | "invoices" | "mileage" | "revenue";
+export type DashboardWidgetId = "metrics" | "activity" | "upcoming" | "invoices" | "mileage" | "revenue";
 
 export interface DashboardWidgetConfig {
   id: DashboardWidgetId;
@@ -65,6 +65,7 @@ export interface DashboardWidgetConfig {
 
 export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   { id: "metrics", enabled: true },
+  { id: "activity", enabled: true },
   { id: "upcoming", enabled: true },
   { id: "invoices", enabled: true },
   { id: "mileage", enabled: true },
@@ -73,6 +74,7 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
 
 export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
   metrics: "Status Cards (Upcoming, In Editing, Outstanding, Completed)",
+  activity: "Activity Feed (recent client interactions)",
   upcoming: "Upcoming Shoots",
   invoices: "Recent Invoices",
   mileage: "Mileage Summary",

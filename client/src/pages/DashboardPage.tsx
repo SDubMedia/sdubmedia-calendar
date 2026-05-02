@@ -7,6 +7,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
+import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
@@ -380,6 +381,11 @@ export default function DashboardPage() {
           </div>
         </div>
         )}
+
+        {/* Activity Feed — recent client interactions across proposals,
+            contracts, payments, replies. Pulls only from existing data; no
+            new fetches. Owners can disable in Settings → Dashboard widgets. */}
+        {isWidgetEnabled("activity") && <ActivityFeed />}
 
         {/* Middle Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
