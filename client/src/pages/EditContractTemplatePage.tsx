@@ -14,6 +14,7 @@ import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import type { ProposalBlock, ProposalPage, ProposalPageType, ContractTemplate, PaymentMilestone } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ArrowLeft, Save, FileText, Receipt, DollarSign, Sparkles, ChevronUp, ChevronDown, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
@@ -53,6 +54,8 @@ export default function EditContractTemplatePage() {
   const [saving, setSaving] = useState(false);
   const [showLibrary, setShowLibrary] = useState(true);
   const [showPageList, setShowPageList] = useState(true);
+  // Mobile-only sheet for the merge-field panel (desktop has it inline).
+  const [mobileFieldPanelOpen, setMobileFieldPanelOpen] = useState(false);
 
   const hydratedRef = useRef(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -313,6 +316,14 @@ export default function EditContractTemplatePage() {
         <button onClick={() => addPage("agreement")} className="flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
           <Plus className="w-3 h-3" /> Page
         </button>
+        {/* Mobile-only Merge fields button. The desktop right-sidebar
+            panel is hidden at < 768px; this opens it as a bottom Sheet
+            so phones can still drop merge-field tokens at the cursor. */}
+        {activePage?.type !== "invoice" && (
+          <button onClick={() => setMobileFieldPanelOpen(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs text-primary border border-primary/30 rounded-lg whitespace-nowrap ml-auto">
+            Merge fields
+          </button>
+        )}
       </div>
 
       {/* 3-column layout: page list + canvas + library */}
@@ -413,6 +424,25 @@ export default function EditContractTemplatePage() {
           </div>
         )}
       </div>
+
+      {/* Mobile-only Sheet — same panel as the desktop right sidebar, but
+          slides up from the bottom on tap. Lets phones add merge fields
+          inline at the cursor without the full desktop layout. */}
+      <Sheet open={mobileFieldPanelOpen} onOpenChange={setMobileFieldPanelOpen}>
+        <SheetContent side="bottom" className="md:hidden h-[80vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Merge fields</SheetTitle>
+          </SheetHeader>
+          <div className="pt-2">
+            <ContractMergeFieldPanel
+              onAddField={(key, label) => {
+                addMergeField(key, label);
+                setMobileFieldPanelOpen(false);
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

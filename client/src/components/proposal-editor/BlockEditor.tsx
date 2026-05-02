@@ -1009,12 +1009,24 @@ function SelectionBubble({
   // can never render offscreen.
   const TOOLBAR_WIDTH = 220;
   const TOOLBAR_HEIGHT = 32;
-  // 14px gap above the selection (was 6) — keeps the bubble out of the way
-  // of the highlighted line + the cursor caret.
+  // 14px gap above the selection — keeps the bubble out of the way of
+  // the highlighted line + the cursor caret. Below-flip when there's no
+  // room above. Bottom-clamp matters on mobile where the soft keyboard
+  // shrinks visualViewport (use it when available so the bubble doesn't
+  // get pushed under the keyboard).
   const ABOVE_GAP = 14;
   const BELOW_GAP = 10;
+  const viewportHeight = (typeof window !== "undefined" && window.visualViewport)
+    ? window.visualViewport.height
+    : window.innerHeight;
   const idealTop = rect.top - TOOLBAR_HEIGHT - ABOVE_GAP;
-  const top = idealTop < 8 ? rect.bottom + BELOW_GAP : idealTop;
+  let top = idealTop < 8 ? rect.bottom + BELOW_GAP : idealTop;
+  // Clamp bottom — if the bubble would land below the visible viewport
+  // (e.g., the keyboard is up and selection is near the bottom), pin
+  // it to the upper region of the visible area instead.
+  if (top + TOOLBAR_HEIGHT > viewportHeight - 8) {
+    top = Math.max(8, viewportHeight - TOOLBAR_HEIGHT - 8);
+  }
   const left = Math.max(8, Math.min(window.innerWidth - TOOLBAR_WIDTH - 8, rect.left + rect.width / 2 - TOOLBAR_WIDTH / 2));
   // Portal to document.body so any ancestor transform / overflow on the
   // editor's parents can't capture the fixed positioning. Without this,

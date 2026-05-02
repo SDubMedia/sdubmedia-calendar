@@ -69,9 +69,10 @@ export default function InvoicePageRenderer({
   const invoiceNum = invoiceNumber || (contractId ? `INV-${contractId.slice(-6).toUpperCase()}` : "INV-DRAFT");
 
   return (
-    <div className="bg-white text-gray-900 px-8 py-10 sm:px-12 sm:py-14 max-w-4xl mx-auto" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-6 mb-10">
+    <div className="bg-white text-gray-900 px-5 py-8 sm:px-12 sm:py-14 max-w-4xl mx-auto" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+      {/* Header — stacks on phones (logo over INVOICE label) so neither
+          column gets squeezed at 375px. Two-column flex on tablet+. */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-8 sm:mb-10">
         <div>
           {org?.logoUrl
             ? <img src={org.logoUrl} alt={org.name || ""} className="h-12 mb-3 object-contain" />
@@ -80,15 +81,15 @@ export default function InvoicePageRenderer({
           {bi.email && <p className="text-xs text-gray-500">{bi.email}</p>}
           {bi.phone && <p className="text-xs text-gray-500">{bi.phone}</p>}
         </div>
-        <div className="text-right">
+        <div className="sm:text-right">
           <p className="text-3xl font-light text-gray-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>INVOICE</p>
           <p className="text-xs text-gray-500 mt-1.5 tabular-nums">{invoiceNum}</p>
           <p className="text-xs text-gray-500 mt-0.5">Issued {formattedIssueDate}</p>
         </div>
       </div>
 
-      {/* Bill-to */}
-      <div className="grid grid-cols-2 gap-6 mb-8">
+      {/* Bill-to — stacks on phones, two columns on tablet+ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8">
         <div>
           <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 mb-1.5">Bill To</p>
           <p className="text-sm font-medium text-gray-900">{client?.company || client?.contactName || "Client"}</p>

@@ -141,13 +141,14 @@ export default function PipelineAnalyticsPage() {
                 <div className="px-5 py-3 border-b border-border">
                   <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Lead sources</h2>
                 </div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-secondary/40">
                     <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
                       <th className="px-5 py-2 font-medium">Source</th>
                       <th className="px-5 py-2 font-medium text-right">Sent</th>
-                      <th className="px-5 py-2 font-medium text-right">Accepted</th>
-                      <th className="px-5 py-2 font-medium text-right">Win rate</th>
+                      <th className="px-5 py-2 font-medium text-right hidden sm:table-cell">Accepted</th>
+                      <th className="px-5 py-2 font-medium text-right hidden sm:table-cell">Win rate</th>
                       <th className="px-5 py-2 font-medium text-right">Revenue</th>
                     </tr>
                   </thead>
@@ -156,8 +157,8 @@ export default function PipelineAnalyticsPage() {
                       <tr key={s.source} className="border-t border-border/50">
                         <td className="px-5 py-2.5 text-foreground">{s.source}</td>
                         <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground">{s.sent}</td>
-                        <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground">{s.accepted}</td>
-                        <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground">
+                        <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground hidden sm:table-cell">{s.accepted}</td>
+                        <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
                           {s.sent > 0 ? `${((s.accepted / s.sent) * 100).toFixed(0)}%` : "—"}
                         </td>
                         <td className="px-5 py-2.5 text-right tabular-nums font-mono text-foreground">${s.revenue.toFixed(0)}</td>
@@ -165,6 +166,7 @@ export default function PipelineAnalyticsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </>
