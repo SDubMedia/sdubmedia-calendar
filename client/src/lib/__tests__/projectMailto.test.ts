@@ -94,4 +94,25 @@ describe("buildProjectMailto", () => {
     expect(url).not.toContain(" & ");
     expect(url).toMatch(/%26|&amp;|amp%3B|amp%26/);
   });
+
+  it("uses reschedule subject + 'moved from / to' copy when rescheduledFromDate is set", () => {
+    const url = buildProjectMailto({
+      ...baseInput,
+      date: "2026-07-04",
+      rescheduledFromDate: "2026-06-14",
+    });
+    const decoded = decodeURIComponent(url);
+    expect(decoded).toContain("subject=Rescheduled: Wedding now on Saturday, July 4, 2026");
+    expect(decoded).toContain("Sunday, June 14, 2026");
+    expect(decoded).toContain("Saturday, July 4, 2026");
+  });
+
+  it("reschedule body says 'we've moved your...'", () => {
+    const url = buildProjectMailto({
+      ...baseInput,
+      date: "2026-07-04",
+      rescheduledFromDate: "2026-06-14",
+    });
+    expect(decodeURIComponent(url)).toContain("we've moved your wedding");
+  });
 });
