@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useApp } from "@/contexts/AppContext";
+import { substituteManualContractFields } from "@/lib/manualContractSubstitute";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Contract, ContractStatus, AdditionalSigner } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -119,9 +120,27 @@ export default function EditContractPage() {
     setSaveStatus("saving");
     saveTimerRef.current = window.setTimeout(async () => {
       try {
+        // Re-substitute merge fields on every save. Server-side substitution
+        // ran once at proposal-acceptance time and resolved all tokens that
+        // existed then. But if the user types NEW tokens like {{event_date}}
+        // into the WYSIWYG editor afterward, they'd print literally to the
+        // client. Running substitute again is idempotent — fully-resolved
+        // values have no tokens to find, so they pass through unchanged;
+        // newly-typed tokens get filled in.
+        const client = contract.clientId ? data.clients.find(c => c.id === contract.clientId) : null;
+        const project = contract.projectId ? data.projects.find(p => p.id === contract.projectId) : null;
+        const location = project?.locationId ? data.locations.find(l => l.id === project.locationId) : null;
+        const substitutedContent = substituteManualContractFields(content, {
+          client,
+          project,
+          location,
+          org: data.organization,
+          projectTitle: contract.title,
+        });
+
         const patch: Record<string, unknown> = {
           title,
-          content,
+          content: substitutedContent,
           clientEmail,
           fieldValues,
           additionalSigners,
@@ -133,7 +152,7 @@ export default function EditContractPage() {
           const nextPages = contract.pages.map(p => p);
           const agreementIdx = nextPages.findIndex(p => p.type === "agreement");
           const targetIdx = agreementIdx >= 0 ? agreementIdx : 0;
-          nextPages[targetIdx] = { ...nextPages[targetIdx], content, blocks: [] };
+          nextPages[targetIdx] = { ...nextPages[targetIdx], content: substitutedContent, blocks: [] };
           patch.pages = nextPages;
         }
         await updateContract(contract.id, patch);
