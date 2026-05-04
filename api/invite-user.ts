@@ -60,55 +60,85 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Look up org name for the email body
+    // Look up the caller's display name so we can sign the email "from" them
+    // (warmer than a faceless system notification).
+    const { data: callerRow } = await supabase
+      .from("user_profiles")
+      .select("name")
+      .eq("id", caller.userId)
+      .single();
+    const callerName = callerRow?.name || "";
+
+    // Look up org name + business info for branding + reply-to.
     const { data: org } = await supabase
       .from("organizations")
-      .select("name")
+      .select("name, business_info")
       .eq("id", callerOrgId)
       .single();
     const orgName = org?.name || "Slate";
+    const orgBusinessInfo = (org?.business_info as { email?: string; ownerName?: string } | null) || null;
+    const replyToEmail = orgBusinessInfo?.email?.trim() || FROM_EMAIL;
+    // Prefer business_info.ownerName when set, else fall back to caller name.
+    const senderName = orgBusinessInfo?.ownerName?.trim() || callerName || orgName;
 
     if (!isAllowedUrl(APP_URL)) {
       return res.status(500).json({ error: "App URL not configured properly" });
     }
 
-    const safeName = escapeHtml(target.name || "there");
+    // Role-specific blurb so the email tells them what they'll actually
+    // *do* in Slate, not just "you have an account."
+    const rolePitch: Record<string, string> = {
+      client: "You'll be able to view your project schedule, see photos and videos as soon as they're delivered, and check on invoices anytime — all in one place.",
+      partner: "You'll be able to track project progress, view financial summaries for your clients, and stay in the loop on what's coming up.",
+      staff: "You'll be able to see your schedule, log your hours, and check your pay — all in one place.",
+      family: "You'll have access to the family calendar so we can keep everyone on the same page.",
+      owner: "You'll have full access to projects, calendars, finances, and team management.",
+    };
+    const pitch = rolePitch[target.role] || rolePitch.client;
+
+    // Friendly first name for greeting (falls back to "there" if no name).
+    const firstName = (target.name || "").split(" ")[0] || "there";
+
+    const safeFirstName = escapeHtml(firstName);
     const safeEmail = escapeHtml(target.email);
     const safePassword = escapeHtml(tempPassword);
     const safeOrgName = escapeHtml(orgName);
-    const safeRole = escapeHtml(target.role);
+    const safeSenderName = escapeHtml(senderName);
+    const safePitch = escapeHtml(pitch);
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #1e293b;">
-        <h1 style="font-size: 24px; font-weight: 700; color: #0088ff; margin: 0 0 8px;">Welcome to Slate</h1>
-        <p style="font-size: 13px; color: #64748b; margin: 0 0 24px;">By ${safeOrgName}</p>
+        <h1 style="font-size: 24px; font-weight: 700; color: #0088ff; margin: 0 0 8px;">Welcome aboard</h1>
+        <p style="font-size: 13px; color: #64748b; margin: 0 0 24px;">From ${safeSenderName} at ${safeOrgName}</p>
 
-        <p style="font-size: 15px; line-height: 1.6;">Hi ${safeName},</p>
-        <p style="font-size: 15px; line-height: 1.6;">An account has been created for you on Slate as a <strong>${safeRole}</strong>. You can sign in using the credentials below.</p>
+        <p style="font-size: 15px; line-height: 1.6;">Hi ${safeFirstName},</p>
+        <p style="font-size: 15px; line-height: 1.6;">I just set up an account for you in our project hub so we can stay organized together.</p>
+        <p style="font-size: 15px; line-height: 1.6;">${safePitch}</p>
+
+        <div style="margin: 28px 0;">
+          <a href="${APP_URL}" style="display: inline-block; background: #0088ff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Sign In</a>
+        </div>
 
         <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0 0 12px; font-size: 13px; color: #475569;">Your login details:</p>
           <p style="margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Email</p>
           <p style="margin: 0 0 16px; font-size: 14px; font-family: 'SF Mono', Monaco, monospace; color: #1e293b;">${safeEmail}</p>
           <p style="margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Temporary Password</p>
-          <p style="margin: 0; font-size: 14px; font-family: 'SF Mono', Monaco, monospace; color: #1e293b;">${safePassword}</p>
+          <p style="margin: 0 0 12px; font-size: 14px; font-family: 'SF Mono', Monaco, monospace; color: #1e293b;">${safePassword}</p>
+          <p style="margin: 0; font-size: 12px; color: #64748b;">You'll be asked to set your own password on first sign in.</p>
         </div>
 
-        <p style="font-size: 14px; line-height: 1.6; color: #64748b;">You'll be asked to set a new password the first time you log in.</p>
+        <p style="font-size: 15px; line-height: 1.6; margin-top: 24px;">If you have any questions, just reply to this email and it'll come straight to me.</p>
 
-        <div style="margin: 32px 0;">
-          <a href="${APP_URL}" style="display: inline-block; background: #0088ff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Sign In to Slate</a>
-        </div>
-
-        <p style="font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 32px;">
-          If you weren't expecting this email, you can safely ignore it.
-        </p>
+        <p style="font-size: 15px; line-height: 1.6; margin-top: 24px;">— ${safeSenderName}</p>
       </div>
     `;
 
     const { error: sendError } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: `${orgName} <${FROM_EMAIL}>`,
+      replyTo: replyToEmail,
       to: target.email,
-      subject: `You've been invited to Slate by ${orgName}`,
+      subject: `${senderName} invited you to ${orgName}`,
       html,
     });
 
