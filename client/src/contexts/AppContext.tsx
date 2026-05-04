@@ -711,12 +711,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const allowedClientIds = new Set(clientIds);
       const allowedProjects = rawData.projects.filter(p => allowedClientIds.has(p.clientId));
       const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
-      // Meetings: client role gets only meetings explicitly shared
-      // (visibleToClient=true) AND tied to one of their clients.
-      // Partner role gets meetings on their clients OR unattached.
+      // Meetings:
+      //  - client role gets only meetings explicitly shared (visibleToClient=true)
+      //    AND tied to one of their clients.
+      //  - partner role gets only meetings where they're explicitly
+      //    assigned via assignedCrewMemberIds. Same rule as staff —
+      //    no meeting shows up on a partner's calendar unless they
+      //    were specifically added. Partners without a crew_member_id
+      //    linked won't see any meetings (admin-only by default).
       const allowedMeetings = targetRole === "client"
         ? rawData.meetings.filter(m => m.visibleToClient && m.clientId && allowedClientIds.has(m.clientId))
-        : rawData.meetings.filter(m => !m.clientId || allowedClientIds.has(m.clientId));
+        : rawData.meetings.filter(m =>
+            crewMemberId && Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+          );
       // Galleries: clients keep access to their own deliveries; partners
       // and family don't get the gallery feature at all (owner-only).
       const allowedDeliveries = targetRole === "client"
