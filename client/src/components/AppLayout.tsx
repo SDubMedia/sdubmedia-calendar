@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
+import PageGuideOverlay from "@/components/PageGuideOverlay";
+import BusinessInfoSetupModal from "@/components/BusinessInfoSetupModal";
 import UpgradeSuccessDialog from "@/components/UpgradeSuccessDialog";
 import PaymentBanner from "@/components/PaymentBanner";
 import OverLimitBanner from "@/components/OverLimitBanner";
@@ -594,6 +596,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
       <UpgradeDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <PageGuideOverlay />
+      <BusinessInfoSetupModal />
     </div>
   );
 }

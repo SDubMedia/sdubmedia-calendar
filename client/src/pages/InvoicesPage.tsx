@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import TestimonialPromptDialog from "@/components/TestimonialPromptDialog";
+import PrereqGate from "@/components/PrereqGate";
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -250,13 +251,23 @@ export default function InvoicesPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage client invoices</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+        <PrereqGate
+          met={data.clients.length > 0 && data.projects.some(p => p.status !== "cancelled")}
+          title={data.clients.length === 0 ? "Add a client first" : "Add a project first"}
+          body={data.clients.length === 0
+            ? "Invoices bill a client for completed work. Add at least one client to get started."
+            : "Invoices roll up billable projects in a date range. Add at least one project (filming done, editing, or completed) and you'll have something to invoice."}
+          ctaLabel={data.clients.length === 0 ? "Add Client" : "Open Calendar"}
+          ctaHref={data.clients.length === 0 ? "/clients" : "/calendar"}
         >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Create Invoice</span>
-        </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Create Invoice</span>
+          </button>
+        </PrereqGate>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">

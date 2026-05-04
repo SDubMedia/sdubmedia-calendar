@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 
 const STATUS_LABELS: Record<string, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
@@ -176,6 +177,7 @@ export default function MySchedulePage() {
                 {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
               </span>
               <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border",
+                project.status === "tentative" && "border-dashed border-amber-400/50 text-amber-300 bg-amber-400/10",
                 project.status === "upcoming" && "border-blue-500/40 text-blue-300 bg-blue-500/10",
                 project.status === "filming_done" && "border-purple-500/40 text-purple-300 bg-purple-500/10",
                 project.status === "in_editing" && "border-amber-500/40 text-amber-300 bg-amber-500/10",
@@ -416,6 +418,7 @@ export default function MySchedulePage() {
                         {dayProjects.slice(0, 3).map(p => (
                           <div key={p.id} className={cn(
                             "w-1.5 h-1.5 rounded-full",
+                            p.status === "tentative" && "bg-amber-300 ring-1 ring-amber-400/60",
                             p.status === "upcoming" && "bg-blue-400",
                             p.status === "filming_done" && "bg-purple-400",
                             p.status === "in_editing" && "bg-amber-400",
@@ -434,6 +437,7 @@ export default function MySchedulePage() {
                             onClick={() => setSelectedProject(p)}
                             className={cn(
                               "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              p.status === "tentative" && "bg-amber-400/15 text-amber-300 border border-dashed border-amber-400/40",
                               p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
                               p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
                               p.status === "in_editing" && "bg-amber-500/25 text-amber-300",

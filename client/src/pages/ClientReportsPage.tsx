@@ -278,6 +278,7 @@ export default function ClientReportsPage() {
   }
 
   const STATUS_LABELS: Record<string, string> = {
+    tentative: "Tentative",
     upcoming: "Upcoming",
     filming_done: "Filmed",
     in_editing: "In Editing",
@@ -285,6 +286,7 @@ export default function ClientReportsPage() {
   };
 
   const STATUS_COLORS: Record<string, string> = {
+    tentative: "text-amber-300",
     upcoming: "text-blue-300",
     filming_done: "text-yellow-300",
     in_editing: "text-purple-300",

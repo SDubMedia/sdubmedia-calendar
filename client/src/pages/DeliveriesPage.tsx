@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useApp } from "@/contexts/AppContext";
+import PrereqGate from "@/components/PrereqGate";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -60,24 +61,40 @@ function DeliveriesList() {
           <h1 className="text-2xl font-bold" style={{ fontFamily: "'Space Grotesk', system-ui" }}>Galleries</h1>
           <p className="text-sm text-slate-400">Photo delivery + client proofing.</p>
         </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088ff] text-white rounded-lg font-semibold text-sm hover:bg-[#0066dd]"
+        <PrereqGate
+          met={data.projects.length > 0}
+          title="Add a project first"
+          body="Galleries deliver work for a specific project. Add at least one project on the calendar and you'll be able to attach a gallery to it."
+          ctaLabel="Open Calendar"
+          ctaHref="/calendar"
         >
-          <Plus className="w-4 h-4" /> New gallery
-        </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088ff] text-white rounded-lg font-semibold text-sm hover:bg-[#0066dd]"
+          >
+            <Plus className="w-4 h-4" /> New gallery
+          </button>
+        </PrereqGate>
       </div>
 
       {galleries.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-12 text-center">
           <p className="text-slate-300 mb-2">No galleries yet.</p>
           <p className="text-sm text-slate-500 mb-6">Send a gallery for client proofing or just photo delivery.</p>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088ff] text-white rounded-lg font-semibold text-sm hover:bg-[#0066dd]"
+          <PrereqGate
+            met={data.projects.length > 0}
+            title="Add a project first"
+            body="Galleries deliver work for a specific project. Add at least one project on the calendar and you'll be able to attach a gallery to it."
+            ctaLabel="Open Calendar"
+            ctaHref="/calendar"
           >
-            <Plus className="w-4 h-4" /> Create your first gallery
-          </button>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088ff] text-white rounded-lg font-semibold text-sm hover:bg-[#0066dd]"
+            >
+              <Plus className="w-4 h-4" /> Create your first gallery
+            </button>
+          </PrereqGate>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

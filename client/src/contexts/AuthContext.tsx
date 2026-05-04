@@ -21,6 +21,8 @@ interface AuthContextValue {
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   saveMyTemplates: (templates: PersonalEventTemplate[]) => Promise<void>;
+  markGuideSeen: (pageId: string) => Promise<void>;
+  markBusinessInfoSetupSeen: (opts?: { stripeOptedOut?: boolean }) => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
   // View As (owner only) — preview the app as another role
@@ -48,6 +50,14 @@ function rowToProfile(r: any): UserProfile {
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
     featureOverrides: r.feature_overrides || undefined,
     personalEventTemplates: Array.isArray(r.personal_event_templates) ? r.personal_event_templates : [],
+    guidance: (r.guidance && typeof r.guidance === "object")
+      ? {
+          seenGuides: r.guidance.seenGuides || {},
+          businessInfoSetupSeen: r.guidance.businessInfoSetupSeen ?? false,
+          stripeOptedOut: r.guidance.stripeOptedOut ?? false,
+          manualCompletions: r.guidance.manualCompletions || {},
+        }
+      : { seenGuides: {}, businessInfoSetupSeen: false, stripeOptedOut: false, manualCompletions: {} },
     createdAt: r.created_at,
   };
 }
@@ -254,10 +264,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(p => p ? { ...p, personalEventTemplates: templates } : p);
   }, [user]);
 
+  // Mark a per-page first-visit guide as seen. Idempotent — calling
+  // again with the same pageId is a no-op (we keep the original
+  // first-seen timestamp). Optimistic local update so the modal
+  // closes instantly without waiting for the round-trip.
+  const markGuideSeen = useCallback(async (pageId: string) => {
+    if (!user) return;
+    setProfile(p => {
+      if (!p) return p;
+      const seen = p.guidance?.seenGuides || {};
+      if (seen[pageId]) return p;
+      const nextGuidance = {
+        seenGuides: { ...seen, [pageId]: new Date().toISOString() },
+        businessInfoSetupSeen: p.guidance?.businessInfoSetupSeen ?? false,
+        manualCompletions: p.guidance?.manualCompletions || {},
+      };
+      void supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+      return { ...p, guidance: nextGuidance };
+    });
+  }, [user]);
+
+  const markBusinessInfoSetupSeen = useCallback(async (opts?: { stripeOptedOut?: boolean }) => {
+    if (!user) return;
+    setProfile(p => {
+      if (!p) return p;
+      const nextGuidance = {
+        seenGuides: p.guidance?.seenGuides || {},
+        businessInfoSetupSeen: true,
+        stripeOptedOut: opts?.stripeOptedOut ?? p.guidance?.stripeOptedOut ?? false,
+        manualCompletions: p.guidance?.manualCompletions || {},
+      };
+      void supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+      return { ...p, guidance: nextGuidance };
+    });
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
       signIn, signOut, changePassword, completeOnboarding, saveMyTemplates,
+      markGuideSeen, markBusinessInfoSetupSeen,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
       viewAsRole, setViewAsRole: setViewAsRoleWrapped, impersonateUserId, setImpersonateUserId, effectiveProfile,

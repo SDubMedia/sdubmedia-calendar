@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { getAuthToken, supabase } from "@/lib/supabase";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
+import PrereqGate from "@/components/PrereqGate";
 
 const STATUS_COLORS: Record<ProposalStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -632,9 +633,17 @@ export default function ProposalsPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "proposals" ? (
           <div className="space-y-4">
-            <Button onClick={openNewProposal} className="gap-2">
-              <Plus className="w-4 h-4" /> New Proposal
-            </Button>
+            <PrereqGate
+              met={data.clients.length > 0}
+              title="Add a client first"
+              body="Proposals are addressed to a specific client. Add at least one client and you'll be able to send your first proposal."
+              ctaLabel="Add Client"
+              ctaHref="/clients"
+            >
+              <Button onClick={openNewProposal} className="gap-2">
+                <Plus className="w-4 h-4" /> New Proposal
+              </Button>
+            </PrereqGate>
 
             {data.proposals.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">

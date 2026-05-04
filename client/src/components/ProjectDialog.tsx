@@ -556,6 +556,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
+                  <SelectItem value="tentative">Tentative (agreement sent)</SelectItem>
                   <SelectItem value="upcoming">Upcoming</SelectItem>
                   <SelectItem value="filming_done">Filming Done</SelectItem>
                   <SelectItem value="in_editing">In Editing</SelectItem>

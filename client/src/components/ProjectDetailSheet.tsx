@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filming Done",
   in_editing: "In Editing",
@@ -378,6 +379,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </SheetTitle>
                 <div className="mt-1">
                   <Badge className={cn("text-xs",
+                    project.status === "tentative" && "bg-amber-400/15 text-amber-300 border border-dashed border-amber-400/40",
                     project.status === "upcoming" && "bg-blue-500/20 text-blue-300 border-blue-500/30",
                     project.status === "filming_done" && "bg-purple-500/20 text-purple-300 border-purple-500/30",
                     project.status === "in_editing" && "bg-amber-500/20 text-amber-300 border-amber-500/30",

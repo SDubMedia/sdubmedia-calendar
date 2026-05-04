@@ -88,7 +88,7 @@ export default function ClientDashboardPage() {
 
   // Projects by status
   const projectsByStatus = useMemo(() => ({
-    upcoming: data.projects.filter(p => p.status === "upcoming").sort((a, b) => a.date.localeCompare(b.date)),
+    upcoming: data.projects.filter(p => p.status === "upcoming" || p.status === "tentative").sort((a, b) => a.date.localeCompare(b.date)),
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
     completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),
   }), [data.projects]);

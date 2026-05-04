@@ -71,16 +71,16 @@ export default function DashboardPage() {
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
 
-  // Upcoming projects (next 7 days)
+  // Upcoming projects (next 7 days) — includes tentative (agreement sent, deposit pending)
   const upcomingProjects = useMemo(() => {
     return data.projects
-      .filter(p => p.date >= todayStr && p.date <= weekFromNow && p.status === "upcoming")
+      .filter(p => p.date >= todayStr && p.date <= weekFromNow && (p.status === "upcoming" || p.status === "tentative"))
       .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   }, [data.projects, todayStr, weekFromNow]);
 
-  // Projects by status
+  // Projects by status — group tentative with upcoming on the dashboard
   const projectsByStatus = useMemo(() => ({
-    upcoming: data.projects.filter(p => p.status === "upcoming").sort((a, b) => a.date.localeCompare(b.date)),
+    upcoming: data.projects.filter(p => p.status === "upcoming" || p.status === "tentative").sort((a, b) => a.date.localeCompare(b.date)),
     filming_done: data.projects.filter(p => p.status === "filming_done").sort((a, b) => b.date.localeCompare(a.date)),
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
     completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),

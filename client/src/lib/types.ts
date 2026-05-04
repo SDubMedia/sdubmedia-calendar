@@ -31,23 +31,27 @@ export interface OrgFeatures {
   familyFeatures?: Partial<OrgFeatures>;
 }
 
+// Default ON for the core flow. Niche features (Content Series,
+// 1099 summary, Partner Splits, Marketing Budget) default OFF —
+// user enables them in Settings if they need them. Replaces the
+// old onboarding wizard's "what features do you want?" step.
 export const DEFAULT_FEATURES: OrgFeatures = {
   calendar: true,
   crewManagement: true,
   invoicing: true,
-  mileage: false,
-  expenses: false,
-  clientPortal: false,
+  mileage: true,
+  expenses: true,
+  clientPortal: true,
   contentSeries: false,
   partnerSplits: false,
-  budget: true,
+  budget: false,
   pipeline: true,
   proposals: true,
   contracts: true,
   deliveries: true,
   clientHealth: true,
   profitLoss: true,
-  contractor1099: true,
+  contractor1099: false,
   clientManagement: true,
   locationManagement: true,
   reports: true,
@@ -143,6 +147,7 @@ export interface Organization {
   // to enforce project limits, show the Manage Subscription button, and render
   // the PaymentBanner when a charge has failed.
   projectLimit: number;          // -1 = unlimited (paid tier or grandfathered), otherwise the free-tier cap (10)
+  stripeAccountId: string;       // Stripe Connect account for collecting client payments (empty = not connected)
   stripeCustomerId: string;      // empty string until user first opens checkout
   stripeSubscriptionId: string;  // empty string when no active subscription
   billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
@@ -173,10 +178,28 @@ export interface UserProfile {
   hasCompletedOnboarding: boolean;
   featureOverrides?: Record<string, boolean>; // per-user feature overrides (most specific wins)
   personalEventTemplates: PersonalEventTemplate[];
+  guidance?: UserGuidanceState; // first-visit guides + setup-checklist dismiss state
   createdAt: string;
 }
 
-export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed" | "cancelled";
+// Tracks which guidance modals the user has dismissed. Each fires at
+// most once. The business-info modal is the only auto-fire — page-guide
+// modals are no longer auto-popped, they only open when the user clicks
+// the floating ? button on pages that have help content.
+export interface UserGuidanceState {
+  seenGuides: Record<string, string>; // pageId -> ISO timestamp first-seen (legacy field; kept so the ? button can still log re-opens later)
+  businessInfoSetupSeen?: boolean; // set true after the one-time business-info collection modal
+  // User explicitly opted out of collecting payments through Slate. We
+  // still let them send proposals/contracts but skip the Stripe-Connect
+  // prereq blocker on the assumption they bill clients elsewhere.
+  stripeOptedOut?: boolean;
+  // Manual checklist completions for items we can't auto-detect (calendar
+  // sync is a copy-paste flow into Google/Apple Calendar — there's no
+  // server-side signal we can read, so the user marks it themselves).
+  manualCompletions?: { calendarSynced?: boolean };
+}
+
+export type ProjectStatus = "tentative" | "upcoming" | "filming_done" | "in_editing" | "completed" | "cancelled";
 
 export type CrewRole =
   | "Main Videographer"
@@ -343,6 +366,7 @@ export interface Project {
   deliverableUrl: string; // Google Drive link to final deliverables
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
+  depositPaidAt?: string | null; // ISO timestamp stamped when at_signing milestone paid → flips tentative to upcoming
   createdAt: string;
 }
 

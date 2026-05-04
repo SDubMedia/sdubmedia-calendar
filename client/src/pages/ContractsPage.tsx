@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
 import InvoicePageRenderer from "@/components/proposal/InvoicePageRenderer";
+import PrereqGate from "@/components/PrereqGate";
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -224,9 +225,17 @@ export default function ContractsPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "contracts" ? (
           <div className="space-y-4">
-            <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
-              <Plus className="w-4 h-4" /> New Contract
-            </Button>
+            <PrereqGate
+              met={data.clients.length > 0}
+              title="Add a client first"
+              body="Contracts need a client to address and sign. Add at least one client and you'll be able to draft your first contract."
+              ctaLabel="Add Client"
+              ctaHref="/clients"
+            >
+              <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
+                <Plus className="w-4 h-4" /> New Contract
+              </Button>
+            </PrereqGate>
 
             {data.contracts.length === 0 ? (
               <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-10 text-center">
@@ -241,9 +250,17 @@ export default function ContractsPage() {
                     ? "Build a reusable template first, then create + send your first contract."
                     : `Pick from ${data.contractTemplates.length} lawyer-vetted templates and send your first contract in under a minute.`}
                 </p>
-                <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
-                  <Plus className="w-4 h-4" /> Start your first contract
-                </Button>
+                <PrereqGate
+                  met={data.clients.length > 0}
+                  title="Add a client first"
+                  body="Contracts need a client to address and sign. Add at least one client and you'll be able to draft your first contract."
+                  ctaLabel="Add Client"
+                  ctaHref="/clients"
+                >
+                  <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
+                    <Plus className="w-4 h-4" /> Start your first contract
+                  </Button>
+                </PrereqGate>
               </div>
             ) : (
               <div className="space-y-2">
@@ -560,14 +577,19 @@ export default function ContractsPage() {
                     <span className="text-foreground font-medium tabular-nums">{detailTpl.content.length.toLocaleString()}</span> chars
                   </p>
                   {Array.isArray(detailTpl.pages) && detailTpl.pages.length > 0 ? (
-                    // Multi-page template — render each page as its own card.
-                    // Invoice pages auto-render via InvoicePageRenderer with
-                    // sample milestone data so the owner can see what the
-                    // client will see at signing time.
-                    <div className="space-y-3">
-                      {[...detailTpl.pages].sort((a, b) => a.sortOrder - b.sortOrder).map((page, idx) => (
-                        <div key={page.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                          {idx === 0 && (
+                    // Multi-page template — show ONLY the first page as a
+                    // glance preview, with a small "+N more pages" hint
+                    // so the dialog isn't a 3000px-tall full-document scroll.
+                    // Owner clicks Edit / Use in new contract to see the
+                    // full thing in context.
+                    (() => {
+                      const sortedPages = [...detailTpl.pages].sort((a, b) => a.sortOrder - b.sortOrder);
+                      const firstAgreement = sortedPages.find(p => p.type === "agreement") || sortedPages[0];
+                      const otherCount = sortedPages.length - 1;
+                      const otherTypes = sortedPages.filter(p => p.id !== firstAgreement?.id).map(p => p.label).join(", ");
+                      return (
+                        <div className="space-y-2">
+                          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                             <ContractLetterhead
                               orgName={data.organization?.name}
                               ownerName={profile?.name}
@@ -575,31 +597,36 @@ export default function ContractsPage() {
                               businessInfo={data.organization?.businessInfo}
                               intro="Preview — this is what your client will see when you send it."
                             />
-                          )}
-                          {page.type === "invoice" ? (
-                            <InvoicePageRenderer
-                              contractTitle={detailTpl.name}
-                              org={data.organization}
-                              client={null}
-                              milestones={[
-                                { id: "p1", label: "Deposit (50%)", type: "percent", percent: 50, dueType: "at_signing", status: "due" },
-                                { id: "p2", label: "Balance (50%)", type: "percent", percent: 50, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
-                              ]}
-                            />
-                          ) : (
-                            <div
-                              className="px-6 sm:px-10 py-8 contract-html-light"
-                              dangerouslySetInnerHTML={{
-                                __html: DOMPurify.sanitize(
-                                  renderTemplatePreviewHtml(page.content || "", data.organization),
-                                  { ADD_ATTR: ["class"] },
-                                ),
-                              }}
-                            />
+                            {firstAgreement?.type === "invoice" ? (
+                              <InvoicePageRenderer
+                                contractTitle={detailTpl.name}
+                                org={data.organization}
+                                client={null}
+                                milestones={[
+                                  { id: "p1", label: "Deposit", type: "fixed", fixedAmount: 600, dueType: "at_signing", status: "due" },
+                                  { id: "p2", label: "Balance", type: "fixed", fixedAmount: 600, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
+                                ]}
+                              />
+                            ) : (
+                              <div
+                                className="px-6 sm:px-10 py-8 contract-html-light max-h-[40vh] overflow-y-auto"
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(
+                                    renderTemplatePreviewHtml(firstAgreement?.content || "", data.organization),
+                                    { ADD_ATTR: ["class"] },
+                                  ),
+                                }}
+                              />
+                            )}
+                          </div>
+                          {otherCount > 0 && (
+                            <p className="text-[11px] text-muted-foreground text-center px-2">
+                              + {otherCount} more page{otherCount === 1 ? "" : "s"} ({otherTypes}). Click <strong>Edit</strong> or <strong>Use in new contract</strong> to see them all.
+                            </p>
                           )}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()
                   ) : (
                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                       <ContractLetterhead

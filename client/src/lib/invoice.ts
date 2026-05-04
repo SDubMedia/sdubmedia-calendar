@@ -82,8 +82,8 @@ export function buildLineItems(
   const filtered = projects.filter(p => {
     if (p.clientId !== client.id) return false;
     if (p.date < periodStart || p.date > periodEnd) return false;
-    // Don't invoice upcoming projects (no work done yet)
-    if (p.status === "upcoming") return false;
+    // Don't invoice upcoming or tentative projects (no work done yet)
+    if (p.status === "upcoming" || p.status === "tentative") return false;
     // Don't invoice cancelled projects — they bill nothing and shouldn't
     // appear as a line item at all.
     if (p.status === "cancelled") return false;

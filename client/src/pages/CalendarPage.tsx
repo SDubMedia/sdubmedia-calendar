@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -21,6 +21,7 @@ import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
 import { Settings } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
@@ -34,6 +35,17 @@ const MONTH_NAMES = [
 ];
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Show the "Deposit Paid" pill for this many days after the at_signing
+// milestone gets paid. After that, it just looks like a regular upcoming
+// project — the highlight is for celebrating the moment, not for permanent
+// state tracking.
+const DEPOSIT_PAID_PILL_DAYS = 7;
+function depositRecentlyPaid(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const ageMs = Date.now() - new Date(iso).getTime();
+  return ageMs >= 0 && ageMs <= DEPOSIT_PAID_PILL_DAYS * 24 * 60 * 60 * 1000;
+}
 
 export default function CalendarPage() {
   const { data, addPersonalEvent } = useApp();
@@ -291,7 +303,7 @@ export default function CalendarPage() {
 
   const statusCounts = useMemo(() => {
     const projects = viewScope === "month" ? monthProjects : data.projects;
-    const counts: Record<string, number> = { all: projects.length, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
+    const counts: Record<string, number> = { all: projects.length, tentative: 0, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
     projects.forEach((p) => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
   }, [data.projects, monthProjects, viewScope]);
@@ -564,6 +576,11 @@ export default function CalendarPage() {
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
                             "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            // Tentative = agreement sent but not yet paid.
+                            // Dashed border + softer fill so it visually
+                            // reads "not locked in yet" vs the solid blue
+                            // of an upcoming/confirmed booking.
+                            p.status === "tentative" && "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-dashed border-amber-500/50",
                             p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
                             p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
                             p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
@@ -572,6 +589,7 @@ export default function CalendarPage() {
                           )}
                         >
                           {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
+                          {depositRecentlyPaid(p.depositPaidAt) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline-block flex-shrink-0 mr-0.5" aria-label="Deposit paid" />}
                           <span className="hidden sm:inline">{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}</span>
                           <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
                         </div>
@@ -699,6 +717,7 @@ export default function CalendarPage() {
                 <div className="flex gap-1 overflow-x-auto">
                 {[
                   { key: "all", label: "All" },
+                  { key: "tentative", label: "Tentative" },
                   { key: "upcoming", label: "Upcoming" },
                   { key: "filming_done", label: "Filmed" },
                   { key: "in_editing", label: "In Editing" },
@@ -760,6 +779,7 @@ export default function CalendarPage() {
 
                         {/* Status bar */}
                         <div className={cn("w-1 self-stretch rounded-full flex-shrink-0",
+                          project.status === "tentative" && "bg-amber-400",
                           project.status === "upcoming" && "bg-blue-500",
                           project.status === "filming_done" && "bg-purple-500",
                           project.status === "in_editing" && "bg-amber-500",
@@ -774,6 +794,7 @@ export default function CalendarPage() {
                               {pType?.name ?? "Unknown Project"}
                             </span>
                             <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border",
+                              project.status === "tentative" && "border-amber-500/40 border-dashed text-amber-600 dark:text-amber-300",
                               project.status === "upcoming" && "border-blue-500/40 text-blue-600 dark:text-blue-300",
                               project.status === "filming_done" && "border-purple-500/40 text-purple-600 dark:text-purple-300",
                               project.status === "in_editing" && "border-amber-500/40 text-amber-600 dark:text-amber-300",
@@ -782,6 +803,12 @@ export default function CalendarPage() {
                             )}>
                               {STATUS_LABELS[project.status]}
                             </Badge>
+                            {depositRecentlyPaid(project.depositPaidAt) && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                Deposit Paid
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">

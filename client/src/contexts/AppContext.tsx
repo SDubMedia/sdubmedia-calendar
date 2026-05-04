@@ -394,6 +394,7 @@ function rowToProject(r: any): Project {
     deliverableUrl: r.deliverable_url || "",
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
+    depositPaidAt: r.deposit_paid_at || null,
     createdAt: r.created_at,
   };
 }
@@ -641,6 +642,7 @@ function rowToOrg(r: any): Organization {
     pipelineStages: Array.isArray(r.pipeline_stages) && r.pipeline_stages.length > 0 ? r.pipeline_stages : DEFAULT_PIPELINE_STAGES,
     services: Array.isArray(r.services) ? r.services : [],
     projectLimit: r.project_limit ?? 10,
+    stripeAccountId: r.stripe_account_id || "",
     stripeCustomerId: r.stripe_customer_id || "",
     stripeSubscriptionId: r.stripe_subscription_id || "",
     billingStatus: r.billing_status || "ok",
@@ -1167,6 +1169,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
+
+    // When a contract flips to "sent" status, mark the linked project as
+    // "tentative" on the calendar. Stays tentative until the deposit
+    // milestone gets paidAt stamped (handled in the Stripe webhook), at
+    // which point it transitions back to "upcoming". Best-effort —
+    // failure here doesn't block the contract update.
+    if (c.status === "sent") {
+      try {
+        const { data: contractRow } = await supabase
+          .from("contracts")
+          .select("proposal_id, project_id")
+          .eq("id", id)
+          .single();
+        let projectIdToUpdate: string | null = contractRow?.project_id || null;
+        if (!projectIdToUpdate && contractRow?.proposal_id) {
+          const { data: prop } = await supabase
+            .from("proposals")
+            .select("project_id")
+            .eq("id", contractRow.proposal_id)
+            .single();
+          projectIdToUpdate = prop?.project_id || null;
+        }
+        if (projectIdToUpdate) {
+          await supabase
+            .from("projects")
+            .update({ status: "tentative", updated_at: new Date().toISOString() })
+            .eq("id", projectIdToUpdate);
+          setRawData(d => ({
+            ...d,
+            projects: d.projects.map(p => p.id === projectIdToUpdate ? { ...p, status: "tentative" as const } : p),
+          }));
+        }
+      } catch (err) {
+        console.warn("[updateContract] project status cascade failed:", err);
+      }
+    }
   }, []);
 
   const deleteContract = useCallback(async (id: string) => {

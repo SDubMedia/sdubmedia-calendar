@@ -16,6 +16,7 @@ import { getAuthToken } from "@/lib/supabase";
 import type { HomeAddress } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
+  tentative: "bg-amber-400/15 text-amber-300 border border-dashed border-amber-400/40",
   upcoming: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   filming_done: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   in_editing: "bg-purple-500/20 text-purple-300 border-purple-500/30",
@@ -23,6 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",

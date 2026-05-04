@@ -285,6 +285,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 updated_at: nowIso,
               }).eq("id", contractId);
 
+              // Project-status cascade: when the deposit milestone (the one
+              // with dueType: at_signing) gets paidAt stamped for the first
+              // time, flip the linked project from "tentative" to "upcoming"
+              // on the calendar. Marks the moment a tentative booking
+              // becomes a confirmed booking. Best-effort — webhook retries
+              // are handled by the wasAlreadyPaid gate above (we only run
+              // this on the real first-payment transition).
+              if (!wasAlreadyPaid && targetIdx >= 0 && ms[targetIdx].dueType === "at_signing") {
+                try {
+                  const { data: contractRow2 } = await supabase
+                    .from("contracts")
+                    .select("proposal_id, project_id")
+                    .eq("id", contractId)
+                    .single();
+                  let projectIdToUpdate: string | null = (contractRow2?.project_id as string) || null;
+                  if (!projectIdToUpdate && contractRow2?.proposal_id) {
+                    const { data: prop } = await supabase
+                      .from("proposals")
+                      .select("project_id")
+                      .eq("id", contractRow2.proposal_id as string)
+                      .single();
+                    projectIdToUpdate = (prop?.project_id as string) || null;
+                  }
+                  if (projectIdToUpdate) {
+                    await supabase
+                      .from("projects")
+                      .update({ status: "upcoming", deposit_paid_at: nowIso, updated_at: nowIso })
+                      .eq("id", projectIdToUpdate);
+                  }
+                } catch (err) {
+                  console.error(`[stripe-webhook] project status cascade failed: ${errorMessage(err)}`);
+                }
+              }
+
               // Send a branded "thanks for paying" receipt to the client
               // (Stripe also sends its own receipt; this one ties the
               // payment to the contract + portal link). Best-effort —
