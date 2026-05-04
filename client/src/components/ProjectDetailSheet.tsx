@@ -89,6 +89,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [deliverablesOpen, setDeliverablesOpen] = useState(false);
+  const [deliverablesEmail, setDeliverablesEmail] = useState("");
+  const [deliverablesSubject, setDeliverablesSubject] = useState("");
+  const [deliverablesMessage, setDeliverablesMessage] = useState("");
+  const [sendingDeliverables, setSendingDeliverables] = useState(false);
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatingPreview, setGeneratingPreview] = useState(false);
@@ -352,6 +357,50 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       toast.error(err.message || "Failed to send invoice");
     } finally {
       setSendingInvoice(false);
+    }
+  };
+
+  const openDeliverablesDialog = () => {
+    if (!project.deliverableUrl) {
+      toast.error("Add a Google Drive (or other) deliverable link to this project first");
+      return;
+    }
+    if (!client) return;
+    const projectTypeName = pType?.name || "your project";
+    const greeting = client.contactName ? `Hi ${client.contactName.split(" ")[0]},` : "Hi,";
+    const defaultMessage = `${greeting}\n\nYour ${projectTypeName.toLowerCase()} deliverables are ready to view and download. Click the button below to open the folder.`;
+    setDeliverablesEmail(client.email || "");
+    setDeliverablesSubject("Your project deliverables are ready");
+    setDeliverablesMessage(defaultMessage);
+    setDeliverablesOpen(true);
+  };
+
+  const handleSendDeliverables = async () => {
+    if (!project.deliverableUrl) { toast.error("No deliverable link on this project"); return; }
+    if (!deliverablesEmail || !deliverablesEmail.includes("@")) { toast.error("Valid recipient email required"); return; }
+    setSendingDeliverables(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/send-deliverables-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          projectId: project.id,
+          toEmail: deliverablesEmail,
+          subject: deliverablesSubject,
+          message: deliverablesMessage,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to send" }));
+        throw new Error(err.error || "Failed to send");
+      }
+      toast.success(`Deliverables link sent to ${deliverablesEmail}`);
+      setDeliverablesOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send deliverables");
+    } finally {
+      setSendingDeliverables(false);
     }
   };
 
@@ -745,6 +794,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   Edit Project
                 </Button>
               )}
+              {isOwner && project.deliverableUrl && (
+                <Button
+                  variant="outline"
+                  onClick={openDeliverablesDialog}
+                  className="w-full border-border gap-2 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                >
+                  <Send className="w-4 h-4" />
+                  Send Client Deliverables
+                </Button>
+              )}
               {isOwner && client?.email && (
                 <Button
                   variant="outline"
@@ -945,6 +1004,18 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
               </div>
 
+              {client && (
+                <div className="bg-secondary/30 border border-border rounded-md p-3">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Sending to</div>
+                  <div className="text-sm text-foreground font-medium">
+                    {client.contactName || client.company || "Client"}
+                  </div>
+                  {client.company && client.contactName && (
+                    <div className="text-xs text-muted-foreground">{client.company}</div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
                 <input
@@ -954,6 +1025,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   placeholder="client@example.com"
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
+                {client && !client.email && (
+                  <p className="text-xs text-amber-300/90 mt-1.5">
+                    No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -985,6 +1061,86 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
             >
               {sendingInvoice ? "Sending..." : <><Send className="w-4 h-4" /> Create &amp; Send</>}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Send Client Deliverables dialog */}
+      <AlertDialog open={deliverablesOpen} onOpenChange={setDeliverablesOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send Client Deliverables</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              Email a download link to the client. They&apos;ll see simple instructions for opening the folder.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 my-2">
+            {client && (
+              <div className="bg-secondary/30 border border-border rounded-md p-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Sending to</div>
+                <div className="text-sm text-foreground font-medium">
+                  {client.contactName || client.company || "Client"}
+                </div>
+                {client.company && client.contactName && (
+                  <div className="text-xs text-muted-foreground">{client.company}</div>
+                )}
+              </div>
+            )}
+
+            {project.deliverableUrl && (
+              <div className="bg-secondary/30 border border-border rounded-md p-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Link</div>
+                <div className="text-xs text-emerald-300 font-mono break-all">{project.deliverableUrl}</div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
+              <input
+                type="email"
+                value={deliverablesEmail}
+                onChange={e => setDeliverablesEmail(e.target.value)}
+                placeholder="client@example.com"
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {client && !client.email && (
+                <p className="text-xs text-amber-300/90 mt-1.5">
+                  No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Subject</label>
+              <input
+                type="text"
+                value={deliverablesSubject}
+                onChange={e => setDeliverablesSubject(e.target.value)}
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Message</label>
+              <textarea
+                value={deliverablesMessage}
+                onChange={e => setDeliverablesMessage(e.target.value)}
+                rows={4}
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+              />
+            </div>
+          </div>
+
+          <AlertDialogFooter className="gap-2 flex-col sm:flex-row">
+            <AlertDialogCancel className="border-border" disabled={sendingDeliverables}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSendDeliverables}
+              disabled={sendingDeliverables || !deliverablesEmail}
+              className="bg-emerald-500 text-white hover:bg-emerald-600 gap-2"
+            >
+              {sendingDeliverables ? "Sending..." : <><Send className="w-4 h-4" /> Send</>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

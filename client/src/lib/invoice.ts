@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
-import { getProjectBillableHours, getProjectInvoiceAmount } from "./data";
+import { getProjectBillableHours, getProjectSubtotal, getProjectDiscountValue } from "./data";
 
 export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -100,8 +100,11 @@ export function buildLineItems(
     const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
 
     const effectiveModel = p.billingModel ?? client.billingModel;
+    const projectSubtotal = getProjectSubtotal(p, client);
     if (effectiveModel === "per_project") {
-      const amount = getProjectInvoiceAmount(p, client);
+      // Use pre-discount subtotal here; discount is appended below as
+      // its own line item so clients see the markdown explicitly.
+      const amount = projectSubtotal;
 
       // Break down into production + post-production if we have crew data
       const hasCrew = p.crew.length > 0;
@@ -165,6 +168,24 @@ export function buildLineItems(
           quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
         });
       }
+    }
+
+    // Apply per-project discount as its own negative line item so the
+    // client sees the markdown explicitly on the invoice. Computed off
+    // the project's pre-discount subtotal (same as the project view).
+    const discountValue = getProjectDiscountValue(p, projectSubtotal);
+    if (discountValue > 0) {
+      const discountLabel = p.discountType === "percent"
+        ? `Discount (${Number(p.discountAmount)}% off)`
+        : "Discount";
+      items.push({
+        projectId: p.id,
+        date: p.date,
+        description: `${projectLabel} — ${discountLabel}`,
+        quantity: 1,
+        unitPrice: -discountValue,
+        amount: -discountValue,
+      });
     }
   }
 
