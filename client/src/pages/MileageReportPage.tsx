@@ -3,7 +3,7 @@
 // Each user sees only their own mileage
 // ============================================================
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2 } from "lucide-react";
@@ -144,6 +144,49 @@ export default function MileageReportPage() {
       .forEach(d => map.set(d.locationId, d.distanceMiles));
     return map;
   }, [data.crewLocationDistances, crewMemberId]);
+
+  // Auto-recalc distances for any locations missing a cache entry for
+  // this crew member. Without this, a project using a brand-new (or
+  // one-time) location shows 0 miles and gets filtered out of the
+  // report — even though the user provided an address. We do this
+  // silently once per session per missing location, so a user who
+  // adds locations doesn't have to remember to click "Update distances".
+  // Skips if the user hasn't set a home address yet (the API call
+  // would fail anyway and `recalculateDistances` already surfaces a
+  // toast for that case when invoked manually).
+  const autoRanRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!crewMemberId) return;
+    const home = crewMember?.homeAddress;
+    if (!home?.address || !home?.city) return;
+    const missing = data.locations.filter(l =>
+      l.address && l.city
+      && !distanceMap.has(l.id)
+      && !autoRanRef.current.has(l.id),
+    );
+    if (missing.length === 0) return;
+    const origin = `${home.address}, ${home.city}, ${home.state} ${home.zip}`;
+    (async () => {
+      for (const loc of missing) {
+        autoRanRef.current.add(loc.id); // mark before request so a re-render mid-flight doesn't double-fire
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/calculate-distance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ origin, destination: `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}` }),
+          });
+          if (res.ok) {
+            const { distanceMiles } = await res.json();
+            await upsertDistance(crewMemberId, loc.id, distanceMiles);
+          }
+        } catch (err) {
+          console.warn(`[MileageReport] auto-distance failed for ${loc.name}:`, err);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.locations, distanceMap, crewMemberId, crewMember?.homeAddress?.address]);
 
   // Build trips for the year (projects + manual trips)
   const trips = useMemo((): MileageTrip[] => {
