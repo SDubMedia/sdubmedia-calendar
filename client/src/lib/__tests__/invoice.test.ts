@@ -37,7 +37,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     date: "2026-04-01",
     startTime: "10:00",
     endTime: "14:00",
-    status: "completed",
+    status: "editing_done",
     crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
     postProduction: [{ crewMemberId: "c1", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
     editTypes: [],
@@ -99,7 +99,7 @@ describe("generateInvoiceNumber", () => {
 describe("buildLineItems", () => {
   it("creates line items from projects in date range", () => {
     const projects = [
-      makeProject({ id: "p1", date: "2026-04-01", status: "completed" }),
+      makeProject({ id: "p1", date: "2026-04-01", status: "editing_done" }),
       makeProject({ id: "p2", date: "2026-04-15", status: "filming_done" }),
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
@@ -116,7 +116,7 @@ describe("buildLineItems", () => {
 
   it("excludes projects outside date range", () => {
     const projects = [
-      makeProject({ id: "p1", date: "2026-03-15", status: "completed" }),
+      makeProject({ id: "p1", date: "2026-03-15", status: "editing_done" }),
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items.length).toBe(0);
@@ -124,14 +124,14 @@ describe("buildLineItems", () => {
 
   it("excludes projects from other clients", () => {
     const projects = [
-      makeProject({ id: "p1", clientId: "other-client", status: "completed" }),
+      makeProject({ id: "p1", clientId: "other-client", status: "editing_done" }),
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items.length).toBe(0);
   });
 
   it("prevents double-billing already-invoiced projects", () => {
-    const projects = [makeProject({ id: "p1", status: "completed" })];
+    const projects = [makeProject({ id: "p1", status: "editing_done" })];
     const existing = [{ lineItems: [{ projectId: "p1" }] }] as any;
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30", existing);
     expect(items.length).toBe(0);
@@ -139,7 +139,7 @@ describe("buildLineItems", () => {
 
   it("breaks down into Production and Editing for hourly billing", () => {
     const projects = [makeProject({
-      id: "p1", status: "completed",
+      id: "p1", status: "editing_done",
       crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
       postProduction: [{ crewMemberId: "c2", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
     })];
@@ -154,7 +154,7 @@ describe("buildLineItems", () => {
 
   it("falls back to single line item when no crew data", () => {
     const projects = [makeProject({
-      id: "p1", status: "completed",
+      id: "p1", status: "editing_done",
       crew: [],
       postProduction: [],
     })];
@@ -168,7 +168,7 @@ describe("buildLineItems", () => {
 
 describe("buildInvoice", () => {
   it("creates a complete invoice object", () => {
-    const projects = [makeProject({ status: "completed" })];
+    const projects = [makeProject({ status: "editing_done" })];
     const client = makeClient({ billingModel: "hourly", billingRatePerHour: 200 });
     const invoice = buildInvoice(client, projects, projectTypes, locations, [], "2026-04-01", "2026-04-30");
 
@@ -195,7 +195,7 @@ describe("buildInvoice", () => {
       },
     } as any as Organization;
 
-    const invoice = buildInvoice(makeClient(), [makeProject({ status: "completed" })], projectTypes, locations, [], "2026-04-01", "2026-04-30", org);
+    const invoice = buildInvoice(makeClient(), [makeProject({ status: "editing_done" })], projectTypes, locations, [], "2026-04-01", "2026-04-30", org);
 
     expect(invoice.companyInfo.name).toBe("SDub Media");
     expect(invoice.companyInfo.city).toBe("Nolensville");
@@ -203,12 +203,12 @@ describe("buildInvoice", () => {
   });
 
   it("falls back to default company info without org", () => {
-    const invoice = buildInvoice(makeClient(), [makeProject({ status: "completed" })], projectTypes, locations, [], "2026-04-01", "2026-04-30");
+    const invoice = buildInvoice(makeClient(), [makeProject({ status: "editing_done" })], projectTypes, locations, [], "2026-04-01", "2026-04-30");
     expect(invoice.companyInfo.name).toBe("SDub Media");
   });
 
   it("includes client info", () => {
-    const invoice = buildInvoice(makeClient({ company: "Test Corp", email: "test@corp.com" }), [makeProject({ status: "completed" })], projectTypes, locations, [], "2026-04-01", "2026-04-30");
+    const invoice = buildInvoice(makeClient({ company: "Test Corp", email: "test@corp.com" }), [makeProject({ status: "editing_done" })], projectTypes, locations, [], "2026-04-01", "2026-04-30");
     expect(invoice.clientInfo.company).toBe("Test Corp");
     expect(invoice.clientInfo.email).toBe("test@corp.com");
   });
@@ -240,7 +240,7 @@ describe("buildLineItems per-project billing", () => {
   it("creates production + editing breakdown for per-project with crew and post", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 1000 });
     const projects = [makeProject({
-      id: "p1", status: "completed",
+      id: "p1", status: "editing_done",
       crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
       postProduction: [{ crewMemberId: "c2", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
     })];
@@ -258,7 +258,7 @@ describe("buildLineItems per-project billing", () => {
   it("uses full amount for production when no post-production", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 800 });
     const projects = [makeProject({
-      id: "p1", status: "completed",
+      id: "p1", status: "editing_done",
       crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
       postProduction: [],
     })];
@@ -270,7 +270,7 @@ describe("buildLineItems per-project billing", () => {
 
   it("creates single line item when no crew data at all", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 500 });
-    const projects = [makeProject({ id: "p1", status: "completed", crew: [], postProduction: [] })];
+    const projects = [makeProject({ id: "p1", status: "editing_done", crew: [], postProduction: [] })];
     const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items.length).toBe(1);
     expect(items[0].amount).toBe(500);
@@ -282,7 +282,7 @@ describe("buildLineItems per-project billing", () => {
       perProjectRate: 500,
       projectTypeRates: [{ projectTypeId: "pt-podcast", rate: 1200 }],
     });
-    const projects = [makeProject({ id: "p1", status: "completed", crew: [], postProduction: [] })];
+    const projects = [makeProject({ id: "p1", status: "editing_done", crew: [], postProduction: [] })];
     const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items[0].amount).toBe(1200);
   });
@@ -296,7 +296,7 @@ describe("buildLineItems hourly with billing multipliers", () => {
       roleBillingMultipliers: [{ role: "2nd Videographer", multiplier: 0.5 }],
     });
     const projects = [makeProject({
-      id: "p1", status: "completed",
+      id: "p1", status: "editing_done",
       crew: [
         { crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 },
         { crewMemberId: "c2", role: "2nd Videographer", hoursWorked: 6, payRatePerHour: 50 },
@@ -322,7 +322,7 @@ describe("buildInvoice edge cases", () => {
 
   it("subtotal equals sum of line item amounts", () => {
     const projects = [
-      makeProject({ id: "p1", date: "2026-04-01", status: "completed" }),
+      makeProject({ id: "p1", date: "2026-04-01", status: "editing_done" }),
       makeProject({ id: "p2", date: "2026-04-15", status: "filming_done" }),
     ];
     const invoice = buildInvoice(makeClient(), projects, projectTypes, locations, [], "2026-04-01", "2026-04-30");
@@ -335,7 +335,7 @@ describe("buildInvoice edge cases", () => {
 describe("buildLineItems — cancellation exclusion", () => {
   it("excludes cancelled projects from line items entirely", () => {
     const projects = [
-      makeProject({ id: "p-good", date: "2026-04-10", status: "completed", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 4, payRatePerHour: 50 }] }),
+      makeProject({ id: "p-good", date: "2026-04-10", status: "editing_done", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 4, payRatePerHour: 50 }] }),
       makeProject({ id: "p-cancelled", date: "2026-04-12", status: "cancelled", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 6, payRatePerHour: 50 }] }),
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
@@ -346,7 +346,7 @@ describe("buildLineItems — cancellation exclusion", () => {
 
   it("invoice total ignores cancelled projects even if hours are present", () => {
     const projects = [
-      makeProject({ id: "p1", date: "2026-04-05", status: "completed", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 50 }], postProduction: [] }),
+      makeProject({ id: "p1", date: "2026-04-05", status: "editing_done", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 50 }], postProduction: [] }),
       makeProject({ id: "p2", date: "2026-04-12", status: "cancelled", crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 10, payRatePerHour: 50 }], postProduction: [] }),
     ];
     const inv = buildInvoice(makeClient({ billingRatePerHour: 200 }), projects, projectTypes, locations, [], "2026-04-01", "2026-04-30");
@@ -356,7 +356,7 @@ describe("buildLineItems — cancellation exclusion", () => {
   it("excludes upcoming projects too (existing behavior preserved)", () => {
     const projects = [
       makeProject({ id: "p-upcoming", date: "2026-04-10", status: "upcoming" }),
-      makeProject({ id: "p-completed", date: "2026-04-12", status: "completed" }),
+      makeProject({ id: "p-completed", date: "2026-04-12", status: "editing_done" }),
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
     const ids = items.map(li => li.projectId);

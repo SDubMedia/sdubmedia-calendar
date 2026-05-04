@@ -79,7 +79,7 @@ export default function ContractorSummaryPage() {
           };
 
           // Calculate pay (only count photo editor pay when finalized or project completed)
-          if (e.role === "Photo Editor" && p.editorBilling && (p.editorBilling.finalized || p.status === "completed")) {
+          if (e.role === "Photo Editor" && p.editorBilling && (p.editorBilling.finalized || p.status === "editing_done" || p.status === "delivered")) {
             existing.totalPaid += p.editorBilling.imageCount * (p.editorBilling.perImageRate ?? 6);
           } else if (e.role === "Photo Editor" && p.editorBilling) {
             // Not finalized yet — skip

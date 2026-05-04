@@ -193,13 +193,29 @@ export interface UserGuidanceState {
   // still let them send proposals/contracts but skip the Stripe-Connect
   // prereq blocker on the assumption they bill clients elsewhere.
   stripeOptedOut?: boolean;
+  // First-time educational modal for the Travel Bases section in
+  // Staff. Fires when the user expands the section the first time.
+  // After dismiss, an info icon next to the section header re-opens
+  // it on demand.
+  seenTravelBaseInfo?: boolean;
   // Manual checklist completions for items we can't auto-detect (calendar
   // sync is a copy-paste flow into Google/Apple Calendar — there's no
   // server-side signal we can read, so the user marks it themselves).
   manualCompletions?: { calendarSynced?: boolean };
 }
 
-export type ProjectStatus = "tentative" | "upcoming" | "filming_done" | "in_editing" | "completed" | "cancelled";
+// Status flow: tentative → upcoming → filming_done → in_editing →
+// editing_done → delivered. Cancelled is separate (terminal).
+// `completed` was the old name for what's now `editing_done`; the
+// migration renames any existing rows so old records still work.
+export type ProjectStatus =
+  | "tentative"
+  | "upcoming"
+  | "filming_done"
+  | "in_editing"
+  | "editing_done"
+  | "delivered"
+  | "cancelled";
 
 export type CrewRole =
   | "Main Videographer"
@@ -265,6 +281,24 @@ export interface HomeAddress {
   zip: string;
 }
 
+// A "home base" is a place a crew member starts driving from
+// for some shoots. Most folks have one (their actual home). But
+// people who travel for work often have a "travel base" — e.g.,
+// a family member's house in another state where their car is
+// parked between trips. Mileage is calculated from whichever
+// base is selected on the project's crew entry, falling back to
+// the primary base.
+export interface TravelBase {
+  id: string;        // stable identifier — referenced by ProjectCrewEntry.homeBaseId
+  type?: "home" | "travel"; // category for UI clarity (defaults to "home" when missing)
+  label: string;     // user-defined ("Tennessee", "California (sister's house)")
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  isPrimary?: boolean; // exactly one base per crew member is primary
+}
+
 export interface CrewMember {
   id: string;
   name: string;
@@ -272,7 +306,13 @@ export interface CrewMember {
   phone: string;
   email: string;
   defaultPayRatePerHour: number;   // fallback rate if role-specific rate not found
-  homeAddress?: HomeAddress | null; // for mileage calculation
+  homeAddress?: HomeAddress | null; // legacy single-home address (kept for back-compat; new code reads from homeBases)
+  homeBases?: TravelBase[]; // multiple home bases for travel-heavy crew members; one is marked primary
+  // How this person prefers to be paid. The admin sees this when
+  // marking a contractor invoice paid; defaults the payment-method
+  // dropdown so they don't have to remember each contractor's preference.
+  preferredPaymentMethod?: ContractorPaymentMethod | null;
+  preferredPaymentDetails?: string; // free-text handle/email/notes (e.g. "@sarah-thompson" for Venmo)
   // Business info for contractor invoicing (optional, self-managed by staff)
   businessName?: string;
   businessAddress?: string;
@@ -308,6 +348,7 @@ export interface ProjectCrewEntry {
   hoursWorked: number;
   payRatePerHour: number; // $ per hour — set per-entry so it can be overridden
   roundTripMiles?: number; // miles from crew member's home to location and back (snapshot at project time)
+  homeBaseId?: string; // which TravelBase to drive from for THIS project (defaults to primary)
 }
 
 // A post-production person assigned to a project (editing)
@@ -402,7 +443,11 @@ export interface MonthlyBillingSummary {
 }
 
 // ---- Contractor Invoices (1099 crew self-service) ----
-export type ContractorInvoiceStatus = "draft" | "sent";
+export type ContractorInvoiceStatus = "draft" | "sent" | "paid";
+
+// Method the admin used to pay a contractor's invoice. Slate doesn't
+// process the payment itself — this is just record-keeping.
+export type ContractorPaymentMethod = "venmo" | "zelle" | "check" | "cash" | "bank_transfer" | "stripe" | "other";
 
 export interface ContractorInvoiceLineItem {
   projectId: string;
@@ -435,6 +480,9 @@ export interface ContractorInvoice {
   total: number;
   status: ContractorInvoiceStatus;
   notes: string;
+  paidAt?: string | null;            // ISO timestamp stamped when admin marks paid
+  paymentMethod?: ContractorPaymentMethod | null; // how the admin paid the contractor
+  paymentReference?: string;         // optional confirmation # / check #
   createdAt: string;
 }
 
@@ -588,6 +636,7 @@ export interface ManualTrip {
 export interface CrewLocationDistance {
   id: string;
   crewMemberId: string;
+  homeBaseId: string; // which travel base this distance was measured FROM
   locationId: string;
   distanceMiles: number;
   createdAt: string;
@@ -1017,6 +1066,11 @@ export interface Meeting {
   notes: string;
   visibleToClient: boolean;
   color: string; // "" = default slate; otherwise one of MEETING_COLORS values
+  // Crew members explicitly assigned to this meeting. Staff users
+  // ONLY see meetings where their crew member id is in this list —
+  // owner / partner see everything regardless. Empty list means
+  // no staff sees it (admin-only meeting).
+  assignedCrewMemberIds: string[];
   orgId: string;
   createdAt: string;
 }

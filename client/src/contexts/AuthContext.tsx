@@ -23,6 +23,7 @@ interface AuthContextValue {
   saveMyTemplates: (templates: PersonalEventTemplate[]) => Promise<void>;
   markGuideSeen: (pageId: string) => Promise<void>;
   markBusinessInfoSetupSeen: (opts?: { stripeOptedOut?: boolean }) => Promise<void>;
+  markSeenTravelBaseInfo: () => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
   // View As (owner only) — preview the app as another role
@@ -268,42 +269,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // again with the same pageId is a no-op (we keep the original
   // first-seen timestamp). Optimistic local update so the modal
   // closes instantly without waiting for the round-trip.
+  // The mark-* helpers ALL await the supabase update before flipping
+  // local state. The previous fire-and-forget version (`void` + setState)
+  // had a real bug: if the update failed silently (RLS, network blip),
+  // local state showed the modal dismissed but DB stayed stale, and
+  // the modal popped right back up on next page load. Awaiting the
+  // update + only updating local on success keeps the two in sync.
   const markGuideSeen = useCallback(async (pageId: string) => {
-    if (!user) return;
-    setProfile(p => {
-      if (!p) return p;
-      const seen = p.guidance?.seenGuides || {};
-      if (seen[pageId]) return p;
-      const nextGuidance = {
-        seenGuides: { ...seen, [pageId]: new Date().toISOString() },
-        businessInfoSetupSeen: p.guidance?.businessInfoSetupSeen ?? false,
-        manualCompletions: p.guidance?.manualCompletions || {},
-      };
-      void supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
-      return { ...p, guidance: nextGuidance };
-    });
-  }, [user]);
+    if (!user || !profile) return;
+    const seen = profile.guidance?.seenGuides || {};
+    if (seen[pageId]) return;
+    const nextGuidance = {
+      seenGuides: { ...seen, [pageId]: new Date().toISOString() },
+      businessInfoSetupSeen: profile.guidance?.businessInfoSetupSeen ?? false,
+      stripeOptedOut: profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: profile.guidance?.seenTravelBaseInfo ?? false,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markGuideSeen] DB update failed:", error); return; }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
 
   const markBusinessInfoSetupSeen = useCallback(async (opts?: { stripeOptedOut?: boolean }) => {
-    if (!user) return;
-    setProfile(p => {
-      if (!p) return p;
-      const nextGuidance = {
-        seenGuides: p.guidance?.seenGuides || {},
-        businessInfoSetupSeen: true,
-        stripeOptedOut: opts?.stripeOptedOut ?? p.guidance?.stripeOptedOut ?? false,
-        manualCompletions: p.guidance?.manualCompletions || {},
-      };
-      void supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
-      return { ...p, guidance: nextGuidance };
-    });
-  }, [user]);
+    if (!user || !profile) return;
+    const nextGuidance = {
+      seenGuides: profile.guidance?.seenGuides || {},
+      businessInfoSetupSeen: true,
+      stripeOptedOut: opts?.stripeOptedOut ?? profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: profile.guidance?.seenTravelBaseInfo ?? false,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markBusinessInfoSetupSeen] DB update failed:", error); throw new Error(error.message); }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
+
+  const markSeenTravelBaseInfo = useCallback(async () => {
+    if (!user || !profile) return;
+    if (profile.guidance?.seenTravelBaseInfo) return;
+    const nextGuidance = {
+      seenGuides: profile.guidance?.seenGuides || {},
+      businessInfoSetupSeen: profile.guidance?.businessInfoSetupSeen ?? false,
+      stripeOptedOut: profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: true,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markSeenTravelBaseInfo] DB update failed:", error); return; }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
 
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
       signIn, signOut, changePassword, completeOnboarding, saveMyTemplates,
-      markGuideSeen, markBusinessInfoSetupSeen,
+      markGuideSeen, markBusinessInfoSetupSeen, markSeenTravelBaseInfo,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
       viewAsRole, setViewAsRole: setViewAsRoleWrapped, impersonateUserId, setImpersonateUserId, effectiveProfile,

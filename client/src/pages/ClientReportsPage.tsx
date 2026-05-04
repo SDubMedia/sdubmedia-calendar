@@ -282,7 +282,8 @@ export default function ClientReportsPage() {
     upcoming: "Upcoming",
     filming_done: "Filmed",
     in_editing: "In Editing",
-    completed: "Completed",
+    editing_done: "Editing Done",
+    delivered: "Delivered",
   };
 
   const STATUS_COLORS: Record<string, string> = {
@@ -290,7 +291,8 @@ export default function ClientReportsPage() {
     upcoming: "text-blue-300",
     filming_done: "text-yellow-300",
     in_editing: "text-purple-300",
-    completed: "text-green-300",
+    editing_done: "text-teal-300",
+    delivered: "text-green-300",
   };
 
   return (

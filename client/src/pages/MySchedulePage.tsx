@@ -16,7 +16,8 @@ const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
@@ -103,7 +104,7 @@ export default function MySchedulePage() {
           const rate = project.editorBilling?.perImageRate ?? 6;
           const imgs = project.editorBilling?.imageCount ?? 0;
           // Finalized if explicitly set OR project is completed
-          const isFinalized = project.editorBilling?.finalized === true || project.status === "completed";
+          const isFinalized = project.editorBilling?.finalized === true || project.status === "editing_done" || project.status === "delivered";
           const pay = imgs * rate;
           if (imgs > 0) {
             totalPay += pay;
@@ -181,7 +182,8 @@ export default function MySchedulePage() {
                 project.status === "upcoming" && "border-blue-500/40 text-blue-300 bg-blue-500/10",
                 project.status === "filming_done" && "border-purple-500/40 text-purple-300 bg-purple-500/10",
                 project.status === "in_editing" && "border-amber-500/40 text-amber-300 bg-amber-500/10",
-                project.status === "completed" && "border-green-500/40 text-green-300 bg-green-500/10",
+                project.status === "editing_done" && "border-teal-500/40 text-teal-300 bg-teal-500/10",
+                project.status === "delivered" && "border-green-500/40 text-green-300 bg-green-500/10",
               )}>
                 {STATUS_LABELS[project.status]}
               </span>
@@ -422,7 +424,8 @@ export default function MySchedulePage() {
                             p.status === "upcoming" && "bg-blue-400",
                             p.status === "filming_done" && "bg-purple-400",
                             p.status === "in_editing" && "bg-amber-400",
-                            p.status === "completed" && "bg-green-400",
+                            p.status === "editing_done" && "bg-teal-400",
+                            p.status === "delivered" && "bg-green-400",
                           )} />
                         ))}
                       </div>
@@ -441,7 +444,8 @@ export default function MySchedulePage() {
                               p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
                               p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
                               p.status === "in_editing" && "bg-amber-500/25 text-amber-300",
-                              p.status === "completed" && "bg-green-500/25 text-green-300",
+                              p.status === "editing_done" && "bg-teal-500/25 text-teal-300",
+                              p.status === "delivered" && "bg-green-500/25 text-green-300",
                             )}
                           >
                             {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}

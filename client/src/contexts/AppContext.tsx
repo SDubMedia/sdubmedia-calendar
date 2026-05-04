@@ -67,7 +67,7 @@ interface AppContextValue {
   fetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
   addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
   // Crew Location Distances
-  upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number) => Promise<void>;
+  upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId?: string) => Promise<void>;
   // Manual Trips
   addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
   deleteManualTrip: (id: string) => Promise<void>;
@@ -170,6 +170,9 @@ function rowToCrew(r: any): CrewMember {
     email: r.email,
     defaultPayRatePerHour: Number(r.default_pay_rate_per_hour ?? 0),
     homeAddress: r.home_address || null,
+    homeBases: Array.isArray(r.home_bases) ? r.home_bases : [],
+    preferredPaymentMethod: r.preferred_payment_method || null,
+    preferredPaymentDetails: r.preferred_payment_details || "",
     businessName: r.business_name || "",
     businessAddress: r.business_address || "",
     businessCity: r.business_city || "",
@@ -185,6 +188,7 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
   return {
     id: r.id,
     crewMemberId: r.crew_member_id,
+    homeBaseId: r.home_base_id || "primary",
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
     createdAt: r.created_at,
@@ -346,6 +350,9 @@ function rowToContractorInvoice(r: any): ContractorInvoice {
     total: Number(r.total ?? 0),
     status: r.status,
     notes: r.notes || "",
+    paidAt: r.paid_at || null,
+    paymentMethod: r.payment_method || null,
+    paymentReference: r.payment_reference || "",
     createdAt: r.created_at,
   };
 }
@@ -550,6 +557,7 @@ function rowToMeeting(r: any): Meeting {
     notes: r.notes || "",
     visibleToClient: r.visible_to_client ?? false,
     color: r.color || "",
+    assignedCrewMemberIds: Array.isArray(r.assigned_crew_member_ids) ? r.assigned_crew_member_ids : [],
     orgId: r.org_id || "",
     createdAt: r.created_at,
   };
@@ -678,6 +686,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       const staffClientIds = new Set(staffProjects.map(p => p.clientId));
       const staffProjectIds = new Set(staffProjects.map(p => p.id));
+      // Meetings: staff sees ONLY meetings explicitly assigned to them.
+      // No assignment = admin-only (don't leak the owner's calendar).
+      const staffMeetings = rawData.meetings.filter(m =>
+        Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+      );
       return {
         ...rawData,
         projects: staffProjects,
@@ -685,6 +698,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: [],
         contracts: [],
         proposals: [],
+        meetings: staffMeetings,
         deliveries: rawData.deliveries.filter(d => d.projectId && staffProjectIds.has(d.projectId)),
       };
     }
@@ -1019,6 +1033,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("crew_members").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour, home_address: c.homeAddress || null,
+      home_bases: c.homeBases ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const member = rowToCrew(row);
@@ -1034,6 +1049,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.email !== undefined) patch.email = c.email;
     if (c.defaultPayRatePerHour !== undefined) patch.default_pay_rate_per_hour = c.defaultPayRatePerHour;
     if (c.homeAddress !== undefined) patch.home_address = c.homeAddress;
+    if (c.homeBases !== undefined) patch.home_bases = c.homeBases;
+    if (c.preferredPaymentMethod !== undefined) patch.preferred_payment_method = c.preferredPaymentMethod;
+    if (c.preferredPaymentDetails !== undefined) patch.preferred_payment_details = c.preferredPaymentDetails;
     if (c.businessName !== undefined) patch.business_name = c.businessName;
     if (c.businessAddress !== undefined) patch.business_address = c.businessAddress;
     if (c.businessCity !== undefined) patch.business_city = c.businessCity;
@@ -1421,6 +1439,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       notes: m.notes || "",
       visible_to_client: m.visibleToClient ?? false,
       color: m.color || "",
+      assigned_crew_member_ids: m.assignedCrewMemberIds ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const meeting = rowToMeeting(row);
@@ -1439,6 +1458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.notes !== undefined) patch.notes = m.notes;
     if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
     if (m.color !== undefined) patch.color = m.color;
+    if (m.assignedCrewMemberIds !== undefined) patch.assigned_crew_member_ids = m.assignedCrewMemberIds;
     const { error } = await supabase.from("meetings").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));
@@ -1728,18 +1748,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [orgId]);
 
   // ---- Crew Location Distances ----
-  const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
-    const id = `${crewMemberId}_${locationId}`;
+  // Distances are now keyed by (crew_member, home_base, location).
+  // Defaults to "primary" if no home base is specified — matches the
+  // backfill default for legacy rows.
+  const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId: string = "primary") => {
+    const id = `${crewMemberId}_${homeBaseId}_${locationId}`;
     const { error } = await supabase.from("crew_location_distances").upsert({
-      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
-    }, { onConflict: "crew_member_id,location_id" });
+      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: crewMemberId, home_base_id: homeBaseId, location_id: locationId, distance_miles: distanceMiles,
+    }, { onConflict: "crew_member_id,home_base_id,location_id" });
     if (error) throw new Error(error.message);
     setRawData(d => {
-      const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.locationId === locationId);
+      const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.homeBaseId === homeBaseId && x.locationId === locationId);
       if (existing) {
         return { ...d, crewLocationDistances: d.crewLocationDistances.map(x => x.id === existing.id ? { ...x, distanceMiles } : x) };
       }
-      return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
+      return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, homeBaseId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
     });
   }, [orgId]);
 
@@ -1948,8 +1971,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
-    // Auto-finalize editor billing when project is completed
-    if (p.status === "completed" && !patch.editor_billing) {
+    // Auto-finalize editor billing when project transitions to a
+    // finished state (editing_done OR delivered).
+    if ((p.status === "editing_done" || p.status === "delivered") && !patch.editor_billing) {
       const { data: current } = await supabase.from("projects").select("editor_billing").eq("id", id).single();
       if (current?.editor_billing && !current.editor_billing.finalized) {
         patch.editor_billing = { ...current.editor_billing, finalized: true };
@@ -1978,7 +2002,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!updated) throw new Error("Update failed — row not returned (possible RLS restriction)");
     const normalized = rowToProject(updated);
     setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
-  }, []);
+
+    // Notify owners/partners when staff advances a project status. The
+    // owner moving things themselves doesn't need a ping (they already
+    // know). Best-effort — never block the update on a notification fail.
+    if (p.status !== undefined && profile && profile.role !== "owner" && profile.role !== "partner") {
+      try {
+        const recipients = allProfiles.filter(u => (u.role === "owner" || u.role === "partner") && u.orgId === profile.orgId);
+        const projectClient = rawData.clients.find(c => c.id === normalized.clientId);
+        const projectType = rawData.projectTypes.find(t => t.id === normalized.projectTypeId);
+        const projLabel = `${projectType?.name || "Project"}${projectClient ? ` — ${projectClient.company}` : ""}`;
+        const statusLabels: Record<string, string> = {
+          filming_done: "Filming Done", in_editing: "In Editing", editing_done: "Editing Done", delivered: "Delivered",
+        };
+        const newStatusLabel = statusLabels[p.status] || p.status;
+        for (const r of recipients) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: r.id,
+            type: "status_change",
+            title: `${profile.name} moved a project`,
+            message: `${projLabel} → ${newStatusLabel}`,
+            link: "/calendar",
+          });
+        }
+      } catch (err) {
+        console.warn("[updateProject] notify owners failed:", err);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, allProfiles]);
 
   const deleteProject = useCallback(async (id: string) => {
     const { error } = await supabase.from("projects").delete().eq("id", id);
@@ -2110,10 +2163,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.notes !== undefined) patch.notes = inv.notes;
     if (inv.lineItems !== undefined) patch.line_items = inv.lineItems;
     if (inv.total !== undefined) patch.total = inv.total;
+    if (inv.paidAt !== undefined) patch.paid_at = inv.paidAt;
+    if (inv.paymentMethod !== undefined) patch.payment_method = inv.paymentMethod;
+    if (inv.paymentReference !== undefined) patch.payment_reference = inv.paymentReference;
     const { error } = await supabase.from("contractor_invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
+    const existing = rawData.contractorInvoices.find(x => x.id === id);
     setRawData(d => ({ ...d, contractorInvoices: d.contractorInvoices.map(x => x.id === id ? { ...x, ...inv } : x) }));
-  }, []);
+
+    // Notifications:
+    //  - Status moved to "sent" (i.e. submitted by staff) → ping owners.
+    //  - Status moved to "paid" (i.e. admin marked it) → ping the staff member.
+    try {
+      if (inv.status === "sent" && existing && profile) {
+        const recipients = allProfiles.filter(u => (u.role === "owner" || u.role === "partner") && u.orgId === profile.orgId);
+        const submitter = rawData.crewMembers.find(c => c.id === existing.crewMemberId);
+        for (const r of recipients) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: r.id,
+            type: "invoice_submitted",
+            title: `${submitter?.name || "A contractor"} submitted an invoice`,
+            message: `${existing.invoiceNumber} · $${existing.total.toFixed(2)}`,
+            link: "/contractor-invoices",
+          });
+        }
+      }
+      if (inv.status === "paid" && existing) {
+        // Find the user_profile that maps to this crew member
+        const member = rawData.crewMembers.find(c => c.id === existing.crewMemberId);
+        const recipientProfile = allProfiles.find(u => u.crewMemberId === existing.crewMemberId)
+          || (member?.email ? allProfiles.find(u => u.email === member.email) : null);
+        if (recipientProfile) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: recipientProfile.id,
+            type: "invoice_paid",
+            title: "Your invoice was paid",
+            message: `${existing.invoiceNumber} · $${existing.total.toFixed(2)}`,
+            link: "/my-invoices",
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[updateContractorInvoice] notify failed:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, allProfiles]);
 
   const deleteContractorInvoice = useCallback(async (id: string) => {
     const { error } = await supabase.from("contractor_invoices").delete().eq("id", id);

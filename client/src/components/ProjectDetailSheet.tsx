@@ -17,6 +17,7 @@ import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
+import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
@@ -43,28 +44,19 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   upcoming: "Upcoming",
   filming_done: "Filming Done",
   in_editing: "In Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
-const STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
-  upcoming: "filming_done",
-  filming_done: "in_editing",
-  in_editing: "completed",
-};
-
-const STATUS_NEXT_LABEL: Partial<Record<ProjectStatus, string>> = {
-  upcoming: "Mark Filming Done",
-  filming_done: "Move to Editing",
-  in_editing: "Mark Completed",
-};
-
-// Map project status → episode status for sync
+// Map project status → episode status for sync. delivered keeps
+// the same downstream meaning as the old "completed".
 const PROJECT_TO_EPISODE_STATUS: Partial<Record<ProjectStatus, EpisodeStatus>> = {
   upcoming: "scheduled",
   filming_done: "filming",
   in_editing: "editing",
-  completed: "delivered",
+  editing_done: "editing",
+  delivered: "delivered",
 };
 
 interface Props {
@@ -207,7 +199,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   };
 
   const advanceStatus = async () => {
-    const next = STATUS_NEXT[project.status];
+    const next = NEXT_STATUS[project.status];
     if (next) {
       await updateProject(project.id, { status: next });
       toast.success(`Status updated to ${STATUS_LABELS[next]}`);
@@ -383,7 +375,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                     project.status === "upcoming" && "bg-blue-500/20 text-blue-300 border-blue-500/30",
                     project.status === "filming_done" && "bg-purple-500/20 text-purple-300 border-purple-500/30",
                     project.status === "in_editing" && "bg-amber-500/20 text-amber-300 border-amber-500/30",
-                    project.status === "completed" && "bg-green-500/20 text-green-300 border-green-500/30",
+                    project.status === "editing_done" && "bg-teal-500/20 text-teal-300 border-teal-500/30",
+                    project.status === "delivered" && "bg-green-500/20 text-green-300 border-green-500/30",
                     project.status === "cancelled" && "bg-red-500/20 text-red-300 border-red-500/30",
                   )}>
                     {STATUS_LABELS[project.status]}
@@ -693,12 +686,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
             {/* Actions */}
             <div className="flex flex-col gap-2">
-              {!isClient && STATUS_NEXT[project.status] && (
-                <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
-                  <CheckCircle2 className="w-4 h-4" />
-                  {STATUS_NEXT_LABEL[project.status]}
-                </Button>
-              )}
+              {/* Advance-status button — gated by role on the project.
+                  Filming-camera roles can advance through filming;
+                  Editor roles can advance through editing/delivery.
+                  Owner / partner can always advance. */}
+              {(() => {
+                if (isClient) return null;
+                const myCrewMemberId = effectiveProfile?.crewMemberId
+                  || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id;
+                const myProjectRoles: string[] = [];
+                if (myCrewMemberId) {
+                  (project.crew || []).forEach(e => { if (e.crewMemberId === myCrewMemberId) myProjectRoles.push(e.role); });
+                  (project.postProduction || []).forEach(e => { if (e.crewMemberId === myCrewMemberId) myProjectRoles.push(e.role); });
+                }
+                const allowed = canAdvanceProjectStatus(project.status, effectiveProfile?.role, myProjectRoles);
+                if (!allowed) return null;
+                return (
+                  <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {NEXT_STATUS_LABEL[project.status]}
+                  </Button>
+                );
+              })()}
               {isOwner && (
                 <Button
                   variant="outline"

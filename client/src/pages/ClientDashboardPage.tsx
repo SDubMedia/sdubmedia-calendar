@@ -59,7 +59,7 @@ export default function ClientDashboardPage() {
   // Completed this month
   const completedThisMonth = useMemo(() => {
     return data.projects.filter(p => {
-      if (p.status !== "completed") return false;
+      if (p.status !== "editing_done" && p.status !== "delivered") return false;
       const d = new Date(p.date + "T00:00:00");
       return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
     }).length;
@@ -90,7 +90,7 @@ export default function ClientDashboardPage() {
   const projectsByStatus = useMemo(() => ({
     upcoming: data.projects.filter(p => p.status === "upcoming" || p.status === "tentative").sort((a, b) => a.date.localeCompare(b.date)),
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
-    completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),
+    completed: data.projects.filter(p => p.status === "editing_done" || p.status === "delivered").sort((a, b) => b.date.localeCompare(a.date)),
   }), [data.projects]);
 
   // Episodes needing review

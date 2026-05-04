@@ -56,11 +56,23 @@ export default function BusinessInfoSetupModal() {
   const [, setLocation] = useLocation();
   const org = data.organization;
 
+  // Defensive: if business info is already filled (real name + email),
+  // treat the modal as already-seen even if the flag somehow isn't set.
+  // Prevents the modal popping up for users who configured their org
+  // through Settings before this modal existed, or whose `seen` flag
+  // got out of sync with the DB for any reason.
+  const businessInfoLooksFilled = !!(
+    org && org.name
+    && org.name !== "My Company"
+    && org.businessInfo?.email
+  );
+
   const shouldOpen =
     profile?.role === "owner"
     && profile?.hasCompletedOnboarding
     && profile?.guidance?.businessInfoSetupSeen === false
-    && !!org;
+    && !!org
+    && !businessInfoLooksFilled;
 
   // Latch open once on first render where the condition is true.
   // After the user saves we mark `businessInfoSetupSeen=true` so a

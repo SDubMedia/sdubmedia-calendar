@@ -25,7 +25,8 @@ const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
@@ -303,7 +304,7 @@ export default function CalendarPage() {
 
   const statusCounts = useMemo(() => {
     const projects = viewScope === "month" ? monthProjects : data.projects;
-    const counts: Record<string, number> = { all: projects.length, tentative: 0, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
+    const counts: Record<string, number> = { all: projects.length, tentative: 0, upcoming: 0, filming_done: 0, in_editing: 0, editing_done: 0, delivered: 0 };
     projects.forEach((p) => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
   }, [data.projects, monthProjects, viewScope]);
@@ -584,7 +585,8 @@ export default function CalendarPage() {
                             p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
                             p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
                             p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
-                            p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                            p.status === "editing_done" && "bg-teal-500/25 text-teal-700 dark:text-teal-300",
+                            p.status === "delivered" && "bg-green-500/25 text-green-700 dark:text-green-300",
                             p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
                           )}
                         >
@@ -721,7 +723,8 @@ export default function CalendarPage() {
                   { key: "upcoming", label: "Upcoming" },
                   { key: "filming_done", label: "Filmed" },
                   { key: "in_editing", label: "In Editing" },
-                  { key: "completed", label: "Completed" },
+                  { key: "editing_done", label: "Editing Done" },
+                  { key: "delivered", label: "Delivered" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -783,7 +786,8 @@ export default function CalendarPage() {
                           project.status === "upcoming" && "bg-blue-500",
                           project.status === "filming_done" && "bg-purple-500",
                           project.status === "in_editing" && "bg-amber-500",
-                          project.status === "completed" && "bg-green-500",
+                          project.status === "editing_done" && "bg-teal-500",
+                          project.status === "delivered" && "bg-green-500",
                           project.status === "cancelled" && "bg-red-500",
                         )} />
 
@@ -798,7 +802,8 @@ export default function CalendarPage() {
                               project.status === "upcoming" && "border-blue-500/40 text-blue-600 dark:text-blue-300",
                               project.status === "filming_done" && "border-purple-500/40 text-purple-600 dark:text-purple-300",
                               project.status === "in_editing" && "border-amber-500/40 text-amber-600 dark:text-amber-300",
-                              project.status === "completed" && "border-green-500/40 text-green-600 dark:text-green-300",
+                              project.status === "editing_done" && "border-teal-500/40 text-teal-600 dark:text-teal-300",
+                              project.status === "delivered" && "border-green-500/40 text-green-600 dark:text-green-300",
                               project.status === "cancelled" && "border-red-500/40 text-red-600 dark:text-red-300",
                             )}>
                               {STATUS_LABELS[project.status]}

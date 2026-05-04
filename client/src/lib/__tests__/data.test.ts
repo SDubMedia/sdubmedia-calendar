@@ -46,7 +46,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     date: "2026-04-01",
     startTime: "10:00",
     endTime: "14:00",
-    status: "completed",
+    status: "editing_done",
     crew: [],
     postProduction: [],
     editTypes: [],
@@ -462,7 +462,7 @@ describe("cancellation: getProjectBillableHours", () => {
   it("non-cancelled project still bills normally", () => {
     const client = makeClient({ billingRatePerHour: 200 });
     const p = makeProject({
-      status: "completed",
+      status: "editing_done",
       crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
     });
     const result = getProjectBillableHours(p, client);

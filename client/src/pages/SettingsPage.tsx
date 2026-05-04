@@ -6,7 +6,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem, TravelBase } from "@/lib/types";
+import TravelBasesEditor from "@/components/TravelBasesEditor";
+import { MapPinned } from "lucide-react";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -50,8 +52,8 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
 ];
 
 export default function SettingsPage() {
-  const { data, updateOrganization, addLocation, updateLocation } = useApp();
-  const { allProfiles, updateUserProfile } = useAuth();
+  const { data, updateOrganization, addLocation, updateLocation, updateCrewMember } = useApp();
+  const { profile, allProfiles, updateUserProfile } = useAuth();
   const org = data.organization;
 
   // Per-user override state
@@ -111,6 +113,60 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
   const [connectingStripe, setConnectingStripe] = useState(false);
+
+  // Owner's crew member — looked up by linked crew_member_id, with
+  // email fallback (matches MileageReport's approach for owners who
+  // don't have an explicit crewMemberId on their profile).
+  const ownerCrewMember = useMemo(() => {
+    if (!profile) return null;
+    if (profile.crewMemberId) {
+      return data.crewMembers.find(c => c.id === profile.crewMemberId) || null;
+    }
+    return data.crewMembers.find(c => c.email === profile.email) || null;
+  }, [profile, data.crewMembers]);
+  const [homeBases, setHomeBases] = useState<TravelBase[]>([]);
+  const [savingHomeBases, setSavingHomeBases] = useState(false);
+  // Hydrate when the owner's crew member loads. Same pattern as the
+  // Staff page: convert legacy single home_address into a primary
+  // base if the user hasn't explicitly added bases yet.
+  useEffect(() => {
+    if (!ownerCrewMember) return;
+    if (Array.isArray(ownerCrewMember.homeBases) && ownerCrewMember.homeBases.length > 0) {
+      setHomeBases(ownerCrewMember.homeBases);
+    } else if (ownerCrewMember.homeAddress?.address) {
+      setHomeBases([{
+        id: "primary",
+        type: "home",
+        label: "Home",
+        address: ownerCrewMember.homeAddress.address,
+        city: ownerCrewMember.homeAddress.city,
+        state: ownerCrewMember.homeAddress.state,
+        zip: ownerCrewMember.homeAddress.zip,
+        isPrimary: true,
+      }]);
+    }
+  }, [ownerCrewMember?.id, ownerCrewMember?.homeBases, ownerCrewMember?.homeAddress?.address]);
+
+  async function saveHomeBases() {
+    if (!ownerCrewMember) return;
+    setSavingHomeBases(true);
+    try {
+      // Mirror the primary base into homeAddress for back-compat with
+      // anything that still reads the singular field.
+      const primary = homeBases.find(b => b.isPrimary) || homeBases[0] || null;
+      await updateCrewMember(ownerCrewMember.id, {
+        homeBases,
+        homeAddress: primary?.address
+          ? { address: primary.address, city: primary.city, state: primary.state, zip: primary.zip }
+          : null,
+      });
+      toast.success("Home bases saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSavingHomeBases(false);
+    }
+  }
 
   // Check Stripe Connect status
   useEffect(() => {
@@ -462,6 +518,28 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Home Bases — multiple driving start points for mileage.
+            Sits directly after My Business since the primary base is
+            usually the same as your business address. Embedded mode
+            renders the editor expanded inline. */}
+        {ownerCrewMember && (
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                <MapPinned className="w-4 h-4 text-primary" />
+                Home Bases
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Where you start driving from for shoots. Most people have one (their home). Add a Travel Base if you keep a vehicle in another location and drive to shoots from there.</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <TravelBasesEditor bases={homeBases} onChange={setHomeBases} embedded />
+              <Button onClick={saveHomeBases} disabled={savingHomeBases} size="sm" className="gap-1">
+                <Save className="w-3.5 h-3.5" /> {savingHomeBases ? "Saving..." : "Save bases"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stripe Connect */}
         <Card className="bg-card border-border">

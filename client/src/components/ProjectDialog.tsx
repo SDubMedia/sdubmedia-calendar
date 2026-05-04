@@ -339,7 +339,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     }
     const payload: Omit<Project, "id" | "createdAt"> = {
       clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime,
-      status: isLightweight ? "completed" : status,
+      status: isLightweight ? "delivered" : status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
       editorBilling: project?.editorBilling ?? null,
@@ -560,7 +560,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <SelectItem value="upcoming">Upcoming</SelectItem>
                   <SelectItem value="filming_done">Filming Done</SelectItem>
                   <SelectItem value="in_editing">In Editing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="editing_done">Editing Done</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
@@ -674,8 +675,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             <div className="hidden sm:grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
               <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
             </div>
-            {crew.map((entry, idx) => (
-              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
+            {crew.map((entry, idx) => {
+              const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
+              const memberBases = member?.homeBases || [];
+              const showBasePicker = memberBases.length > 1;
+              return (
+              <div key={idx} className="flex flex-col gap-2 sm:bg-transparent rounded-lg p-2 sm:p-0">
+              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center">
                 <div className="flex gap-2">
                   <Select
                     value={entry.crewMemberId}
@@ -730,7 +736,35 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   </button>
                 </div>
               </div>
-            ))}
+              {/* "Starting from" picker — only renders when the selected
+                  crew member has more than one home base. Default is
+                  Auto (closest) — Slate picks whichever base is geo-
+                  graphically nearest to the project location. User can
+                  override by picking a specific base. */}
+              {showBasePicker && (
+                <div className="flex items-center gap-2 pl-2 sm:pl-0">
+                  <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Starting from</Label>
+                  <Select
+                    value={entry.homeBaseId || "__auto__"}
+                    onValueChange={(v) => updateCrewEntry(idx, "homeBaseId", v === "__auto__" ? "" : v)}
+                  >
+                    <SelectTrigger className="bg-secondary border-border h-7 text-xs w-auto min-w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      <SelectItem value="__auto__">Auto (closest base)</SelectItem>
+                      {memberBases.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.label || `${b.city || "Base"}`}{b.isPrimary ? " (primary)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              </div>
+              );
+            })}
             {/* Running total for crew */}
             {crew.some(e => e.crewMemberId) && (
               <div className="text-xs text-right text-muted-foreground pr-8">

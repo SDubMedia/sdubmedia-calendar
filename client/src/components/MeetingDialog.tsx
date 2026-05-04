@@ -54,6 +54,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
   const [notes, setNotes] = useState("");
   const [visibleToClient, setVisibleToClient] = useState(false);
   const [color, setColor] = useState("");
+  const [assignedCrewMemberIds, setAssignedCrewMemberIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Reset form on open transition only — never on prop changes mid-edit
@@ -70,6 +71,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setNotes(editing.notes || "");
       setVisibleToClient(editing.visibleToClient);
       setColor(editing.color || "");
+      setAssignedCrewMemberIds(editing.assignedCrewMemberIds || []);
     } else {
       setTitle("");
       setDate(initialDate || new Date().toISOString().slice(0, 10));
@@ -80,6 +82,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setNotes("");
       setVisibleToClient(false);
       setColor("");
+      setAssignedCrewMemberIds([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -99,6 +102,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
         notes: notes.trim(),
         visibleToClient: clientId !== "none" && visibleToClient,
         color,
+        assignedCrewMemberIds,
       };
       if (editing) {
         await updateMeeting(editing.id, payload);
@@ -187,6 +191,37 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
                 </div>
               </div>
               <Switch checked={visibleToClient} onCheckedChange={setVisibleToClient} />
+            </div>
+          )}
+
+          {/* Staff assignment — meetings are admin-only by default.
+              Only crew members in this list will see the meeting on
+              their calendar. Owner / partner see it regardless. */}
+          {data.crewMembers.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-border bg-secondary/40 px-3 py-2.5">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium text-foreground">Assign staff (optional)</p>
+                <p className="text-xs text-muted-foreground">Pick anyone who should see this meeting on their calendar. Staff who aren't assigned won't see it at all.</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.crewMembers.map(c => {
+                  const checked = assignedCrewMemberIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setAssignedCrewMemberIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        checked
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

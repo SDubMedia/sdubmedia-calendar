@@ -20,7 +20,8 @@ const STATUS_COLORS: Record<string, string> = {
   upcoming: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   filming_done: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
   in_editing: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  completed: "bg-green-500/20 text-green-300 border-green-500/30",
+  editing_done: "bg-teal-500/20 text-teal-300 border-teal-500/30",
+  delivered: "bg-green-500/20 text-green-300 border-green-500/30",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,7 +29,8 @@ const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
 };
 
 function formatCurrency(n: number) {
@@ -108,7 +110,7 @@ export default function StaffDashboardPage() {
         if (e.role === "Photo Editor" || (p.editorBilling && e.crewMemberId === crewMemberId)) {
           const rate = p.editorBilling?.perImageRate ?? 6;
           const imgs = p.editorBilling?.imageCount ?? 0;
-          const isFinalized = p.editorBilling?.finalized === true || p.status === "completed";
+          const isFinalized = p.editorBilling?.finalized === true || p.status === "editing_done" || p.status === "delivered";
           const pay = imgs * rate;
           if (imgs > 0) { totalPay += pay; totalImages += imgs; }
           breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay: isFinalized ? pay : 0 });

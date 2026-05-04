@@ -127,7 +127,7 @@ export const seedData: AppData = {
       date: "2026-02-20",
       startTime: "14:00",
       endTime: "16:00",
-      status: "completed",
+      status: "editing_done",
       crew: [{ crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1.5, payRatePerHour: 0 }],
       editTypes: ["Social Vertical"],

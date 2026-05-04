@@ -94,7 +94,7 @@ export default function TimerWidget() {
   const myProjects = useMemo(() => {
     if (!crewMemberId) return data.projects;
     return data.projects.filter(p =>
-      p.status !== "completed" && (
+      p.status !== "editing_done" && p.status !== "delivered" && (
         p.crew.some(c => c.crewMemberId === crewMemberId) ||
         p.postProduction.some(c => c.crewMemberId === crewMemberId)
       )

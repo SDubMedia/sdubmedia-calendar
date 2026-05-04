@@ -78,20 +78,35 @@ export default function NotificationBell() {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 text-muted-foreground hover:text-foreground transition-colors"
+        className={`relative p-2 transition-colors ${
+          unreadCount > 0
+            ? "text-primary hover:text-primary/80"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+        aria-label={unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}` : "Notifications"}
       >
-        <Bell className="w-4 h-4" />
+        <Bell className={`w-4 h-4 ${unreadCount > 0 ? "animate-pulse" : ""}`} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground text-[9px] font-bold rounded-full flex items-center justify-center">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
+          <>
+            {/* Soft halo behind the badge — gives the bell a noticeable
+                "pop" without going full-circus animation. */}
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary/40 rounded-full blur-[2px] animate-pulse" />
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-primary text-primary-foreground text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-background">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          </>
         )}
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 w-80 max-h-96 overflow-auto bg-card border border-border rounded-lg shadow-xl z-50">
+          {/* Anchor to the bell's LEFT edge so the dropdown extends
+              rightward into the main content area. (Anchoring to the
+              right would clip the dropdown's left edge against the
+              screen edge, since the sidebar is only 224px wide and the
+              dropdown is 320px.) */}
+          <div className="absolute left-0 top-full mt-1 w-80 max-w-[calc(100vw-1rem)] max-h-96 overflow-y-auto overflow-x-hidden bg-card border border-border rounded-xl shadow-xl z-50">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
               <span className="text-xs font-semibold text-foreground">Notifications</span>
               {unreadCount > 0 && (

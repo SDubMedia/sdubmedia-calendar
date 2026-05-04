@@ -83,7 +83,7 @@ export default function DashboardPage() {
     upcoming: data.projects.filter(p => p.status === "upcoming" || p.status === "tentative").sort((a, b) => a.date.localeCompare(b.date)),
     filming_done: data.projects.filter(p => p.status === "filming_done").sort((a, b) => b.date.localeCompare(a.date)),
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
-    completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),
+    completed: data.projects.filter(p => p.status === "editing_done" || p.status === "delivered").sort((a, b) => b.date.localeCompare(a.date)),
   }), [data.projects]);
 
   // This month's revenue

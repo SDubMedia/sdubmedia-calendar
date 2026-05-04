@@ -51,13 +51,19 @@ export default function MileageReportPage() {
   const [recalculating, setRecalculating] = useState(false);
 
   async function recalculateDistances() {
-    if (!crewMemberId || !crewMember?.homeAddress?.address) {
+    // Manual recalc always uses the primary travel base. If the user
+    // wants distances from a non-primary base they get them via the
+    // auto-recalc effect above when they assign that base on a
+    // project's crew entry.
+    const primaryBase = (crewMember?.homeBases || []).find(b => b.isPrimary);
+    const baseAddress = (primaryBase?.address ? primaryBase : null) || crewMember?.homeAddress;
+    if (!crewMemberId || !baseAddress?.address) {
       toast.error("Set your home address in Staff settings first");
       return;
     }
     setRecalculating(true);
-    const homeAddr = crewMember.homeAddress;
-    const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
+    const origin = `${baseAddress.address}, ${baseAddress.city}, ${baseAddress.state} ${baseAddress.zip}`;
+    const baseId = primaryBase?.id || "primary";
     let count = 0;
     let failReason = "";
 
@@ -72,7 +78,7 @@ export default function MileageReportPage() {
         });
         if (res.ok) {
           const { distanceMiles } = await res.json();
-          await upsertDistance(crewMemberId, loc.id, distanceMiles);
+          await upsertDistance(crewMemberId, loc.id, distanceMiles, baseId);
           count++;
         } else {
           const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -136,57 +142,111 @@ export default function MileageReportPage() {
     }
   }
 
-  // Build distance lookup from cached distances
+  // Build distance lookup from cached distances. Cache key is
+  // `${homeBaseId}|${locationId}` since distance varies by which
+  // travel base you started from.
   const distanceMap = useMemo(() => {
     const map = new Map<string, number>();
     data.crewLocationDistances
       .filter(d => d.crewMemberId === crewMemberId)
-      .forEach(d => map.set(d.locationId, d.distanceMiles));
+      .forEach(d => map.set(`${d.homeBaseId}|${d.locationId}`, d.distanceMiles));
     return map;
   }, [data.crewLocationDistances, crewMemberId]);
 
-  // Auto-recalc distances for any locations missing a cache entry for
-  // this crew member. Without this, a project using a brand-new (or
-  // one-time) location shows 0 miles and gets filtered out of the
-  // report — even though the user provided an address. We do this
-  // silently once per session per missing location, so a user who
-  // adds locations doesn't have to remember to click "Update distances".
-  // Skips if the user hasn't set a home address yet (the API call
-  // would fail anyway and `recalculateDistances` already surfaces a
-  // toast for that case when invoked manually).
+  // Resolve a home base for an arbitrary crew entry. Returns the
+  // explicit homeBaseId if set; otherwise the crew member's primary
+  // base; otherwise "primary" (the synthetic id for legacy data).
+  function resolveHomeBaseId(homeBaseIdFromEntry?: string): string {
+    if (homeBaseIdFromEntry) return homeBaseIdFromEntry;
+    const primary = (crewMember?.homeBases || []).find(b => b.isPrimary);
+    return primary?.id || "primary";
+  }
+  function resolveHomeBaseAddress(homeBaseId: string): { address: string; city: string; state: string; zip: string } | null {
+    const bases = crewMember?.homeBases || [];
+    const match = bases.find(b => b.id === homeBaseId);
+    if (match?.address) return { address: match.address, city: match.city, state: match.state, zip: match.zip };
+    // Fallback to legacy homeAddress for the synthetic "primary" id
+    if (homeBaseId === "primary" && crewMember?.homeAddress?.address) return crewMember.homeAddress;
+    return null;
+  }
+
+  // Auto-recalc distances for any (homeBase, location) combos that
+  // are referenced by an actual project crew entry but missing from
+  // the cache. Without this, a project using a brand-new location —
+  // or starting from a non-primary base — shows 0 miles and gets
+  // filtered out of the report. Silently runs once per session per
+  // missing combo. Skips if the relevant home base address isn't
+  // populated (the API call would fail anyway).
+  //
+  // For projects WITHOUT an explicit homeBaseId (auto-pick mode),
+  // we need distances from every base the user has, so we can
+  // compare and pick the closest at trip-computation time.
   const autoRanRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!crewMemberId) return;
-    const home = crewMember?.homeAddress;
-    if (!home?.address || !home?.city) return;
-    const missing = data.locations.filter(l =>
-      l.address && l.city
-      && !distanceMap.has(l.id)
-      && !autoRanRef.current.has(l.id),
-    );
+
+    const allBaseIds: string[] = (crewMember?.homeBases || []).map(b => b.id);
+    // Legacy users with only homeAddress: synthesize "primary"
+    if (allBaseIds.length === 0 && crewMember?.homeAddress?.address) allBaseIds.push("primary");
+
+    // Collect every (homeBase, location) combo this crew member
+    // actually uses across their projects in the visible year.
+    const wanted = new Set<string>();
+    data.projects.forEach(p => {
+      if (new Date(p.date + "T00:00:00").getFullYear() !== year) return;
+      const entry = (p.crew || []).find(e => e.crewMemberId === crewMemberId);
+      if (!entry || !p.locationId) return;
+      // Skip if the entry has a manual roundTripMiles override —
+      // those don't need a cached distance.
+      if (entry.roundTripMiles && entry.roundTripMiles > 0) return;
+      if (entry.homeBaseId) {
+        // Explicit pick — only this one combo needed.
+        wanted.add(`${entry.homeBaseId}|${p.locationId}`);
+      } else {
+        // Auto-pick — need distance from EVERY base so we can
+        // compare and choose the closest.
+        allBaseIds.forEach(baseId => wanted.add(`${baseId}|${p.locationId}`));
+      }
+    });
+
+    const missing: { baseId: string; loc: typeof data.locations[number] }[] = [];
+    wanted.forEach(key => {
+      if (distanceMap.has(key)) return;
+      if (autoRanRef.current.has(key)) return;
+      const [baseId, locationId] = key.split("|");
+      const loc = data.locations.find(l => l.id === locationId);
+      if (!loc?.address || !loc?.city) return;
+      missing.push({ baseId, loc });
+    });
     if (missing.length === 0) return;
-    const origin = `${home.address}, ${home.city}, ${home.state} ${home.zip}`;
+
     (async () => {
-      for (const loc of missing) {
-        autoRanRef.current.add(loc.id); // mark before request so a re-render mid-flight doesn't double-fire
+      for (const { baseId, loc } of missing) {
+        const baseAddr = resolveHomeBaseAddress(baseId);
+        if (!baseAddr?.address || !baseAddr?.city) continue;
+        const key = `${baseId}|${loc.id}`;
+        autoRanRef.current.add(key);
         try {
           const token = await getAuthToken();
           const res = await fetch("/api/calculate-distance", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ origin, destination: `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}` }),
+            body: JSON.stringify({
+              origin: `${baseAddr.address}, ${baseAddr.city}, ${baseAddr.state} ${baseAddr.zip}`,
+              destination: `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`,
+            }),
           });
           if (res.ok) {
             const { distanceMiles } = await res.json();
-            await upsertDistance(crewMemberId, loc.id, distanceMiles);
+            await upsertDistance(crewMemberId, loc.id, distanceMiles, baseId);
           }
         } catch (err) {
-          console.warn(`[MileageReport] auto-distance failed for ${loc.name}:`, err);
+          console.warn(`[MileageReport] auto-distance failed for ${loc.name} from ${baseId}:`, err);
         }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.locations, distanceMap, crewMemberId, crewMember?.homeAddress?.address]);
+  }, [data.locations, data.projects, distanceMap, crewMemberId, year, crewMember?.homeBases, crewMember?.homeAddress?.address]);
 
   // Build trips for the year (projects + manual trips)
   const trips = useMemo((): MileageTrip[] => {
@@ -206,9 +266,30 @@ export default function MileageReportPage() {
         const loc = data.locations.find(l => l.id === p.locationId);
 
         const crewEntry = (p.crew || []).find(e => e.crewMemberId === crewMemberId);
-        const oneWay = crewEntry?.roundTripMiles
-          ? crewEntry.roundTripMiles / 2
-          : (p.locationId ? distanceMap.get(p.locationId) || 0 : 0);
+
+        // Pick the right base for this project:
+        //  1. If crew entry has explicit homeBaseId, use it.
+        //  2. Otherwise auto-pick — find the cached base with the
+        //     SHORTEST distance to this location across all of the
+        //     crew member's bases. This is why auto-recalc above
+        //     fetches distances from every base to every location.
+        let oneWay = 0;
+        if (crewEntry?.roundTripMiles && crewEntry.roundTripMiles > 0) {
+          oneWay = crewEntry.roundTripMiles / 2;
+        } else if (p.locationId) {
+          if (crewEntry?.homeBaseId) {
+            oneWay = distanceMap.get(`${crewEntry.homeBaseId}|${p.locationId}`) || 0;
+          } else {
+            const allBaseIds = (crewMember?.homeBases || []).map(b => b.id);
+            if (allBaseIds.length === 0) allBaseIds.push("primary");
+            let closest = Infinity;
+            allBaseIds.forEach(baseId => {
+              const d = distanceMap.get(`${baseId}|${p.locationId}`);
+              if (typeof d === "number" && d < closest) closest = d;
+            });
+            oneWay = closest === Infinity ? 0 : closest;
+          }
+        }
 
         return {
           date: p.date,

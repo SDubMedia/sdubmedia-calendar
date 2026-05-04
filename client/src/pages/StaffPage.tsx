@@ -8,7 +8,9 @@
 import { useState } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { CrewMember, CrewRole, RoleRate, HomeAddress } from "@/lib/types";
+import type { CrewMember, CrewRole, RoleRate, HomeAddress, TravelBase, ContractorPaymentMethod } from "@/lib/types";
+import TravelBasesEditor from "@/components/TravelBasesEditor";
+import { nanoid } from "nanoid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -55,6 +57,7 @@ interface StaffFormData {
   email: string;
   defaultPayRatePerHour: number;
   homeAddress: HomeAddress | null;
+  homeBases: TravelBase[];
   businessName: string;
   businessAddress: string;
   businessCity: string;
@@ -62,6 +65,8 @@ interface StaffFormData {
   businessZip: string;
   taxId: string;
   taxIdType: "ssn" | "ein" | "";
+  preferredPaymentMethod: ContractorPaymentMethod | null;
+  preferredPaymentDetails: string;
 }
 
 const emptyForm = (): StaffFormData => ({
@@ -71,6 +76,7 @@ const emptyForm = (): StaffFormData => ({
   email: "",
   defaultPayRatePerHour: 0,
   homeAddress: null,
+  homeBases: [],
   businessName: "",
   businessAddress: "",
   businessCity: "",
@@ -78,6 +84,8 @@ const emptyForm = (): StaffFormData => ({
   businessZip: "",
   taxId: "",
   taxIdType: "",
+  preferredPaymentMethod: null,
+  preferredPaymentDetails: "",
 });
 
 function generatePassword(): string {
@@ -145,6 +153,21 @@ export default function StaffPage() {
 
   async function openEdit(member: CrewMember) {
     setEditingId(member.id);
+    // Seed home bases from member.homeBases if populated. Otherwise
+    // promote the legacy single homeAddress into a primary base for
+    // back-compat — old records won't have homeBases until they save.
+    let bases: TravelBase[] = Array.isArray(member.homeBases) ? member.homeBases : [];
+    if (bases.length === 0 && member.homeAddress?.address) {
+      bases = [{
+        id: "primary",
+        label: "Home",
+        address: member.homeAddress.address,
+        city: member.homeAddress.city,
+        state: member.homeAddress.state,
+        zip: member.homeAddress.zip,
+        isPrimary: true,
+      }];
+    }
     setForm({
       name: member.name,
       roleRates: member.roleRates ?? [],
@@ -152,6 +175,7 @@ export default function StaffPage() {
       email: member.email,
       defaultPayRatePerHour: Number(member.defaultPayRatePerHour ?? 0),
       homeAddress: member.homeAddress || null,
+      homeBases: bases,
       businessName: member.businessName || "",
       businessAddress: member.businessAddress || "",
       businessCity: member.businessCity || "",
@@ -159,6 +183,8 @@ export default function StaffPage() {
       businessZip: member.businessZip || "",
       taxId: "",
       taxIdType: member.taxIdType || "",
+      preferredPaymentMethod: (member.preferredPaymentMethod as ContractorPaymentMethod) || null,
+      preferredPaymentDetails: member.preferredPaymentDetails || "",
     });
     setW9Url(member.w9Url || "");
     setNewRole("");
@@ -267,25 +293,36 @@ export default function StaffPage() {
       if (newRole && !form.roleRates.some(rr => rr.role === newRole)) {
         finalRoleRates = [...finalRoleRates, { role: newRole as CrewRole, payRatePerHour: newRate }];
       }
+      // Derive the legacy single homeAddress from the primary travel
+      // base so old code paths (mileage trip computation, business-address
+      // auto-fill) still see it. The primary base is the source of truth
+      // — homeAddress is just a back-compat snapshot.
+      const primary = form.homeBases.find(b => b.isPrimary) || form.homeBases[0] || null;
+      const derivedHomeAddress: HomeAddress | null = primary?.address
+        ? { address: primary.address, city: primary.city, state: primary.state, zip: primary.zip }
+        : form.homeAddress;
       const payload: any = {
         name: form.name.trim(),
         roleRates: finalRoleRates,
         phone: form.phone.trim(),
         email: form.email.trim(),
         defaultPayRatePerHour: form.defaultPayRatePerHour,
-        homeAddress: form.homeAddress,
+        homeAddress: derivedHomeAddress,
+        homeBases: form.homeBases,
+        preferredPaymentMethod: form.preferredPaymentMethod,
+        preferredPaymentDetails: form.preferredPaymentDetails.trim(),
         businessName: form.businessName.trim(),
         businessAddress: form.businessAddress.trim(),
         businessCity: form.businessCity.trim(),
         businessState: form.businessState.trim(),
         businessZip: form.businessZip.trim(),
       };
-      // Auto-fill business address from home address if business address is still empty
-      if (form.homeAddress?.address && !form.businessAddress) {
-        payload.businessAddress = form.homeAddress.address;
-        payload.businessCity = form.homeAddress.city;
-        payload.businessState = form.homeAddress.state;
-        payload.businessZip = form.homeAddress.zip;
+      // Auto-fill business address from primary travel base if business address is still empty
+      if (derivedHomeAddress?.address && !form.businessAddress) {
+        payload.businessAddress = derivedHomeAddress.address;
+        payload.businessCity = derivedHomeAddress.city;
+        payload.businessState = derivedHomeAddress.state;
+        payload.businessZip = derivedHomeAddress.zip;
       }
       let memberId = editingId;
       if (editingId) {
@@ -617,33 +654,43 @@ export default function StaffPage() {
             </div>
           )}
 
-            {/* Home Address (for mileage) */}
+            {/* Travel Bases (replaces the single Home Address field).
+                Mileage is calculated from whichever base is selected on
+                the project's crew entry, falling back to the primary
+                base. The first base added auto-becomes primary. */}
+            <TravelBasesEditor
+              bases={form.homeBases}
+              onChange={(next) => setForm(f => ({ ...f, homeBases: next }))}
+            />
+
+            {/* Preferred payment method — admin sees this when marking
+                a contractor invoice paid so they know how to send money
+                outside the app. Slate doesn't process the payment. */}
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-primary" />
-                Home Address (for mileage tracking)
+                <DollarSign className="w-3.5 h-3.5 text-primary" />
+                How you'd like to be paid <span className="text-muted-foreground font-normal text-[10px]">(shown to admin when paying you)</span>
               </Label>
-              <p className="text-xs text-muted-foreground">Used to calculate driving distance to project locations. Only you and the owner can see this.</p>
-              <Input
-                placeholder="Street address"
-                value={form.homeAddress?.address || ""}
-                onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, address: e.target.value } }))}
-              />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <select
+                  value={form.preferredPaymentMethod || ""}
+                  onChange={e => setForm(f => ({ ...f, preferredPaymentMethod: (e.target.value || null) as ContractorPaymentMethod | null }))}
+                  className="bg-secondary border border-border rounded-md px-2 py-2 text-sm text-foreground"
+                >
+                  <option value="">— pick one —</option>
+                  <option value="venmo">Venmo</option>
+                  <option value="zelle">Zelle</option>
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer (ACH)</option>
+                  <option value="stripe">Stripe Transfer</option>
+                  <option value="other">Other</option>
+                </select>
                 <Input
-                  placeholder="City"
-                  value={form.homeAddress?.city || ""}
-                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, city: e.target.value } }))}
-                />
-                <Input
-                  placeholder="State"
-                  value={form.homeAddress?.state || ""}
-                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, state: e.target.value } }))}
-                />
-                <Input
-                  placeholder="ZIP"
-                  value={form.homeAddress?.zip || ""}
-                  onChange={e => setForm(f => ({ ...f, homeAddress: { ...f.homeAddress || { address: "", city: "", state: "", zip: "" }, zip: e.target.value } }))}
+                  className="sm:col-span-2"
+                  value={form.preferredPaymentDetails}
+                  onChange={e => setForm(f => ({ ...f, preferredPaymentDetails: e.target.value }))}
+                  placeholder="Handle / email / details (e.g. @sarah-thompson, sarah@gmail.com)"
                 />
               </div>
             </div>
