@@ -405,11 +405,14 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2">
-        {/* Top row: title + action buttons */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2 overflow-hidden">
+        {/* Top row: title + action buttons. min-w-0 lets the title shrink
+            so the buttons can stay on-row at narrow widths instead of forcing
+            page-level horizontal scroll. flex-wrap kicks in only if even the
+            icon-only buttons + a tight title can't fit. */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
             </h1>
             {!(isFamily && calendarMode !== "personal") && (
@@ -452,31 +455,32 @@ export default function CalendarPage() {
               <Button
                 variant="outline"
                 onClick={() => setAddUserOpen(true)}
-                className="gap-2 border-blue-500/40 text-blue-300 hover:bg-blue-500/10"
+                className="gap-2 border-blue-500/40 text-blue-300 hover:bg-blue-500/10 px-3 sm:px-4"
                 title="Add a new user — owner only"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>User</span>
+                <span className="hidden sm:inline">User</span>
               </Button>
             )}
             {!isClient && (
               <Button
                 variant="outline"
                 onClick={() => { setEditingMeeting(null); setMeetingOpen(true); }}
-                className="gap-2 border-slate-500/40 text-slate-700 dark:text-slate-300 hover:bg-slate-500/10"
+                className="gap-2 border-slate-500/40 text-slate-700 dark:text-slate-300 hover:bg-slate-500/10 px-3 sm:px-4"
                 title="Schedule a meeting (unpaid)"
               >
                 <Plus className="w-4 h-4" />
-                <span>Meeting</span>
+                <span className="hidden sm:inline">Meeting</span>
               </Button>
             )}
             {!isClient && (
               <Button
                 onClick={() => openAddForDate(null)}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 px-3 sm:px-4"
+                title="Add a new project"
               >
                 <Plus className="w-4 h-4" />
-                <span>Project</span>
+                <span className="hidden sm:inline">Project</span>
               </Button>
             )}
           </div>

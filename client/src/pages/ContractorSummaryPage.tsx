@@ -148,7 +148,7 @@ export default function ContractorSummaryPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
             <p className="text-2xl font-bold text-foreground">{contractors.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Contractors Paid</p>

@@ -1383,7 +1383,7 @@ export default function ReportsPage() {
       </Card>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2 mb-1">
@@ -1485,7 +1485,7 @@ export default function ReportsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                     <div className="text-center p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Projects</p>
                       <p className="text-xl font-bold text-foreground">{stat.projectCount}</p>

@@ -106,7 +106,10 @@ export default function NotificationBell() {
               right would clip the dropdown's left edge against the
               screen edge, since the sidebar is only 224px wide and the
               dropdown is 320px.) */}
-          <div className="absolute left-0 top-full mt-1 w-80 max-w-[calc(100vw-1rem)] max-h-96 overflow-y-auto overflow-x-hidden bg-card border border-border rounded-xl shadow-xl z-50">
+          {/* On mobile (no sidebar) anchor right so the dropdown grows leftward
+              into the visible area. On sm+ (sidebar present), keep the original
+              left-anchor so the dropdown clears the sidebar instead of clipping. */}
+          <div className="absolute right-0 sm:left-0 sm:right-auto top-full mt-1 w-80 max-w-[calc(100vw-1rem)] max-h-96 overflow-y-auto overflow-x-hidden bg-card border border-border rounded-xl shadow-xl z-50">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
               <span className="text-xs font-semibold text-foreground">Notifications</span>
               {unreadCount > 0 && (

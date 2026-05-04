@@ -269,25 +269,25 @@ export default function TemplateEditorPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setLocation("/proposals")} className="p-1.5 text-muted-foreground hover:text-foreground">
+      <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b border-border bg-card/50">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <button onClick={() => setLocation("/proposals")} className="p-1.5 text-muted-foreground hover:text-foreground shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
+          <div className="min-w-0 flex-1">
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              className="text-lg font-semibold text-foreground bg-transparent border-none outline-none w-full max-w-xs sm:max-w-md"
+              className="text-base sm:text-lg font-semibold text-foreground bg-transparent border-none outline-none w-full"
               placeholder="Template name..."
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[10px] text-muted-foreground truncate">
               {isNew ? "New template" : "Saved template"} · {pages.length} page{pages.length !== 1 ? "s" : ""} · {packages.length} package{packages.length !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -297,12 +297,20 @@ export default function TemplateEditorPage() {
           >
             {showPageList ? "Hide pages" : "Show pages"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowProperties(!showProperties)} className="text-xs">
-            {showProperties ? "Hide library" : "Show library"}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowProperties(!showProperties)}
+            className="text-xs px-2 sm:px-3"
+            title={showProperties ? "Hide library" : "Show library"}
+          >
+            <span className="hidden sm:inline">{showProperties ? "Hide library" : "Show library"}</span>
+            <span className="sm:hidden">{showProperties ? "Hide" : "Library"}</span>
           </Button>
-          <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">
+          <Button size="sm" onClick={save} disabled={saving} className="gap-1.5 px-2 sm:px-3">
             <Save className="w-3.5 h-3.5" />
-            {saving ? "Saving..." : "Save"}
+            <span className="hidden sm:inline">{saving ? "Saving..." : "Save"}</span>
+            <span className="sm:hidden">{saving ? "…" : "Save"}</span>
           </Button>
         </div>
       </div>
