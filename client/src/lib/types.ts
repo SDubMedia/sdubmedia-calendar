@@ -408,6 +408,14 @@ export interface Project {
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
   depositPaidAt?: string | null; // ISO timestamp stamped when at_signing milestone paid → flips tentative to upcoming
+  // Per-project discount applied to the billable amount when this
+  // project hits an invoice. % off (discountType="percent") subtracts
+  // discountAmount as a percentage of subtotal; $ off subtracts the
+  // dollar value directly. Free-text reason printed on the invoice
+  // line so the client sees why.
+  discountType?: "percent" | "fixed" | null;
+  discountAmount?: number;
+  discountReason?: string;
   createdAt: string;
 }
 
@@ -1066,11 +1074,11 @@ export interface Meeting {
   notes: string;
   visibleToClient: boolean;
   color: string; // "" = default slate; otherwise one of MEETING_COLORS values
-  // Crew members explicitly assigned to this meeting. Staff users
-  // ONLY see meetings where their crew member id is in this list —
-  // owner / partner see everything regardless. Empty list means
-  // no staff sees it (admin-only meeting).
-  assignedCrewMemberIds: string[];
+  // Users (staff or partner) explicitly assigned to this meeting.
+  // Anyone not in this list and not the owner won't see the meeting
+  // on their calendar. Stored as user_profile ids — works for staff,
+  // partners, family. Empty list = admin-only.
+  assignedUserIds: string[];
   orgId: string;
   createdAt: string;
 }

@@ -402,6 +402,9 @@ function rowToProject(r: any): Project {
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
     depositPaidAt: r.deposit_paid_at || null,
+    discountType: (r.discount_type as "percent" | "fixed" | null) || null,
+    discountAmount: r.discount_amount != null ? Number(r.discount_amount) : 0,
+    discountReason: r.discount_reason || "",
     createdAt: r.created_at,
   };
 }
@@ -557,7 +560,7 @@ function rowToMeeting(r: any): Meeting {
     notes: r.notes || "",
     visibleToClient: r.visible_to_client ?? false,
     color: r.color || "",
-    assignedCrewMemberIds: Array.isArray(r.assigned_crew_member_ids) ? r.assigned_crew_member_ids : [],
+    assignedUserIds: Array.isArray(r.assigned_user_ids) ? r.assigned_user_ids : [],
     orgId: r.org_id || "",
     createdAt: r.created_at,
   };
@@ -677,6 +680,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const targetRole = targetUser?.role || effectiveProfile?.role;
     const clientIds = targetUser?.clientIds || effectiveProfile?.clientIds || [];
     const crewMemberId = targetUser?.crewMemberId || effectiveProfile?.crewMemberId || "";
+    const targetUserId = targetUser?.id || effectiveProfile?.id || "";
 
     // Staff: filter projects by crew assignment
     if (targetRole === "staff" && crewMemberId) {
@@ -689,7 +693,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Meetings: staff sees ONLY meetings explicitly assigned to them.
       // No assignment = admin-only (don't leak the owner's calendar).
       const staffMeetings = rawData.meetings.filter(m =>
-        Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+        !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
       );
       return {
         ...rawData,
@@ -722,7 +726,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const allowedMeetings = targetRole === "client"
         ? rawData.meetings.filter(m => m.visibleToClient && m.clientId && allowedClientIds.has(m.clientId))
         : rawData.meetings.filter(m =>
-            crewMemberId && Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+            !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
           );
       // Galleries: clients keep access to their own deliveries; partners
       // and family don't get the gallery feature at all (owner-only).
@@ -759,16 +763,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Final guard for non-owner roles who didn't match either earlier
     // branch — typically a partner or family member whose profile has
-    // no client_ids assigned. Without this, they'd fall through to
-    // the unfiltered rawData below and see every meeting in the org
-    // (including admin-only meetings like Austin). Same meeting rule
-    // as staff: only see what they're explicitly assigned to.
+    // no client_ids assigned. Returns a restrictive empty view —
+    // everything client-scoped is empty, everything admin-scoped is
+    // empty, only org metadata + their own meetings/personal events
+    // come through. Mirrors the RLS rule: no client assignment =
+    // no data access.
     if (targetRole !== "owner") {
       return {
         ...rawData,
+        // Client-scoped — empty since no clients are assigned
+        clients: [],
+        projects: [],
+        invoices: [],
+        contracts: [],
+        proposals: [],
+        deliveries: [],
+        deliveryFiles: [],
+        deliverySelections: [],
+        deliveryCollections: [],
+        timeEntries: [],
+        // Owner-only data — never visible to non-owner without clients
+        contractorInvoices: [],
+        marketingExpenses: [],
+        businessExpenses: [],
+        pipelineLeads: [],
+        categoryRules: [],
+        manualTrips: [],
+        contractTemplates: [],
+        proposalTemplates: [],
+        packages: [],
+        proposalImages: [],
+        series: [],
+        // Crew + locations are org-wide directory info; show empty
+        // for true lockdown so impersonation matches what RLS gives
+        // a clientless partner (which is nothing useful).
+        crewMembers: [],
+        // Meetings: only those explicitly assigned to this user
         meetings: rawData.meetings.filter(m =>
-          !!crewMemberId && Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+          !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
         ),
+        // Keep org metadata + project/edit/location reference data
+        // visible (these are pure config — locations have no PII).
+        // Partners need them for any UI that tries to render labels.
       };
     }
 
@@ -1461,7 +1497,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       notes: m.notes || "",
       visible_to_client: m.visibleToClient ?? false,
       color: m.color || "",
-      assigned_crew_member_ids: m.assignedCrewMemberIds ?? [],
+      assigned_user_ids: m.assignedUserIds ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const meeting = rowToMeeting(row);
@@ -1480,7 +1516,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.notes !== undefined) patch.notes = m.notes;
     if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
     if (m.color !== undefined) patch.color = m.color;
-    if (m.assignedCrewMemberIds !== undefined) patch.assigned_crew_member_ids = m.assignedCrewMemberIds;
+    if (m.assignedUserIds !== undefined) patch.assigned_user_ids = m.assignedUserIds;
     const { error } = await supabase.from("meetings").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));
@@ -1974,6 +2010,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deliverable_url: p.deliverableUrl || "",
       cancellation_reason: p.cancellationReason || "",
       cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
+      discount_type: p.discountType || null,
+      discount_amount: p.discountAmount ?? 0,
+      discount_reason: p.discountReason || "",
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -2010,6 +2049,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
     if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;
+    if (p.discountType !== undefined) patch.discount_type = p.discountType;
+    if (p.discountAmount !== undefined) patch.discount_amount = p.discountAmount;
+    if (p.discountReason !== undefined) patch.discount_reason = p.discountReason;
     // Auto-stamp cancelled_at the first time status flips to "cancelled" if
     // the caller didn't supply one explicitly. Doesn't fire if status is
     // already cancelled or unchanged.

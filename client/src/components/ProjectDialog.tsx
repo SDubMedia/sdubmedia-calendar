@@ -12,7 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, ArrowLeft, Save } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel } from "@/lib/types";
 import { toast } from "sonner";
@@ -78,6 +79,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // Inline quick-create crew member — tracks which row requested the new person
   const [quickAddCrew, setQuickAddCrew] = useState<{ idx: number; section: "crew" | "post" } | null>(null);
   const [newCrewName, setNewCrewName] = useState("");
+  // Discount fields — applied to the project's billable amount when invoiced.
+  const [discountType, setDiscountType] = useState<"percent" | "fixed" | null>(project?.discountType ?? null);
+  const [discountAmount, setDiscountAmount] = useState<number>(project?.discountAmount ?? 0);
+  const [discountReason, setDiscountReason] = useState<string>(project?.discountReason ?? "");
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -111,6 +116,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       }
       setBillingModelOverride(project?.billingModel ?? null);
       setBillingRateOverride(project?.billingRate ?? null);
+      setDiscountType(project?.discountType ?? null);
+      setDiscountAmount(project?.discountAmount ?? 0);
+      setDiscountReason(project?.discountReason ?? "");
       setShowNewType(false);
       setNewTypeName("");
       setShowNewEditType(false);
@@ -349,6 +357,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       editTypes, notes, deliverableUrl,
       cancellationReason: status === "cancelled" ? cancellationReason.trim() : "",
       cancelledAt: status === "cancelled" ? (project?.cancelledAt ?? null) : null,
+      discountType: discountAmount > 0 ? discountType : null,
+      discountAmount: discountAmount > 0 ? discountAmount : 0,
+      discountReason: discountReason.trim(),
     };
     try {
       if (isEdit && project) {
@@ -393,7 +404,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-4 py-2">
           {/* Row 1: Client + Project Type */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -551,20 +562,30 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
             {!isLightweight && <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Status</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as ProjectStatus)}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  <SelectItem value="tentative">Tentative (agreement sent)</SelectItem>
-                  <SelectItem value="upcoming">Upcoming</SelectItem>
-                  <SelectItem value="filming_done">Filming Done</SelectItem>
-                  <SelectItem value="in_editing">In Editing</SelectItem>
-                  <SelectItem value="editing_done">Editing Done</SelectItem>
-                  <SelectItem value="delivered">Delivered</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { v: "tentative", l: "Tentative" },
+                  { v: "upcoming", l: "Upcoming" },
+                  { v: "filming_done", l: "Filmed" },
+                  { v: "in_editing", l: "In Editing" },
+                  { v: "editing_done", l: "Editing Done" },
+                  { v: "delivered", l: "Delivered" },
+                  { v: "cancelled", l: "Cancelled" },
+                ].map(opt => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => setStatus(opt.v as ProjectStatus)}
+                    className={`px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
+                      status === opt.v
+                        ? "bg-primary/20 border-primary/50 text-primary font-medium"
+                        : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                    }`}
+                  >
+                    {opt.l}
+                  </button>
+                ))}
+              </div>
             </div>}
           </div>
 
@@ -667,12 +688,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           {/* Crew (Filming) */}
           {!isLightweight && <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Crew — Filming</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Crew — Filming / Photography</Label>
               <Button variant="ghost" size="sm" onClick={() => setCrew((p) => [...p, emptyCrewEntry()])} className="h-7 text-xs gap-1 text-primary hover:text-primary">
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="hidden sm:grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+            <div className="hidden sm:grid grid-cols-[2fr_3fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
               <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
             </div>
             {crew.map((entry, idx) => {
@@ -680,9 +701,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               const memberBases = member?.homeBases || [];
               const showBasePicker = memberBases.length > 1;
               return (
-              <div key={idx} className="flex flex-col gap-2 sm:bg-transparent rounded-lg p-2 sm:p-0">
-              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center">
-                <div className="flex gap-2">
+              <div key={idx} className="flex flex-col gap-2 bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
+              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_70px_80px_28px] sm:gap-2 sm:items-center">
+                <div className="flex gap-2 sm:contents">
                   <Select
                     value={entry.crewMemberId}
                     onValueChange={(v) => {
@@ -718,7 +739,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       ))}
                     </SelectContent>
                   </Select>
-                  <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors sm:order-last shrink-0">
+                  {/* Mobile-only trash. On desktop the Trash button below
+                      (inside the second sm:contents wrapper) takes col 5
+                      of the 5-col grid; this one is hidden so the grid
+                      stays aligned with the headers above. */}
+                  <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors shrink-0 sm:hidden">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -741,32 +766,55 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   Auto (closest) — Slate picks whichever base is geo-
                   graphically nearest to the project location. User can
                   override by picking a specific base. */}
-              {showBasePicker && (
-                <div className="flex items-center gap-2 pl-2 sm:pl-0">
-                  <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Starting from</Label>
-                  <Select
-                    value={entry.homeBaseId || "__auto__"}
-                    onValueChange={(v) => updateCrewEntry(idx, "homeBaseId", v === "__auto__" ? "" : v)}
-                  >
-                    <SelectTrigger className="bg-secondary border-border h-7 text-xs w-auto min-w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      <SelectItem value="__auto__">Auto (closest base)</SelectItem>
-                      {memberBases.map(b => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.label || `${b.city || "Base"}`}{b.isPrimary ? " (primary)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {showBasePicker && (() => {
+                // Auto-label resolves to the actually-closest base
+                // (named) when we have cached distances for this
+                // location. Falls back to a generic "closest base"
+                // label when distances aren't cached yet.
+                const baseName = (b: typeof memberBases[number]) => b.label?.trim() || b.city?.trim() || (b.type === "travel" ? "Travel base" : "Home");
+                let closest: typeof memberBases[number] | null = null;
+                if (locationId && entry.crewMemberId) {
+                  let bestMiles = Infinity;
+                  for (const b of memberBases) {
+                    const d = data.crewLocationDistances.find(
+                      x => x.crewMemberId === entry.crewMemberId && x.homeBaseId === b.id && x.locationId === locationId
+                    );
+                    if (d && d.distanceMiles < bestMiles) {
+                      bestMiles = d.distanceMiles;
+                      closest = b;
+                    }
+                  }
+                }
+                const autoLabel = closest
+                  ? `Auto (${baseName(closest)})`
+                  : `Auto (closest base)`;
+                return (
+                  <div className="space-y-1 pl-2 sm:pl-0 sm:max-w-xs">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Starting from</Label>
+                    <Select
+                      value={entry.homeBaseId || "__auto__"}
+                      onValueChange={(v) => updateCrewEntry(idx, "homeBaseId", v === "__auto__" ? "" : v)}
+                    >
+                      <SelectTrigger className="bg-secondary border-border h-8 text-xs w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover border-border">
+                        <SelectItem value="__auto__">{autoLabel}</SelectItem>
+                        {memberBases.map(b => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {baseName(b)}{b.isPrimary ? " (primary)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })()}
               </div>
               );
             })}
             {/* Running total for crew */}
-            {crew.some(e => e.crewMemberId) && (
+            {crew.some(e => e.crewMemberId && Number(e.hoursWorked) > 0) && (
               <div className="text-xs text-right text-muted-foreground pr-8">
                 Crew total: <span className="text-purple-300 font-medium">
                   ${crew.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
@@ -783,12 +831,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="hidden sm:grid grid-cols-[1fr_1fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+            <div className="hidden sm:grid grid-cols-[2fr_3fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
               <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
             </div>
             {postProduction.map((entry, idx) => (
-              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_1fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/50 sm:bg-transparent rounded-lg p-2 sm:p-0">
-                <div className="flex gap-2">
+              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
+                <div className="flex gap-2 sm:contents">
                   <Select
                     value={entry.crewMemberId}
                     onValueChange={(v) => {
@@ -824,7 +872,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       ))}
                     </SelectContent>
                   </Select>
-                  <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors sm:order-last shrink-0">
+                  {/* Mobile-only trash. Desktop trash lives in the
+                      second sm:contents wrapper so the 5-col grid
+                      stays aligned with the headers above. */}
+                  <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors shrink-0 sm:hidden">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -843,7 +894,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </div>
               </div>
             ))}
-            {postProduction.some(e => e.crewMemberId) && (
+            {postProduction.some(e => e.crewMemberId && Number(e.hoursWorked) > 0) && (
               <div className="text-xs text-right text-muted-foreground pr-8">
                 Post total: <span className="text-purple-300 font-medium">
                   ${postProduction.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
@@ -852,61 +903,173 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             )}
           </div>}
 
-          {/* Edit Types */}
-          {!isLightweight && <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Edit Types</Label>
-            <div className="flex flex-wrap gap-2">
-              {data.editTypes.map((et) => (
-                <button
-                  key={et.id}
-                  onClick={() => toggleEditType(et.id)}
-                  className={`px-2.5 py-1 rounded text-xs border transition-colors ${
-                    editTypes.includes(et.id)
-                      ? "bg-primary/20 border-primary/50 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                  }`}
-                >
-                  {et.name}
-                </button>
-              ))}
-              {!showNewEditType && (
-                <button
-                  onClick={() => setShowNewEditType(true)}
-                  className="px-2.5 py-1 rounded text-xs border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" /> Add Edit Type
-                </button>
-              )}
-            </div>
-            {showNewEditType && (
-              <div className="flex gap-2 items-center">
-                <Input
-                  value={newEditTypeName}
-                  onChange={(e) => setNewEditTypeName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveNewEditType()}
-                  placeholder="Edit type name"
-                  className="bg-secondary border-border h-9 flex-1"
-                  autoFocus
-                />
-                <Button size="sm" onClick={handleSaveNewEditType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
-                <Button size="sm" variant="ghost" onClick={() => { setShowNewEditType(false); setNewEditTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+          {/* Discount + Project Total — what the client gets billed.
+              The discount is per-project: % off the computed billable
+              subtotal, or a flat $ amount. Saved on the project and
+              applied automatically when this project hits an invoice. */}
+          {!isLightweight && selectedClient && (() => {
+            // Compute live subtotal from current form state so the user
+            // sees the math update as they edit hours/rates. Mirrors
+            // getProjectSubtotal but using local state instead of a
+            // saved Project row.
+            const effectiveModel = billingModelOverride ?? selectedClient.billingModel;
+            let subtotal: number;
+            if (effectiveModel === "per_project") {
+              const overrideRate = (billingModelOverride && billingRateOverride) || 0;
+              const typeRate = selectedClient.projectTypeRates?.find(r => r.projectTypeId === projectTypeId);
+              subtotal = overrideRate
+                || (projectRate ?? 0)
+                || Number(typeRate?.rate ?? selectedClient.perProjectRate ?? 0);
+            } else {
+              const hourly = billingRateOverride ?? selectedClient.billingRatePerHour ?? 0;
+              const totalHours = [...crew, ...postProduction].reduce((s, e) => s + Number(e.hoursWorked || 0), 0);
+              subtotal = totalHours * Number(hourly);
+            }
+            const discount = discountAmount > 0
+              ? (discountType === "percent"
+                  ? subtotal * (discountAmount / 100)
+                  : Math.min(subtotal, discountAmount))
+              : 0;
+            const total = Math.max(0, subtotal - discount);
+            return (
+              <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Discount (optional)</Label>
+                  <div className="flex gap-2 items-center">
+                    <div className="flex bg-secondary border border-border rounded-md overflow-hidden text-xs shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType("percent")}
+                        className={`px-2.5 py-1.5 transition-colors ${(discountType || "percent") === "percent" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        % off
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType("fixed")}
+                        className={`px-2.5 py-1.5 transition-colors ${discountType === "fixed" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        $ off
+                      </button>
+                    </div>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={discountAmount || ""}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^\d.]/g, "");
+                        setDiscountAmount(v === "" ? 0 : parseFloat(v) || 0);
+                        if (!discountType) setDiscountType("percent");
+                      }}
+                      className="bg-secondary border-border h-8 text-xs w-24"
+                    />
+                    <Input
+                      type="text"
+                      placeholder="Reason (optional, shown to client)"
+                      value={discountReason}
+                      onChange={(e) => setDiscountReason(e.target.value)}
+                      className="bg-secondary border-border h-8 text-xs flex-1"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-3 space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="tabular-nums">${subtotal.toFixed(2)}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-amber-300">
+                      <span>Discount{discountType === "percent" ? ` (${discountAmount}%)` : ""}</span>
+                      <span className="tabular-nums">−${discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-base font-semibold pt-1 border-t border-border/50">
+                    <span>Project total</span>
+                    <span className="tabular-nums text-primary">${total.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>}
+            );
+          })()}
 
-          {/* Notes */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes about this project..." className="bg-secondary border-border resize-none" rows={3} />
-          </div>
+          {/* Collapsible "more" sections — Edit Types, Notes, Deliverable Link.
+              Most edits don't touch these, so they stay tucked away until
+              the user expands. Auto-opens if there's already content
+              (so you can see what's there at a glance). */}
+          {!isLightweight && (
+            <Collapsible defaultOpen={editTypes.length > 0}>
+              <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
+                <ChevronRight className="w-3 h-3 transition-transform group-data-[state=open]:rotate-90" />
+                <span className="uppercase tracking-wider">Edit Types{editTypes.length > 0 ? ` (${editTypes.length})` : ""}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {data.editTypes.map((et) => (
+                    <button
+                      key={et.id}
+                      onClick={() => toggleEditType(et.id)}
+                      className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                        editTypes.includes(et.id)
+                          ? "bg-primary/20 border-primary/50 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                      }`}
+                    >
+                      {et.name}
+                    </button>
+                  ))}
+                  {!showNewEditType && (
+                    <button
+                      onClick={() => setShowNewEditType(true)}
+                      className="px-2.5 py-1 rounded text-xs border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add Edit Type
+                    </button>
+                  )}
+                </div>
+                {showNewEditType && (
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      value={newEditTypeName}
+                      onChange={(e) => setNewEditTypeName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveNewEditType()}
+                      placeholder="Edit type name"
+                      className="bg-secondary border-border h-9 flex-1"
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={handleSaveNewEditType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowNewEditType(false); setNewEditTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
-          {!isLightweight && <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Deliverable Link</Label>
-            <Input value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} placeholder="Google Drive link to final deliverables..." className="bg-secondary border-border" />
-          </div>}
+          <Collapsible defaultOpen={!!notes.trim()}>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
+              <ChevronRight className="w-3 h-3 transition-transform group-data-[state=open]:rotate-90" />
+              <span className="uppercase tracking-wider">Notes{notes.trim() ? " ✓" : ""}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes about this project..." className="bg-secondary border-border resize-none" rows={3} />
+            </CollapsibleContent>
+          </Collapsible>
+
+          {!isLightweight && (
+            <Collapsible defaultOpen={!!deliverableUrl.trim()}>
+              <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">
+                <ChevronRight className="w-3 h-3 transition-transform group-data-[state=open]:rotate-90" />
+                <span className="uppercase tracking-wider">Deliverable Link{deliverableUrl.trim() ? " ✓" : ""}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">
+                <Input value={deliverableUrl} onChange={(e) => setDeliverableUrl(e.target.value)} placeholder="Google Drive link to final deliverables..." className="bg-secondary border-border" />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
 
-        <DialogFooter className="sticky bottom-0 bg-card pt-4 pb-2 -mx-6 px-6 border-t border-border sm:relative sm:border-0 sm:mx-0 sm:px-0 sm:pt-0 sm:pb-0">
+        <DialogFooter className="sticky bottom-0 bg-card/95 backdrop-blur-sm pt-3 pb-3 -mx-6 px-6 border-t border-border z-10">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
             {isEdit ? "Save Changes" : "Create Project"}

@@ -280,26 +280,35 @@ export function getProjectBillableHours(project: Project, client: Client): {
  * Hourly: billable hours × rate.
  * Per-project: project-level override → type-specific rate → client default rate.
  */
-export function getProjectInvoiceAmount(project: Project, client: Client): number {
-  // Cancelled projects bill nothing — applies to per-project and hourly alike.
+// Computes the pre-discount billable amount. Used internally and as
+// the "subtotal" displayed in the Edit Project dialog.
+export function getProjectSubtotal(project: Project, client: Client): number {
   if (project.status === "cancelled") return 0;
   const effectiveModel = project.billingModel ?? client.billingModel;
   if (effectiveModel === "per_project") {
-    // 1. Project-level billing override (new: per-project flat rate)
-    if (project.billingRate != null && project.billingRate > 0) {
-      return project.billingRate;
-    }
-    // 2. Legacy project.projectRate override
-    if (project.projectRate != null && project.projectRate > 0) {
-      return project.projectRate;
-    }
-    // 3. Project-type-specific rate, 4. Client default per-project rate
+    if (project.billingRate != null && project.billingRate > 0) return project.billingRate;
+    if (project.projectRate != null && project.projectRate > 0) return project.projectRate;
     const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
   const { totalBillable } = getProjectBillableHours(project, client);
   const effectiveHourly = project.billingRate ?? client.billingRatePerHour ?? 0;
   return totalBillable * Number(effectiveHourly);
+}
+
+// Computes the discount value (always positive — caller subtracts).
+export function getProjectDiscountValue(project: Project, subtotal: number): number {
+  if (!project.discountType || !project.discountAmount) return 0;
+  if (project.discountType === "percent") {
+    return Math.max(0, subtotal * (Number(project.discountAmount) / 100));
+  }
+  return Math.max(0, Math.min(subtotal, Number(project.discountAmount)));
+}
+
+export function getProjectInvoiceAmount(project: Project, client: Client): number {
+  const subtotal = getProjectSubtotal(project, client);
+  const discount = getProjectDiscountValue(project, subtotal);
+  return Math.max(0, subtotal - discount);
 }
 
 /**

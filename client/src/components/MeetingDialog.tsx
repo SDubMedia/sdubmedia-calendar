@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Meeting } from "@/lib/types";
 import { Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
@@ -44,6 +45,11 @@ interface Props {
 
 export default function MeetingDialog({ open, onClose, initialDate, editing }: Props) {
   const { data, addMeeting, updateMeeting, deleteMeeting } = useApp();
+  const { allProfiles } = useAuth();
+  // Anyone the owner can invite to a meeting: staff + partners. Owner
+  // themselves don't need a chip — they see all meetings already. Clients
+  // are gated separately via `visibleToClient`.
+  const assignableUsers = allProfiles.filter(u => u.role === "staff" || u.role === "partner");
 
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
@@ -54,7 +60,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
   const [notes, setNotes] = useState("");
   const [visibleToClient, setVisibleToClient] = useState(false);
   const [color, setColor] = useState("");
-  const [assignedCrewMemberIds, setAssignedCrewMemberIds] = useState<string[]>([]);
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Reset form on open transition only — never on prop changes mid-edit
@@ -71,7 +77,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setNotes(editing.notes || "");
       setVisibleToClient(editing.visibleToClient);
       setColor(editing.color || "");
-      setAssignedCrewMemberIds(editing.assignedCrewMemberIds || []);
+      setAssignedUserIds(editing.assignedUserIds || []);
     } else {
       setTitle("");
       setDate(initialDate || new Date().toISOString().slice(0, 10));
@@ -82,7 +88,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setNotes("");
       setVisibleToClient(false);
       setColor("");
-      setAssignedCrewMemberIds([]);
+      setAssignedUserIds([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -102,7 +108,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
         notes: notes.trim(),
         visibleToClient: clientId !== "none" && visibleToClient,
         color,
-        assignedCrewMemberIds,
+        assignedUserIds,
       };
       if (editing) {
         await updateMeeting(editing.id, payload);
@@ -194,30 +200,32 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
             </div>
           )}
 
-          {/* Staff assignment — meetings are admin-only by default.
-              Only crew members in this list will see the meeting on
-              their calendar. Owner / partner see it regardless. */}
-          {data.crewMembers.length > 0 && (
+          {/* Assign staff or partner — meetings are admin-only by default.
+              Only people in this list (plus the owner) see the meeting
+              on their calendar. */}
+          {assignableUsers.length > 0 && (
             <div className="space-y-2 rounded-lg border border-border bg-secondary/40 px-3 py-2.5">
               <div className="space-y-0.5">
-                <p className="text-sm font-medium text-foreground">Assign staff (optional)</p>
-                <p className="text-xs text-muted-foreground">Pick anyone who should see this meeting on their calendar. Staff who aren't assigned won't see it at all.</p>
+                <p className="text-sm font-medium text-foreground">Assign people (optional)</p>
+                <p className="text-xs text-muted-foreground">Pick staff or partners who should see this meeting on their calendar. Anyone not picked won't see it.</p>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {data.crewMembers.map(c => {
-                  const checked = assignedCrewMemberIds.includes(c.id);
+                {assignableUsers.map(u => {
+                  const checked = assignedUserIds.includes(u.id);
+                  const roleLabel = u.role === "partner" ? "Partner" : "Staff";
                   return (
                     <button
-                      key={c.id}
+                      key={u.id}
                       type="button"
-                      onClick={() => setAssignedCrewMemberIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      onClick={() => setAssignedUserIds(prev => checked ? prev.filter(id => id !== u.id) : [...prev, u.id])}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors inline-flex items-center gap-1 ${
                         checked
                           ? "bg-primary text-primary-foreground border-primary"
                           : "bg-background text-muted-foreground border-border hover:text-foreground"
                       }`}
                     >
-                      {c.name}
+                      {u.name || u.email}
+                      <span className={`text-[9px] uppercase tracking-wider ${checked ? "opacity-80" : "opacity-60"}`}>{roleLabel}</span>
                     </button>
                   );
                 })}
