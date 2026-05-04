@@ -35,9 +35,12 @@ const PAGE_ICONS: Record<ProposalPageType, typeof FileText> = {
 
 // Sample milestones used for the Invoice page preview in the editor.
 // Real milestones substitute in at signing time on the public portal.
+// Use fixed amounts so the preview renders real dollars instead of
+// $0.00 — percent-only milestones have no base total to compute from
+// at template-edit time (no proposal yet = no package total).
 const PREVIEW_MILESTONES: PaymentMilestone[] = [
-  { id: "preview1", label: "Deposit (50%)", type: "percent", percent: 50, dueType: "at_signing", status: "due" },
-  { id: "preview2", label: "Balance (50%)", type: "percent", percent: 50, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
+  { id: "preview1", label: "Deposit", type: "fixed", fixedAmount: 600, dueType: "at_signing", status: "due" },
+  { id: "preview2", label: "Balance", type: "fixed", fixedAmount: 600, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
 ];
 
 export default function EditContractTemplatePage() {
@@ -65,8 +68,14 @@ export default function EditContractTemplatePage() {
   // Refs that mirror current state for the save-during-blur race.
   const nameRef = useRef(name);
   const pagesRef = useRef(pages);
-  const setNameAndRef = (next: string) => { nameRef.current = next; setName(next); };
-  const setPagesAndRef = (next: ProposalPage[]) => { pagesRef.current = next; setPages(next); };
+  // dirtyRef = true between a local edit and the next successful save.
+  // Lets the unmount cleanup decide whether it needs to flush a pending
+  // debounced autosave that hasn't fired yet (otherwise quick edits like
+  // page-reorder + immediate navigation lose the change — the 900ms
+  // setTimeout gets cleared by React on unmount before save() runs).
+  const dirtyRef = useRef(false);
+  const setNameAndRef = (next: string) => { nameRef.current = next; setName(next); dirtyRef.current = true; };
+  const setPagesAndRef = (next: ProposalPage[]) => { pagesRef.current = next; setPages(next); dirtyRef.current = true; };
 
   const activePage = pages.find(p => p.id === activePageId) || pages[0] || null;
 
@@ -186,6 +195,22 @@ export default function EditContractTemplatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, pages]);
 
+  // Flush-on-unmount: if the user edits then navigates away inside the
+  // 900ms autosave window, the timeout above gets cancelled and the
+  // change is lost. Re-fire save() once on unmount when dirtyRef is set.
+  // Uses pagesRef/nameRef so the latest values are persisted even though
+  // state is already torn down by the time this runs.
+  useEffect(() => {
+    return () => {
+      if (!hydratedRef.current) return;
+      if (isNew) return;
+      if (!dirtyRef.current) return;
+      if (!nameRef.current.trim()) return;
+      void save({ silent: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function save(opts?: { silent?: boolean }) {
     const silent = opts?.silent ?? false;
     const currentName = nameRef.current;
@@ -235,6 +260,7 @@ export default function EditContractTemplatePage() {
       }
       setLastSavedAt(Date.now());
       setAutosaveStatus("idle");
+      dirtyRef.current = false;
     } catch (err) {
       if (!silent) toast.error(err instanceof Error ? err.message : "Save failed");
       else setAutosaveStatus("error");

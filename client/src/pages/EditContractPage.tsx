@@ -87,6 +87,11 @@ export default function EditContractPage() {
   const editorRef = useRef<WysiwygContractEditorHandle>(null);
   const saveTimerRef = useRef<number | null>(null);
   const hydratedIdRef = useRef<string | null>(null);
+  // dirtyRef = true between a local edit and the next successful save.
+  // saveFnRef holds a closure over the latest field values so the unmount
+  // cleanup can flush a still-pending debounced save with current state.
+  const dirtyRef = useRef(false);
+  const saveFnRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // Hydrate from contract row on first load + when id changes.
   useEffect(() => {
@@ -116,9 +121,7 @@ export default function EditContractPage() {
   // custom) are preserved untouched.
   useEffect(() => {
     if (!contract || !isDraft || !hydrated) return;
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    setSaveStatus("saving");
-    saveTimerRef.current = window.setTimeout(async () => {
+    saveFnRef.current = async () => {
       try {
         // Re-substitute merge fields on every save. Server-side substitution
         // ran once at proposal-acceptance time and resolved all tokens that
@@ -127,11 +130,11 @@ export default function EditContractPage() {
         // client. Running substitute again is idempotent — fully-resolved
         // values have no tokens to find, so they pass through unchanged;
         // newly-typed tokens get filled in.
-        const client = contract.clientId ? data.clients.find(c => c.id === contract.clientId) : null;
+        const cl = contract.clientId ? data.clients.find(c => c.id === contract.clientId) : null;
         const project = contract.projectId ? data.projects.find(p => p.id === contract.projectId) : null;
         const location = project?.locationId ? data.locations.find(l => l.id === project.locationId) : null;
         const substitutedContent = substituteManualContractFields(content, {
-          client,
+          client: cl,
           project,
           location,
           org: data.organization,
@@ -156,16 +159,30 @@ export default function EditContractPage() {
           patch.pages = nextPages;
         }
         await updateContract(contract.id, patch);
+        dirtyRef.current = false;
         setSaveStatus("saved");
       } catch {
         setSaveStatus("error");
       }
-    }, 800);
+    };
+    dirtyRef.current = true;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    setSaveStatus("saving");
+    saveTimerRef.current = window.setTimeout(() => { void saveFnRef.current(); }, 800);
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, content, clientEmail, fieldValues, additionalSigners, documentExpiresAt, remindersEnabled, isDraft, hydrated]);
+
+  // Flush-on-unmount: if the user edits then navigates away inside the
+  // 800ms autosave window, the timeout above gets cancelled and the change
+  // is lost. Re-fire saveFnRef once on unmount when dirtyRef is set.
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) void saveFnRef.current();
+    };
+  }, []);
 
   // ----- Send / sign actions -----
   async function sendContract() {
