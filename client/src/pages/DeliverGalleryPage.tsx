@@ -27,6 +27,10 @@ interface FileItem {
   mimeType: string;
   position: number;
   url: string;
+  // Server returns these for video files (otherwise "image" / "" / null).
+  mediaType?: "image" | "video";
+  durationSeconds?: number | null;
+  thumbnailUrl?: string;
 }
 
 interface DeliveryInfo {
@@ -643,24 +647,47 @@ export default function DeliverGalleryPage() {
         {files.map((f, i) => {
           const isPicked = picked.has(f.id);
           const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
+          const isVideo = f.mediaType === "video";
           return (
             <div
               key={f.id}
               className="relative group cursor-pointer aspect-square overflow-hidden bg-white"
               onClick={() => setLightboxIdx(i)}
             >
-              <img
-                src={f.url}
-                alt={f.originalName}
-                loading="lazy"
-                className="w-full h-full object-cover"
-              />
+              {isVideo ? (
+                <>
+                  {f.thumbnailUrl ? (
+                    <img src={f.thumbnailUrl} alt={f.originalName} loading="lazy" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-200 text-slate-500 text-xs p-2 text-center">
+                      Video
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-black/60 rounded-full p-3 sm:p-4">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+                  {f.durationSeconds != null && (
+                    <span className="absolute bottom-3 left-3 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                      {Math.floor(f.durationSeconds / 60)}:{String(f.durationSeconds % 60).padStart(2, "0")}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <img
+                  src={f.url}
+                  alt={f.originalName}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+              )}
               {/* Hover gradient for icon legibility */}
               <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
               {/* Hover icons — bottom-right cluster */}
               <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {delivery.printsEnabled && (
+                {delivery.printsEnabled && !isVideo && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setPrintFor(f); }}
                     className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
@@ -688,8 +715,8 @@ export default function DeliverGalleryPage() {
                 </button>
               </div>
 
-              {/* Heart (proofing) — top-right, always semi-visible if picked */}
-              {proofingEnabled && (
+              {/* Heart (proofing) — photos only. Videos are download-only. */}
+              {proofingEnabled && !isVideo && (
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePick(f.id); }}
                   disabled={isLocked}
@@ -770,7 +797,18 @@ export default function DeliverGalleryPage() {
             className="fixed inset-0 bg-black/95 z-40 flex items-center justify-center p-4"
             onClick={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
           >
-            <img src={lightboxFile.url} alt={lightboxFile.originalName} className="max-w-full max-h-full object-contain" />
+            {lightboxFile.mediaType === "video" ? (
+              <video
+                src={lightboxFile.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-w-full max-h-full"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <img src={lightboxFile.url} alt={lightboxFile.originalName} className="max-w-full max-h-full object-contain" />
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); setLightboxIdx(null); setSlideshowPlaying(false); }}
               className="absolute top-4 right-4 text-white/80 text-3xl hover:text-white"
@@ -786,7 +824,7 @@ export default function DeliverGalleryPage() {
             >
               {slideshowPlaying ? "❚❚ Pause" : "▶ Slideshow"}
             </button>
-            {proofingEnabled && !isLocked && (
+            {proofingEnabled && !isLocked && lightboxFile.mediaType !== "video" && (
               <button
                 onClick={(e) => { e.stopPropagation(); togglePick(lightboxFile.id); }}
                 className={`absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-semibold ${

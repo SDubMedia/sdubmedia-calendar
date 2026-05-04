@@ -22,8 +22,16 @@ const supabase = createClient(
 // Storage caps in bytes per org. org_sdubmedia (Geoff) bypasses entirely.
 const PRO_STORAGE_CAP_BYTES = 50 * 1024 * 1024 * 1024; // 50 GB
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
-const ALLOWED_MIME_PREFIX = ["image/"];
+const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
+const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB per single video
+const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — JPEG frame capture is small
+const IMAGE_MIME_PREFIX = "image/";
+// Restrict to the formats the user explicitly asked for (mp4, mov, m4v).
+const ALLOWED_VIDEO_MIME = new Set([
+  "video/mp4",
+  "video/quicktime",   // .mov
+  "video/x-m4v",       // .m4v
+]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
@@ -43,15 +51,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const fileName = typeof body.fileName === "string" ? body.fileName : "";
   const contentType = typeof body.contentType === "string" ? body.contentType : "";
   const sizeBytes = typeof body.sizeBytes === "number" ? body.sizeBytes : 0;
+  // "kind" lets the client tell us this is a thumbnail (small JPEG companion
+  // to a parent video) rather than a primary deliverable. Thumbnails skip the
+  // storage cap (they're trivial) and live under a separate path prefix.
+  const kind = body.kind === "thumbnail" ? "thumbnail" : "file";
 
   if (!deliveryId || !fileName || !contentType || sizeBytes <= 0) {
     return res.status(400).json({ error: "Missing deliveryId, fileName, contentType, or sizeBytes" });
   }
-  if (!ALLOWED_MIME_PREFIX.some((p) => contentType.startsWith(p))) {
-    return res.status(400).json({ error: "Only image uploads allowed in v1" });
-  }
-  if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-    return res.status(413).json({ error: `File too large (max ${Math.floor(MAX_FILE_SIZE_BYTES / 1024 / 1024)}MB per file)` });
+
+  // Validate MIME + size based on what's being uploaded.
+  const isImage = contentType.startsWith(IMAGE_MIME_PREFIX);
+  const isVideo = ALLOWED_VIDEO_MIME.has(contentType);
+  if (kind === "thumbnail") {
+    if (!isImage) return res.status(400).json({ error: "Thumbnail must be an image" });
+    if (sizeBytes > MAX_THUMBNAIL_SIZE_BYTES) {
+      return res.status(413).json({ error: `Thumbnail too large (max ${Math.floor(MAX_THUMBNAIL_SIZE_BYTES / 1024 / 1024)}MB)` });
+    }
+  } else {
+    if (!isImage && !isVideo) {
+      return res.status(400).json({ error: "Only images (any) and videos (.mp4, .mov, .m4v) are allowed" });
+    }
+    const cap = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+    if (sizeBytes > cap) {
+      return res.status(413).json({ error: `${isVideo ? "Video" : "Image"} too large (max ${Math.floor(cap / 1024 / 1024)}MB per file)` });
+    }
   }
 
   try {
@@ -74,8 +98,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 3. Storage cap — sum size of existing files in this org
-    if (!isOwnerOrg) {
+    // 3. Storage cap — sum size of existing files in this org. Thumbnails
+    // skip the cap because they're trivial companions to existing videos.
+    if (!isOwnerOrg && kind !== "thumbnail") {
       const { data: usage } = await supabase
         .from("delivery_files")
         .select("size_bytes")
@@ -91,8 +116,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 4. Generate the signed PUT URL (15 min — plenty for one file)
-    const storagePath = r2BuildKey(orgId, deliveryId, fileName);
+    // 4. Generate the signed PUT URL (15 min — plenty for one file).
+    // Thumbnails get a distinct path prefix so we can spot/clean them later.
+    const baseKey = r2BuildKey(orgId, deliveryId, fileName);
+    const storagePath = kind === "thumbnail" ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/thumbnails/`) : baseKey;
     const uploadUrl = r2PresignedUrl({
       method: "PUT",
       key: storagePath,

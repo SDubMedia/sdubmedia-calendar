@@ -58,6 +58,9 @@ interface FileRow {
   height: number | null;
   mime_type: string;
   position: number;
+  media_type?: string | null;
+  thumbnail_storage_path?: string | null;
+  duration_seconds?: number | null;
 }
 
 interface OrgRow {
@@ -175,16 +178,24 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .single<OrgRow>();
 
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
-  const filesWithUrls = fileRows.map((f) => ({
-    id: f.id,
-    originalName: f.original_name,
-    sizeBytes: f.size_bytes,
-    width: f.width,
-    height: f.height,
-    mimeType: f.mime_type,
-    position: f.position,
-    url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
-  }));
+  const filesWithUrls = fileRows.map((f) => {
+    const isVideo = f.media_type === "video";
+    return {
+      id: f.id,
+      originalName: f.original_name,
+      sizeBytes: f.size_bytes,
+      width: f.width,
+      height: f.height,
+      mimeType: f.mime_type,
+      position: f.position,
+      mediaType: isVideo ? "video" : "image",
+      durationSeconds: f.duration_seconds ?? null,
+      url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
+      thumbnailUrl: isVideo && f.thumbnail_storage_path && r2Configured()
+        ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
+        : "",
+    };
+  });
 
   return res.status(200).json({
     ok: true,

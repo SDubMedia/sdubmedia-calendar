@@ -108,14 +108,19 @@ async function signedUrls(body: Record<string, unknown>, orgId: string, res: Ver
 
   let query = supabase
     .from("delivery_files")
-    .select("id, storage_path")
+    .select("id, storage_path, media_type, thumbnail_storage_path")
     .eq("delivery_id", deliveryId);
   if (fileIds && fileIds.length > 0) query = query.in("id", fileIds);
   const { data: files } = await query;
 
-  const urls = (files || []).map((f: { id: string; storage_path: string }) => ({
+  const urls = (files || []).map((f: { id: string; storage_path: string; media_type?: string | null; thumbnail_storage_path?: string | null }) => ({
     id: f.id,
     url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
+    // For videos, sign the thumbnail too so the admin grid can render a
+    // preview tile without trying (and failing) to display a video as <img>.
+    thumbnailUrl: f.media_type === "video" && f.thumbnail_storage_path && r2Configured()
+      ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
+      : "",
   }));
 
   return res.status(200).json({ ok: true, urls });

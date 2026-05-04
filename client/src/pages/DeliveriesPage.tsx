@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon } from "lucide-react";
 
 const PUBLIC_BASE = typeof window !== "undefined" ? window.location.origin : "https://slate.sdubmedia.com";
 
@@ -257,12 +257,16 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, deleteDeliveryFile, markSelectionEdited } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
+  // Parallel map of thumbnail URLs (videos only). Keyed by file id.
+  const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
+  // File whose thumbnail the user is currently picking (or null when closed).
+  const [thumbnailPickerFileId, setThumbnailPickerFileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"photos" | "general" | "cover" | "privacy" | "selections">("photos");
 
   const delivery = data.deliveries.find(d => d.id === id);
@@ -286,6 +290,7 @@ function DeliveryDetail({ id }: { id: string }) {
   useEffect(() => {
     if (files.length === 0) {
       setSignedUrls(new Map());
+      setThumbUrls(new Map());
       return;
     }
     let cancelled = false;
@@ -308,6 +313,13 @@ function DeliveryDetail({ id }: { id: string }) {
               for (const u of body.urls as { id: string; url: string }[]) next.set(u.id, u.url);
               return next;
             });
+            setThumbUrls(prev => {
+              const next = new Map(prev);
+              for (const u of body.urls as { id: string; thumbnailUrl?: string }[]) {
+                if (u.thumbnailUrl) next.set(u.id, u.thumbnailUrl);
+              }
+              return next;
+            });
           }).catch(() => {});
         }
 
@@ -320,8 +332,13 @@ function DeliveryDetail({ id }: { id: string }) {
         const body = await res.json();
         if (!res.ok || !body.urls || cancelled) return;
         const map = new Map<string, string>();
-        for (const u of body.urls as { id: string; url: string }[]) map.set(u.id, u.url);
+        const thumbs = new Map<string, string>();
+        for (const u of body.urls as { id: string; url: string; thumbnailUrl?: string }[]) {
+          map.set(u.id, u.url);
+          if (u.thumbnailUrl) thumbs.set(u.id, u.thumbnailUrl);
+        }
         setSignedUrls(map);
+        setThumbUrls(thumbs);
       } catch { /* swallow — placeholder remains */ }
     };
     run();
@@ -350,10 +367,29 @@ function DeliveryDetail({ id }: { id: string }) {
     let done = 0;
     for (const file of list) {
       try {
-        // Get image dimensions client-side
-        const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
+        const isVideo = file.type.startsWith("video/");
 
-        // 1. Get signed upload URL
+        // Read dimensions/duration client-side. Video also produces a
+        // first-frame Blob we'll upload as the auto-thumbnail.
+        let width: number | null = null;
+        let height: number | null = null;
+        let durationSeconds: number | null = null;
+        let autoThumbBlob: Blob | null = null;
+        if (isVideo) {
+          const meta = await readVideoMeta(file).catch(() => null);
+          if (meta) {
+            width = meta.width;
+            height = meta.height;
+            durationSeconds = meta.duration;
+            autoThumbBlob = meta.thumbBlob;
+          }
+        } else {
+          const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
+          width = dims.width;
+          height = dims.height;
+        }
+
+        // 1. Get signed upload URL for the primary file
         const sess = await supabase.auth.getSession();
         const accessToken = sess.data.session?.access_token || "";
         const uploadRes = await fetch("/api/delivery-upload", {
@@ -377,16 +413,30 @@ function DeliveryDetail({ id }: { id: string }) {
         });
         if (!putRes.ok) throw new Error(`R2 upload failed: ${putRes.status}`);
 
+        // 2b. For videos, upload the auto-captured first-frame thumbnail.
+        let thumbnailStoragePath = "";
+        if (isVideo && autoThumbBlob) {
+          try {
+            thumbnailStoragePath = await uploadThumbnailBlob(id, file.name, autoThumbBlob, accessToken);
+          } catch (thumbErr) {
+            // Non-fatal — file still uploads, user can pick a frame later.
+            console.error("Thumbnail upload failed", thumbErr);
+          }
+        }
+
         // 3. Register file metadata
         await registerDeliveryFile({
           deliveryId: id,
           storagePath: uploadData.storagePath,
           originalName: file.name,
           sizeBytes: file.size,
-          width: dims.width,
-          height: dims.height,
+          width,
+          height,
           mimeType: file.type,
           position: files.length + done,
+          mediaType: isVideo ? "video" : "image",
+          thumbnailStoragePath,
+          durationSeconds,
         });
 
         done++;
@@ -630,13 +680,16 @@ function DeliveryDetail({ id }: { id: string }) {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v"
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
         <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
         <p className="text-sm text-slate-300 mb-3">
-          {dragOver ? "Drop to upload" : "Drag photos here, or click to browse"}
+          {dragOver ? "Drop to upload" : "Drag photos or videos here, or click to browse"}
+        </p>
+        <p className="text-[11px] text-slate-500 mb-3">
+          Videos: .mp4, .mov, .m4v · up to 500 MB each. Photos: any image format · up to 50 MB each.
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -649,15 +702,40 @@ function DeliveryDetail({ id }: { id: string }) {
 
       {/* File grid */}
       {files.length === 0 ? (
-        <p className="text-center text-sm text-slate-500 py-8">No photos yet.</p>
+        <p className="text-center text-sm text-slate-500 py-8">No photos or videos yet.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {files.map((f) => {
             const sel = selections.find(s => s.fileId === f.id);
+            const isVideo = f.mediaType === "video";
+            const thumb = thumbUrls.get(f.id);
+            const photo = signedUrls.get(f.id);
             return (
               <div key={f.id} className="relative group aspect-square bg-white/[0.02] border border-white/10 rounded-lg overflow-hidden">
-                {signedUrls.get(f.id) ? (
-                  <img src={signedUrls.get(f.id)} alt={f.originalName} className="w-full h-full object-cover" loading="lazy" />
+                {isVideo ? (
+                  // Video tile: show thumbnail (or fallback) + play overlay + duration
+                  <>
+                    {thumb ? (
+                      <img src={thumb} alt={f.originalName} className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-500 text-[10px] p-2 text-center">
+                        <ImageIcon className="w-6 h-6 mb-1" />
+                        No thumbnail
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="bg-black/60 rounded-full p-3">
+                        <Play className="w-6 h-6 text-white fill-white" />
+                      </div>
+                    </div>
+                    {f.durationSeconds != null && (
+                      <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                        {formatDuration(f.durationSeconds)}
+                      </span>
+                    )}
+                  </>
+                ) : photo ? (
+                  <img src={photo} alt={f.originalName} className="w-full h-full object-cover" loading="lazy" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs p-2 text-center">
                     {f.originalName}
@@ -669,7 +747,7 @@ function DeliveryDetail({ id }: { id: string }) {
                     {sel.isPaid && <span className="bg-emerald-500 text-white text-[10px] uppercase font-bold px-1.5 py-0.5 rounded">Paid</span>}
                   </div>
                 )}
-                {sel && proofingEnabled && (
+                {sel && proofingEnabled && !isVideo && (
                   <button
                     onClick={() => markSelectionEdited(sel.id, !sel.editedAt)}
                     className={`absolute top-2 right-2 text-[10px] px-2 py-1 rounded font-semibold ${
@@ -677,6 +755,15 @@ function DeliveryDetail({ id }: { id: string }) {
                     }`}
                   >
                     {sel.editedAt ? <Check className="w-3 h-3" /> : "Mark edited"}
+                  </button>
+                )}
+                {isVideo && (
+                  <button
+                    onClick={() => setThumbnailPickerFileId(f.id)}
+                    className="absolute top-2 right-2 text-[10px] bg-black/60 hover:bg-blue-500 text-white px-2 py-1 rounded font-semibold opacity-0 group-hover:opacity-100"
+                    title="Pick a thumbnail frame from playback"
+                  >
+                    Thumbnail
                   </button>
                 )}
                 <button
@@ -691,6 +778,29 @@ function DeliveryDetail({ id }: { id: string }) {
           })}
         </div>
       )}
+
+      {/* Video thumbnail picker — opens when admin clicks "Thumbnail" on a video tile */}
+      {thumbnailPickerFileId && (() => {
+        const file = files.find(f => f.id === thumbnailPickerFileId);
+        if (!file) return null;
+        return (
+          <ThumbnailPicker
+            file={file}
+            videoUrl={signedUrls.get(file.id) || ""}
+            onClose={() => setThumbnailPickerFileId(null)}
+            onSaved={(newThumbUrl) => {
+              setThumbUrls(prev => {
+                const next = new Map(prev);
+                next.set(file.id, newThumbUrl);
+                return next;
+              });
+              setThumbnailPickerFileId(null);
+              toast.success("Thumbnail updated");
+            }}
+            uploadThumbnail={(blob) => uploadAndAttachThumbnail(id, file.id, file.originalName, blob, updateDeliveryFile)}
+          />
+        );
+      })()}
       </>
       )}
 
@@ -1391,4 +1501,206 @@ function projectLabel(p: Project, clients: Client[]): string {
   const client = clients.find(c => c.id === p.clientId);
   const dateStr = p.date ? new Date(p.date + "T00:00:00").toLocaleDateString() : "";
   return [client?.company, dateStr].filter(Boolean).join(" · ") || "Project";
+}
+
+// ---------------------------------------------------------------
+// Video helpers — used by the upload flow + thumbnail picker
+// ---------------------------------------------------------------
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Read width/height/duration from a video file and capture the first
+// playable frame as a JPEG Blob (the auto-thumbnail). Returns null if
+// the browser can't decode the video.
+async function readVideoMeta(file: File): Promise<{ width: number; height: number; duration: number; thumbBlob: Blob } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      // Seek to ~0.5s (or 10% in for very short clips). Some browsers
+      // refuse to capture frame data at exactly 0.
+      const seekTo = Math.min(0.5, video.duration * 0.1);
+      const onSeeked = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { cleanup(); resolve(null); return; }
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            cleanup();
+            if (!blob) { resolve(null); return; }
+            resolve({
+              width: video.videoWidth,
+              height: video.videoHeight,
+              duration: Math.round(video.duration),
+              thumbBlob: blob,
+            });
+          }, "image/jpeg", 0.85);
+        } catch {
+          cleanup();
+          resolve(null);
+        }
+      };
+      video.onseeked = onSeeked;
+      video.currentTime = seekTo;
+    };
+
+    video.onerror = () => { cleanup(); resolve(null); };
+  });
+}
+
+// Upload a thumbnail Blob to R2 and return the storage key (R2 path).
+async function uploadThumbnailBlob(deliveryId: string, originalName: string, blob: Blob, accessToken: string): Promise<string> {
+  const thumbName = originalName.replace(/\.[^.]+$/, "") + "-thumb.jpg";
+  const uploadRes = await fetch("/api/delivery-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({
+      deliveryId,
+      fileName: thumbName,
+      contentType: "image/jpeg",
+      sizeBytes: blob.size,
+      kind: "thumbnail",
+    }),
+  });
+  const data = await uploadRes.json();
+  if (!uploadRes.ok) throw new Error(data.error || "Thumbnail upload URL failed");
+
+  const putRes = await fetch(data.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "image/jpeg" },
+    body: blob,
+  });
+  if (!putRes.ok) throw new Error(`Thumbnail R2 PUT failed: ${putRes.status}`);
+  return data.storagePath as string;
+}
+
+// Helper called by the thumbnail-picker save: uploads new thumb, patches
+// the delivery_files row, returns a fresh signed GET URL for immediate display.
+async function uploadAndAttachThumbnail(
+  deliveryId: string,
+  fileId: string,
+  originalName: string,
+  blob: Blob,
+  updateDeliveryFile: (id: string, patch: { thumbnailStoragePath?: string }) => Promise<void>,
+): Promise<string> {
+  const sess = await supabase.auth.getSession();
+  const accessToken = sess.data.session?.access_token || "";
+  const newKey = await uploadThumbnailBlob(deliveryId, originalName, blob, accessToken);
+  await updateDeliveryFile(fileId, { thumbnailStoragePath: newKey });
+
+  // Round-trip via the signed-urls action to get a fresh GET URL we can
+  // display immediately (rather than refetching the whole gallery).
+  const res = await fetch("/api/deliveries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ action: "signed-urls", deliveryId, fileIds: [fileId] }),
+  });
+  const body = await res.json();
+  const entry = (body?.urls || []).find((u: { id: string }) => u.id === fileId);
+  return entry?.thumbnailUrl || "";
+}
+
+// ---------------------------------------------------------------
+// ThumbnailPicker — modal that lets the admin scrub through a video
+// and capture any frame as the new thumbnail.
+// ---------------------------------------------------------------
+
+interface ThumbnailPickerProps {
+  file: { id: string; originalName: string };
+  videoUrl: string;
+  onClose: () => void;
+  onSaved: (newThumbUrl: string) => void;
+  uploadThumbnail: (blob: Blob) => Promise<string>;
+}
+
+function ThumbnailPicker({ file, videoUrl, onClose, onSaved, uploadThumbnail }: ThumbnailPickerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleCapture = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    setSaving(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = v.videoWidth;
+      canvas.height = v.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Couldn't draw frame");
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+      if (!blob) throw new Error("Couldn't capture frame");
+      const newUrl = await uploadThumbnail(blob);
+      onSaved(newUrl);
+    } catch (err) {
+      toast.error("Couldn't save thumbnail", { description: err instanceof Error ? err.message : "" });
+      setSaving(false);
+    }
+  };
+
+  if (!videoUrl) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-slate-900 border border-white/10 rounded-lg p-6 max-w-md text-center" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm text-slate-300 mb-3">Loading video — try again in a moment.</p>
+          <button onClick={onClose} className="text-xs px-3 py-1.5 border border-white/10 rounded-md text-slate-300 hover:bg-white/5">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-white/10 rounded-lg w-full max-w-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <h3 className="text-sm font-semibold text-white">Pick thumbnail — {file.originalName}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            controls
+            className="w-full rounded-md bg-black max-h-[60vh]"
+            playsInline
+          />
+          <p className="text-[11px] text-slate-500 mt-2">
+            Scrub to the frame you want, pause, then click "Use this frame."
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-white/10">
+          <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-white/10 rounded-md text-slate-300 hover:bg-white/5">
+            Cancel
+          </button>
+          <button
+            onClick={handleCapture}
+            disabled={saving}
+            className="text-xs px-3 py-1.5 bg-[#0088ff] text-white rounded-md font-semibold hover:bg-[#0066dd] disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Use this frame"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -121,6 +121,7 @@ interface AppContextValue {
   setDeliveryStatus: (id: string, status: DeliveryStatus) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds">>) => Promise<void>;
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
@@ -650,6 +651,7 @@ function rowToDelivery(r: any): Delivery {
 }
 
 function rowToDeliveryFile(r: any): DeliveryFile {
+  const mediaType = r.media_type === "video" ? "video" : "image";
   return {
     id: r.id,
     deliveryId: r.delivery_id,
@@ -662,6 +664,9 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     position: Number(r.position ?? 0),
     downloadCount: Number(r.download_count ?? 0),
     createdAt: r.created_at,
+    mediaType,
+    thumbnailStoragePath: r.thumbnail_storage_path || "",
+    durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
   };
 }
 
@@ -1737,12 +1742,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       storage_path: f.storagePath, original_name: f.originalName,
       size_bytes: f.sizeBytes, width: f.width, height: f.height,
       mime_type: f.mimeType, position: f.position,
+      media_type: f.mediaType ?? "image",
+      thumbnail_storage_path: f.thumbnailStoragePath ?? "",
+      duration_seconds: f.durationSeconds ?? null,
     }).select().single();
     if (error) throw new Error(error.message);
     const file = rowToDeliveryFile(row);
     setRawData(s => ({ ...s, deliveryFiles: [...s.deliveryFiles, file] }));
     return file;
   }, [orgId]);
+
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds">>) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
+    if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
+    if (Object.keys(dbPatch).length === 0) return;
+    const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryFiles: s.deliveryFiles.map(f => f.id === id ? { ...f, ...patch } : f),
+    }));
+  }, []);
 
   const deleteDeliveryFile = useCallback(async (id: string) => {
     const { error } = await supabase.from("delivery_files").delete().eq("id", id);
@@ -2475,7 +2496,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
-      registerDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
+      registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       restoreItem, permanentlyDelete,
       updateOrganization,

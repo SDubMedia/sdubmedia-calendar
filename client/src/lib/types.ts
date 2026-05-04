@@ -1180,6 +1180,8 @@ export interface ProposalImage {
 
 export type DeliveryStatus = "draft" | "sent" | "submitted" | "working" | "delivered";
 
+export type DeliveryFileMediaType = "image" | "video";
+
 export interface DeliveryFile {
   id: string;
   deliveryId: string;
@@ -1192,6 +1194,12 @@ export interface DeliveryFile {
   position: number;
   downloadCount: number;
   createdAt: string;
+  mediaType: DeliveryFileMediaType;
+  // For videos: R2 key for the JPEG thumbnail captured from playback.
+  // Empty for images and for videos that haven't had a thumbnail captured yet.
+  thumbnailStoragePath: string;
+  // Video duration in whole seconds. Null for images and unknown.
+  durationSeconds: number | null;
 }
 
 export interface DeliverySelection {
