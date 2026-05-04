@@ -209,6 +209,34 @@ export default function InvoicesPage() {
     setSendMessage("");
   };
 
+  // Inline toggle for an invoice's payment methods. Clicking the Stripe
+  // or Venmo pill flips the method on/off. Refuses to enable a method
+  // the org hasn't configured (no Stripe Connect / no Venmo username).
+  const togglePaymentMethodOnInvoice = async (inv: Invoice, method: "stripe" | "venmo") => {
+    const stripeReady = !!data.organization?.stripeAccountId;
+    const venmoReady = !!data.organization?.businessInfo?.venmoUsername;
+    const isCurrentlyOn = inv.paymentMethods.includes(method);
+    if (!isCurrentlyOn) {
+      if (method === "stripe" && !stripeReady) {
+        toast.error("Connect Stripe in Settings before enabling it on invoices");
+        return;
+      }
+      if (method === "venmo" && !venmoReady) {
+        toast.error("Add a Venmo username in Settings before enabling it on invoices");
+        return;
+      }
+    }
+    const next = isCurrentlyOn
+      ? inv.paymentMethods.filter(m => m !== method)
+      : [...inv.paymentMethods, method];
+    try {
+      await updateInvoice(inv.id, { paymentMethods: next });
+      toast.success(isCurrentlyOn ? `${method === "stripe" ? "Stripe" : "Venmo"} removed` : `${method === "stripe" ? "Stripe" : "Venmo"} added`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update");
+    }
+  };
+
   // Ensure the invoice has a view_token. Generates + persists one if
   // missing (older invoices created before this column existed). Returns
   // the token so the caller can build the public URL.
@@ -482,12 +510,34 @@ export default function InvoicesPage() {
                         <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[inv.status])}>
                           {STATUS_LABELS[inv.status]}
                         </span>
-                        {inv.paymentMethods.includes("stripe") && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">Stripe</span>
-                        )}
-                        {inv.paymentMethods.includes("venmo") && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Venmo</span>
-                        )}
+                        {/* Click to toggle. Filled = active for this invoice's
+                            public page; outlined = available but not selected. */}
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentMethodOnInvoice(inv, "stripe")}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            inv.paymentMethods.includes("stripe")
+                              ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                              : "text-muted-foreground border-border hover:bg-blue-500/10 hover:text-blue-300"
+                          )}
+                          title={inv.paymentMethods.includes("stripe") ? "Stripe enabled — click to remove" : "Click to enable Stripe on this invoice"}
+                        >
+                          Stripe
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentMethodOnInvoice(inv, "venmo")}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            inv.paymentMethods.includes("venmo")
+                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                              : "text-muted-foreground border-border hover:bg-cyan-500/10 hover:text-cyan-300"
+                          )}
+                          title={inv.paymentMethods.includes("venmo") ? "Venmo enabled — click to remove" : "Click to enable Venmo on this invoice"}
+                        >
+                          Venmo
+                        </button>
                         {inv.viewToken && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="A public payment link has been generated">Link ready</span>
                         )}
