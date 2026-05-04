@@ -142,7 +142,7 @@ function Router() {
         <Route path="/staff" component={StaffPage} />
         <Route path="/invoices" component={InvoicesPage} />
         <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />
-        <Route path="/pipeline-analytics" component={PipelineAnalyticsPage} />
+        {isOwner && <Route path="/pipeline-analytics" component={PipelineAnalyticsPage} />}
         <Route path="/series" component={SeriesPage} />
         <Route path="/series/:id" component={SeriesWorkspacePage} />
         <Route path="/marketing-budget" component={MarketingBudgetPage} />
