@@ -757,6 +757,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
+    // Final guard for non-owner roles who didn't match either earlier
+    // branch — typically a partner or family member whose profile has
+    // no client_ids assigned. Without this, they'd fall through to
+    // the unfiltered rawData below and see every meeting in the org
+    // (including admin-only meetings like Austin). Same meeting rule
+    // as staff: only see what they're explicitly assigned to.
+    if (targetRole !== "owner") {
+      return {
+        ...rawData,
+        meetings: rawData.meetings.filter(m =>
+          !!crewMemberId && Array.isArray(m.assignedCrewMemberIds) && m.assignedCrewMemberIds.includes(crewMemberId)
+        ),
+      };
+    }
+
     return rawData;
   }, [rawData, impersonateUserId, allProfiles, effectiveProfile]);
   const [error, setError] = useState<string | null>(null);
