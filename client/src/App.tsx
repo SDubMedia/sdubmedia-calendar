@@ -33,6 +33,7 @@ const ClientHealthPage = lazy(() => import("./pages/ClientHealthPage"));
 const SeriesWorkspacePage = lazy(() => import("./pages/SeriesWorkspacePage"));
 const EpisodeEditorPage = lazy(() => import("./pages/EpisodeEditorPage"));
 const SeriesReviewPage = lazy(() => import("./pages/SeriesReviewPage"));
+const InvoicePublicPage = lazy(() => import("./pages/InvoicePublicPage"));
 const ClientDashboardPage = lazy(() => import("./pages/ClientDashboardPage"));
 const StaffDashboardPage = lazy(() => import("./pages/StaffDashboardPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -230,6 +231,19 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/proposal/:token" component={ViewProposalPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/invoice/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/invoice/:token" component={InvoicePublicPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

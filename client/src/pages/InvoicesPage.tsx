@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -209,12 +209,42 @@ export default function InvoicesPage() {
     setSendMessage("");
   };
 
+  // Ensure the invoice has a view_token. Generates + persists one if
+  // missing (older invoices created before this column existed). Returns
+  // the token so the caller can build the public URL.
+  const ensureViewToken = async (invoice: Invoice): Promise<string> => {
+    if (invoice.viewToken) return invoice.viewToken;
+    const token = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+    await updateInvoice(invoice.id, { viewToken: token });
+    return token;
+  };
+
+  const handleCopyPublicLink = async (invoice: Invoice) => {
+    try {
+      const tok = await ensureViewToken(invoice);
+      const url = `${window.location.origin}/invoice/${tok}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied", { description: url });
+      } catch {
+        toast.success("Link ready", { description: url });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't generate link");
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!sendingId || !sendEmail) { toast.error("Please enter an email address"); return; }
     const invoice = data.invoices.find(i => i.id === sendingId);
     if (!invoice) return;
 
     try {
+      // Ensure token before generating PDF / posting — public Pay button
+      // in the email needs a real, persistent URL.
+      const tok = await ensureViewToken(invoice);
+      const publicUrl = `${window.location.origin}/invoice/${tok}`;
+
       const blob = await pdf(<InvoicePDF invoice={invoice} />).toBlob();
       const formData = new FormData();
       formData.append("pdf", blob, `${invoice.invoiceNumber}.pdf`);
@@ -225,6 +255,7 @@ export default function InvoicesPage() {
       formData.append("invoiceNumber", invoice.invoiceNumber);
       formData.append("total", String(invoice.total));
       formData.append("clientName", invoice.clientInfo.contactName || invoice.clientInfo.company || "");
+      formData.append("publicUrl", publicUrl);
 
       const token = await getAuthToken();
       const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { "Authorization": `Bearer ${token}` } });
@@ -236,8 +267,8 @@ export default function InvoicesPage() {
       await updateInvoice(invoice.id, { status: "sent" });
       toast.success(`Invoice emailed to ${sendEmail}`);
       setSendingId(null);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send invoice");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send invoice");
     }
   };
 
@@ -446,11 +477,20 @@ export default function InvoicesPage() {
                 <div key={inv.id} className="bg-card border border-border rounded-lg p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center flex-wrap gap-2 mb-1">
                         <span className="text-sm font-semibold text-foreground">{inv.invoiceNumber}</span>
                         <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[inv.status])}>
                           {STATUS_LABELS[inv.status]}
                         </span>
+                        {inv.paymentMethods.includes("stripe") && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">Stripe</span>
+                        )}
+                        {inv.paymentMethods.includes("venmo") && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Venmo</span>
+                        )}
+                        {inv.viewToken && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="A public payment link has been generated">Link ready</span>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">{client?.company || inv.clientInfo.company}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
@@ -476,6 +516,15 @@ export default function InvoicesPage() {
                     {(inv.status === "draft" || inv.status === "sent") && (
                       <button onClick={() => openSendDialog(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors">
                         <Send className="w-3.5 h-3.5" /> Email
+                      </button>
+                    )}
+                    {inv.status !== "void" && (
+                      <button
+                        onClick={() => handleCopyPublicLink(inv)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
+                        title="Copy a public link clients can open and pay from"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Copy Link
                       </button>
                     )}
                     {(inv.status === "draft" || inv.status === "sent") && (

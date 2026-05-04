@@ -89,6 +89,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
+  // Owner-selected payment methods for THIS invoice. Resets each time
+  // the dialog opens. Default = whatever the org has configured.
+  const [invoicePaymentMethods, setInvoicePaymentMethods] = useState<("stripe" | "venmo")[]>([]);
   const [deliverablesOpen, setDeliverablesOpen] = useState(false);
   const [deliverablesEmail, setDeliverablesEmail] = useState("");
   const [deliverablesSubject, setDeliverablesSubject] = useState("");
@@ -276,7 +281,20 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     }
     setInvoiceEmail(resolvedClientEmail);
     setInvoiceMessage("");
+    // Default payment methods: whichever ones are configured on the org.
+    // If neither is configured, leave empty — the dialog will show a
+    // "configure payment methods in Settings" hint.
+    const defaults: ("stripe" | "venmo")[] = [];
+    if (data.organization?.stripeAccountId) defaults.push("stripe");
+    if (data.organization?.businessInfo?.venmoUsername) defaults.push("venmo");
+    setInvoicePaymentMethods(defaults);
     setInvoiceOpen(true);
+  };
+
+  const togglePaymentMethod = (method: "stripe" | "venmo") => {
+    setInvoicePaymentMethods(prev =>
+      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
+    );
   };
 
   const handlePreviewInvoice = async () => {
@@ -321,18 +339,80 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewUrl]);
 
+  // Random URL-safe token for the public invoice link. Same shape as
+  // the proposal/contract sign tokens already used elsewhere.
+  const makeViewToken = () => Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+
+  // Common save-the-draft path. Returns the persisted Invoice. Generates
+  // an invoice number and a view_token (always — even drafts get a token
+  // so the "Preview client view" button works without a separate save).
+  const persistInvoice = async (): Promise<{ id: string; invoiceNumber: string; viewToken: string; total: number; clientName: string } | null> => {
+    if (!client || !invoiceDraft) return null;
+    const draft = { ...invoiceDraft };
+    draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
+    draft.paymentMethods = invoicePaymentMethods.length > 0 ? invoicePaymentMethods : ["stripe"];
+    draft.viewToken = makeViewToken();
+    const created = await addInvoice(draft);
+    return {
+      id: created.id,
+      invoiceNumber: created.invoiceNumber,
+      viewToken: created.viewToken,
+      total: created.total,
+      clientName: created.clientInfo.contactName || created.clientInfo.company || "",
+    };
+  };
+
+  const handleSaveDraft = async () => {
+    if (!client || !invoiceDraft) return;
+    setSavingDraft(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      toast.success(`Invoice ${created.invoiceNumber} saved as draft`);
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save draft");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleSaveAndCopyLink = async () => {
+    if (!client || !invoiceDraft) return;
+    setCopyingLink(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      const url = `${window.location.origin}/invoice/${created.viewToken}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(`Link copied — ${created.invoiceNumber}`, { description: "Paste it into a text or message." });
+      } catch {
+        // Some browsers block clipboard without user gesture chain — show the URL instead.
+        toast.success(`Invoice ${created.invoiceNumber} saved`, { description: url });
+      }
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save invoice");
+    } finally {
+      setCopyingLink(false);
+    }
+  };
+
   const handleCreateAndSendInvoice = async () => {
     if (!client || !invoiceDraft) return;
     if (!invoiceEmail) { toast.error("Recipient email required"); return; }
 
     setSendingInvoice(true);
     try {
-      const draft = { ...invoiceDraft };
-      draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
-      const created = await addInvoice(draft);
+      const created = await persistInvoice();
+      if (!created) return;
+      const publicUrl = `${window.location.origin}/invoice/${created.viewToken}`;
 
-      // Generate PDF and send
-      const blob = await pdf(<InvoicePDF invoice={created} />).toBlob();
+      // Generate PDF + send. Pass the public URL so the email can render
+      // a "Pay this invoice" CTA in addition to the PDF attachment.
+      const fullInvoice = data.invoices.find(i => i.id === created.id);
+      const blob = await pdf(<InvoicePDF invoice={fullInvoice!} />).toBlob();
       const formData = new FormData();
       formData.append("pdf", blob, `${created.invoiceNumber}.pdf`);
       formData.append("invoiceId", created.id);
@@ -341,7 +421,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       formData.append("message", invoiceMessage);
       formData.append("invoiceNumber", created.invoiceNumber);
       formData.append("total", String(created.total));
-      formData.append("clientName", created.clientInfo.contactName || created.clientInfo.company || "");
+      formData.append("clientName", created.clientName);
+      formData.append("publicUrl", publicUrl);
 
       const token = await getAuthToken();
       const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { Authorization: `Bearer ${token}` } });
@@ -353,10 +434,29 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       await updateInvoice(created.id, { status: "sent" });
       toast.success(`Invoice ${created.invoiceNumber} sent to ${invoiceEmail}`);
       setInvoiceOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send invoice");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send invoice");
     } finally {
       setSendingInvoice(false);
+    }
+  };
+
+  const handlePreviewClientView = async () => {
+    // Persist with a token, then open the public URL in a new tab. Same
+    // page the client will see — payment buttons reflect the checkboxes.
+    if (!client || !invoiceDraft) return;
+    setSavingDraft(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      const url = `${window.location.origin}/invoice/${created.viewToken}`;
+      window.open(url, "_blank", "noopener");
+      toast.success(`Preview opened — ${created.invoiceNumber}`);
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't generate preview");
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -1051,25 +1151,98 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                 />
               </div>
+
+              {/* Payment methods the client will see on the public page */}
+              <div className="bg-secondary/30 border border-border rounded-md p-3 space-y-2">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment Methods Visible to Client</div>
+                {(() => {
+                  const stripeConnected = !!data.organization?.stripeAccountId;
+                  const venmoConfigured = !!data.organization?.businessInfo?.venmoUsername;
+                  return (
+                    <>
+                      <label className={cn("flex items-start gap-2 text-sm", !stripeConnected && "opacity-50")}>
+                        <input
+                          type="checkbox"
+                          checked={invoicePaymentMethods.includes("stripe")}
+                          onChange={() => togglePaymentMethod("stripe")}
+                          disabled={!stripeConnected}
+                          className="mt-0.5 rounded border-border"
+                        />
+                        <span>
+                          <span className="text-foreground font-medium">Stripe Checkout</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {stripeConnected ? "Card payment, auto-confirmed" : "Not connected — set up in Settings → Stripe"}
+                          </span>
+                        </span>
+                      </label>
+                      <label className={cn("flex items-start gap-2 text-sm", !venmoConfigured && "opacity-50")}>
+                        <input
+                          type="checkbox"
+                          checked={invoicePaymentMethods.includes("venmo")}
+                          onChange={() => togglePaymentMethod("venmo")}
+                          disabled={!venmoConfigured}
+                          className="mt-0.5 rounded border-border"
+                        />
+                        <span>
+                          <span className="text-foreground font-medium">Venmo</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {venmoConfigured ? `@${data.organization?.businessInfo?.venmoUsername} — manual confirmation required` : "No username set — add one in Settings"}
+                          </span>
+                        </span>
+                      </label>
+                      {!stripeConnected && !venmoConfigured && (
+                        <p className="text-[11px] text-amber-300/90">No payment methods configured yet. Add at least one in Settings or send the invoice without an online payment option.</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Preview the public client-facing page */}
+              <button
+                type="button"
+                onClick={handlePreviewClientView}
+                disabled={savingDraft || copyingLink || sendingInvoice}
+                className="text-xs text-primary hover:text-primary/80 underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                Preview client view ↗
+              </button>
             </div>
           )}
 
           <AlertDialogFooter className="gap-2 flex-col sm:flex-row">
-            <AlertDialogCancel className="border-border" disabled={sendingInvoice}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border" disabled={sendingInvoice || savingDraft || copyingLink}>Cancel</AlertDialogCancel>
             <Button
               variant="outline"
               onClick={handlePreviewInvoice}
-              disabled={generatingPreview || sendingInvoice}
+              disabled={generatingPreview || sendingInvoice || savingDraft || copyingLink}
+              className="gap-2 border-border"
+              title="Preview the PDF that will be attached to the email"
+            >
+              {generatingPreview ? "Generating…" : "Preview PDF"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={sendingInvoice || savingDraft || copyingLink}
               className="gap-2 border-border"
             >
-              {generatingPreview ? "Generating..." : "Preview PDF"}
+              {savingDraft ? "Saving…" : "Save Draft"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveAndCopyLink}
+              disabled={sendingInvoice || savingDraft || copyingLink}
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+            >
+              {copyingLink ? "Saving…" : "Save & Copy Link"}
             </Button>
             <AlertDialogAction
               onClick={handleCreateAndSendInvoice}
-              disabled={sendingInvoice || !invoiceEmail}
+              disabled={sendingInvoice || savingDraft || copyingLink || !invoiceEmail}
               className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
             >
-              {sendingInvoice ? "Sending..." : <><Send className="w-4 h-4" /> Create &amp; Send</>}
+              {sendingInvoice ? "Sending…" : <><Send className="w-4 h-4" /> Save & Send</>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

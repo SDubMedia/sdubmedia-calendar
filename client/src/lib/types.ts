@@ -98,7 +98,12 @@ export interface OrgBusinessInfo {
   // from `Organization.name` (the company name shown elsewhere). Optional
   // for back-compat with rows saved before this field existed.
   ownerName?: string;
+  // Venmo @username (no @ prefix in storage). Used to render a "Pay with
+  // Venmo" button on public invoice pages.
+  venmoUsername?: string;
 }
+
+export type InvoicePaymentMethod = "stripe" | "venmo";
 
 export interface ServiceItem {
   id: string;
@@ -531,6 +536,13 @@ export interface Invoice {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  // Owner-selected payment options shown on the public invoice page.
+  // Defaults to ["stripe"] for back-compat with rows saved before this field.
+  paymentMethods: InvoicePaymentMethod[];
+  // Random token gating the public payment page. Generated on demand
+  // (when the owner clicks Save & Copy Link or Save & Send Email);
+  // remains "" for invoices saved as draft only.
+  viewToken: string;
 }
 
 // ---- Content Series ----

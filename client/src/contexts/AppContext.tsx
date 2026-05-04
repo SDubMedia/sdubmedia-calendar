@@ -424,6 +424,8 @@ function rowToExpense(r: any): MarketingExpense {
 }
 
 function rowToInvoice(r: any): Invoice {
+  const rawMethods = Array.isArray(r.payment_methods) ? r.payment_methods : [];
+  const validMethods = rawMethods.filter((m: unknown): m is "stripe" | "venmo" => m === "stripe" || m === "venmo");
   return {
     id: r.id,
     invoiceNumber: r.invoice_number,
@@ -444,6 +446,8 @@ function rowToInvoice(r: any): Invoice {
     notes: r.notes || "",
     createdAt: r.created_at,
     updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+    paymentMethods: validMethods.length > 0 ? validMethods : ["stripe"],
+    viewToken: r.view_token || "",
   };
 }
 
@@ -2211,6 +2215,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       company_info: inv.companyInfo,
       client_info: inv.clientInfo,
       notes: inv.notes,
+      payment_methods: inv.paymentMethods && inv.paymentMethods.length > 0 ? inv.paymentMethods : ["stripe"],
+      view_token: inv.viewToken || null,
     }).select().single();
     if (error) throw new Error(error.message);
     const invoice = rowToInvoice(row);
@@ -2236,6 +2242,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.companyInfo !== undefined) patch.company_info = inv.companyInfo;
     if (inv.clientInfo !== undefined) patch.client_info = inv.clientInfo;
     if (inv.notes !== undefined) patch.notes = inv.notes;
+    if (inv.paymentMethods !== undefined) patch.payment_methods = inv.paymentMethods;
+    if (inv.viewToken !== undefined) patch.view_token = inv.viewToken || null;
     patch.updated_at = new Date().toISOString();
     const { error } = await supabase.from("invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);

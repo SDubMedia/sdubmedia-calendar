@@ -334,16 +334,17 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Settings
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Company settings and feature configuration</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">Company settings and feature configuration</p>
         </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
+        <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
           <Save className="w-4 h-4" />
-          {saving ? "Saving..." : "Save Changes"}
+          <span className="hidden sm:inline">{saving ? "Saving..." : "Save Changes"}</span>
+          <span className="sm:hidden">{saving ? "…" : "Save"}</span>
         </Button>
       </div>
 
@@ -375,6 +376,16 @@ export default function SettingsPage() {
                 placeholder="Your full name (printed on contract signatures)"
               />
               <p className="text-[11px] text-muted-foreground">Auto-fills the Vendor signature block on contract templates.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Venmo Username</Label>
+              <Input
+                value={businessInfo.venmoUsername ?? ""}
+                onChange={e => setBusinessInfo(b => ({ ...b, venmoUsername: e.target.value.replace(/^@/, "").trim() }))}
+                className="bg-secondary border-border"
+                placeholder="your-venmo-username (without the @)"
+              />
+              <p className="text-[11px] text-muted-foreground">Optional. Adds a "Pay with Venmo" option on public invoice pages. Venmo personal accounts don't notify Slate of payment — you'll mark the invoice paid yourself.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Production Type</Label>

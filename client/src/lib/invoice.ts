@@ -241,5 +241,7 @@ export function buildInvoice(
       phone: client.phone,
     },
     notes: "",
+    paymentMethods: ["stripe"],
+    viewToken: "",
   };
 }
