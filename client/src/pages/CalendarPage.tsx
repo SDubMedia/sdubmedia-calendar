@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -18,6 +18,7 @@ import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
 import MeetingDialog, { getMeetingColor } from "@/components/MeetingDialog";
 import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
+import AddUserDialog from "@/components/AddUserDialog";
 import { Settings } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -70,6 +71,8 @@ export default function CalendarPage() {
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const isOwner = role === "owner";
 
   // Bulk-apply template to multiple dates
   const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
@@ -444,6 +447,17 @@ export default function CalendarPage() {
                   <option key={t.id} value={t.id}>{t.label}</option>
                 ))}
               </select>
+            )}
+            {isOwner && (
+              <Button
+                variant="outline"
+                onClick={() => setAddUserOpen(true)}
+                className="gap-2 border-blue-500/40 text-blue-300 hover:bg-blue-500/10"
+                title="Add a new user — owner only"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>User</span>
+              </Button>
             )}
             {!isClient && (
               <Button
@@ -1142,6 +1156,9 @@ export default function CalendarPage() {
           </div>
         )}
       </div>
+
+      {/* Quick-add user (owner-only) */}
+      <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} />
 
       {/* New Project Dialog */}
       <ProjectDialog
