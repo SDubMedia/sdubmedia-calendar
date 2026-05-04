@@ -100,7 +100,7 @@ const navStructure: NavEntry[] = [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
-    { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], feature: "contentSeries" },
+    { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner"], feature: "contentSeries" },
   ]},
 
   // Team — owner and partner only

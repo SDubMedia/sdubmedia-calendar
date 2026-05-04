@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Send, Bot, User } from "lucide-react";
+import { Send, Bot, User, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SeriesMessage } from "@/lib/types";
 
@@ -57,15 +57,37 @@ export default function SeriesChat({
     }
   }
 
+  // Common starter prompts that reliably trigger episode-creation
+  // tools. Shown only on an empty chat so users have a clear path
+  // from "I want a series" to "episodes appearing on the board".
+  const SUGGESTED_PROMPTS = [
+    "Brainstorm 5 episodes for this series",
+    "Lay out 10 episodes covering the main goals",
+    "Give me episode ideas focused on customer stories",
+    "Develop Episode 1 with detailed talking points",
+  ];
+
   return (
     <div className="flex flex-col h-full bg-card border border-border rounded-lg overflow-hidden">
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && !sending ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex flex-col items-center justify-center h-full gap-4">
             <p className="text-muted-foreground text-sm text-center max-w-sm">
-              Start brainstorming! Ask Claude to help plan your content series.
+              Start brainstorming! Tap a starter below or type your own request — Claude will add episodes directly to the board.
             </p>
+            <div className="flex flex-col gap-2 w-full max-w-sm">
+              {SUGGESTED_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => { setInput(p); setTimeout(() => textareaRef.current?.focus(), 0); }}
+                  className="text-left text-xs px-3 py-2 rounded-md border border-border bg-secondary/40 text-foreground hover:border-primary/40 hover:bg-secondary/60 transition-colors"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -77,6 +99,27 @@ export default function SeriesChat({
           </>
         )}
       </div>
+
+      {/* "Commit to board" action — explicit way to push everything
+          discussed into actual episodes on the right. Sends a forceful
+          prompt so the AI calls create_episodes / develop_episode
+          instead of just describing more. Only visible when there's
+          conversation history to pull from. */}
+      {messages.length > 0 && !sending && (
+        <div className="px-4 pt-3 pb-1">
+          <button
+            type="button"
+            onClick={() => onSendMessage("Based on everything we've discussed so far, create all the episodes on the board now. Use create_episodes for any episodes that don't exist yet, and develop_episode for any that need fleshing out. Don't describe — just create them.")}
+            className={cn(
+              "w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-primary/40 bg-primary/10 text-primary text-sm font-medium",
+              "hover:bg-primary/20 transition-colors",
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            Create episodes on the board from this discussion
+          </button>
+        </div>
+      )}
 
       {/* Token budget indicator */}
       <div className="px-4 pt-2">

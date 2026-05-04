@@ -31,6 +31,8 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SeriesPage = lazy(() => import("./pages/SeriesPage"));
 const ClientHealthPage = lazy(() => import("./pages/ClientHealthPage"));
 const SeriesWorkspacePage = lazy(() => import("./pages/SeriesWorkspacePage"));
+const EpisodeEditorPage = lazy(() => import("./pages/EpisodeEditorPage"));
+const SeriesReviewPage = lazy(() => import("./pages/SeriesReviewPage"));
 const ClientDashboardPage = lazy(() => import("./pages/ClientDashboardPage"));
 const StaffDashboardPage = lazy(() => import("./pages/StaffDashboardPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -143,8 +145,9 @@ function Router() {
         <Route path="/invoices" component={InvoicesPage} />
         <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />
         {isOwner && <Route path="/pipeline-analytics" component={PipelineAnalyticsPage} />}
-        <Route path="/series" component={SeriesPage} />
-        <Route path="/series/:id" component={SeriesWorkspacePage} />
+        {isOwner && <Route path="/series" component={SeriesPage} />}
+        {isOwner && <Route path="/series/:id/episode/:episodeId" component={EpisodeEditorPage} />}
+        {isOwner && <Route path="/series/:id" component={SeriesWorkspacePage} />}
         <Route path="/marketing-budget" component={MarketingBudgetPage} />
         <Route path="/client-health" component={ClientHealthPage} />
         <Route path="/locations" component={LocationsPage} />
@@ -227,6 +230,19 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/proposal/:token" component={ViewProposalPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/review/series/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/review/series/:token" component={SeriesReviewPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

@@ -5,11 +5,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useParams, Link } from "wouter";
-import type { SeriesEpisode, SeriesMessage } from "@/lib/types";
+import { useParams, Link, useLocation } from "wouter";
+import type { Series, SeriesEpisode, SeriesMessage } from "@/lib/types";
 import SeriesChat from "@/components/SeriesChat";
 import EpisodeBoard from "@/components/EpisodeBoard";
-import { ArrowLeft, MessageSquare, ListOrdered } from "lucide-react";
+import { ArrowLeft, MessageSquare, ListOrdered, Send, Copy, CheckCircle2, Save, Archive } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import ProjectDialog from "@/components/ProjectDialog";
 import { getAuthToken } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -218,9 +221,28 @@ export default function SeriesWorkspacePage() {
         }
       }
 
+      // Build a "what I did" footer summarizing tool actions so the
+      // saved chat history reflects what actually happened. Without
+      // this, users scrolling back through history can't see whether
+      // the AI just talked or actually created episodes.
+      const actionSummaries: string[] = [];
+      for (const a of (result.actions || [])) {
+        if (a.tool === "create_episodes") {
+          const n = a.input?.episodes?.length || 0;
+          actionSummaries.push(`✨ Added ${n} episode${n === 1 ? "" : "s"} to the board`);
+        } else if (a.tool === "update_episode") {
+          actionSummaries.push(`✏️ Updated Episode ${a.input?.episode_number}`);
+        } else if (a.tool === "develop_episode") {
+          actionSummaries.push(`🎬 Developed Episode ${a.input?.episode_number} (moved to Concept stage)`);
+        }
+      }
+      const finalContent = actionSummaries.length > 0
+        ? `${result.content || ""}${result.content ? "\n\n" : ""}${actionSummaries.join("\n")}`.trim()
+        : (result.content || "");
+
       // Save assistant message
       const assistantMsg = await addMessage({
-        seriesId, role: "assistant", senderName: "Claude", content: result.content, tokensUsed: result.tokensUsed || 0,
+        seriesId, role: "assistant", senderName: "Claude", content: finalContent, tokensUsed: result.tokensUsed || 0,
       });
       setMessages(prev => [...prev, assistantMsg]);
 
@@ -260,11 +282,36 @@ export default function SeriesWorkspacePage() {
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold text-foreground truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              {series.name}
-            </h1>
-            <p className="text-xs text-muted-foreground">{client?.company}{series.goal ? ` — ${series.goal}` : ""}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <EditableSeriesTitle series={series} onSave={async (name) => {
+                if (name.trim() && name !== series.name) await updateSeries(series.id, { name: name.trim() });
+              }} />
+              <ReviewStatusBadge series={series} episodes={episodes} />
+            </div>
+            <EditableSeriesGoal series={series} onSave={async (goal) => {
+              await updateSeries(series.id, { goal });
+            }} clientCompany={client?.company || ""} />
+            {/* Recipient — pulled from this series's linked client. Always
+                visible so the owner knows who Send for Review will email. */}
+            {client && (
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Sending review to:{" "}
+                <span className="text-foreground">
+                  {client.contactName || "(no contact name)"}
+                </span>
+                {client.email ? (
+                  <span className="text-muted-foreground"> &lt;{client.email}&gt;</span>
+                ) : (
+                  <span className="text-amber-400"> · no email on file</span>
+                )}
+              </p>
+            )}
           </div>
+          <SendForReviewButton series={series} episodes={episodes} onTokenIssued={async () => {
+            // refresh series row so review_status flips locally
+            await updateSeries(seriesId, {});
+          }} />
+          <ArchiveSeriesButton series={series} />
         </div>
 
         {/* Mobile tab toggle */}
@@ -339,5 +386,445 @@ export default function SeriesWorkspacePage() {
         />
       )}
     </div>
+  );
+}
+
+// ── Archive / unarchive button ──────────────────────────────────
+// Hides the series from the main list. Doesn't delete — owner can
+// flip back via the Archived tab on the Series page.
+function ArchiveSeriesButton({ series }: { series: Series }) {
+  const [, setLocation] = useLocation();
+  const { updateSeries } = useApp();
+  const isArchived = series.status === "archived";
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        if (isArchived) {
+          await updateSeries(series.id, { status: "active" });
+          toast.success("Restored to active series");
+        } else {
+          if (!confirm(`Archive "${series.name}"? You can restore it later from the Series page.`)) return;
+          await updateSeries(series.id, { status: "archived" });
+          toast.success("Series archived");
+          setLocation("/series");
+        }
+      }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors shrink-0"
+    >
+      <Archive className="w-3.5 h-3.5" />
+      {isArchived ? "Restore" : "Archive"}
+    </button>
+  );
+}
+
+// ── Editable series title / goal ────────────────────────────────
+// Click the title to rename in place — saves on blur. Same for the
+// goal subtitle. Avoids needing a separate edit-series modal for
+// the most-common renames.
+function EditableSeriesTitle({ series, onSave }: { series: Series; onSave: (name: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(series.name);
+  useEffect(() => { setDraft(series.name); }, [series.name]);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-lg font-semibold text-foreground truncate hover:text-primary transition-colors text-left"
+        style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+        title="Click to rename"
+      >
+        {series.name}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={async () => { await onSave(draft); setEditing(false); }}
+      onKeyDown={async (e) => {
+        if (e.key === "Enter") { await onSave(draft); setEditing(false); }
+        if (e.key === "Escape") { setDraft(series.name); setEditing(false); }
+      }}
+      className="text-lg font-semibold bg-secondary border border-border rounded px-2 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-w-0 flex-1"
+      style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+    />
+  );
+}
+
+function EditableSeriesGoal({ series, onSave, clientCompany }: { series: Series; onSave: (goal: string) => Promise<void>; clientCompany: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(series.goal);
+  useEffect(() => { setDraft(series.goal); }, [series.goal]);
+
+  if (!editing) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {clientCompany}
+        {series.goal ? " — " : ""}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="hover:text-foreground transition-colors text-left"
+          title="Click to edit goal"
+        >
+          {series.goal || <span className="italic underline decoration-dotted">add goal</span>}
+        </button>
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 mt-0.5">
+      <span className="text-xs text-muted-foreground">{clientCompany}{clientCompany ? " — " : ""}</span>
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={async () => { await onSave(draft); setEditing(false); }}
+        onKeyDown={async (e) => {
+          if (e.key === "Enter") { await onSave(draft); setEditing(false); }
+          if (e.key === "Escape") { setDraft(series.goal); setEditing(false); }
+        }}
+        className="text-xs bg-secondary border border-border rounded px-2 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary flex-1 min-w-0"
+        placeholder="Goal of this series"
+      />
+    </div>
+  );
+}
+
+// ── Edit-message modal for sending series for review ───────────
+// Shows the saved (or default) template with placeholders, a live
+// preview with substituted values, and clear recipient info pulled
+// from the linked client. Save & Copy persists the template back
+// to the org so future sends pre-fill with the edited version.
+function ReviewMessageEditor({
+  open, onClose, initialTemplate, messageVars, recipientEmail, recipientName,
+  onSendEmail, onSaveAndCopy, onCopyOnce,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialTemplate: string;
+  messageVars: { first_name: string; company: string; url: string };
+  recipientEmail: string;
+  recipientName: string;
+  onSendEmail: (template: string) => Promise<void>;
+  onSaveAndCopy: (template: string) => Promise<void>;
+  onCopyOnce: (template: string) => Promise<void>;
+}) {
+  const [template, setTemplate] = useState(initialTemplate);
+  const [sending, setSending] = useState(false);
+  // Reset whenever the modal opens with a different starting value.
+  useEffect(() => { if (open) setTemplate(initialTemplate); }, [open, initialTemplate]);
+
+  if (!open) return null;
+  const preview = substituteMessage(template, messageVars);
+  const canEmail = !!recipientEmail;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-lg max-w-2xl w-full max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-border">
+          <h2 className="text-lg font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Send for review</h2>
+          <p className="text-xs text-muted-foreground mt-1">Edit the message, then copy. We'll save your edits as the default for next time.</p>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Recipient — pulled from the linked client. Owner sees who's
+              about to get the message before they paste it. To change
+              this permanently, edit the Client record. */}
+          <div className="rounded-md border border-border bg-secondary/40 p-3 text-xs space-y-0.5">
+            <div className="text-muted-foreground">Going to</div>
+            <div className="font-medium text-foreground">
+              {recipientName || messageVars.first_name || "(no contact name)"}
+              {messageVars.company ? ` · ${messageVars.company}` : ""}
+            </div>
+            {recipientEmail ? (
+              <div className="text-muted-foreground text-[11px]">{recipientEmail}</div>
+            ) : (
+              <div className="text-amber-400 text-[11px]">No email on file — email send unavailable. Add one on the Clients page or use Copy.</div>
+            )}
+            <div className="text-muted-foreground text-[10px] pt-0.5">Pulled from this series's linked client. Edit the client record in Clients to change permanently.</div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Message template</Label>
+            <p className="text-[11px] text-muted-foreground">
+              Use <code className="text-primary">{"{first_name}"}</code>, <code className="text-primary">{"{company}"}</code>, <code className="text-primary">{"{url}"}</code> as placeholders.
+            </p>
+            <Textarea
+              value={template}
+              onChange={e => setTemplate(e.target.value)}
+              rows={8}
+              className="bg-secondary border-border text-sm resize-y"
+              placeholder="Write what you'd send to a client..."
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Preview (what gets copied)</Label>
+            <div className="rounded-md border border-border bg-background p-3 text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
+              {preview || <span className="text-muted-foreground italic">Nothing to preview.</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:flex-wrap">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={() => onCopyOnce(template)}>
+            <Copy className="w-3.5 h-3.5 mr-1.5" /> Just copy
+          </Button>
+          <Button variant="outline" onClick={() => onSaveAndCopy(template)} className="gap-1.5">
+            <Save className="w-3.5 h-3.5" />
+            Save & Copy
+          </Button>
+          <Button
+            onClick={async () => { setSending(true); try { await onSendEmail(template); } finally { setSending(false); } }}
+            disabled={!canEmail || sending}
+            className="gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5" />
+            {sending ? "Sending…" : "Send Email"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Review status badge ─────────────────────────────────────────
+// Shows where the series sits in the client review workflow at a
+// glance. Counts approved / changes-requested episodes so the
+// owner sees "in review · 3 of 10 approved · 1 changes requested".
+function ReviewStatusBadge({ series, episodes }: { series: Series; episodes: SeriesEpisode[] }) {
+  const status = series.reviewStatus || "draft";
+  if (status === "draft") return null;
+
+  const approved = episodes.filter(e => e.approvalStatus === "approved").length;
+  const changes = episodes.filter(e => e.approvalStatus === "changes_requested").length;
+  const total = episodes.length;
+
+  if (status === "approved") {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+        <CheckCircle2 className="w-3 h-3" /> Approved
+      </span>
+    );
+  }
+  if (status === "changes_requested" || changes > 0) {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+        Changes requested · {approved}/{total} approved · {changes} need work
+      </span>
+    );
+  }
+  // Sent / in review
+  return (
+    <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30">
+      In review · {approved}/{total} approved
+    </span>
+  );
+}
+
+// ── Send-for-Review button + share-link popover ─────────────────
+// Generates the public review token via /api/series-send-for-review
+// then surfaces the link for the owner to copy. Once the series
+// has a token, button reads "Copy Review Link" — token is reused.
+// Default template — only used if the org hasn't saved a custom one.
+// Placeholders are substituted at copy time so the template stays
+// generic across clients.
+const DEFAULT_REVIEW_MESSAGE_TEMPLATE = `Hi {first_name}! Here's the video series plan we put together for {company}. Take a look and approve or request changes whenever you have a moment:
+
+{url}
+
+Looking forward to your feedback!`;
+
+function substituteMessage(template: string, vars: { first_name: string; company: string; url: string }): string {
+  return template
+    .replaceAll("{first_name}", vars.first_name)
+    .replaceAll("{company}", vars.company)
+    .replaceAll("{url}", vars.url);
+}
+
+function SendForReviewButton({ series, episodes, onTokenIssued }: { series: Series; episodes: SeriesEpisode[]; onTokenIssued: () => Promise<void> }) {
+  const { data, updateOrganization } = useApp();
+  const client = data.clients.find(c => c.id === series.clientId);
+  const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState<string | null>(series.reviewToken || null);
+  const [copied, setCopied] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+
+  const url = token ? `${window.location.origin}/review/series/${token}` : "";
+  const savedTemplate = data.organization?.seriesReviewMessageTemplate || "";
+  const activeTemplate = savedTemplate || DEFAULT_REVIEW_MESSAGE_TEMPLATE;
+  const messageVars = {
+    first_name: client?.contactName ? client.contactName.split(" ")[0] : "",
+    company: client?.company || "",
+    url,
+  };
+  const shareMessage = url ? substituteMessage(activeTemplate, messageVars) : "";
+
+  async function sendForReview() {
+    if (episodes.length === 0) {
+      toast.error("Add some episodes first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const authToken = await getAuthToken();
+      const res = await fetch("/api/series-send-for-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ seriesId: series.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error || "Failed to generate link");
+      }
+      const body = await res.json();
+      setToken(body.token);
+      await onTokenIssued();
+      toast.success("Review link ready — copy and share with your client");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copyLinkOnly() {
+    if (!url) return;
+    void navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  // Email send — actually delivers the message to the client's email
+  // address via Resend. Saves the template too if it changed.
+  async function handleSendEmail(editedTemplate: string) {
+    if (!client?.email) {
+      toast.error("This client doesn't have an email on file. Add one in Clients first.");
+      return;
+    }
+    try {
+      // Save the (possibly edited) template first so future sends
+      // pre-fill with the latest version.
+      if (editedTemplate.trim() && editedTemplate !== savedTemplate) {
+        await updateOrganization({ seriesReviewMessageTemplate: editedTemplate });
+      }
+      const final = substituteMessage(editedTemplate, messageVars);
+      const authToken = await getAuthToken();
+      const res = await fetch("/api/send-series-review-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          seriesId: series.id,
+          subject: `Video series for review: ${series.name}`,
+          body: final,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Send failed" }));
+        throw new Error(err.error || "Send failed");
+      }
+      toast.success(`Email sent to ${client.email}`);
+      setEditorOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send");
+    }
+  }
+
+  // Editor modal saves the (edited) template back to the org so future
+  // sends pre-fill with the saved version. Returns the substituted
+  // message that the modal copies to clipboard.
+  async function handleSaveAndCopy(editedTemplate: string) {
+    try {
+      if (editedTemplate.trim() && editedTemplate !== savedTemplate) {
+        await updateOrganization({ seriesReviewMessageTemplate: editedTemplate });
+      }
+      const final = substituteMessage(editedTemplate, messageVars);
+      await navigator.clipboard.writeText(final);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+      setEditorOpen(false);
+      toast.success("Message copied — saved as your default");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save");
+    }
+  }
+  async function handleCopyOnce(editedTemplate: string) {
+    const final = substituteMessage(editedTemplate, messageVars);
+    await navigator.clipboard.writeText(final);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+    setEditorOpen(false);
+    toast.success("Message copied (template not changed)");
+  }
+
+  if (token) {
+    return (
+      <>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setEditorOpen(true)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors",
+              copied
+                ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                : "bg-secondary border-border text-foreground hover:border-primary/40",
+            )}
+            title="Edit + copy the share message — saves your edits as the default for next time"
+          >
+            {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? "Copied!" : "Copy Message"}
+          </button>
+          <button
+            type="button"
+            onClick={copyLinkOnly}
+            className="text-[10px] text-muted-foreground hover:text-foreground underline disabled:opacity-50"
+            title="Copy just the URL"
+          >
+            link only
+          </button>
+          <button
+            type="button"
+            onClick={sendForReview}
+            disabled={busy}
+            className="text-[10px] text-muted-foreground hover:text-foreground underline disabled:opacity-50"
+            title="Reset approvals and re-send for another round of review"
+          >
+            re-issue
+          </button>
+        </div>
+
+        <ReviewMessageEditor
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+          initialTemplate={activeTemplate}
+          messageVars={messageVars}
+          recipientEmail={client?.email || ""}
+          recipientName={client?.contactName || ""}
+          onSendEmail={handleSendEmail}
+          onSaveAndCopy={handleSaveAndCopy}
+          onCopyOnce={handleCopyOnce}
+        />
+      </>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={sendForReview}
+      disabled={busy || episodes.length === 0}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0"
+    >
+      <Send className="w-3.5 h-3.5" />
+      {busy ? "Generating..." : "Send for Review"}
+    </button>
   );
 }

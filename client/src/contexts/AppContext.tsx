@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -456,6 +456,10 @@ function rowToSeries(r: any): Series {
     monthlyTokenLimit: Number(r.monthly_token_limit ?? 500000),
     tokensUsedThisMonth: Number(r.tokens_used_this_month ?? 0),
     tokenResetDate: r.token_reset_date || "",
+    reviewToken: r.review_token || null,
+    reviewStatus: r.review_status || "draft",
+    sentForReviewAt: r.sent_for_review_at || null,
+    clientReviewedAt: r.client_reviewed_at || null,
     createdAt: r.created_at,
   };
 }
@@ -475,6 +479,8 @@ function rowToEpisode(r: any): SeriesEpisode {
     draftEndTime: r.draft_end_time || "",
     draftLocationId: r.draft_location_id || "",
     draftCrew: r.draft_crew || [],
+    approvalStatus: r.approval_status || "pending",
+    clientComment: r.client_comment || "",
     createdAt: r.created_at,
   };
 }
@@ -499,6 +505,36 @@ function rowToComment(r: any): EpisodeComment {
     userName: r.user_name || "",
     userRole: r.user_role || "",
     content: r.content || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToExternalCalendar(r: any): ExternalCalendar {
+  return {
+    id: r.id,
+    ownerUserId: r.owner_user_id,
+    label: r.label || "",
+    url: r.url,
+    color: r.color || "#94a3b8",
+    enabled: r.enabled ?? true,
+    lastSyncedAt: r.last_synced_at || null,
+    lastError: r.last_error || "",
+    eventCount: Number(r.event_count ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToExternalEvent(r: any): ExternalEvent {
+  return {
+    id: r.id,
+    externalCalendarId: r.external_calendar_id,
+    icalUid: r.ical_uid || "",
+    title: r.title || "",
+    description: r.description || "",
+    location: r.location || "",
+    startAt: r.start_at,
+    endAt: r.end_at || null,
+    allDay: r.all_day ?? false,
     createdAt: r.created_at,
   };
 }
@@ -658,12 +694,13 @@ function rowToOrg(r: any): Organization {
     stripeSubscriptionId: r.stripe_subscription_id || "",
     billingStatus: r.billing_status || "ok",
     testimonialPromptedAt: r.testimonial_prompted_at || null,
+    seriesReviewMessageTemplate: r.series_review_message_template || "",
     createdAt: r.created_at,
   };
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -838,6 +875,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
         { data: personalEventsData, error: _e8b },
+        { data: externalCalendarsData, error: _e8b1 },
+        { data: externalEventsData, error: _e8b1b },
         { data: meetingsData, error: _e8b2 },
         { data: packagesData, error: _e8b3 },
         { data: proposalImagesData, error: _e8b4 },
@@ -868,6 +907,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         supabase.from("personal_events").select("*").order("date"),
+        supabase.from("external_calendars").select("*").order("created_at", { ascending: false }),
+        supabase.from("external_events").select("*").order("start_at"),
         supabase.from("meetings").select("*").order("date"),
         supabase.from("packages").select("*").is("deleted_at", null).order("sort_order"),
         supabase.from("proposal_images").select("*").is("deleted_at", null).order("sort_order", { ascending: false }),
@@ -903,6 +944,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
+        externalCalendars: (externalCalendarsData || []).map(rowToExternalCalendar),
+        externalEvents: (externalEventsData || []).map(rowToExternalEvent),
         meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
         packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
         proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
@@ -956,6 +999,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
       series: { key: "series", convert: rowToSeries },
       personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      external_calendars: { key: "externalCalendars", convert: rowToExternalCalendar },
+      external_events: { key: "externalEvents", convert: rowToExternalEvent, sort: (a: any, b: any) => a.startAt.localeCompare(b.startAt) },
       meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
       packages: { key: "packages", convert: rowToPackage, softDelete: true, sort: (a: any, b: any) => a.sortOrder - b.sortOrder },
       proposal_images: { key: "proposalImages", convert: rowToProposalImage, softDelete: true, sort: (a: any, b: any) => b.sortOrder - a.sortOrder },
@@ -1800,6 +1845,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.dashboardWidgets !== undefined) patch.dashboard_widgets = updates.dashboardWidgets;
     if (updates.pipelineStages !== undefined) patch.pipeline_stages = updates.pipelineStages;
     if (updates.services !== undefined) patch.services = updates.services;
+    if (updates.seriesReviewMessageTemplate !== undefined) patch.series_review_message_template = updates.seriesReviewMessageTemplate;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
@@ -2305,6 +2351,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.monthlyTokenLimit !== undefined) patch.monthly_token_limit = s.monthlyTokenLimit;
     if (s.tokensUsedThisMonth !== undefined) patch.tokens_used_this_month = s.tokensUsedThisMonth;
     if (s.tokenResetDate !== undefined) patch.token_reset_date = s.tokenResetDate;
+    if (s.reviewToken !== undefined) patch.review_token = s.reviewToken;
+    if (s.reviewStatus !== undefined) patch.review_status = s.reviewStatus;
+    if (s.sentForReviewAt !== undefined) patch.sent_for_review_at = s.sentForReviewAt;
+    if (s.clientReviewedAt !== undefined) patch.client_reviewed_at = s.clientReviewedAt;
     const { error } = await supabase.from("series").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, series: d.series.map(x => x.id === id ? { ...x, ...s } : x) }));
@@ -2349,6 +2399,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (e.draftEndTime !== undefined) patch.draft_end_time = e.draftEndTime;
     if (e.draftLocationId !== undefined) patch.draft_location_id = e.draftLocationId;
     if (e.draftCrew !== undefined) patch.draft_crew = e.draftCrew;
+    if (e.approvalStatus !== undefined) patch.approval_status = e.approvalStatus;
+    if (e.clientComment !== undefined) patch.client_comment = e.clientComment;
     const { error } = await supabase.from("series_episodes").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
   }, []);

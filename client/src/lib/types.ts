@@ -152,6 +152,10 @@ export interface Organization {
   stripeSubscriptionId: string;  // empty string when no active subscription
   billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
   testimonialPromptedAt: string | null; // when the testimonial prompt last fired (null = never asked)
+  // Saved template for the "send series for review" message. Placeholders
+  // {first_name} / {company} / {url} get substituted at copy time.
+  // Empty = use the built-in default.
+  seriesReviewMessageTemplate?: string;
   createdAt: string;
 }
 
@@ -530,8 +534,11 @@ export interface Invoice {
 }
 
 // ---- Content Series ----
-export type SeriesStatus = "draft" | "active" | "completed";
+export type SeriesStatus = "draft" | "active" | "completed" | "archived";
 export type EpisodeStatus = "idea" | "concept" | "script" | "client_review" | "scheduled" | "filming" | "editing" | "review" | "delivered";
+
+export type SeriesReviewStatus = "draft" | "sent" | "approved" | "changes_requested";
+export type EpisodeApprovalStatus = "pending" | "approved" | "changes_requested";
 
 export interface Series {
   id: string;
@@ -542,6 +549,12 @@ export interface Series {
   monthlyTokenLimit: number;
   tokensUsedThisMonth: number;
   tokenResetDate: string;
+  // Client review flow — owner generates a public link, client opens it
+  // (no login), approves/rejects episodes individually or the whole series.
+  reviewToken?: string | null;
+  reviewStatus?: SeriesReviewStatus;
+  sentForReviewAt?: string | null;
+  clientReviewedAt?: string | null;
   createdAt: string;
 }
 
@@ -560,6 +573,9 @@ export interface SeriesEpisode {
   draftEndTime: string;
   draftLocationId: string;
   draftCrew: string[]; // crew member IDs
+  // Client review approval (separate from production status)
+  approvalStatus?: EpisodeApprovalStatus;
+  clientComment?: string;
   createdAt: string;
 }
 
@@ -1044,6 +1060,37 @@ export interface PipelineLead {
   deletedAt?: string | null;
 }
 
+// External calendar subscription — owner pastes a webcal://, https://,
+// or http:// URL pointing to an iCal feed (e.g., published Apple
+// Calendar). Slate fetches the feed every 30 minutes via cron, parses
+// VEVENT blocks (including recurring events), and stores them in
+// external_events for read-only display on My Life.
+export interface ExternalCalendar {
+  id: string;
+  ownerUserId: string;
+  label: string;
+  url: string;
+  color: string;          // hex, used as the chip color on the calendar
+  enabled: boolean;       // toggle without deleting
+  lastSyncedAt: string | null;
+  lastError: string;      // populated when the most recent sync failed
+  eventCount: number;     // events from the latest sync
+  createdAt: string;
+}
+
+export interface ExternalEvent {
+  id: string;
+  externalCalendarId: string;
+  icalUid: string;
+  title: string;
+  description: string;
+  location: string;
+  startAt: string;        // ISO timestamp
+  endAt: string | null;   // ISO timestamp, null if not specified
+  allDay: boolean;
+  createdAt: string;
+}
+
 export interface PersonalEvent {
   id: string;
   title: string;
@@ -1229,6 +1276,8 @@ export interface AppData {
   pipelineLeads: PipelineLead[];
   series: Series[];
   personalEvents: PersonalEvent[];
+  externalCalendars: ExternalCalendar[];
+  externalEvents: ExternalEvent[];
   meetings: Meeting[];
   packages: Package[];
   proposalImages: ProposalImage[];

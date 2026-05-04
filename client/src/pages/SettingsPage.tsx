@@ -8,6 +8,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem, TravelBase } from "@/lib/types";
 import TravelBasesEditor from "@/components/TravelBasesEditor";
+import ExternalCalendarsCard from "@/components/ExternalCalendarsCard";
 import { MapPinned } from "lucide-react";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -833,6 +834,11 @@ export default function SettingsPage() {
             })()}
           </CardContent>
         </Card>
+
+        {/* External Calendars (import) — owner pastes a webcal:// URL
+            (e.g. published Apple Calendar) and we pull events into
+            My Life. Owner-only, refreshed every 30 minutes by cron. */}
+        {profile?.role === "owner" && <ExternalCalendarsCard />}
 
         {/* My Services */}
         <Card className="bg-card border-border">
