@@ -40,7 +40,7 @@ function generateTempPassword(): string {
 
 export default function AddUserDialog({ open, onOpenChange, defaultClientId }: Props) {
   const { createUser } = useAuth();
-  const { data } = useApp();
+  const { data, updateClient } = useApp();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("client");
@@ -90,6 +90,24 @@ export default function AddUserDialog({ open, onOpenChange, defaultClientId }: P
     try {
       const newUserId = await createUser(email, tempPassword, name, role, clientIds, crewMemberId);
       toast.success(`User "${name}" created`);
+
+      // Sync forward: if any attached client has a blank email field on the
+      // Clients record, write this user's email onto it. Otherwise the
+      // "send deliverables" / "send invoice" dialogs would later show "no
+      // email on file" even though we just collected one. Only fills blanks
+      // — never overwrites an existing client.email.
+      if ((role === "client" || role === "partner") && clientIds.length > 0) {
+        for (const cid of clientIds) {
+          const c = data.clients.find(x => x.id === cid);
+          if (c && !c.email) {
+            try {
+              await updateClient(cid, { email });
+            } catch {
+              // Non-fatal — user is created, sync just didn't take.
+            }
+          }
+        }
+      }
 
       if (sendInvite) {
         try {

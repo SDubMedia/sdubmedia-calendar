@@ -67,7 +67,7 @@ interface Props {
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice } = useApp();
   const [, setLocation] = useLocation();
-  const { effectiveProfile } = useAuth();
+  const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const isClient = effectiveProfile?.role === "client";
   // Always read the latest project from context so status updates reflect immediately
@@ -274,7 +274,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       toast.error("No billable hours or flat rate on this project");
       return;
     }
-    setInvoiceEmail(client.email || "");
+    setInvoiceEmail(resolvedClientEmail);
     setInvoiceMessage("");
     setInvoiceOpen(true);
   };
@@ -360,6 +360,15 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     }
   };
 
+  // If the client record has no email but a Slate user has been attached
+  // to this client, fall back to that user's email. Resolves the case where
+  // the owner created a user (with email) attached to a client whose
+  // dedicated email field on the Clients page is still blank.
+  const attachedUserEmail = client && !client.email
+    ? allProfiles.find(u => u.role === "client" && u.clientIds.includes(client.id))?.email || ""
+    : "";
+  const resolvedClientEmail = client?.email || attachedUserEmail || "";
+
   const openDeliverablesDialog = () => {
     if (!project.deliverableUrl) {
       toast.error("Add a Google Drive (or other) deliverable link to this project first");
@@ -369,7 +378,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     const projectTypeName = pType?.name || "your project";
     const greeting = client.contactName ? `Hi ${client.contactName.split(" ")[0]},` : "Hi,";
     const defaultMessage = `${greeting}\n\nYour ${projectTypeName.toLowerCase()} deliverables are ready to view and download. Click the button below to open the folder.`;
-    setDeliverablesEmail(client.email || "");
+    setDeliverablesEmail(resolvedClientEmail);
     setDeliverablesSubject("Your project deliverables are ready");
     setDeliverablesMessage(defaultMessage);
     setDeliverablesOpen(true);
@@ -1025,7 +1034,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   placeholder="client@example.com"
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
-                {client && !client.email && (
+                {client && !resolvedClientEmail && (
                   <p className="text-xs text-amber-300/90 mt-1.5">
                     No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
                   </p>
