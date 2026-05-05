@@ -81,6 +81,19 @@ export default function InvoicesPage() {
       if (result.url) {
         setPaymentLinks(prev => ({ ...prev, [invoiceId]: result.url }));
         toast.success("Payment link created!");
+
+        // Owner clicked "Create Payment Link" — that's an explicit signal
+        // they want Stripe enabled on this invoice. If the pill isn't
+        // already on, flip it so the public payment page shows Stripe too.
+        const inv = data.invoices.find(i => i.id === invoiceId);
+        if (inv && !inv.paymentMethods.includes("stripe")) {
+          try {
+            await updateInvoice(invoiceId, { paymentMethods: [...inv.paymentMethods, "stripe"] });
+          } catch {
+            // Non-fatal — link was created, pill state is the only thing
+            // that didn't sync. Owner can flip it manually.
+          }
+        }
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to create payment link");

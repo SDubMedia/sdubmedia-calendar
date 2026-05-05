@@ -248,6 +248,34 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const togglePaid = async () => {
     const newPaidDate = project.paidDate ? null : new Date().toISOString().slice(0, 10);
     await updateProject(project.id, { paidDate: newPaidDate });
+
+    // Sync the linked invoice's status. The reverse path (invoice marked
+    // paid → project marked paid) already works; this closes the loop for
+    // when the owner marks paid from the project sheet (e.g. after a
+    // Venmo payment, where there's no Stripe webhook to flip the invoice).
+    const linkedInvoice = data.invoices.find(inv =>
+      inv.status !== "void" && inv.lineItems.some(li => li.projectId === project.id)
+    );
+    if (linkedInvoice) {
+      try {
+        if (newPaidDate) {
+          // Only flip drafts/sent → paid. Already-paid stays paid.
+          if (linkedInvoice.status !== "paid") {
+            await updateInvoice(linkedInvoice.id, { status: "paid", paidDate: newPaidDate });
+          }
+        } else {
+          // Undoing the paid mark — revert the invoice unless it's been
+          // explicitly voided in the meantime.
+          if (linkedInvoice.status === "paid") {
+            await updateInvoice(linkedInvoice.id, { status: "sent", paidDate: null });
+          }
+        }
+      } catch {
+        // Non-fatal — project state is the source of truth, invoice will
+        // resync on next open / page reload.
+      }
+    }
+
     toast.success(newPaidDate ? "Marked as paid" : "Marked as unpaid");
   };
 
