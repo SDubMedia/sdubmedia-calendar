@@ -205,7 +205,7 @@ function SortableEpisodeRow({
 
         <Link
           href={`/series/${ep.seriesId}/episode/${ep.id}`}
-          className="flex-1 truncate text-foreground font-medium hover:text-primary transition-colors"
+          className="flex-1 min-w-0 text-foreground font-medium hover:text-primary transition-colors line-clamp-2"
           style={{ fontFamily: "'Space Grotesk', sans-serif" }}
         >
           {ep.title || "Untitled"}
@@ -235,7 +235,7 @@ function SortableEpisodeRow({
           <span className="hidden sm:block shrink-0 text-xs text-cyan-400">{ep.draftDate}</span>
         )}
         {!ep.draftDate && ep.concept && !isExpanded && (
-          <span className="hidden sm:block shrink-0 max-w-[200px] truncate text-xs text-muted-foreground">{ep.concept}</span>
+          <span className="hidden lg:block shrink-0 max-w-[160px] truncate text-xs text-muted-foreground">{ep.concept}</span>
         )}
 
         <button
