@@ -31,6 +31,12 @@ export default function ProfitLossPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [clientFilter, setClientFilter] = useState<string>("all"); // "all" or a client id
+  // Show Partner / Admin / Spending columns only when the org actually
+  // uses partner-split contracts. Most users don't and the columns are
+  // confusing without context. Existing rows with partnerPayout/spendingBudget
+  // > 0 still show even if the toggle is off, so historical data isn't
+  // hidden — the UI just collapses for users who never set it up.
+  const showPartnerColumns = data.organization?.features?.partnerSplits === true;
 
   // Projects and marketing expenses scoped to the selected client
   const scopedProjects = useMemo(() => {
@@ -144,12 +150,13 @@ export default function ProfitLossPage() {
       ownerCrewPay: acc.ownerCrewPay + m.ownerCrewPay,
       travelCost: acc.travelCost + m.travelCost,
       marketingExpenses: acc.marketingExpenses + m.marketingExpenses,
+      spendingBudget: acc.spendingBudget + m.spendingBudget,
       partnerPayout: acc.partnerPayout + m.partnerPayout,
       adminSplit: acc.adminSplit + m.adminSplit,
       nonPartnerProfit: acc.nonPartnerProfit + m.nonPartnerProfit,
       grossProfit: acc.grossProfit + m.grossProfit,
       netProfit: acc.netProfit + m.netProfit,
-    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, grossProfit: 0, netProfit: 0 });
+    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, spendingBudget: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, grossProfit: 0, netProfit: 0 });
   }, [monthlyData]);
 
   const annualGrossMargin = annualTotals.revenue > 0 ? (annualTotals.grossProfit / annualTotals.revenue) * 100 : 0;
@@ -195,9 +202,9 @@ export default function ProfitLossPage() {
             <p className="text-2xl font-bold text-foreground">{formatCurrency(annualTotals.revenue)}</p>
             <p className="text-xs text-muted-foreground mt-1">Gross Revenue</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(annualTotals.crewCost)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Crew Costs</p>
+          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300" title="Total paid to all crew except yourself">
+            <p className="text-2xl font-bold text-foreground">{formatCurrency(Math.max(0, annualTotals.crewCost - annualTotals.ownerCrewPay))}</p>
+            <p className="text-xs text-muted-foreground mt-1">Crew Costs (excl. you)</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
             <p className={`text-2xl font-bold ${annualTotals.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -249,23 +256,37 @@ export default function ProfitLossPage() {
                   <th className="text-right px-3 py-2">Projects</th>
                   <th className="text-right px-3 py-2">Revenue</th>
                   <th className="text-right px-3 py-2">Crew</th>
-                  <th className="text-right px-3 py-2">Spending</th>
-                  <th className="text-right px-3 py-2">Partner</th>
-                  <th className="text-right px-3 py-2">Admin</th>
+                  <th className="text-right px-3 py-2" title="Your pay for crew/post work on each project — separate from admin profit">
+                    {(effectiveProfile?.name || "Owner").split(" ")[0]}
+                  </th>
+                  <th className="text-right px-3 py-2">{showPartnerColumns ? "Spending" : "Marketing"}</th>
+                  {showPartnerColumns && <th className="text-right px-3 py-2">Partner</th>}
+                  {showPartnerColumns && <th className="text-right px-3 py-2">Admin</th>}
                   <th className="text-right px-3 py-2">Gross Profit</th>
                   <th className="text-right px-4 py-2">Net Profit</th>
                 </tr>
               </thead>
               <tbody>
-                {monthlyData.map(m => (
+                {monthlyData.map(m => {
+                  // Crew column = everyone except the owner. The data layer
+                  // returns crewCost as total payroll (incl. owner) and
+                  // ownerCrewPay separately; we subtract here so the row
+                  // stays additive: Crew + Owner = total crew payroll.
+                  const otherCrewCost = Math.max(0, m.crewCost - m.ownerCrewPay);
+                  // Spending column: prefer the legacy contract's 10%
+                  // spending budget when set (Jan/Feb 2026 partner clients).
+                  // Falls back to actual marketing expenses for other months.
+                  const spendingShown = m.spendingBudget > 0 ? m.spendingBudget : m.marketingExpenses;
+                  return (
                   <tr key={m.month} className={`border-b border-border/50 print:border-gray-200 ${m.projectCount === 0 ? "text-muted-foreground" : ""}`}>
                     <td className="px-4 py-2 font-medium">{MONTH_SHORT[m.month - 1]}</td>
                     <td className="text-right px-3 py-2">{m.projectCount || "—"}</td>
                     <td className="text-right px-3 py-2">{m.revenue ? formatCurrency(m.revenue) : "—"}</td>
-                    <td className="text-right px-3 py-2 text-red-300/70">{m.crewCost ? formatCurrency(m.crewCost) : "—"}</td>
-                    <td className="text-right px-3 py-2 text-red-300/70">{m.marketingExpenses ? formatCurrency(m.marketingExpenses) : "—"}</td>
-                    <td className="text-right px-3 py-2 text-red-300/70">{m.partnerPayout ? formatCurrency(m.partnerPayout) : "—"}</td>
-                    <td className="text-right px-3 py-2 text-green-400/70">{m.adminSplit ? formatCurrency(m.adminSplit) : "—"}</td>
+                    <td className="text-right px-3 py-2 text-red-300/70">{otherCrewCost ? formatCurrency(otherCrewCost) : "—"}</td>
+                    <td className="text-right px-3 py-2 text-blue-300/80">{m.ownerCrewPay ? formatCurrency(m.ownerCrewPay) : "—"}</td>
+                    <td className="text-right px-3 py-2 text-red-300/70">{spendingShown ? formatCurrency(spendingShown) : "—"}</td>
+                    {showPartnerColumns && <td className="text-right px-3 py-2 text-red-300/70">{m.partnerPayout ? formatCurrency(m.partnerPayout) : "—"}</td>}
+                    {showPartnerColumns && <td className="text-right px-3 py-2 text-green-400/70">{m.adminSplit ? formatCurrency(m.adminSplit) : "—"}</td>}
                     <td className={`text-right px-3 py-2 font-medium ${m.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {m.revenue ? formatCurrency(m.grossProfit) : "—"}
                     </td>
@@ -273,17 +294,19 @@ export default function ProfitLossPage() {
                       {m.revenue ? formatCurrency(m.netProfit) : "—"}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="font-bold border-t-2 border-border print:border-gray-400">
                   <td className="px-4 py-3">TOTAL</td>
                   <td className="text-right px-3 py-3">{annualTotals.projectCount}</td>
                   <td className="text-right px-3 py-3">{formatCurrency(annualTotals.revenue)}</td>
-                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.crewCost)}</td>
-                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.marketingExpenses)}</td>
-                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>
-                  <td className="text-right px-3 py-3 text-green-400">{formatCurrency(annualTotals.adminSplit)}</td>
+                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(Math.max(0, annualTotals.crewCost - annualTotals.ownerCrewPay))}</td>
+                  <td className="text-right px-3 py-3 text-blue-300">{formatCurrency(annualTotals.ownerCrewPay)}</td>
+                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.spendingBudget + annualTotals.marketingExpenses)}</td>
+                  {showPartnerColumns && <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>}
+                  {showPartnerColumns && <td className="text-right px-3 py-3 text-green-400">{formatCurrency(annualTotals.adminSplit)}</td>}
                   <td className={`text-right px-3 py-3 ${annualTotals.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {formatCurrency(annualTotals.grossProfit)}
                   </td>

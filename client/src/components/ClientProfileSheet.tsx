@@ -356,7 +356,12 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
               </div>
             ))}
           </div>
-          {/* Partner Toggle */}
+          {/* Partner Toggle — only shown when the org has Partner Splits
+              enabled in feature flags. Profit-sharing partners are niche;
+              hiding this for new users avoids "what's a partner split?"
+              confusion. Existing clients with partnerSplit set still
+              honor the data even if the toggle is hidden. */}
+          {(data.organization?.features?.partnerSplits || form.partnerSplit) && (
           <div className="space-y-2 border-t border-border pt-4">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Partner</Label>
@@ -494,6 +499,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
               </div>
             )}
           </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-4 sm:px-6 pt-4 mt-4 border-t border-border">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
