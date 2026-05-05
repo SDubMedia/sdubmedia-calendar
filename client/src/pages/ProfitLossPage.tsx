@@ -176,17 +176,38 @@ export default function ProfitLossPage() {
         </Button>
       </div>
 
-      {/* Year navigator */}
-      <div className="flex items-center justify-center gap-4 py-3 print:hidden">
-        <button onClick={() => setYear(y => y - 1)} className="p-2 text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <h2 className="text-lg font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-          {year}
-        </h2>
-        <button onClick={() => setYear(y => y + 1)} className="p-2 text-muted-foreground hover:text-foreground">
-          <ChevronRight className="w-5 h-5" />
-        </button>
+      {/* Year navigator + Client filter — primary controls. Placed up
+          here (rather than tucked into the Monthly Breakdown header) so
+          new users immediately see they can scope the whole P&L by year
+          and by client. */}
+      <div className="flex items-center justify-center flex-wrap gap-3 sm:gap-6 py-3 print:hidden">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setYear(y => y - 1)} className="p-2 text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-lg font-semibold text-foreground min-w-[60px] text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            {year}
+          </h2>
+          <button onClick={() => setYear(y => y + 1)} className="p-2 text-muted-foreground hover:text-foreground">
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">Client</label>
+          <select
+            value={clientFilter}
+            onChange={e => setClientFilter(e.target.value)}
+            className="bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-w-[140px]"
+          >
+            <option value="all">All Clients</option>
+            {data.clients
+              .slice()
+              .sort((a, b) => a.company.localeCompare(b.company))
+              .map(c => (
+                <option key={c.id} value={c.id}>{c.company}</option>
+              ))}
+          </select>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-6">
@@ -233,20 +254,12 @@ export default function ProfitLossPage() {
           <div className="px-4 py-3 border-b border-border print:border-gray-300 flex items-center justify-between gap-3 flex-wrap">
             <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               Monthly Breakdown
+              {clientFilter !== "all" && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  · {data.clients.find(c => c.id === clientFilter)?.company || ""}
+                </span>
+              )}
             </h3>
-            <select
-              value={clientFilter}
-              onChange={e => setClientFilter(e.target.value)}
-              className="bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary print:hidden"
-            >
-              <option value="all">All Clients</option>
-              {data.clients
-                .slice()
-                .sort((a, b) => a.company.localeCompare(b.company))
-                .map(c => (
-                  <option key={c.id} value={c.id}>{c.company}</option>
-                ))}
-            </select>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
