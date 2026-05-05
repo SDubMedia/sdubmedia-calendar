@@ -342,6 +342,10 @@ export interface MonthlyEarnings {
   ownerCrewPay: number;
   travelCost: number;
   marketingExpenses: number;
+  // Legacy contract bucket: 10% of partner-client profit set aside for
+  // marketing/spending. 0 outside legacy months. Distinct from the
+  // marketingExpenses ledger field which tracks actual spend.
+  spendingBudget: number;
   partnerPayout: number;
   adminSplit: number;
   nonPartnerProfit: number;
@@ -367,6 +371,11 @@ export function getMonthlyEarningsBreakdown(
   let partnerPayout = 0;
   let adminSplit = 0;
   let nonPartnerProfit = 0;
+  // Legacy contract allocates 10% of project profit (revenue minus crew
+  // and travel) as a spending budget bucket; the remaining 90% is split
+  // 50/50 between admin (owner) and partner. Tracked monthly so the
+  // monthly row reads: crew + geoff + spendingBudget + partner + admin = revenue.
+  let spendingBudget = 0;
 
   // Use new split logic for March 2026+
   const useNewSplitLogic = year > 2026 || (year === 2026 && month >= 3);
@@ -403,11 +412,19 @@ export function getMonthlyEarningsBreakdown(
     }
 
     if (!useNewSplitLogic) {
-      // Legacy split (Jan/Feb 2026)
-      const pPct = clientSplit.partnerPercent ?? 0;
-      const aPct = clientSplit.adminPercent ?? 0.45;
-      partnerPayout += projRevenue * pPct;
-      adminSplit += projRevenue * aPct;
+      // Legacy split (Jan/Feb 2026): contract allocates project PROFIT
+      // (after crew + travel) as 10% spending budget + 90% split 50/50
+      // between admin and partner. So: revenue = crew + travel +
+      // spendingBudget + partner + admin. If profit is negative
+      // (over-budget on crew), zero everything out — nothing to split.
+      const projProfit = projRevenue - projCrewCost - projTravelCost;
+      if (projProfit > 0) {
+        const projSpending = projProfit * 0.10;
+        const projSplittable = projProfit * 0.90;
+        spendingBudget += projSpending;
+        partnerPayout += projSplittable * 0.50;
+        adminSplit += projSplittable * 0.50;
+      }
       return;
     }
 
@@ -485,7 +502,13 @@ export function getMonthlyEarningsBreakdown(
     .reduce((s, e) => s + e.amount, 0);
 
   const grossProfit = revenue - totalCrewCost;
-  const netProfit = revenue - totalCrewCost - travelCost - mktgExp - partnerPayout;
+  // Net profit = what the company actually keeps as profit. In legacy
+  // contracts that's revenue minus crew, travel, partner payout, and
+  // the spending-budget bucket (which is allocated away from the
+  // company). In non-legacy months we fall back to actual marketing
+  // expenses since there's no contractual budget allocation.
+  const allocatedSpend = spendingBudget > 0 ? spendingBudget : mktgExp;
+  const netProfit = revenue - totalCrewCost - travelCost - allocatedSpend - partnerPayout;
 
   return {
     year, month,
@@ -495,6 +518,7 @@ export function getMonthlyEarningsBreakdown(
     ownerCrewPay,
     travelCost,
     marketingExpenses: mktgExp,
+    spendingBudget,
     partnerPayout,
     adminSplit,
     nonPartnerProfit,
