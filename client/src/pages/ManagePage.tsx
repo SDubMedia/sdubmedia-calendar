@@ -10,18 +10,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Edit3, Trash2, Users, Briefcase } from "lucide-react";
+import { Plus, Edit3, Trash2, Users, Briefcase, Shield } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useApp } from "@/contexts/AppContext";
 import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
+import UsersPage from "./UsersPage";
 
 export default function ManagePage() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-4 border-b border-border bg-card/50">
         <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Manage</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Crew members, project types, and settings</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Crew, project types, and user accounts</p>
       </div>
       <div className="flex-1 overflow-auto p-6">
         <Tabs defaultValue="crew">
@@ -32,9 +33,13 @@ export default function ManagePage() {
             <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
             </TabsTrigger>
+            <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Shield className="w-3.5 h-3.5 mr-1.5" /> Users
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="crew"><CrewTab /></TabsContent>
           <TabsContent value="types"><ProjectTypesTab /></TabsContent>
+          <TabsContent value="users"><UsersPage embedded /></TabsContent>
         </Tabs>
       </div>
     </div>

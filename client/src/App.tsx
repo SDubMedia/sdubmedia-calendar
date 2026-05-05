@@ -129,7 +129,7 @@ function Router() {
         {/* Owner-only admin (no feature toggle) */}
         {isOwner && <Route path="/manage" component={ManagePage} />}
         {isOwner && <Route path="/settings" component={SettingsPage} />}
-        {isOwner && <Route path="/users" component={UsersPage} />}
+        {isOwner && <Route path="/users">{() => <UsersPage />}</Route>}
         {isOwner && <Route path="/trash" component={TrashPage} />}
         {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
         {isOwner && <Route path="/packages" component={PackagesPage} />}

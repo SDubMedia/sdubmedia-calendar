@@ -107,7 +107,6 @@ const navStructure: NavEntry[] = [
   { label: "Team", icon: Users2, roles: ["owner", "partner"], items: [
     { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
     { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
-    { label: "Users", href: "/users", icon: Shield, roles: ["owner"] },
   ]},
 
   // Finance — owner and partner only
