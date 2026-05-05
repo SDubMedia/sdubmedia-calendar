@@ -24,9 +24,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await verifyAuth(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { seriesId, body, subject, toOverride } = req.body || {};
+  const { seriesId, body, subject, toOverride, episodeId } = req.body || {};
   if (!seriesId) return res.status(400).json({ error: "Missing seriesId" });
   if (!body || typeof body !== "string") return res.status(400).json({ error: "Missing body" });
+  // Optional: when set, the email is for one specific episode in the
+  // series. Caller is responsible for putting the per-episode URL
+  // (token + ?episode=<id>) into the body — we don't append it here.
+  // Only used for validation that the episode belongs to this series.
+  const safeEpisodeId = typeof episodeId === "string" && episodeId.trim() ? episodeId.trim() : null;
 
   // Verify caller is owner of the org that owns this series
   const callerOrgId = await getUserOrgId(user.userId);
@@ -40,6 +45,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (seriesErr || !series) return res.status(404).json({ error: "Series not found" });
   if (series.org_id !== callerOrgId) return res.status(403).json({ error: "Wrong org" });
   if (!series.review_token) return res.status(400).json({ error: "Series isn't ready for review yet — generate a review link first" });
+
+  // If episodeId was supplied, confirm it actually belongs to this
+  // series. Defense against spoofing — caller must own it.
+  if (safeEpisodeId) {
+    const { data: ep } = await supabase
+      .from("series_episodes")
+      .select("id, series_id")
+      .eq("id", safeEpisodeId)
+      .single();
+    if (!ep || ep.series_id !== series.id) {
+      return res.status(404).json({ error: "Episode not found in this series" });
+    }
+  }
 
   // Resolve recipient — explicit override beats client.email so the
   // owner can re-route a single send (e.g. "send to a different

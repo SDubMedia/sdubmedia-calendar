@@ -28,6 +28,7 @@ export default function SeriesWorkspacePage() {
   const [sending, setSending] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "episodes">("chat");
   const [scheduleEpisode, setScheduleEpisode] = useState<SeriesEpisode | null>(null);
+  const [reviewEpisode, setReviewEpisode] = useState<SeriesEpisode | null>(null);
 
   const series = data.series.find(s => s.id === seriesId);
   const client = series ? data.clients.find(c => c.id === series.clientId) : null;
@@ -65,6 +66,10 @@ export default function SeriesWorkspacePage() {
 
   const handleScheduleEpisode = useCallback((episode: SeriesEpisode) => {
     setScheduleEpisode(episode);
+  }, []);
+
+  const handleSendEpisodeForReview = useCallback((episode: SeriesEpisode) => {
+    setReviewEpisode(episode);
   }, []);
 
   const handleProjectCreated = useCallback(async (project: any) => {
@@ -362,6 +367,7 @@ export default function SeriesWorkspacePage() {
               onAddEpisode={handleAddEpisode}
               onDeleteEpisode={handleDeleteEpisode}
               onScheduleEpisode={handleScheduleEpisode}
+              onSendEpisodeForReview={series ? handleSendEpisodeForReview : undefined}
               onPublishSchedule={handlePublishSchedule}
               seriesId={seriesId}
               userName={profile?.name || "User"}
@@ -384,6 +390,15 @@ export default function SeriesWorkspacePage() {
           defaultClientId={series.clientId}
           defaultNotes={`[Series: ${series.name}] Episode ${scheduleEpisode.episodeNumber}: ${scheduleEpisode.title}\n\n${scheduleEpisode.concept}\n\nTalking Points:\n${scheduleEpisode.talkingPoints}`}
           onCreated={handleProjectCreated}
+        />
+      )}
+
+      {/* Send single episode for review */}
+      {reviewEpisode && (
+        <SendEpisodeReviewDialog
+          series={series}
+          episode={reviewEpisode}
+          onClose={() => setReviewEpisode(null)}
         />
       )}
     </div>
@@ -827,5 +842,179 @@ function SendForReviewButton({ series, episodes, onTokenIssued }: { series: Seri
       <Send className="w-3.5 h-3.5" />
       {busy ? "Generating..." : "Send for Review"}
     </button>
+  );
+}
+
+// ── Single-episode review dialog ────────────────────────────────
+// Sends a per-episode review link via email or copies the URL.
+// Reuses the series review_token (generates one if missing) and
+// appends ?episode=<id> so the public page filters down to just
+// that episode.
+function SendEpisodeReviewDialog({ series, episode, onClose }: { series: Series; episode: SeriesEpisode; onClose: () => void }) {
+  const { data } = useApp();
+  const client = data.clients.find(c => c.id === series.clientId);
+  const [token, setToken] = useState<string | null>(series.reviewToken || null);
+  const [recipient, setRecipient] = useState(client?.email || "");
+  const [subject, setSubject] = useState(`One episode for review: "${episode.title || `Episode ${episode.episodeNumber}`}" — ${series.name}`);
+  const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const url = token ? `${window.location.origin}/review/series/${token}?episode=${episode.id}` : "";
+  const firstName = client?.contactName ? client.contactName.split(" ")[0] : "";
+  const greeting = firstName ? `Hi ${firstName},` : "Hi,";
+  const [body, setBody] = useState(
+    `${greeting}\n\nWould love your eyes on one episode from the ${series.name} series. Open the link below — it's scoped to just this one episode so you can focus.\n\n${url || "[link will appear here]"}\n\nApprove or request changes right on the page. Thanks!`
+  );
+
+  // If we don't have a token yet, generate one once on mount.
+  useEffect(() => {
+    if (token) return;
+    let cancelled = false;
+    (async () => {
+      setGenerating(true);
+      try {
+        const authToken = await getAuthToken();
+        const res = await fetch("/api/series-send-for-review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ seriesId: series.id }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed to generate link");
+        const json = await res.json();
+        if (!cancelled) {
+          setToken(json.token);
+          // Patch the body now that we have the URL.
+          const newUrl = `${window.location.origin}/review/series/${json.token}?episode=${episode.id}`;
+          setBody(b => b.replace("[link will appear here]", newUrl));
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't generate link");
+        onClose();
+      } finally {
+        if (!cancelled) setGenerating(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series.id]);
+
+  async function copyLink() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.success("Link", { description: url });
+    }
+  }
+
+  async function sendEmail() {
+    if (!recipient || !recipient.includes("@")) {
+      toast.error("Valid recipient email required");
+      return;
+    }
+    setSending(true);
+    try {
+      const authToken = await getAuthToken();
+      const res = await fetch("/api/send-series-review-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          seriesId: series.id,
+          episodeId: episode.id,
+          subject,
+          body,
+          toOverride: recipient,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Send failed");
+      toast.success(`Email sent to ${recipient}`);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 pointer-events-auto" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Send Episode for Review</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="bg-secondary/30 border border-border rounded-md p-3 text-sm">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Episode {episode.episodeNumber}</div>
+            <div className="text-foreground font-medium">{episode.title || "Untitled"}</div>
+          </div>
+
+          {generating ? (
+            <div className="text-center text-sm text-muted-foreground py-4">Generating link…</div>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Public Link</label>
+                <div className="flex gap-2">
+                  <input value={url} readOnly className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-xs text-muted-foreground font-mono" />
+                  <button onClick={copyLink} className="text-xs px-3 py-2 rounded-md bg-secondary text-foreground hover:bg-secondary/70 shrink-0">
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
+                <input
+                  type="email"
+                  value={recipient}
+                  onChange={e => setRecipient(e.target.value)}
+                  placeholder="client@example.com"
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                {!client?.email && (
+                  <p className="text-[11px] text-amber-300/90 mt-1">No email on file for this client. Type one above.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Subject</label>
+                <input
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Message</label>
+                <textarea
+                  value={body}
+                  onChange={e => setBody(e.target.value)}
+                  rows={6}
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={sending} className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground">
+            Close
+          </button>
+          <button
+            onClick={sendEmail}
+            disabled={sending || generating || !recipient}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Send className="w-3.5 h-3.5" /> {sending ? "Sending…" : "Send Email"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

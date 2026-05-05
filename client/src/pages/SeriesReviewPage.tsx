@@ -150,7 +150,16 @@ export default function SeriesReviewPage() {
     );
   }
 
-  const { series, client, org, episodes } = data;
+  const { series, client, org, episodes: allEpisodes } = data;
+  // Single-episode review mode: ?episode=<id> in the URL filters the
+  // page to one episode + shows a banner. Owner sends per-episode
+  // links so the client can focus on just the one being reviewed.
+  const focusedEpisodeId = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("episode") || ""
+    : "";
+  const focusedEpisode = focusedEpisodeId ? allEpisodes.find(e => e.id === focusedEpisodeId) : null;
+  const episodes = focusedEpisode ? [focusedEpisode] : allEpisodes;
+  const isSingleEpisodeMode = !!focusedEpisode;
   const allDecided = episodes.every(e => e.approvalStatus !== "pending");
   const seriesApproved = series.reviewStatus === "approved";
 
@@ -186,6 +195,13 @@ export default function SeriesReviewPage() {
                 — the production team has been notified.
               </p>
             </div>
+          </div>
+        ) : isSingleEpisodeMode ? (
+          <div className="rounded-lg border border-primary/40 bg-primary/10 p-4 space-y-1">
+            <p className="text-sm font-semibold">Reviewing one episode</p>
+            <p className="text-xs text-muted-foreground">
+              You're reviewing a single episode in the {series.name} series. Approve it or request changes below.
+            </p>
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-1">
@@ -302,8 +318,9 @@ export default function SeriesReviewPage() {
           })}
         </div>
 
-        {/* Whole-series approval */}
-        {!seriesApproved && (
+        {/* Whole-series approval — hidden when reviewing a single
+            episode, since "approve everything" doesn't apply. */}
+        {!seriesApproved && !isSingleEpisodeMode && (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 sm:p-5 space-y-3">
             <div className="space-y-1">
               <p className="font-semibold text-foreground">Approve the whole series</p>

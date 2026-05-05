@@ -13,6 +13,7 @@ interface EpisodeBoardProps {
   onAddEpisode: () => void;
   onDeleteEpisode: (id: string) => void;
   onScheduleEpisode?: (episode: SeriesEpisode) => void;
+  onSendEpisodeForReview?: (episode: SeriesEpisode) => void;
   onPublishSchedule?: () => void;
   seriesId: string;
   userName: string;
@@ -58,6 +59,7 @@ export default function EpisodeBoard({
   onAddEpisode,
   onDeleteEpisode,
   onScheduleEpisode,
+  onSendEpisodeForReview,
   onPublishSchedule,
   seriesId,
   userName,
@@ -111,6 +113,7 @@ export default function EpisodeBoard({
                   onUpdateEpisode={onUpdateEpisode}
                   onDeleteEpisode={onDeleteEpisode}
                   onScheduleEpisode={onScheduleEpisode}
+                  onSendEpisodeForReview={onSendEpisodeForReview}
                   seriesId={seriesId}
                   userName={userName}
                   userRole={userRole}
@@ -253,11 +256,12 @@ function SortableEpisodeRow({
   );
 }
 
-function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, seriesId, userName, userRole, onFetchComments, onAddComment, locations, crewMembers, existingProjects, allEpisodes }: {
+function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, onSendEpisodeForReview, seriesId, userName, userRole, onFetchComments, onAddComment, locations, crewMembers, existingProjects, allEpisodes }: {
   ep: SeriesEpisode;
   onUpdateEpisode: (id: string, updates: Partial<SeriesEpisode>) => void;
   onDeleteEpisode: (id: string) => void;
   onScheduleEpisode?: (episode: SeriesEpisode) => void;
+  onSendEpisodeForReview?: (episode: SeriesEpisode) => void;
   seriesId: string;
   userName: string;
   userRole: string;
@@ -496,7 +500,12 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
             {STATUS_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
           </select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onSendEpisodeForReview && (
+            <button type="button" onClick={() => onSendEpisodeForReview(ep)} className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-primary hover:bg-primary/10 transition-colors">
+              <Send className="h-4 w-4" /> Send for Review
+            </button>
+          )}
           {!ep.projectId && onScheduleEpisode && ep.status !== "idea" && (
             <button type="button" onClick={() => onScheduleEpisode(ep)} className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-cyan-400 hover:bg-cyan-950/40 transition-colors">
               <CalendarPlus className="h-4 w-4" /> Schedule Shoot
