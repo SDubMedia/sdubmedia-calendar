@@ -274,6 +274,11 @@ export interface Client {
   defaultProjectTypeId: string; // auto-selected project type for new projects
   roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
   partnerSplit?: PartnerSplit | null; // profit split config for partner clients
+  // Long-form notes about the client's brand, voice, products, audience,
+  // socials, etc. Auto-included in series-chat AI prompts so video
+  // suggestions are grounded in who the client actually is. Optional
+  // for back-compat with old rows / fixtures saved before this column.
+  brandNotes?: string;
   createdAt: string;
 }
 

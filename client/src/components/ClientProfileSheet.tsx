@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Film } from "lucide-react";
+import { Plus, Trash2, Film, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import BrandNotesAssistant from "./BrandNotesAssistant";
 
 interface ClientFormData {
   company: string;
@@ -31,6 +32,7 @@ interface ClientFormData {
   defaultProjectTypeId: string;
   roleBillingMultipliers: RoleBillingMultiplier[];
   partnerSplit: PartnerSplit | null;
+  brandNotes: string;
 }
 
 const DEFAULT_PARTNER_SPLIT: PartnerSplit = {
@@ -64,6 +66,7 @@ const emptyForm = (): ClientFormData => ({
   defaultProjectTypeId: "",
   roleBillingMultipliers: [],
   partnerSplit: null,
+  brandNotes: "",
 });
 
 interface Props {
@@ -75,6 +78,7 @@ interface Props {
 
 export default function ClientProfileSheet({ client, open, onOpenChange }: Props) {
   const { data, addClient, updateClient } = useApp();
+  const [brandAssistantOpen, setBrandAssistantOpen] = useState(false);
   const [form, setForm] = useState<ClientFormData>(emptyForm());
 
   // Hydrate form when sheet opens or client changes
@@ -98,6 +102,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
         defaultProjectTypeId: client.defaultProjectTypeId || "",
         roleBillingMultipliers: client.roleBillingMultipliers || [],
         partnerSplit: client.partnerSplit || null,
+        brandNotes: client.brandNotes || "",
       });
     } else {
       setForm(emptyForm());
@@ -356,6 +361,32 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
               </div>
             ))}
           </div>
+          {/* Brand & Voice Notes — long-form context the AI uses when
+              suggesting video series. Has a "Help me fill this in"
+              button that launches a guided AI interview to draft notes. */}
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Brand & Voice Notes</Label>
+              <button
+                type="button"
+                onClick={() => setBrandAssistantOpen(true)}
+                disabled={!form.company.trim()}
+                className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={form.company.trim() ? "Open the brand-notes interviewer" : "Enter a company name first"}
+              >
+                <Sparkles className="w-3 h-3" /> Help me fill this in
+              </button>
+            </div>
+            <textarea
+              value={form.brandNotes}
+              onChange={e => setForm(f => ({ ...f, brandNotes: e.target.value }))}
+              rows={8}
+              placeholder="Who they are, what they sell, audience, voice, hooks, what to avoid. Paste socials/website links too. The AI uses this for every series suggestion."
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            />
+            <p className="text-[10px] text-muted-foreground">Auto-included in series-chat AI prompts. Plain text or markdown — your call.</p>
+          </div>
+
           {/* Partner Toggle — only shown when the org has Partner Splits
               enabled in feature flags. Profit-sharing partners are niche;
               hiding this for new users avoids "what's a partner split?"
@@ -508,6 +539,15 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
           </Button>
         </div>
       </SheetContent>
+
+      {/* Brand-notes guided interview. Drafts a notes blob the owner
+          reviews + appends to the textarea above. */}
+      <BrandNotesAssistant
+        open={brandAssistantOpen}
+        onOpenChange={setBrandAssistantOpen}
+        clientName={form.company}
+        onApply={(draft) => setForm(f => ({ ...f, brandNotes: f.brandNotes ? `${f.brandNotes}\n\n${draft}` : draft }))}
+      />
     </Sheet>
   );
 }

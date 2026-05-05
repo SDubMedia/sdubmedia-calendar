@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { message, senderName, seriesName, seriesGoal, clientName, clientContact, episodes, history } = req.body;
+    const { message, senderName, seriesName, seriesGoal, clientName, clientContact, clientBrandNotes, episodes, history } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
@@ -107,6 +107,10 @@ THIS SERIES:
   Name: ${seriesName || "Untitled Series"}
   Goal: ${seriesGoal || "Not specified"}
   Client: ${clientName || "Unknown"}${clientContact ? ` (Contact: ${clientContact})` : ""}
+${clientBrandNotes && typeof clientBrandNotes === "string" && clientBrandNotes.trim() ? `
+CLIENT BRAND CONTEXT (read this carefully — every suggestion should match this voice/audience/positioning):
+${clientBrandNotes.trim().slice(0, 4000)}
+` : ""}
 
 EPISODES ALREADY ON THE BOARD:
 ${episodeList || "  (none yet)"}

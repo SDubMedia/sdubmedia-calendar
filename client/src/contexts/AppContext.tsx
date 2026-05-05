@@ -158,6 +158,7 @@ function rowToClient(r: any): Client {
     defaultProjectTypeId: r.default_project_type_id || "",
     roleBillingMultipliers: r.role_billing_multipliers || [],
     partnerSplit: r.partner_split || null,
+    brandNotes: r.brand_notes || "",
     createdAt: r.created_at,
   };
 }
@@ -1103,6 +1104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       allowed_project_type_ids: c.allowedProjectTypeIds ?? [],
       default_project_type_id: c.defaultProjectTypeId ?? "",
       role_billing_multipliers: c.roleBillingMultipliers ?? [],
+      brand_notes: c.brandNotes || "",
     }).select().single();
     if (error) throw new Error(error.message);
     const client = rowToClient(row);
@@ -1128,6 +1130,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.defaultProjectTypeId !== undefined) patch.default_project_type_id = c.defaultProjectTypeId;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
     if (c.partnerSplit !== undefined) patch.partner_split = c.partnerSplit;
+    if (c.brandNotes !== undefined) patch.brand_notes = c.brandNotes;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));

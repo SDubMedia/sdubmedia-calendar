@@ -156,6 +156,7 @@ export default function SeriesWorkspacePage() {
           seriesGoal: series.goal,
           clientName: client?.company || "",
           clientContact: client?.contactName || "",
+          clientBrandNotes: client?.brandNotes || "",
           episodes: episodes.map(e => ({ number: e.episodeNumber, title: e.title, concept: e.concept, status: e.status })),
           history: messages.slice(-20).map(m => ({ role: m.role, content: m.content })),
         }),
