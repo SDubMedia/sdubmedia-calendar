@@ -70,6 +70,7 @@ interface AppContextValue {
   upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId?: string) => Promise<void>;
   // Manual Trips
   addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
+  updateManualTrip: (id: string, patch: Partial<Omit<ManualTrip, "id" | "createdAt">>) => Promise<void>;
   deleteManualTrip: (id: string) => Promise<void>;
   // Business Expenses
   addBusinessExpense: (e: Omit<BusinessExpense, "id" | "createdAt">) => Promise<BusinessExpense>;
@@ -760,7 +761,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // (contractor invoices, expenses, leads) is hidden entirely.
     if (clientIds.length > 0) {
       const allowedClientIds = new Set(clientIds);
-      const allowedProjects = rawData.projects.filter(p => allowedClientIds.has(p.clientId));
+      // For the partner role: when a client's partnership has ended,
+      // hide projects + invoices dated AFTER the end date. Past data
+      // remains visible so the partner can still review history.
+      // Lookup endedAt per allowed client up-front to keep the filter
+      // tight.
+      const partnerEndedAtByClient = new Map<string, string>();
+      if (targetRole === "partner") {
+        for (const c of rawData.clients) {
+          if (allowedClientIds.has(c.id) && c.partnerSplit?.endedAt) {
+            partnerEndedAtByClient.set(c.id, c.partnerSplit.endedAt);
+          }
+        }
+      }
+      const isPartnerCutoff = (clientId: string, dateStr: string): boolean => {
+        if (targetRole !== "partner") return false;
+        const endedAt = partnerEndedAtByClient.get(clientId);
+        return !!endedAt && dateStr > endedAt;
+      };
+      const allowedProjects = rawData.projects.filter(p =>
+        allowedClientIds.has(p.clientId) && !isPartnerCutoff(p.clientId, p.date)
+      );
       const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
       // Meetings:
       //  - client role gets only meetings explicitly shared (visibleToClient=true)
@@ -785,9 +806,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...rawData,
         clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
         projects: allowedProjects,
-        invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
-        contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
-        proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
+        invoices: rawData.invoices.filter(i =>
+          allowedClientIds.has(i.clientId) && !isPartnerCutoff(i.clientId, i.issueDate)
+        ),
+        contracts: rawData.contracts.filter(c =>
+          allowedClientIds.has(c.clientId) && !isPartnerCutoff(c.clientId, c.createdAt.slice(0, 10))
+        ),
+        proposals: rawData.proposals.filter(p =>
+          allowedClientIds.has(p.clientId) && !isPartnerCutoff(p.clientId, p.createdAt.slice(0, 10))
+        ),
         deliveries: allowedDeliveries,
         deliveryFiles: rawData.deliveryFiles.filter(f => allowedDeliveryIds.has(f.deliveryId)),
         deliverySelections: rawData.deliverySelections.filter(s => allowedDeliveryIds.has(s.deliveryId)),
@@ -1911,6 +1938,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return trip;
   }, [orgId]);
 
+  const updateManualTrip = useCallback(async (id: string, patch: Partial<Omit<ManualTrip, "id" | "createdAt">>) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.crewMemberId !== undefined) dbPatch.crew_member_id = patch.crewMemberId;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    if (patch.destination !== undefined) dbPatch.destination = patch.destination;
+    if (patch.locationId !== undefined) dbPatch.location_id = patch.locationId || null;
+    if (patch.purpose !== undefined) dbPatch.purpose = patch.purpose;
+    if (patch.roundTripMiles !== undefined) dbPatch.round_trip_miles = patch.roundTripMiles;
+    if (Object.keys(dbPatch).length === 0) return;
+    const { error } = await supabase.from("manual_trips").update(dbPatch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, manualTrips: d.manualTrips.map(t => t.id === id ? { ...t, ...patch } : t) }));
+  }, []);
+
   const deleteManualTrip = useCallback(async (id: string) => {
     const { error } = await supabase.from("manual_trips").delete().eq("id", id);
     if (error) throw new Error(error.message);
@@ -2493,7 +2534,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       fetchMessages, addMessage, fetchEpisodes,
       fetchComments, addComment,
       upsertDistance,
-      addManualTrip, deleteManualTrip,
+      addManualTrip, updateManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
       addTimeEntry, updateTimeEntry,
