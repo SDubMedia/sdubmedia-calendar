@@ -6,7 +6,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +33,7 @@ interface MileageTrip {
 }
 
 export default function MileageReportPage() {
-  const { data, upsertDistance, addManualTrip, deleteManualTrip } = useApp();
+  const { data, upsertDistance, addManualTrip, updateManualTrip, deleteManualTrip } = useApp();
   const { effectiveProfile: profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
@@ -100,9 +100,31 @@ export default function MileageReportPage() {
     }
   }
 
-  // Log trip dialog
+  // Log/edit trip dialog. `editingTripId` is null when adding a fresh
+  // trip, set to the manual_trip.id when editing an existing one.
   const [tripDialogOpen, setTripDialogOpen] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [tripForm, setTripForm] = useState({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+
+  function openTripDialog() {
+    setEditingTripId(null);
+    setTripForm({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+    setTripDialogOpen(true);
+  }
+
+  function openEditManualTrip(manualTripId: string) {
+    const mt = data.manualTrips.find(t => t.id === manualTripId);
+    if (!mt) { toast.error("Trip not found"); return; }
+    setEditingTripId(mt.id);
+    setTripForm({
+      date: mt.date,
+      locationId: mt.locationId || "",
+      destination: mt.destination,
+      purpose: mt.purpose,
+      miles: mt.roundTripMiles,
+    });
+    setTripDialogOpen(true);
+  }
 
   async function handleLogTrip() {
     if (!crewMemberId) { toast.error("No crew profile linked"); return; }
@@ -126,19 +148,31 @@ export default function MileageReportPage() {
     if (miles <= 0) { toast.error("Enter round-trip miles"); return; }
 
     try {
-      await addManualTrip({
-        crewMemberId,
-        date: tripForm.date,
-        destination,
-        locationId,
-        purpose: tripForm.purpose || "Office / Gear Pickup",
-        roundTripMiles: miles,
-      });
-      toast.success("Trip logged");
+      if (editingTripId) {
+        await updateManualTrip(editingTripId, {
+          date: tripForm.date,
+          destination,
+          locationId,
+          purpose: tripForm.purpose || "Office / Gear Pickup",
+          roundTripMiles: miles,
+        });
+        toast.success("Trip updated");
+      } else {
+        await addManualTrip({
+          crewMemberId,
+          date: tripForm.date,
+          destination,
+          locationId,
+          purpose: tripForm.purpose || "Office / Gear Pickup",
+          roundTripMiles: miles,
+        });
+        toast.success("Trip logged");
+      }
       setTripDialogOpen(false);
+      setEditingTripId(null);
       setTripForm({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
     } catch (e: any) {
-      toast.error(e.message || "Failed to log trip");
+      toast.error(e.message || "Failed to save trip");
     }
   }
 
@@ -371,7 +405,7 @@ export default function MileageReportPage() {
               className="w-16 h-8 bg-secondary border border-border rounded-md px-2 text-sm text-foreground"
             />
           </div>
-          <Button size="sm" variant="outline" onClick={() => setTripDialogOpen(true)} className="gap-2">
+          <Button size="sm" variant="outline" onClick={openTripDialog} className="gap-2">
             <Plus className="w-4 h-4" /> Log Trip
           </Button>
           <Button size="sm" variant="outline" onClick={recalculateDistances} disabled={recalculating} className="gap-2">
@@ -503,12 +537,27 @@ export default function MileageReportPage() {
                           <td className="px-4 py-2 print:px-2 print:py-1 text-right font-medium whitespace-nowrap print:text-black">
                             {trip.roundTripMiles} mi
                             {trip.manualTripId && (
-                              <button
-                                onClick={() => { deleteManualTrip(trip.manualTripId!); toast.success("Trip deleted"); }}
-                                className="ml-2 text-muted-foreground hover:text-destructive print:hidden inline-block"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              <span className="ml-2 inline-flex items-center gap-1 print:hidden">
+                                <button
+                                  onClick={() => openEditManualTrip(trip.manualTripId!)}
+                                  className="text-muted-foreground hover:text-primary"
+                                  title="Edit trip"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm("Delete this trip?")) {
+                                      deleteManualTrip(trip.manualTripId!);
+                                      toast.success("Trip deleted");
+                                    }
+                                  }}
+                                  className="text-muted-foreground hover:text-destructive"
+                                  title="Delete trip"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -542,11 +591,13 @@ export default function MileageReportPage() {
         )}
       </div>
 
-      {/* Log Trip Dialog */}
-      <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
+      {/* Log/Edit Trip Dialog */}
+      <Dialog open={tripDialogOpen} onOpenChange={(open) => { setTripDialogOpen(open); if (!open) setEditingTripId(null); }}>
         <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Log a Trip</DialogTitle>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {editingTripId ? "Edit Trip" : "Log a Trip"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -606,7 +657,7 @@ export default function MileageReportPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTripDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleLogTrip}>Log Trip</Button>
+            <Button onClick={handleLogTrip}>{editingTripId ? "Save Changes" : "Log Trip"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
