@@ -793,8 +793,8 @@ export default function CalendarPage() {
                     </div>
                   )}
 
-                  {/* Meeting chips — color per meeting (default slate). Always shown regardless of calendarMode. */}
-                  {dayMeetings.length > 0 && (
+                  {/* Meeting chips — only show in production / both modes. */}
+                  {(calendarMode === "production" || calendarMode === "both") && dayMeetings.length > 0 && (
                     <div className="space-y-0.5">
                       {dayMeetings.slice(0, 2).map((m) => {
                         const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
