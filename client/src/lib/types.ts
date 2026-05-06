@@ -398,6 +398,18 @@ export interface PartnerSplit {
   editorMarketingPercent: number; // e.g. 0.10
   // Spending budget
   spendingBudgetEnabled: boolean; // whether to track marketing budget for this client
+  // Spending-budget end date (ISO YYYY-MM-DD). When set, projects
+  // dated after this value skip the 10% spending-budget allocation —
+  // the full profit goes to the partner/admin split instead.
+  // Projects on/before keep allocating the budget. Lets the spending
+  // budget arrangement end without losing historical data.
+  spendingBudgetEndedAt?: string;
+  // Partnership end date (ISO YYYY-MM-DD). When set, projects with a
+  // date AFTER this value are treated as non-partner — owner keeps
+  // 100% (after costs). Projects on/before this date keep using the
+  // partner split. Lets historical P&L data stay intact when a
+  // partnership ends. Optional for back-compat with existing rows.
+  endedAt?: string;
 }
 
 export interface Project {

@@ -505,27 +505,83 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                 </div>
 
-                {/* Spending Budget Toggle */}
-                <div className="flex items-center justify-between border-t border-border/50 pt-2">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Spending Budget</Label>
-                    <p className="text-[9px] text-muted-foreground">Track marketing budget deductions for this client</p>
+                {/* Spending Budget Toggle + end date */}
+                <div className="space-y-2 border-t border-border/50 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Spending Budget</Label>
+                      <p className="text-[9px] text-muted-foreground">Track marketing budget deductions for this client</p>
+                    </div>
+                    <button
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEnabled: !f.partnerSplit.spendingBudgetEnabled } : null,
+                      }))}
+                      className={cn(
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        form.partnerSplit?.spendingBudgetEnabled ? "bg-primary" : "bg-secondary border border-border"
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                        form.partnerSplit?.spendingBudgetEnabled ? "translate-x-5" : "translate-x-0.5"
+                      )} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setForm(f => ({
-                      ...f,
-                      partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEnabled: !f.partnerSplit.spendingBudgetEnabled } : null,
-                    }))}
-                    className={cn(
-                      "relative w-10 h-5 rounded-full transition-colors",
-                      form.partnerSplit?.spendingBudgetEnabled ? "bg-primary" : "bg-secondary border border-border"
+                  {form.partnerSplit?.spendingBudgetEnabled && (
+                    <div className="space-y-1.5 pl-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Budget Active Through</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={form.partnerSplit.spendingBudgetEndedAt || ""}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: e.target.value || undefined } : null }))}
+                          className="bg-secondary border-border h-8 text-xs flex-1"
+                        />
+                        {form.partnerSplit.spendingBudgetEndedAt && (
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: undefined } : null }))}
+                            className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-muted-foreground">
+                        Leave blank if active. Projects after this date skip the 10% budget allocation — full profit splits 50/50 between you and the partner.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Partnership end date — leave blank for active. Projects
+                    after this date treat the client as non-partner so the
+                    owner keeps 100% of profit; on/before stays under the
+                    legacy split. Preserves historical P&L when a partnership
+                    actually ends. */}
+                <div className="space-y-1.5 border-t border-border/50 pt-2">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Partnership Active Through</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={form.partnerSplit.endedAt || ""}
+                      onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: e.target.value || undefined } : null }))}
+                      className="bg-secondary border-border h-8 text-xs flex-1"
+                    />
+                    {form.partnerSplit.endedAt && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: undefined } : null }))}
+                        className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+                      >
+                        Clear
+                      </button>
                     )}
-                  >
-                    <span className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
-                      form.partnerSplit?.spendingBudgetEnabled ? "translate-x-5" : "translate-x-0.5"
-                    )} />
-                  </button>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground">
+                    Leave blank if active. Projects dated after this end with the partnership and flow as non-partner in P&L (no partner/admin/spending split).
+                  </p>
                 </div>
               </div>
             )}

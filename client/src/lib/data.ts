@@ -411,16 +411,31 @@ export function getMonthlyEarningsBreakdown(
       return;
     }
 
+    // Partnership ended? Projects on/before clientSplit.endedAt keep
+    // their partner split for historical P&L. Projects after that
+    // date flow through as non-partner — owner keeps everything
+    // after costs. Lets a partnership end without rewriting history.
+    if (clientSplit.endedAt && p.date > clientSplit.endedAt) {
+      nonPartnerProfit += projRevenue - projCrewCost - projTravelCost;
+      return;
+    }
+
     if (!useNewSplitLogic) {
       // Legacy split (Jan/Feb 2026): contract allocates project PROFIT
       // (after crew + travel) as 10% spending budget + 90% split 50/50
       // between admin and partner. So: revenue = crew + travel +
       // spendingBudget + partner + admin. If profit is negative
       // (over-budget on crew), zero everything out — nothing to split.
+      //
+      // Spending budget honors both the per-client toggle AND a
+      // per-client end date — projects after spendingBudgetEndedAt
+      // skip the 10% allocation and the full 100% gets split 50/50.
       const projProfit = projRevenue - projCrewCost - projTravelCost;
       if (projProfit > 0) {
-        const projSpending = projProfit * 0.10;
-        const projSplittable = projProfit * 0.90;
+        const budgetActive = clientSplit.spendingBudgetEnabled !== false
+          && (!clientSplit.spendingBudgetEndedAt || p.date <= clientSplit.spendingBudgetEndedAt);
+        const projSpending = budgetActive ? projProfit * 0.10 : 0;
+        const projSplittable = projProfit - projSpending;
         spendingBudget += projSpending;
         partnerPayout += projSplittable * 0.50;
         adminSplit += projSplittable * 0.50;
