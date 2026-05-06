@@ -447,3 +447,26 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(1 0 0 / 25%);
 }
+
+/* Print rules — applied across the app for any page printed via
+   Cmd+P / "Save as PDF". Keeps rows from splitting mid-cell and lets
+   long tables flow across pages cleanly with the thead repeating on
+   each page. */
+@media print {
+  html, body {
+    background: #ffffff !important;
+  }
+  /* Repeat table headers on each printed page so a multi-page
+     table doesn't show headers only on page 1. */
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+  /* Don't split a single row across a page break. */
+  tr, td, th {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

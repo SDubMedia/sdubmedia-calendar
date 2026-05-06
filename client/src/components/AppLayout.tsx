@@ -238,7 +238,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex overflow-hidden bg-background" style={{ height: '100dvh' }}>
       {/* ---- Desktop Sidebar ---- */}
-      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-border bg-sidebar">
+      <aside className="hidden md:flex w-56 flex-shrink-0 flex-col border-r border-border bg-sidebar print:hidden">
         {/* Logo / Brand */}
         <Link href="/">
           <div className="flex items-center gap-2.5 px-4 py-5 border-b border-border cursor-pointer hover:bg-white/5 transition-colors">
@@ -412,7 +412,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ---- Main content ---- */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar — extra top padding for status bar/notch */}
-        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
+        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0 print:hidden" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
           <Link href="/">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
@@ -440,7 +440,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile slide-down menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-sidebar border-b border-border z-40 max-h-[80vh] overflow-auto" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="md:hidden bg-sidebar border-b border-border z-40 max-h-[80vh] overflow-auto print:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
             <nav className="py-2 px-3 space-y-0.5">
               {filteredNav.map((entry) => {
                 if (isGroup(entry)) {

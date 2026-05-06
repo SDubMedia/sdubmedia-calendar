@@ -402,20 +402,66 @@ export default function MileageReportPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground">{yearTotalMiles.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Miles ({year})</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 print:mb-4">
+          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-2xl font-bold text-foreground print:text-black">{yearTotalMiles.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1 print:text-black">Total Miles ({year})</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground">{trips.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Trips</p>
+          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-2xl font-bold text-foreground print:text-black">{trips.length}</p>
+            <p className="text-xs text-muted-foreground mt-1 print:text-black">Total Trips</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-primary">{formatCurrency(yearTotalDeduction)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Est. Deduction @ ${ratePerMile}/mi</p>
+          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-2xl font-bold text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</p>
+            <p className="text-xs text-muted-foreground mt-1 print:text-black">Est. Deduction @ ${ratePerMile}/mi</p>
           </div>
         </div>
+
+        {/* Monthly summary table — at-a-glance per-month totals.
+            Sits above the detail tables so a CPA / tax filing reader
+            sees the year shape on the first page. */}
+        {monthlyGroups.length > 0 && (
+          <div className="bg-card border border-border rounded-lg mb-6 print:mb-4 print:border-gray-300 print:break-inside-avoid">
+            <div className="px-4 py-3 print:py-1.5 border-b border-border print:border-gray-300">
+              <h3 className="text-sm font-semibold text-foreground print:text-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Monthly Summary — {year}
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm print:text-xs">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300 print:text-black">
+                    <th className="text-left px-4 py-2 print:px-2 print:py-1">Month</th>
+                    <th className="text-right px-3 py-2 print:px-2 print:py-1">Trips</th>
+                    <th className="text-right px-3 py-2 print:px-2 print:py-1">Total Miles</th>
+                    <th className="text-right px-4 py-2 print:px-2 print:py-1">Est. Deduction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyGroups.map(group => {
+                    const monthDeduction = group.totalMiles * ratePerMile;
+                    return (
+                      <tr key={group.monthIndex} className="border-b border-border/50 print:border-gray-200">
+                        <td className="px-4 py-2 print:px-2 print:py-1 font-medium text-foreground print:text-black">{group.month}</td>
+                        <td className="text-right px-3 py-2 print:px-2 print:py-1 text-muted-foreground print:text-black">{group.trips.length}</td>
+                        <td className="text-right px-3 py-2 print:px-2 print:py-1 text-foreground print:text-black">{group.totalMiles.toLocaleString()}</td>
+                        <td className="text-right px-4 py-2 print:px-2 print:py-1 text-primary print:text-black">{formatCurrency(monthDeduction)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="font-bold border-t-2 border-border print:border-gray-400 print:text-black">
+                    <td className="px-4 py-3 print:px-2 print:py-1">TOTAL</td>
+                    <td className="text-right px-3 py-3 print:px-2 print:py-1">{trips.length}</td>
+                    <td className="text-right px-3 py-3 print:px-2 print:py-1">{yearTotalMiles.toLocaleString()}</td>
+                    <td className="text-right px-4 py-3 print:px-2 print:py-1 text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Monthly breakdown */}
         {monthlyGroups.length === 0 ? (
@@ -424,37 +470,37 @@ export default function MileageReportPage() {
             <p className="text-sm">No mileage data for {year}. Set your home address in Staff settings and distances will be calculated.</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 print:space-y-3">
             {monthlyGroups.map(group => (
-              <div key={group.monthIndex} className="bg-card border border-border rounded-lg print:border-gray-300 print:break-inside-avoid">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border print:border-gray-300">
-                  <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <div key={group.monthIndex} className="bg-card border border-border rounded-lg print:border-gray-300">
+                <div className="flex items-center justify-between px-4 py-3 print:py-1.5 border-b border-border print:border-gray-300">
+                  <h3 className="text-sm font-semibold text-foreground print:text-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                     {group.month}
                   </h3>
-                  <span className="text-sm font-bold text-primary">{group.totalMiles} mi</span>
+                  <span className="text-sm font-bold text-primary print:text-black">{group.totalMiles} mi</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm print:text-xs">
                     <thead>
-                      <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300">
-                        <th className="text-left px-4 py-2">Date</th>
-                        <th className="text-left px-4 py-2">Business Purpose</th>
-                        <th className="text-left px-4 py-2">Destination</th>
-                        <th className="text-right px-4 py-2">Round Trip</th>
+                      <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300 print:text-black">
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Date</th>
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Business Purpose</th>
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Destination</th>
+                        <th className="text-right px-4 py-2 print:px-2 print:py-1">Round Trip</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.trips.map((trip, i) => (
                         <tr key={i} className="border-b border-border/50 print:border-gray-200 last:border-0">
-                          <td className="px-4 py-2 whitespace-nowrap">
+                          <td className="px-4 py-2 print:px-2 print:py-1 whitespace-nowrap print:text-black">
                             {new Date(trip.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-4 py-2 print:px-2 print:py-1 print:text-black">
                             {trip.purpose}
-                            {trip.manualTripId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">manual</span>}
+                            {trip.manualTripId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary print:hidden">manual</span>}
                           </td>
-                          <td className="px-4 py-2 text-muted-foreground">{trip.destination}</td>
-                          <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                          <td className="px-4 py-2 print:px-2 print:py-1 text-muted-foreground print:text-black">{trip.destination}</td>
+                          <td className="px-4 py-2 print:px-2 print:py-1 text-right font-medium whitespace-nowrap print:text-black">
                             {trip.roundTripMiles} mi
                             {trip.manualTripId && (
                               <button
@@ -470,8 +516,8 @@ export default function MileageReportPage() {
                     </tbody>
                     <tfoot>
                       <tr className="font-semibold">
-                        <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Month Total:</td>
-                        <td className="px-4 py-2 text-right text-primary">{group.totalMiles} mi</td>
+                        <td colSpan={3} className="px-4 py-2 print:px-2 print:py-1 text-right text-muted-foreground print:text-black">Month Total:</td>
+                        <td className="px-4 py-2 print:px-2 print:py-1 text-right text-primary print:text-black">{group.totalMiles} mi</td>
                       </tr>
                     </tfoot>
                   </table>
