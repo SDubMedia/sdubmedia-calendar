@@ -186,6 +186,10 @@ export interface UserProfile {
   mustChangePassword: boolean; // force password change on first login
   hasCompletedOnboarding: boolean;
   featureOverrides?: Record<string, boolean>; // per-user feature overrides (most specific wins)
+  // When false, this user is hidden from the "Assign people" picker on
+  // meetings. Only staff/partner roles ever appear there in the first
+  // place — toggle defaults to true (visible).
+  showInMeetingAssignments?: boolean;
   personalEventTemplates: PersonalEventTemplate[];
   guidance?: UserGuidanceState; // first-visit guides + setup-checklist dismiss state
   createdAt: string;
@@ -1155,6 +1159,12 @@ export interface Meeting {
   // on their calendar. Stored as user_profile ids — works for staff,
   // partners, family. Empty list = admin-only.
   assignedUserIds: string[];
+  // Free-text street address for the meeting. When set, oneWayMiles is
+  // computed (Google Maps Distance Matrix) against the saver's home
+  // base at save time and the meeting flows into the saver's mileage
+  // tracker.
+  meetingAddress?: string;
+  oneWayMiles?: number;
   orgId: string;
   createdAt: string;
 }

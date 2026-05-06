@@ -47,6 +47,7 @@ export default function UsersPage(props?: { embedded?: boolean }) {
   const [editClientIds, setEditClientIds] = useState<string[]>([]);
   const [editRole, setEditRole] = useState<UserRole>("client");
   const [editCrewMemberId, setEditCrewMemberId] = useState<string>("");
+  const [editShowInMeetings, setEditShowInMeetings] = useState<boolean>(true);
   const [editEmail, setEditEmail] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
   const [editPassword, setEditPassword] = useState("");
@@ -129,6 +130,7 @@ export default function UsersPage(props?: { embedded?: boolean }) {
     setEditClientIds(u.clientIds);
     setEditRole(u.role);
     setEditCrewMemberId(u.crewMemberId || "");
+    setEditShowInMeetings(u.showInMeetingAssignments !== false);
     setEditEmail(u.email);
     setEditPassword("");
     setEditForceChange(true);
@@ -190,7 +192,12 @@ export default function UsersPage(props?: { embedded?: boolean }) {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     try {
-      await updateUserProfile(editingUser, { role: editRole, clientIds: editClientIds, crewMemberId: editCrewMemberId });
+      await updateUserProfile(editingUser, {
+        role: editRole,
+        clientIds: editClientIds,
+        crewMemberId: editCrewMemberId,
+        showInMeetingAssignments: editShowInMeetings,
+      });
       toast.success("User updated");
       setEditingUser(null);
     } catch (err: any) {
@@ -453,6 +460,22 @@ export default function UsersPage(props?: { embedded?: boolean }) {
                                 <option key={cm.id} value={cm.id}>{cm.name}</option>
                               ))}
                             </select>
+                          </div>
+                        )}
+                        {(editRole === "staff" || editRole === "partner") && (
+                          <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
+                            <div>
+                              <p className="text-xs font-medium text-foreground">Show in meeting assignments</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                When off, this user is hidden from the "Assign people" picker on meetings.
+                              </p>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editShowInMeetings}
+                              onChange={e => setEditShowInMeetings(e.target.checked)}
+                              className="mt-0.5 h-4 w-4 accent-primary"
+                            />
                           </div>
                         )}
                         {(editRole === "client" || editRole === "partner") && (

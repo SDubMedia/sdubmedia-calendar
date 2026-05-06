@@ -16,7 +16,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   // User management (owner only)
   createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<string>;
-  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => Promise<void>;
+  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides" | "showInMeetingAssignments">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
@@ -50,6 +50,7 @@ function rowToProfile(r: any): UserProfile {
     mustChangePassword: r.must_change_password ?? true,
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
     featureOverrides: r.feature_overrides || undefined,
+    showInMeetingAssignments: r.show_in_meeting_assignments ?? true,
     personalEventTemplates: Array.isArray(r.personal_event_templates) ? r.personal_event_templates : [],
     guidance: (r.guidance && typeof r.guidance === "object")
       ? {
@@ -202,13 +203,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return authData.user.id;
   }, [refreshProfiles, profile?.orgId]);
 
-  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => {
+  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides" | "showInMeetingAssignments">>) => {
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.role !== undefined) patch.role = updates.role;
     if (updates.clientIds !== undefined) patch.client_ids = updates.clientIds;
     if (updates.crewMemberId !== undefined) patch.crew_member_id = updates.crewMemberId;
     if (updates.featureOverrides !== undefined) patch.feature_overrides = updates.featureOverrides;
+    if (updates.showInMeetingAssignments !== undefined) patch.show_in_meeting_assignments = updates.showInMeetingAssignments;
     const { error } = await supabase.from("user_profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     await refreshProfiles();

@@ -604,6 +604,8 @@ function rowToMeeting(r: any): Meeting {
     visibleToClient: r.visible_to_client ?? false,
     color: r.color || "",
     assignedUserIds: Array.isArray(r.assigned_user_ids) ? r.assigned_user_ids : [],
+    meetingAddress: r.meeting_address || undefined,
+    oneWayMiles: typeof r.one_way_miles === "number" ? r.one_way_miles : (r.one_way_miles ? Number(r.one_way_miles) : undefined),
     orgId: r.org_id || "",
     createdAt: r.created_at,
   };
@@ -1582,6 +1584,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       visible_to_client: m.visibleToClient ?? false,
       color: m.color || "",
       assigned_user_ids: m.assignedUserIds ?? [],
+      meeting_address: m.meetingAddress || null,
+      one_way_miles: typeof m.oneWayMiles === "number" ? m.oneWayMiles : null,
     }).select().single();
     if (error) throw new Error(error.message);
     const meeting = rowToMeeting(row);
@@ -1601,6 +1605,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
     if (m.color !== undefined) patch.color = m.color;
     if (m.assignedUserIds !== undefined) patch.assigned_user_ids = m.assignedUserIds;
+    if (m.meetingAddress !== undefined) patch.meeting_address = m.meetingAddress || null;
+    if (m.oneWayMiles !== undefined) patch.one_way_miles = m.oneWayMiles ?? null;
     const { error } = await supabase.from("meetings").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));

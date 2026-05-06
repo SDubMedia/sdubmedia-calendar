@@ -345,8 +345,34 @@ export default function MileageReportPage() {
         manualTripId: t.id,
       }));
 
-    return [...projectTrips, ...manual].sort((a, b) => a.date.localeCompare(b.date));
-  }, [data.projects, data.clients, data.projectTypes, data.locations, data.manualTrips, crewMemberId, distanceMap, year]);
+    // Meeting trips — meetings with a saved address + computed oneWayMiles.
+    // Distance is computed at save time against the saver's home base, so
+    // a different assigned viewer here may see slightly off mileage; the
+    // owner is the typical mileage tracker and saves their own meetings.
+    const meetingTrips = data.meetings
+      .filter(m =>
+        m.date.startsWith(String(year))
+        && typeof m.oneWayMiles === "number"
+        && m.oneWayMiles > 0
+        && (
+          // Owner sees all their own meetings; assigned users see meetings
+          // tied to them.
+          m.ownerUserId === profile?.id
+          || (Array.isArray(m.assignedUserIds) && !!profile?.id && m.assignedUserIds.includes(profile.id))
+        )
+      )
+      .map(m => {
+        const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
+        return {
+          date: m.date,
+          purpose: `Meeting — ${m.title}${client ? ` · ${client.company}` : ""}`,
+          destination: m.meetingAddress || "Address",
+          roundTripMiles: Math.round(m.oneWayMiles! * 2 * 10) / 10,
+        };
+      });
+
+    return [...projectTrips, ...manual, ...meetingTrips].sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.projects, data.clients, data.projectTypes, data.locations, data.manualTrips, data.meetings, crewMemberId, profile?.id, distanceMap, year]);
 
   // Group by month
   const monthlyGroups = useMemo(() => {

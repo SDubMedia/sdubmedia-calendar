@@ -15,9 +15,10 @@ import { Switch } from "@/components/ui/switch";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Meeting } from "@/lib/types";
-import { Trash2, Eye } from "lucide-react";
+import { Trash2, Eye, Car } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getAuthToken } from "@/lib/supabase";
 
 // Color palette for meeting chips on the calendar. Empty string = default
 // slate. Same swatch shape as PersonalEventDialog so it feels consistent.
@@ -45,11 +46,15 @@ interface Props {
 
 export default function MeetingDialog({ open, onClose, initialDate, editing }: Props) {
   const { data, addMeeting, updateMeeting, deleteMeeting } = useApp();
-  const { allProfiles } = useAuth();
+  const { allProfiles, profile } = useAuth();
   // Anyone the owner can invite to a meeting: staff + partners. Owner
   // themselves don't need a chip — they see all meetings already. Clients
-  // are gated separately via `visibleToClient`.
-  const assignableUsers = allProfiles.filter(u => u.role === "staff" || u.role === "partner");
+  // are gated separately via `visibleToClient`. Each user has a
+  // `showInMeetingAssignments` toggle (default on) — turn off in Manage >
+  // Users to hide them from this picker.
+  const assignableUsers = allProfiles.filter(u =>
+    (u.role === "staff" || u.role === "partner") && u.showInMeetingAssignments !== false
+  );
 
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
@@ -61,6 +66,8 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
   const [visibleToClient, setVisibleToClient] = useState(false);
   const [color, setColor] = useState("");
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
+  const [meetingAddress, setMeetingAddress] = useState("");
+  const [oneWayMiles, setOneWayMiles] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
 
   // Reset form on open transition only — never on prop changes mid-edit
@@ -78,6 +85,8 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setVisibleToClient(editing.visibleToClient);
       setColor(editing.color || "");
       setAssignedUserIds(editing.assignedUserIds || []);
+      setMeetingAddress(editing.meetingAddress || "");
+      setOneWayMiles(editing.oneWayMiles);
     } else {
       setTitle("");
       setDate(initialDate || new Date().toISOString().slice(0, 10));
@@ -89,6 +98,8 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
       setVisibleToClient(false);
       setColor("");
       setAssignedUserIds([]);
+      setMeetingAddress("");
+      setOneWayMiles(undefined);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -98,6 +109,51 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
     if (!date) { toast.error("Date required"); return; }
     setSaving(true);
     try {
+      // If the meeting address changed (or was cleared), recompute miles
+      // against the saver's primary home base. We store one number; for
+      // multi-base households or partners with their own home bases,
+      // they can edit the meeting later to recalc against theirs, or log
+      // a manual trip on the mileage page.
+      const trimmedAddress = meetingAddress.trim();
+      const addressChanged = (editing?.meetingAddress || "") !== trimmedAddress;
+      let computedMiles: number | undefined = oneWayMiles;
+      if (addressChanged) {
+        if (!trimmedAddress) {
+          computedMiles = undefined;
+        } else {
+          const crew = data.crewMembers.find(cm => cm.id === profile?.crewMemberId);
+          const primary = crew?.homeBases?.find(b => b.isPrimary) || crew?.homeBases?.[0];
+          const home = primary
+            ? { address: primary.address, city: primary.city, state: primary.state, zip: primary.zip }
+            : crew?.homeAddress;
+          if (home && home.address && home.city) {
+            const origin = `${home.address}, ${home.city}, ${home.state} ${home.zip}`;
+            try {
+              const token = await getAuthToken();
+              const res = await fetch("/api/calculate-distance", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ origin, destination: trimmedAddress }),
+              });
+              if (res.ok) {
+                const { distanceMiles } = await res.json();
+                computedMiles = distanceMiles;
+              } else {
+                const err = await res.json().catch(() => ({ error: res.statusText }));
+                toast.error(`Couldn't calculate miles: ${err.error || res.status}`);
+                computedMiles = undefined;
+              }
+            } catch (err: any) {
+              toast.error(`Couldn't calculate miles: ${err.message || err}`);
+              computedMiles = undefined;
+            }
+          } else {
+            toast.message("Set your home base in Manage > Crew to track meeting miles.");
+            computedMiles = undefined;
+          }
+        }
+      }
+
       const payload = {
         title: title.trim(),
         date,
@@ -109,14 +165,17 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
         visibleToClient: clientId !== "none" && visibleToClient,
         color,
         assignedUserIds,
+        meetingAddress: trimmedAddress || undefined,
+        oneWayMiles: computedMiles,
       };
       if (editing) {
         await updateMeeting(editing.id, payload);
-        toast.success("Meeting updated");
+        toast.success(computedMiles && addressChanged ? `Meeting updated · ${(computedMiles * 2).toFixed(1)} mi round-trip` : "Meeting updated");
       } else {
         await addMeeting(payload);
-        toast.success("Meeting created");
+        toast.success(computedMiles ? `Meeting created · ${(computedMiles * 2).toFixed(1)} mi round-trip` : "Meeting created");
       }
+      setOneWayMiles(computedMiles);
       onClose();
     } catch (err: any) {
       toast.error(err.message || "Failed to save meeting");
@@ -235,7 +294,25 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Location (optional)</Label>
-            <Input value={locationText} onChange={e => setLocationText(e.target.value)} placeholder="Zoom, office, address, etc." className="bg-secondary border-border" />
+            <Input value={locationText} onChange={e => setLocationText(e.target.value)} placeholder="Zoom, office, room, etc." className="bg-secondary border-border" />
+          </div>
+
+          <div className="space-y-1.5 rounded-lg border border-border bg-secondary/40 px-3 py-2.5">
+            <div className="flex items-center gap-1.5">
+              <Car className="w-3.5 h-3.5 text-muted-foreground" />
+              <Label className="text-xs text-muted-foreground">Address for mileage tracker (optional)</Label>
+            </div>
+            <Input
+              value={meetingAddress}
+              onChange={e => setMeetingAddress(e.target.value)}
+              placeholder="123 Main St, Nashville, TN 37203"
+              className="bg-background border-border"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {oneWayMiles && oneWayMiles > 0
+                ? `Round-trip ${(oneWayMiles * 2).toFixed(1)} mi from your home base.`
+                : "Add a street address to log this as a business trip on save."}
+            </p>
           </div>
 
           <div className="space-y-1.5">
