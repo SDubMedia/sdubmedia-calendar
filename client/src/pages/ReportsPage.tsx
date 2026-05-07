@@ -589,8 +589,8 @@ export default function ReportsPage() {
       </div>
 
       <div class="earnings-grid-2">
-        ${partnerName ? `<div class="earnings-card owner">
-          <div class="card-label" style="color: #22c55e; font-weight: 600;">${partnerName} (Partner)</div>
+        ${ownerCut > 0 ? `<div class="earnings-card owner">
+          <div class="card-label" style="color: #22c55e; font-weight: 600;">${partnerName || "Partner"}</div>
           <div class="card-value">${formatCurrency(ownerCut)}</div>
         </div>` : ""}
         <div class="earnings-card admin">
@@ -625,7 +625,7 @@ export default function ReportsPage() {
           <table class="pay-table">
             <thead><tr><th>Person</th><th style="text-align:right">Amount to Pay</th></tr></thead>
             <tbody>${payTableRows}
-              ${partnerName && ownerCut > 0 ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName} (Partner)</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
+              ${ownerCut > 0 ? `<tr style="border-top:1px solid #e5e5e5"><td>${partnerName || "Partner"}</td><td style="text-align:right">${formatCurrency(ownerCut)}</td></tr>` : ""}
               ${adminCut > 0 ? `<tr><td>SDub Media (Admin)</td><td style="text-align:right">${formatCurrency(adminCut)}</td></tr>` : ""}
               ${grossBudgetContribution > 0 ? `<tr><td>Spending Budget</td><td style="text-align:right">${formatCurrency(grossBudgetContribution)}</td></tr>` : ""}
             </tbody>
