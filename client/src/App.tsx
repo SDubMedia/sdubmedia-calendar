@@ -66,6 +66,7 @@ const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage")
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const RefundPage = lazy(() => import("./pages/RefundPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
+const SupportPage = lazy(() => import("./pages/SupportPage"));
 
 function LoadingScreen() {
   return (
@@ -291,10 +292,11 @@ function App() {
     );
   }
 
-  // Legal pages — always public so Stripe + marketing sites can link in
+  // Legal + support pages — always public so Stripe + marketing sites + the
+  // App Store listing can link in.
   const legalPath = window.location.pathname;
-  if (legalPath === "/terms" || legalPath === "/refund" || legalPath === "/privacy") {
-    const Page = legalPath === "/terms" ? TermsPage : legalPath === "/refund" ? RefundPage : PrivacyPage;
+  if (legalPath === "/terms" || legalPath === "/refund" || legalPath === "/privacy" || legalPath === "/support") {
+    const Page = legalPath === "/terms" ? TermsPage : legalPath === "/refund" ? RefundPage : legalPath === "/support" ? SupportPage : PrivacyPage;
     return (
       <ErrorBoundary>
         <ThemeProvider defaultTheme="dark" switchable>
