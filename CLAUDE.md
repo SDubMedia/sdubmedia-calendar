@@ -114,10 +114,18 @@ The global `supabase` client in `client/src/lib/supabase.ts` is **not yet typed*
 **RLS checklist for every new table (non-negotiable):**
 1. `ALTER TABLE x ENABLE ROW LEVEL SECURITY;`
 2. Create owner policy with `AND org_id = public.user_org_id()` — NEVER omit the org_id check
-3. Create read policies for other roles that need access (partner, staff, client, family)
+3. **Decide policies for every role that touches this table — owner, partner, staff, client, family.** A missing role = silent denial, not "no access yet." If staff users will read or write this table, they need an explicit policy. We got burned on `contractor_invoices` (May 2026): staff role had no policy, so Melissa got "new row violates RLS" on every create. Pattern for own-row staff scoping (see `staff_own_trips`, `staff_own_time_entries`, `staff_own_contractor_invoices`):
+   ```sql
+   CREATE POLICY "staff_own_x" ON x FOR ALL USING (
+     public.user_role() = 'staff'
+     AND org_id = public.user_org_id()
+     AND crew_member_id = (SELECT crew_member_id FROM user_profiles WHERE id = auth.uid())
+   );
+   ```
 4. **Verify with anon key after deploying** — `curl` the table with the anon key and confirm 0 rows returned
-5. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
-6. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
+5. **Test as each non-owner role you added a policy for** — owner-only testing hides missing staff/client/partner policies until a real user hits them in prod
+6. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
+7. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
 
 **JSONB columns**: Always provide a default in the CREATE TABLE statement (e.g., `DEFAULT '[]'`). Never assume JSONB columns are non-null in application code.
 
