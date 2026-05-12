@@ -238,7 +238,7 @@ export default function SettingsPage() {
     }
   }, [org]);
 
-  // File → data URL with size cap. Logos up to 250KB, favicons up to 50KB.
+  // File → data URL with size cap. Logos up to 400KB, favicons up to 50KB.
   // Stored inline on the org row — no upload endpoint needed.
   function readImageAsDataUrl(file: File, maxBytes: number): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -257,7 +257,7 @@ export default function SettingsPage() {
     e.target.value = "";
     if (!f) return;
     try {
-      const url = await readImageAsDataUrl(f, 250 * 1024);
+      const url = await readImageAsDataUrl(f, 400 * 1024);
       setLogoUrl(url);
     } catch (err: any) {
       setLogoErr(err.message || "Failed to load image");
@@ -424,7 +424,7 @@ export default function SettingsPage() {
             {/* Logo */}
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Business Logo</Label>
-              <p className="text-[11px] text-muted-foreground">Used on contracts, gallery covers, and as a watermark option. PNG with transparency works best. Max 250KB.</p>
+              <p className="text-[11px] text-muted-foreground">Used on contracts, gallery covers, and as a watermark option. PNG with transparency works best. Max 400KB.</p>
               <div className="flex items-start gap-3">
                 <div className="w-32 h-20 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
                   {logoUrl ? (
