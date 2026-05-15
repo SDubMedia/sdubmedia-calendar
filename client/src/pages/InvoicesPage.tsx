@@ -9,12 +9,13 @@ import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, Copy } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, Copy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import TestimonialPromptDialog from "@/components/TestimonialPromptDialog";
 import PrereqGate from "@/components/PrereqGate";
+import InvoiceEditDialog from "@/components/InvoiceEditDialog";
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -58,6 +59,7 @@ export default function InvoicesPage() {
   const [creating, setCreating] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all");
   const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
   const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
@@ -573,6 +575,11 @@ export default function InvoicesPage() {
                     <button onClick={() => handlePreview(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">
                       <Eye className="w-3.5 h-3.5" /> Preview
                     </button>
+                    {(inv.status === "draft" || inv.status === "sent") && (
+                      <button onClick={() => setEditingInvoice(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors">
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                    )}
                     <button onClick={() => handleDownload(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">
                       <Download className="w-3.5 h-3.5" /> Download
                     </button>
@@ -714,6 +721,11 @@ export default function InvoicesPage() {
         onClose={() => setTestimonialOpen(false)}
         trigger="first_paid_invoice"
         defaultCompany={data.organization?.name}
+      />
+
+      <InvoiceEditDialog
+        invoice={editingInvoice}
+        onClose={() => setEditingInvoice(null)}
       />
     </div>
   );
