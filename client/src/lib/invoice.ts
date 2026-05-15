@@ -102,40 +102,12 @@ export function buildLineItems(
     const effectiveModel = p.billingModel ?? client.billingModel;
     const projectSubtotal = getProjectSubtotal(p, client);
     if (effectiveModel === "per_project") {
-      // Use pre-discount subtotal here; discount is appended below as
-      // its own line item so clients see the markdown explicitly.
+      // Flat-rate projects show a single line item with the flat amount
+      // — clients booked a flat rate, so they shouldn't see a synthetic
+      // Production/Editing split. Discount (below) still renders as a
+      // separate negative line.
       const amount = projectSubtotal;
-
-      // Break down into production + post-production if we have crew data
-      const hasCrew = p.crew.length > 0;
-      const hasPost = p.postProduction.length > 0;
-
-      if (hasCrew || hasPost) {
-        if (hasCrew) {
-          const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
-
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Production`,
-            quantity: crewHours || 1,
-            unitPrice: hasPost ? Math.round(amount * 0.6 / (crewHours || 1) * 100) / 100 : amount / (crewHours || 1),
-            amount: hasPost ? Math.round(amount * 0.6 * 100) / 100 : amount,
-          });
-        }
-        if (hasPost) {
-          const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
-
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Editing`,
-            quantity: postHours || 1,
-            unitPrice: hasCrew ? Math.round(amount * 0.4 / (postHours || 1) * 100) / 100 : amount / (postHours || 1),
-            amount: hasCrew ? Math.round(amount * 0.4 * 100) / 100 : amount,
-          });
-        }
-      } else {
-        items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
-      }
+      items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
       const rate = Number(p.billingRate ?? client.billingRatePerHour ?? 0);

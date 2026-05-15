@@ -237,7 +237,7 @@ describe("formatPhone", () => {
 });
 
 describe("buildLineItems per-project billing", () => {
-  it("creates production + editing breakdown for per-project with crew and post", () => {
+  it("emits a single flat-rate line item for per-project with crew and post", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 1000 });
     const projects = [makeProject({
       id: "p1", status: "editing_done",
@@ -245,17 +245,14 @@ describe("buildLineItems per-project billing", () => {
       postProduction: [{ crewMemberId: "c2", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
     })];
     const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
-    expect(items.length).toBe(2);
-    const prodItem = items.find(i => i.description.includes("Production"));
-    const editItem = items.find(i => i.description.includes("Editing"));
-    expect(prodItem).toBeDefined();
-    expect(editItem).toBeDefined();
-    // 60/40 split
-    expect(prodItem!.amount).toBe(600); // 1000 * 0.6
-    expect(editItem!.amount).toBe(400); // 1000 * 0.4
+    expect(items.length).toBe(1);
+    expect(items[0].amount).toBe(1000);
+    expect(items[0].quantity).toBe(1);
+    expect(items[0].description).not.toContain("Production");
+    expect(items[0].description).not.toContain("Editing");
   });
 
-  it("uses full amount for production when no post-production", () => {
+  it("emits a single flat-rate line item when only crew is set", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 800 });
     const projects = [makeProject({
       id: "p1", status: "editing_done",
@@ -265,7 +262,8 @@ describe("buildLineItems per-project billing", () => {
     const items = buildLineItems(projects, client, projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items.length).toBe(1);
     expect(items[0].amount).toBe(800);
-    expect(items[0].description).toContain("Production");
+    expect(items[0].quantity).toBe(1);
+    expect(items[0].description).not.toContain("Production");
   });
 
   it("creates single line item when no crew data at all", () => {
