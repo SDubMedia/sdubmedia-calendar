@@ -180,6 +180,9 @@ export const seedData: AppData = {
   deliveryFiles: [],
   deliverySelections: [],
   deliveryCollections: [],
+  serviceCategories: [],
+  services: [],
+  serviceVariants: [],
   organization: null,
 };
 

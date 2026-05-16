@@ -10,12 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Edit3, Trash2, Users, Briefcase, Shield } from "lucide-react";
+import { Plus, Edit3, Trash2, Users, Briefcase, Shield, Layers } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useApp } from "@/contexts/AppContext";
 import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
 import UsersPage from "./UsersPage";
+import ServiceCategoriesManager from "@/components/ServiceCategoriesManager";
 
 export default function ManagePage() {
   return (
@@ -33,12 +34,16 @@ export default function ManagePage() {
             <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
             </TabsTrigger>
+            <TabsTrigger value="services" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Layers className="w-3.5 h-3.5 mr-1.5" /> Services
+            </TabsTrigger>
             <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Shield className="w-3.5 h-3.5 mr-1.5" /> Users
             </TabsTrigger>
           </TabsList>
           <TabsContent value="crew"><CrewTab /></TabsContent>
           <TabsContent value="types"><ProjectTypesTab /></TabsContent>
+          <TabsContent value="services"><ServiceCategoriesManager /></TabsContent>
           <TabsContent value="users"><UsersPage embedded /></TabsContent>
         </Tabs>
       </div>

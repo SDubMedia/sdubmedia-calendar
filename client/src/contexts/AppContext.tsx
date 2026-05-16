@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -130,6 +130,16 @@ interface AppContextValue {
   addDeliveryCollection: (c: { name: string; slug: string | null; coverSubtitle: string | null }) => Promise<DeliveryCollection>;
   updateDeliveryCollection: (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => Promise<void>;
   deleteDeliveryCollection: (id: string) => Promise<void>;
+  // Service categories / services / variants — hierarchical pricing model
+  addServiceCategory: (c: Omit<ServiceCategory, "id" | "createdAt">) => Promise<ServiceCategory>;
+  updateServiceCategory: (id: string, c: Partial<ServiceCategory>) => Promise<void>;
+  deleteServiceCategory: (id: string) => Promise<void>;
+  addService: (s: Omit<Service, "id" | "createdAt">) => Promise<Service>;
+  updateService: (id: string, s: Partial<Service>) => Promise<void>;
+  deleteService: (id: string) => Promise<void>;
+  addServiceVariant: (v: Omit<ServiceVariant, "id" | "createdAt">) => Promise<ServiceVariant>;
+  updateServiceVariant: (id: string, v: Partial<ServiceVariant>) => Promise<void>;
+  deleteServiceVariant: (id: string) => Promise<void>;
   // Trash
   restoreItem: (table: string, id: string) => Promise<void>;
   permanentlyDelete: (table: string, id: string) => Promise<void>;
@@ -155,6 +165,7 @@ function rowToClient(r: any): Client {
     billingRatePerHour: Number(r.billing_rate_per_hour ?? 0),
     perProjectRate: Number(r.per_project_rate ?? 0),
     projectTypeRates: r.project_type_rates || [],
+    serviceRates: Array.isArray(r.service_rates) ? r.service_rates : [],
     allowedProjectTypeIds: r.allowed_project_type_ids || [],
     defaultProjectTypeId: r.default_project_type_id || "",
     roleBillingMultipliers: r.role_billing_multipliers || [],
@@ -408,6 +419,8 @@ function rowToProject(r: any): Project {
     discountType: (r.discount_type as "percent" | "fixed" | null) || null,
     discountAmount: r.discount_amount != null ? Number(r.discount_amount) : 0,
     discountReason: r.discount_reason || "",
+    serviceCategoryId: r.service_category_id || null,
+    services: Array.isArray(r.services) ? r.services : [],
     createdAt: r.created_at,
   };
 }
@@ -611,6 +624,37 @@ function rowToMeeting(r: any): Meeting {
   };
 }
 
+function rowToServiceCategory(r: any): ServiceCategory {
+  return {
+    id: r.id,
+    name: r.name || "",
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToService(r: any): Service {
+  return {
+    id: r.id,
+    categoryId: r.category_id,
+    name: r.name || "",
+    defaultPrice: Number(r.default_price ?? 0),
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToServiceVariant(r: any): ServiceVariant {
+  return {
+    id: r.id,
+    serviceId: r.service_id,
+    label: r.label || "",
+    price: Number(r.price ?? 0),
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
 function rowToDeliveryCollection(r: any): DeliveryCollection {
   return {
     id: r.id,
@@ -713,7 +757,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -923,6 +967,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: deliveryFilesData, error: _e8d },
         { data: deliverySelectionsData, error: _e8e },
         { data: deliveryCollectionsData, error: _e8f },
+        { data: serviceCategoriesData, error: _e8g },
+        { data: servicesData, error: _e8h },
+        { data: serviceVariantsData, error: _e8i },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
@@ -955,6 +1002,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("delivery_files").select("*").order("position"),
         supabase.from("delivery_selections").select("*").order("created_at"),
         supabase.from("delivery_collections").select("*").order("created_at", { ascending: false }),
+        supabase.from("service_categories").select("*").is("deleted_at", null).order("position"),
+        supabase.from("services").select("*").is("deleted_at", null).order("position"),
+        supabase.from("service_variants").select("*").is("deleted_at", null).order("position"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
@@ -992,6 +1042,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
         deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
         deliveryCollections: (deliveryCollectionsData || []).map(r => { try { return rowToDeliveryCollection(r); } catch { return null; } }).filter(Boolean) as DeliveryCollection[],
+        serviceCategories: (serviceCategoriesData || []).map(r => { try { return rowToServiceCategory(r); } catch { return null; } }).filter(Boolean) as ServiceCategory[],
+        services: (servicesData || []).map(r => { try { return rowToService(r); } catch { return null; } }).filter(Boolean) as Service[],
+        serviceVariants: (serviceVariantsData || []).map(r => { try { return rowToServiceVariant(r); } catch { return null; } }).filter(Boolean) as ServiceVariant[],
         organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
@@ -1047,6 +1100,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
       delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
       delivery_collections: { key: "deliveryCollections", convert: rowToDeliveryCollection },
+      service_categories: { key: "serviceCategories", convert: rowToServiceCategory, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
+      services: { key: "services", convert: rowToService, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
+      service_variants: { key: "serviceVariants", convert: rowToServiceVariant, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
       organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
     };
 
@@ -1130,6 +1186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       billing_model: c.billingModel ?? "hourly",
       billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       project_type_rates: c.projectTypeRates ?? [],
+      service_rates: c.serviceRates ?? [],
       allowed_project_type_ids: c.allowedProjectTypeIds ?? [],
       default_project_type_id: c.defaultProjectTypeId ?? "",
       role_billing_multipliers: c.roleBillingMultipliers ?? [],
@@ -1155,6 +1212,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.billingRatePerHour !== undefined) patch.billing_rate_per_hour = c.billingRatePerHour;
     if (c.perProjectRate !== undefined) patch.per_project_rate = c.perProjectRate;
     if (c.projectTypeRates !== undefined) patch.project_type_rates = c.projectTypeRates;
+    if (c.serviceRates !== undefined) patch.service_rates = c.serviceRates;
     if (c.allowedProjectTypeIds !== undefined) patch.allowed_project_type_ids = c.allowedProjectTypeIds;
     if (c.defaultProjectTypeId !== undefined) patch.default_project_type_id = c.defaultProjectTypeId;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
@@ -1868,6 +1926,114 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // ---- Service Categories / Services / Variants ----
+  // Hierarchical pricing model: Category → Service → Variant.
+  // Each level has CRUD; cascading deletes (variants on service delete,
+  // services + variants on category delete) are handled by the
+  // ON DELETE CASCADE foreign keys in the schema.
+  const addServiceCategory = useCallback(async (c: Omit<ServiceCategory, "id" | "createdAt">): Promise<ServiceCategory> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("service_categories").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      name: c.name, position: c.position ?? 0, updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const cat = rowToServiceCategory(row);
+    setRawData(d => ({ ...d, serviceCategories: [...d.serviceCategories, cat].sort((a, b) => a.position - b.position) }));
+    return cat;
+  }, [orgId]);
+
+  const updateServiceCategory = useCallback(async (id: string, c: Partial<ServiceCategory>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (c.name !== undefined) patch.name = c.name;
+    if (c.position !== undefined) patch.position = c.position;
+    const { error } = await supabase.from("service_categories").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceCategories: d.serviceCategories.map(x => x.id === id ? { ...x, ...c } : x) }));
+  }, []);
+
+  const deleteServiceCategory = useCallback(async (id: string) => {
+    // Soft delete — cascades to services + variants through their FK
+    // ON DELETE CASCADE since the DB foreign keys reference the same
+    // row even when deleted_at is set. We rely on the load query's
+    // `.is("deleted_at", null)` filter to hide it from the UI.
+    const { error } = await supabase.from("service_categories").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({
+      ...d,
+      serviceCategories: d.serviceCategories.filter(x => x.id !== id),
+      // Hide services + variants under the deleted category too.
+      services: d.services.filter(s => s.categoryId !== id),
+      serviceVariants: d.serviceVariants.filter(v => !d.services.find(s => s.id === v.serviceId && s.categoryId === id)),
+    }));
+  }, []);
+
+  const addService = useCallback(async (s: Omit<Service, "id" | "createdAt">): Promise<Service> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("services").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      category_id: s.categoryId, name: s.name,
+      default_price: s.defaultPrice ?? 0, position: s.position ?? 0,
+      updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const svc = rowToService(row);
+    setRawData(d => ({ ...d, services: [...d.services, svc].sort((a, b) => a.position - b.position) }));
+    return svc;
+  }, [orgId]);
+
+  const updateService = useCallback(async (id: string, s: Partial<Service>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (s.name !== undefined) patch.name = s.name;
+    if (s.defaultPrice !== undefined) patch.default_price = s.defaultPrice;
+    if (s.position !== undefined) patch.position = s.position;
+    if (s.categoryId !== undefined) patch.category_id = s.categoryId;
+    const { error } = await supabase.from("services").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, services: d.services.map(x => x.id === id ? { ...x, ...s } : x) }));
+  }, []);
+
+  const deleteService = useCallback(async (id: string) => {
+    const { error } = await supabase.from("services").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({
+      ...d,
+      services: d.services.filter(x => x.id !== id),
+      serviceVariants: d.serviceVariants.filter(v => v.serviceId !== id),
+    }));
+  }, []);
+
+  const addServiceVariant = useCallback(async (v: Omit<ServiceVariant, "id" | "createdAt">): Promise<ServiceVariant> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("service_variants").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      service_id: v.serviceId, label: v.label,
+      price: v.price ?? 0, position: v.position ?? 0,
+      updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const variant = rowToServiceVariant(row);
+    setRawData(d => ({ ...d, serviceVariants: [...d.serviceVariants, variant].sort((a, b) => a.position - b.position) }));
+    return variant;
+  }, [orgId]);
+
+  const updateServiceVariant = useCallback(async (id: string, v: Partial<ServiceVariant>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (v.label !== undefined) patch.label = v.label;
+    if (v.price !== undefined) patch.price = v.price;
+    if (v.position !== undefined) patch.position = v.position;
+    if (v.serviceId !== undefined) patch.service_id = v.serviceId;
+    const { error } = await supabase.from("service_variants").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceVariants: d.serviceVariants.map(x => x.id === id ? { ...x, ...v } : x) }));
+  }, []);
+
+  const deleteServiceVariant = useCallback(async (id: string) => {
+    const { error } = await supabase.from("service_variants").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceVariants: d.serviceVariants.filter(x => x.id !== id) }));
+  }, []);
+
   const markSelectionEdited = useCallback(async (selectionId: string, edited: boolean) => {
     const editedAt = edited ? new Date().toISOString() : null;
     const { error } = await supabase.from("delivery_selections").update({ edited_at: editedAt }).eq("id", selectionId);
@@ -2134,6 +2300,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       discount_type: p.discountType || null,
       discount_amount: p.discountAmount ?? 0,
       discount_reason: p.discountReason || "",
+      service_category_id: p.serviceCategoryId || null,
+      services: p.services ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -2173,6 +2341,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.discountType !== undefined) patch.discount_type = p.discountType;
     if (p.discountAmount !== undefined) patch.discount_amount = p.discountAmount;
     if (p.discountReason !== undefined) patch.discount_reason = p.discountReason;
+    if (p.serviceCategoryId !== undefined) patch.service_category_id = p.serviceCategoryId || null;
+    if (p.services !== undefined) patch.services = p.services;
     // Auto-stamp cancelled_at the first time status flips to "cancelled" if
     // the caller didn't supply one explicitly. Doesn't fire if status is
     // already cancelled or unchanged.
@@ -2556,6 +2726,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
       registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
+      addServiceCategory, updateServiceCategory, deleteServiceCategory,
+      addService, updateService, deleteService,
+      addServiceVariant, updateServiceVariant, deleteServiceVariant,
       restoreItem, permanentlyDelete,
       updateOrganization,
     }}>

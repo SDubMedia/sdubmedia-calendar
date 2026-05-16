@@ -274,6 +274,14 @@ export interface Client {
   billingRatePerHour: number; // $ per hour (for hourly model)
   perProjectRate: number; // default $ per project (for per_project model)
   projectTypeRates: { projectTypeId: string; rate: number }[]; // per-type rates (for per_project model)
+  // Per-service price overrides for the new categories/services/variants model.
+  // Optional (defaults to []) so older fixtures, test data, and call sites
+  // that build a Client without the new model still typecheck.
+  // Lookup priority when pricing a service on a project:
+  //   1. Match on { serviceId, variantId } here → use that rate
+  //   2. Match on { serviceId, variantId: null } → use that rate
+  //   3. Fall back to variant.price (if variantId set) or service.defaultPrice
+  serviceRates?: { serviceId: string; variantId: string | null; rate: number }[];
   allowedProjectTypeIds: string[]; // if set, only these types show in project form (empty = all)
   defaultProjectTypeId: string; // auto-selected project type for new projects
   roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
@@ -446,6 +454,50 @@ export interface Project {
   discountType?: "percent" | "fixed" | null;
   discountAmount?: number;
   discountReason?: string;
+  // Service-bundle pricing (new model, lives alongside flat projectTypeId).
+  // If serviceCategoryId is set, `services` holds the picked variants
+  // with denormalized snapshots so historical invoices stay accurate
+  // even if list prices change later.
+  serviceCategoryId?: string | null;
+  services?: ProjectServiceSelection[];
+  createdAt: string;
+}
+
+export interface ProjectServiceSelection {
+  serviceId: string;
+  variantId: string | null;
+  label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
+  price: number;    // snapshot of the price at the time the project was created/edited
+}
+
+// ============================================================
+// Service Categories — hierarchical pricing model
+//   Category → Services → priced Variants (or default_price)
+// Lives alongside the flat ProjectType model. Either model can be
+// used per-project; new projects can opt into the bundle flow.
+// ============================================================
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  position: number;
+  createdAt: string;
+}
+
+export interface Service {
+  id: string;
+  categoryId: string;
+  name: string;
+  defaultPrice: number;    // used when the service has zero variants
+  position: number;
+  createdAt: string;
+}
+
+export interface ServiceVariant {
+  id: string;
+  serviceId: string;
+  label: string;          // e.g. "2,000–3,000 sqft"
+  price: number;
+  position: number;
   createdAt: string;
 }
 
@@ -1332,5 +1384,8 @@ export interface AppData {
   deliveryFiles: DeliveryFile[];
   deliverySelections: DeliverySelection[];
   deliveryCollections: DeliveryCollection[];
+  serviceCategories: ServiceCategory[];
+  services: Service[];
+  serviceVariants: ServiceVariant[];
   organization: Organization | null;
 }
