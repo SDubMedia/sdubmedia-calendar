@@ -375,6 +375,11 @@ export interface ProjectCrewEntry {
   payRatePerHour: number; // $ per hour — set per-entry so it can be overridden
   roundTripMiles?: number; // miles from crew member's home to location and back (snapshot at project time)
   homeBaseId?: string; // which TravelBase to drive from for THIS project (defaults to primary)
+  // Optional flat-pay override. When payType==="flat", cost calculations
+  // use flatAmount directly and ignore hoursWorked × payRatePerHour.
+  // Hours stay tracked separately so reports still know who worked when.
+  payType?: "hourly" | "flat";
+  flatAmount?: number;
 }
 
 // A post-production person assigned to a project (editing)
@@ -383,6 +388,9 @@ export interface ProjectPostEntry {
   role: string;
   hoursWorked: number;
   payRatePerHour: number; // $ per hour
+  // Optional flat-pay override (same semantics as ProjectCrewEntry).
+  payType?: "hourly" | "flat";
+  flatAmount?: number;
 }
 
 // Photo editor billing calculator data (stored per-project)

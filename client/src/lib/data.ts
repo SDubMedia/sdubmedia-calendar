@@ -206,14 +206,22 @@ export function getProjectWorkedHours(project: Project): { crewHours: number; po
  * Get total crew cost for a project, using editorBilling for photo editors.
  */
 export function getProjectCrewCost(project: Project): number {
+  // Honor per-entry flat pay. If entry.payType === "flat", use
+  // flatAmount instead of hoursWorked × payRatePerHour. Lets crew
+  // be hourly on one project and flat on another without changing
+  // their global rate.
+  const entryCost = (e: ProjectCrewEntry | ProjectPostEntry): number => {
+    if (e.payType === "flat") return Number(e.flatAmount ?? 0);
+    return Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+  };
   const crewCost = (project.crew || []).filter(e => e.role !== "Travel").reduce(
-    (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
+    (s, e) => s + entryCost(e), 0
   );
   const postCost = (project.postProduction || []).filter(e => e.role !== "Travel").reduce((s, e) => {
     if (e.role === "Photo Editor" && project.editorBilling) {
       return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
     }
-    return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+    return s + entryCost(e);
   }, 0);
   return crewCost + postCost;
 }

@@ -704,8 +704,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="hidden sm:grid grid-cols-[2fr_3fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
-              <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
+            <div className="hidden sm:grid grid-cols-[2fr_3fr_75px_60px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+              <span>Person</span><span>Role</span><span>Pay Type</span><span>Hours</span><span>Pay ($)</span><span />
             </div>
             {crew.map((entry, idx) => {
               const member = data.crewMembers.find(c => c.id === entry.crewMemberId);
@@ -713,7 +713,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               const showBasePicker = memberBases.length > 1;
               return (
               <div key={idx} className="flex flex-col gap-2 bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
-              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_70px_80px_28px] sm:gap-2 sm:items-center">
+              <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_75px_60px_80px_28px] sm:gap-2 sm:items-center">
                 <div className="flex gap-2 sm:contents">
                   <Select
                     value={entry.crewMemberId}
@@ -760,12 +760,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </div>
                 <div className="flex gap-2 sm:contents">
                   <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay</Label>
+                    <select
+                      value={entry.payType || "hourly"}
+                      onChange={(e) => updateCrewEntry(idx, "payType", e.target.value as "hourly" | "flat")}
+                      className="w-full h-8 bg-secondary border border-border rounded px-2 text-xs text-foreground"
+                    >
+                      <option value="hourly">Hourly</option>
+                      <option value="flat">Flat</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
                     <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none">
-                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
-                    <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
+                    {entry.payType === "flat" ? (
+                      <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.flatAmount || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "flatAmount", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    ) : (
+                      <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    )}
                   </div>
                   <button onClick={() => setCrew((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -824,11 +839,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </div>
               );
             })}
-            {/* Running total for crew */}
-            {crew.some(e => e.crewMemberId && Number(e.hoursWorked) > 0) && (
+            {/* Running total for crew — flat entries use flatAmount, hourly = hours × rate */}
+            {crew.some(e => e.crewMemberId && (Number(e.hoursWorked) > 0 || (e.payType === "flat" && Number(e.flatAmount) > 0))) && (
               <div className="text-xs text-right text-muted-foreground pr-8">
                 Crew total: <span className="text-purple-300 font-medium">
-                  ${crew.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
+                  ${crew.reduce((s, e) => s + (e.payType === "flat" ? Number(e.flatAmount ?? 0) : Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
                 </span>
               </div>
             )}
@@ -842,11 +857,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <Plus className="w-3 h-3" /> Add
               </Button>
             </div>
-            <div className="hidden sm:grid grid-cols-[2fr_3fr_70px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
-              <span>Person</span><span>Role</span><span>Hours</span><span>Pay/hr ($)</span><span />
+            <div className="hidden sm:grid grid-cols-[2fr_3fr_75px_60px_80px_28px] gap-2 text-[10px] text-muted-foreground px-0.5 mb-1">
+              <span>Person</span><span>Role</span><span>Pay Type</span><span>Hours</span><span>Pay ($)</span><span />
             </div>
             {postProduction.map((entry, idx) => (
-              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_70px_80px_28px] sm:gap-2 sm:items-center bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
+              <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_75px_60px_80px_28px] sm:gap-2 sm:items-center bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
                 <div className="flex gap-2 sm:contents">
                   <Select
                     value={entry.crewMemberId}
@@ -892,12 +907,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </div>
                 <div className="flex gap-2 sm:contents">
                   <div className="flex-1 sm:flex-none">
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay</Label>
+                    <select
+                      value={entry.payType || "hourly"}
+                      onChange={(e) => updatePostEntry(idx, "payType", e.target.value as "hourly" | "flat")}
+                      className="w-full h-8 bg-secondary border border-border rounded px-2 text-xs text-foreground"
+                    >
+                      <option value="hourly">Hourly</option>
+                      <option value="flat">Flat</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 sm:flex-none">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
                     <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none">
-                    <Label className="text-[10px] text-muted-foreground sm:hidden">Pay/hr ($)</Label>
-                    <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
+                    {entry.payType === "flat" ? (
+                      <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.flatAmount || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "flatAmount", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    ) : (
+                      <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.payRatePerHour || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "payRatePerHour", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    )}
                   </div>
                   <button onClick={() => setPostProduction((p) => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive transition-colors hidden sm:block shrink-0 self-end mb-1">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -905,10 +935,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 </div>
               </div>
             ))}
-            {postProduction.some(e => e.crewMemberId && Number(e.hoursWorked) > 0) && (
+            {postProduction.some(e => e.crewMemberId && (Number(e.hoursWorked) > 0 || (e.payType === "flat" && Number(e.flatAmount) > 0))) && (
               <div className="text-xs text-right text-muted-foreground pr-8">
                 Post total: <span className="text-purple-300 font-medium">
-                  ${postProduction.reduce((s, e) => s + (Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
+                  ${postProduction.reduce((s, e) => s + (e.payType === "flat" ? Number(e.flatAmount ?? 0) : Number(e.hoursWorked) * Number(e.payRatePerHour)), 0).toFixed(2)}
                 </span>
               </div>
             )}
