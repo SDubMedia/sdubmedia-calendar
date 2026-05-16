@@ -461,19 +461,22 @@ export default function MileageReportPage() {
           <p className="text-sm text-gray-600 mt-1">{crewMember?.name || ""} | Generated {new Date().toLocaleDateString()}</p>
         </div>
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 print:mb-4">
-          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground print:text-black">{yearTotalMiles.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1 print:text-black">Total Miles ({year})</p>
+        {/* Summary cards — always 3-up. Mobile gets smaller padding +
+            type so they fit on a 375px screen without wrapping. */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6 print:mb-4">
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-foreground print:text-black">{yearTotalMiles.toLocaleString()}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">Total Miles</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground print:text-black">{trips.length}</p>
-            <p className="text-xs text-muted-foreground mt-1 print:text-black">Total Trips</p>
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-foreground print:text-black">{trips.length}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">Total Trips</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 print:p-2 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</p>
-            <p className="text-xs text-muted-foreground mt-1 print:text-black">Est. Deduction @ ${ratePerMile}/mi</p>
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">
+              Est. Deduction <span className="hidden sm:inline">@ ${ratePerMile}/mi</span>
+            </p>
           </div>
         </div>
 
