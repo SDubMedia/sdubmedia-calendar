@@ -54,6 +54,15 @@ function DeliveriesList() {
 
   const galleries = data.deliveries;
 
+  // Total storage usage across all galleries in this org — the API
+  // enforces the 200GB cap server-side; this just surfaces it so
+  // users see usage building before they hit a rejection mid-upload.
+  const STORAGE_CAP_GB = 200;
+  const usedBytes = data.deliveryFiles.reduce((s, f) => s + (f.sizeBytes || 0), 0);
+  const usedGb = usedBytes / 1024 / 1024 / 1024;
+  const usedPct = Math.min(100, (usedGb / STORAGE_CAP_GB) * 100);
+  const usedDisplay = usedGb < 0.1 ? "< 0.1" : usedGb.toFixed(1);
+
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
@@ -76,6 +85,29 @@ function DeliveriesList() {
           </button>
         </PrereqGate>
       </div>
+
+      {/* Storage usage — 200 GB hard cap. Server-side enforced; this
+          row just surfaces it so users see usage building before they
+          hit a rejection mid-upload. */}
+      {galleries.length > 0 && (
+        <div className="mb-6 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+            <span>Storage</span>
+            <span className="tabular-nums">{usedDisplay} / {STORAGE_CAP_GB} GB</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
+            <div
+              className={`h-full transition-all ${usedPct >= 90 ? "bg-red-500" : usedPct >= 75 ? "bg-amber-500" : "bg-[#0088ff]"}`}
+              style={{ width: `${usedPct}%` }}
+            />
+          </div>
+          {usedPct >= 90 && (
+            <p className="text-[11px] text-red-300 mt-1.5">
+              You're near your storage cap. Archive or delete an old gallery to free up space.
+            </p>
+          )}
+        </div>
+      )}
 
       {galleries.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-12 text-center">

@@ -20,7 +20,11 @@ const supabase = createClient(
 );
 
 // Storage caps in bytes per org. org_sdubmedia (Geoff) bypasses entirely.
-const PRO_STORAGE_CAP_BYTES = 50 * 1024 * 1024 * 1024; // 50 GB
+// 200 GB on Pro is a hard ceiling, not a billing trigger — over the cap
+// the user gets a friendly "delete old galleries" message instead of
+// being charged. Worst-case R2 storage cost at 200GB ≈ $3/month/user,
+// well within the Pro margin.
+const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024; // 200 GB
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
 const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB per single video
@@ -109,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cap = PRO_STORAGE_CAP_BYTES; // we already gated on "pro" plan above
       if (usedBytes + sizeBytes > cap) {
         return res.status(413).json({
-          error: `Storage cap reached (${Math.floor(cap / 1024 / 1024 / 1024)}GB). Delete old galleries or contact support.`,
+          error: `You're at your ${Math.floor(cap / 1024 / 1024 / 1024)} GB storage cap. To upload more, archive or delete an old gallery to free up space.`,
           usedBytes,
           capBytes: cap,
         });
