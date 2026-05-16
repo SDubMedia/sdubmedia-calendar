@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from "@/lib/supabase";
 import type { UserProfile, UserRole, PersonalEventTemplate } from "@/lib/types";
 import type { User, Session } from "@supabase/supabase-js";
+import { rememberAccount } from "@/lib/recent-accounts";
 
 interface AuthContextValue {
   user: User | null;
@@ -62,6 +63,27 @@ function rowToProfile(r: any): UserProfile {
       : { seenGuides: {}, businessInfoSetupSeen: false, stripeOptedOut: false, manualCompletions: {} },
     createdAt: r.created_at,
   };
+}
+
+// Decorate the recent-accounts entry with org name + role so the login
+// card picker can show "SDub Media · Owner" instead of just the email.
+// Fire-and-forget; never blocks login.
+async function rememberAccountFromSession(email: string | null | undefined, profile: UserProfile | null) {
+  if (!email) return;
+  let orgName: string | undefined;
+  if (profile?.orgId) {
+    try {
+      const { data } = await supabase.from("organizations").select("name").eq("id", profile.orgId).single();
+      orgName = data?.name;
+    } catch {
+      // Non-fatal — card just won't show org name.
+    }
+  }
+  rememberAccount(email, {
+    displayName: profile?.name,
+    orgName,
+    role: profile?.role,
+  });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -128,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchProfile(s.user.id).then(p => {
           setProfile(p);
           if (p?.role === "owner") refreshProfiles();
+          rememberAccountFromSession(s.user.email, p);
           setLoading(false);
         });
       } else {
@@ -139,7 +162,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        fetchProfile(s.user.id).then(p => { setProfile(p); if (p?.role === "owner") refreshProfiles(); });
+        fetchProfile(s.user.id).then(p => {
+          setProfile(p);
+          if (p?.role === "owner") refreshProfiles();
+          rememberAccountFromSession(s.user.email, p);
+        });
       } else {
         setProfile(null);
       }

@@ -3,11 +3,13 @@
 // Animated gradient mesh background (TradingView-inspired)
 // ============================================================
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { trackEvent } from "@/lib/analytics";
 import { toast } from "sonner";
+import { getRecentAccounts, forgetAccount, type RecentAccount } from "@/lib/recent-accounts";
+import { X } from "lucide-react";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -18,6 +20,24 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [recents, setRecents] = useState<RecentAccount[]>(() => getRecentAccounts());
+  const [showForm, setShowForm] = useState<boolean>(() => getRecentAccounts().length === 0);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  function pickAccount(acct: RecentAccount) {
+    setEmail(acct.email);
+    setShowForm(true);
+    setMode("signin");
+    setTimeout(() => passwordRef.current?.focus(), 50);
+  }
+
+  function removeAccount(acct: RecentAccount, e: React.MouseEvent) {
+    e.stopPropagation();
+    forgetAccount(acct.email);
+    const next = getRecentAccounts();
+    setRecents(next);
+    if (next.length === 0) setShowForm(true);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,6 +281,53 @@ export default function LoginPage() {
                 Back to Sign In
               </button>
             </>
+          ) : mode === "signin" && !showForm && recents.length > 0 ? (
+            <>
+              <div className="space-y-1 pb-1">
+                <h2 className="text-sm font-semibold text-white">Welcome back</h2>
+                <p className="text-xs text-zinc-400">Choose an account to continue</p>
+              </div>
+              <div className="space-y-2">
+                {recents.map(acct => (
+                  <button
+                    key={acct.email}
+                    onClick={() => pickAccount(acct)}
+                    className="group w-full flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-colors text-left"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500/40 to-blue-700/40 flex items-center justify-center text-sm font-semibold text-white flex-shrink-0">
+                      {(acct.displayName?.[0] || acct.email[0] || "?").toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{acct.email}</p>
+                      {(acct.orgName || acct.role) && (
+                        <p className="text-[11px] text-zinc-400 truncate">
+                          {[acct.orgName, acct.role].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      onClick={(e) => removeAccount(acct, e)}
+                      className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-1"
+                      title="Remove from this device"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setEmail(""); setPassword(""); setShowForm(true); }}
+                className="w-full py-2.5 rounded-lg border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Sign in with a different account
+              </button>
+              <button
+                onClick={() => { setEmail(""); setPassword(""); setShowForm(true); setMode("signup"); }}
+                className="w-full text-center text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Or create a new account
+              </button>
+            </>
           ) : (
             <>
               {/* Sign In / Sign Up toggle */}
@@ -306,6 +373,7 @@ export default function LoginPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Password</label>
                   <input
+                    ref={passwordRef}
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
@@ -334,6 +402,16 @@ export default function LoginPage() {
                   className="block w-full text-center text-xs text-zinc-400 hover:text-white transition-colors"
                 >
                   Forgot password?
+                </button>
+              )}
+
+              {mode === "signin" && recents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setShowForm(false); setEmail(""); setPassword(""); }}
+                  className="block w-full text-center text-xs text-zinc-400 hover:text-white transition-colors"
+                >
+                  ← Back to recent accounts
                 </button>
               )}
 
