@@ -118,6 +118,26 @@ export default function InvoicesPage() {
     });
   }, [data.invoices, filterStatus, filterClient]);
 
+  // Clients split into "booked this period" vs the rest, each
+  // alphabetical. Lets the picker surface clients with actual
+  // invoiceable work first instead of making the owner scroll
+  // through every client they've ever added.
+  const { bookedClients, otherClients } = useMemo(() => {
+    const inPeriod = (date: string) =>
+      (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd);
+    const bookedIds = new Set(
+      data.projects
+        .filter((p) => inPeriod(p.date))
+        .map((p) => p.clientId)
+    );
+    const sortByCompany = (a: { company: string }, b: { company: string }) =>
+      a.company.localeCompare(b.company);
+    return {
+      bookedClients: data.clients.filter((c) => bookedIds.has(c.id)).sort(sortByCompany),
+      otherClients: data.clients.filter((c) => !bookedIds.has(c.id)).sort(sortByCompany),
+    };
+  }, [data.clients, data.projects, periodStart, periodEnd]);
+
   // Preview line items before creating
   const previewLineItems = useMemo(() => {
     if (!selectedClientId || !periodStart || !periodEnd) return [];
@@ -413,9 +433,20 @@ export default function InvoicesPage() {
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="">Select client...</option>
-                  {data.clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.company}</option>
-                  ))}
+                  {bookedClients.length > 0 && (
+                    <optgroup label="Booked this period">
+                      {bookedClients.map(c => (
+                        <option key={c.id} value={c.id}>{c.company}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {otherClients.length > 0 && (
+                    <optgroup label={bookedClients.length > 0 ? "Other clients" : "All clients"}>
+                      {otherClients.map(c => (
+                        <option key={c.id} value={c.id}>{c.company}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
               <div>
