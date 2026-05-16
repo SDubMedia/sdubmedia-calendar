@@ -404,7 +404,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 pb-24">
           {/* Row 1: Client + Project Type */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">

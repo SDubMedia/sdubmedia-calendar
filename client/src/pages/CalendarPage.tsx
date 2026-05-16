@@ -403,9 +403,13 @@ export default function CalendarPage() {
   }, [data.projects, monthProjects, viewScope]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Page header */}
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2 overflow-hidden">
+    <div className="h-full overflow-auto">
+      {/* Page header — lives inside the scroll area so it scrolls with
+          the calendar (matches the iOS layout). When the user is at the
+          top, the add buttons + mode toggle + filter row are visible;
+          scrolling down reveals more grid; scrolling back up brings the
+          header back. */}
+      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2">
         {/* Top row: title + action buttons. min-w-0 lets the title shrink
             so the buttons can stay on-row at narrow widths instead of forcing
             page-level horizontal scroll. flex-wrap kicks in only if even the
@@ -552,7 +556,7 @@ export default function CalendarPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Bulk-mode bar — shown when either:
               - user picked a template via the "Bulk Apply" dropdown (legacy flow)
               - user shift- or cmd-clicked dates and is now picking a template (new flow)
