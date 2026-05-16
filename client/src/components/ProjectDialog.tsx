@@ -15,7 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection } from "@/lib/types";
+import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
 import UpgradeDialog from "./UpgradeDialog";
@@ -84,6 +85,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [discountAmount, setDiscountAmount] = useState<number>(project?.discountAmount ?? 0);
   const [discountReason, setDiscountReason] = useState<string>(project?.discountReason ?? "");
 
+  // Service-bundle pricing (new model). If serviceCategoryId is set,
+  // bundleServices holds the picked services with denormalized labels
+  // and snapshotted prices. These become invoice line items at save time.
+  const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(project?.serviceCategoryId ?? null);
+  const [bundleServices, setBundleServices] = useState<ProjectServiceSelection[]>(project?.services ?? []);
+
   const wasOpen = useRef(false);
   useEffect(() => {
     // Only reset form state when dialog transitions from closed → open
@@ -119,6 +126,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setDiscountType(project?.discountType ?? null);
       setDiscountAmount(project?.discountAmount ?? 0);
       setDiscountReason(project?.discountReason ?? "");
+      setServiceCategoryId(project?.serviceCategoryId ?? null);
+      setBundleServices(project?.services ?? []);
       setShowNewType(false);
       setNewTypeName("");
       setShowNewEditType(false);
@@ -360,6 +369,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       discountType: discountAmount > 0 ? discountType : null,
       discountAmount: discountAmount > 0 ? discountAmount : 0,
       discountReason: discountReason.trim(),
+      serviceCategoryId: serviceCategoryId || null,
+      services: bundleServices,
     };
     try {
       if (isEdit && project) {
@@ -902,6 +913,22 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </div>
             )}
           </div>}
+
+          {/* Service Bundle (optional) — pick from a category like
+              "Real Estate Shoot" with priced sub-services. When set,
+              those services become per-line items on the invoice
+              (instead of one rolled-up project line). */}
+          {!isLightweight && clientId && (
+            <ProjectServiceBundlePicker
+              clientId={clientId}
+              categoryId={serviceCategoryId}
+              services={bundleServices}
+              onChange={(catId, services) => {
+                setServiceCategoryId(catId);
+                setBundleServices(services);
+              }}
+            />
+          )}
 
           {/* Discount + Project Total — what the client gets billed.
               The discount is per-project: % off the computed billable

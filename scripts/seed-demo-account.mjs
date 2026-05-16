@@ -589,6 +589,41 @@ async function seedProposalAndContract(orgId, clients, projects) {
   if (cErr) throw cErr;
 }
 
+async function seedServiceCategories(orgId) {
+  console.log("→ Seeding service category 'Real Estate Shoot' with services + variants…");
+
+  // ---- Category ----
+  const categoryId = id();
+  const now = new Date().toISOString();
+  const { error: catErr } = await supabase.from("service_categories").insert({
+    id: categoryId, org_id: orgId, name: "Real Estate Shoot",
+    position: 0, updated_at: now,
+  });
+  if (catErr) throw catErr;
+
+  // ---- Services ----
+  const photosId = id();
+  const videoId = id();
+  const droneId = id();
+  const { error: svcErr } = await supabase.from("services").insert([
+    { id: photosId, org_id: orgId, category_id: categoryId, name: "Photos",        default_price: 250, position: 0, updated_at: now },
+    { id: videoId,  org_id: orgId, category_id: categoryId, name: "Video",         default_price: 500, position: 1, updated_at: now },
+    { id: droneId,  org_id: orgId, category_id: categoryId, name: "Drone Footage", default_price: 200, position: 2, updated_at: now },
+  ]);
+  if (svcErr) throw svcErr;
+
+  // ---- Variants ----
+  // Photos + Video are tiered by square footage; Drone is flat.
+  const { error: varErr } = await supabase.from("service_variants").insert([
+    { id: id(), org_id: orgId, service_id: photosId, label: "Under 2,000 sqft",    price: 250, position: 0, updated_at: now },
+    { id: id(), org_id: orgId, service_id: photosId, label: "2,000–3,000 sqft",    price: 350, position: 1, updated_at: now },
+    { id: id(), org_id: orgId, service_id: photosId, label: "3,000–5,000 sqft",    price: 500, position: 2, updated_at: now },
+    { id: id(), org_id: orgId, service_id: videoId,  label: "Standard walkthrough", price: 500, position: 0, updated_at: now },
+    { id: id(), org_id: orgId, service_id: videoId,  label: "Cinematic w/ drone B-roll", price: 750, position: 1, updated_at: now },
+  ]);
+  if (varErr) throw varErr;
+}
+
 async function seedDelivery(orgId, projects) {
   console.log("→ Seeding 1 delivery (gallery)…");
   // No real photos — Storage uploads happen via the app. But the row
@@ -637,6 +672,7 @@ async function main() {
   await seedPipelineLeads(orgId, clients);
   await seedProposalAndContract(orgId, clients, projects);
   await seedDelivery(orgId, projects);
+  await seedServiceCategories(orgId);
 
   console.log("\nDone.");
   console.log("---------------------------------------");

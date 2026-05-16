@@ -99,6 +99,41 @@ export function buildLineItems(
     const locName = locations.find(l => l.id === p.locationId)?.name;
     const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
 
+    // Service bundle pricing wins if the project has selected services.
+    // Each service becomes its own line item with the denormalized label
+    // and price snapshot from when the project was created/edited. This
+    // bypasses both the per_project and hourly branches below.
+    if (p.services && p.services.length > 0) {
+      for (const svc of p.services) {
+        items.push({
+          projectId: p.id,
+          date: p.date,
+          description: svc.label || projectLabel,
+          quantity: 1,
+          unitPrice: Number(svc.price || 0),
+          amount: Number(svc.price || 0),
+        });
+      }
+      // Skip the per_project/hourly branches — services define the price.
+      // Discount logic below still applies to the project's total.
+      const projectSubtotal = p.services.reduce((s, x) => s + Number(x.price || 0), 0);
+      const discountValue = getProjectDiscountValue(p, projectSubtotal);
+      if (discountValue > 0) {
+        const discountLabel = p.discountType === "percent"
+          ? `Discount (${Number(p.discountAmount)}% off)`
+          : "Discount";
+        items.push({
+          projectId: p.id,
+          date: p.date,
+          description: `${projectLabel} — ${discountLabel}`,
+          quantity: 1,
+          unitPrice: -discountValue,
+          amount: -discountValue,
+        });
+      }
+      continue;
+    }
+
     const effectiveModel = p.billingModel ?? client.billingModel;
     const projectSubtotal = getProjectSubtotal(p, client);
     if (effectiveModel === "per_project") {
