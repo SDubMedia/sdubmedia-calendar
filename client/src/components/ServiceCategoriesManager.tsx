@@ -264,13 +264,13 @@ function ServiceRow({ service }: { service: Service }) {
 
   return (
     <div className="rounded border border-border bg-secondary/20 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         {variants.length > 0 ? (
-          <button onClick={() => setShowVariants(v => !v)} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => setShowVariants(v => !v)} className="shrink-0 p-1.5 -m-1.5 text-muted-foreground hover:text-foreground">
             {showVariants ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         ) : (
-          <span className="w-3.5 h-3.5" />
+          <span className="w-3.5 h-3.5 shrink-0" />
         )}
         {editing ? (
           <>
@@ -279,7 +279,7 @@ function ServiceRow({ service }: { service: Service }) {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="flex-1 bg-background border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="flex-1 min-w-0 basis-full sm:basis-auto bg-background border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <span>$</span>
@@ -291,21 +291,33 @@ function ServiceRow({ service }: { service: Service }) {
                 className="w-20 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
-            <button onClick={handleSave} className="p-1 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
-            <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); }} className="p-1 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
+            <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
+            <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
           </>
         ) : (
           <>
-            <span className="flex-1 text-sm text-foreground">{service.name}</span>
+            <button
+              onClick={() => setEditing(true)}
+              className="flex-1 min-w-0 text-left text-sm text-foreground truncate hover:text-primary py-1"
+              title="Edit"
+            >
+              {service.name}
+            </button>
             {variants.length === 0 ? (
-              <span className="text-sm font-medium text-foreground tabular-nums">${service.defaultPrice.toLocaleString()}</span>
+              <button
+                onClick={() => setEditing(true)}
+                className="shrink-0 text-sm font-medium text-foreground tabular-nums hover:text-primary py-1"
+                title="Edit price"
+              >
+                ${service.defaultPrice.toLocaleString()}
+              </button>
             ) : (
-              <span className="text-xs text-muted-foreground italic">{variants.length} variant{variants.length === 1 ? "" : "s"}</span>
+              <span className="shrink-0 text-xs text-muted-foreground italic">{variants.length} variant{variants.length === 1 ? "" : "s"}</span>
             )}
-            <button onClick={() => setEditing(true)} className="p-1 text-muted-foreground hover:text-foreground" title="Edit">
+            <button onClick={() => setEditing(true)} className="shrink-0 p-2 text-muted-foreground hover:text-foreground" title="Edit">
               <Pencil className="w-3.5 h-3.5" />
             </button>
-            <button onClick={handleDelete} className="p-1 text-muted-foreground hover:text-red-400" title="Delete">
+            <button onClick={handleDelete} className="shrink-0 p-2 text-muted-foreground hover:text-red-400" title="Delete">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </>
@@ -382,13 +394,13 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
 
   if (editing) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           autoFocus
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="flex-1 min-w-0 basis-full sm:basis-auto bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <span>$</span>
@@ -400,18 +412,30 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
             className="w-16 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
-        <button onClick={handleSave} className="p-1 text-primary"><Save className="w-3.5 h-3.5" /></button>
-        <button onClick={() => { setEditing(false); setLabel(variant.label); setPrice(String(variant.price)); }} className="p-1 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+        <button onClick={handleSave} className="p-2 text-primary"><Save className="w-3.5 h-3.5" /></button>
+        <button onClick={() => { setEditing(false); setLabel(variant.label); setPrice(String(variant.price)); }} className="p-2 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="flex-1 text-muted-foreground">{variant.label}</span>
-      <span className="text-foreground tabular-nums">${variant.price.toLocaleString()}</span>
-      <button onClick={() => setEditing(true)} className="p-1 text-muted-foreground hover:text-foreground" title="Edit"><Pencil className="w-3 h-3" /></button>
-      <button onClick={handleDelete} className="p-1 text-muted-foreground hover:text-red-400" title="Delete"><Trash2 className="w-3 h-3" /></button>
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <button
+        onClick={() => setEditing(true)}
+        className="flex-1 min-w-0 text-left text-muted-foreground truncate hover:text-primary py-1"
+        title="Edit"
+      >
+        {variant.label}
+      </button>
+      <button
+        onClick={() => setEditing(true)}
+        className="shrink-0 text-foreground tabular-nums hover:text-primary py-1"
+        title="Edit price"
+      >
+        ${variant.price.toLocaleString()}
+      </button>
+      <button onClick={() => setEditing(true)} className="shrink-0 p-2 text-muted-foreground hover:text-foreground" title="Edit"><Pencil className="w-3 h-3" /></button>
+      <button onClick={handleDelete} className="shrink-0 p-2 text-muted-foreground hover:text-red-400" title="Delete"><Trash2 className="w-3 h-3" /></button>
     </div>
   );
 }

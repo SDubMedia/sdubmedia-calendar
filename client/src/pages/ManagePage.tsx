@@ -27,20 +27,22 @@ export default function ManagePage() {
       </div>
       <div className="flex-1 overflow-auto p-6">
         <Tabs defaultValue="crew">
-          <TabsList className="bg-secondary border border-border mb-6">
-            <TabsTrigger value="crew" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Users className="w-3.5 h-3.5 mr-1.5" /> Crew & Editors
-            </TabsTrigger>
-            <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
-            </TabsTrigger>
-            <TabsTrigger value="services" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Layers className="w-3.5 h-3.5 mr-1.5" /> Services
-            </TabsTrigger>
-            <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Shield className="w-3.5 h-3.5 mr-1.5" /> Users
-            </TabsTrigger>
-          </TabsList>
+          <div className="-mx-6 px-6 overflow-x-auto mb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsList className="bg-secondary border border-border w-max">
+              <TabsTrigger value="crew" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Users className="w-3.5 h-3.5 mr-1.5" /> Crew & Editors
+              </TabsTrigger>
+              <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
+              </TabsTrigger>
+              <TabsTrigger value="services" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Layers className="w-3.5 h-3.5 mr-1.5" /> Services
+              </TabsTrigger>
+              <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Shield className="w-3.5 h-3.5 mr-1.5" /> Users
+              </TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="crew"><CrewTab /></TabsContent>
           <TabsContent value="types"><ProjectTypesTab /></TabsContent>
           <TabsContent value="services"><ServiceCategoriesManager /></TabsContent>
