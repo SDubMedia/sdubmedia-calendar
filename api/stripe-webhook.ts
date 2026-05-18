@@ -32,6 +32,7 @@ import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
+import { syncConversionToScout } from "./_scoutSync.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -63,6 +64,27 @@ async function sendOpsAlert(subject: string, body: string) {
 async function orgNameFor(orgId: string): Promise<string> {
   const { data } = await supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
   return data?.name || orgId;
+}
+
+// Owner email lookup for Scout sync — Scout matches conversions to prospects
+// by email. No owner_email column on organizations, so we go via user_profiles.
+async function ownerEmailFor(orgId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("user_profiles")
+    .select("email")
+    .eq("org_id", orgId)
+    .eq("role", "owner")
+    .maybeSingle();
+  return data?.email || null;
+}
+
+// Pull billing interval + unit amount from the first subscription item.
+function subPriceInfo(sub: Stripe.Subscription): { interval: "month" | "year" | null; unitAmountCents: number | null } {
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  const interval = price?.recurring?.interval === "year" ? "year" : price?.recurring?.interval === "month" ? "month" : null;
+  const unitAmountCents = typeof price?.unit_amount === "number" ? price.unit_amount : null;
+  return { interval, unitAmountCents };
 }
 
 export const config = {
@@ -181,6 +203,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `🎉 New subscriber: ${name}`,
               `${name} just subscribed to ${plan.toUpperCase()} (${interval}).\nStatus: ${status}\nSubscription: ${sub.id}`
             );
+            // Scout sync (fire-and-forget — never throws, never blocks).
+            const email = await ownerEmailFor(orgId);
+            if (email) {
+              const { interval: priceInterval, unitAmountCents } = subPriceInfo(sub);
+              syncConversionToScout({
+                email,
+                source: "web",
+                event_type: "initial_purchase",
+                tier: plan,
+                billing_interval: priceInterval,
+                amount_gross_cents: unitAmountCents,
+                currency: sub.currency || "usd",
+                provider_subscription_id: sub.id,
+                provider_customer_id: typeof sub.customer === "string" ? sub.customer : sub.customer?.id || null,
+                dedupe_key: `stripe_sub_${sub.id}_created`,
+                raw_payload: { stripe_event_id: event.id, status, metadata: sub.metadata || {} },
+              });
+            }
           } else if (previousStatus === "past_due" || previousStatus === "unpaid") {
             const name = await orgNameFor(orgId);
             await sendOpsAlert(
@@ -213,6 +253,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `Cancelled: ${name}`,
             `${name} cancelled their ${prevPlan} subscription. Downgraded to free tier.\nSubscription: ${sub.id}`
           );
+          const email = await ownerEmailFor(orgId);
+          if (email) {
+            const { interval: priceInterval, unitAmountCents } = subPriceInfo(sub);
+            syncConversionToScout({
+              email,
+              source: "web",
+              event_type: "cancellation",
+              tier: (sub.metadata?.plan || "basic").toLowerCase() as "pro" | "basic" | "free",
+              billing_interval: priceInterval,
+              amount_gross_cents: unitAmountCents,
+              currency: sub.currency || "usd",
+              provider_subscription_id: sub.id,
+              provider_customer_id: typeof sub.customer === "string" ? sub.customer : sub.customer?.id || null,
+              dedupe_key: `stripe_sub_${sub.id}_deleted`,
+              raw_payload: { stripe_event_id: event.id, metadata: sub.metadata || {} },
+            });
+          }
         }
         break;
       }
@@ -228,6 +285,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
         if (customerId) await setBillingStatusByCustomer(customerId, "ok");
+
+        // Renewals only — skip the initial-purchase invoice (covered by customer.subscription.created above).
+        const reason = (invoice as Stripe.Invoice & { billing_reason?: string }).billing_reason;
+        const subId = (invoice as Stripe.Invoice & { subscription?: string | Stripe.Subscription }).subscription;
+        const subIdStr = typeof subId === "string" ? subId : subId?.id || null;
+        if (reason === "subscription_cycle" && subIdStr && customerId) {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("id, plan")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          if (orgRow?.id) {
+            const email = await ownerEmailFor(orgRow.id);
+            if (email) {
+              const line = invoice.lines?.data?.[0];
+              const priceInterval = line?.price?.recurring?.interval === "year"
+                ? "year"
+                : line?.price?.recurring?.interval === "month" ? "month" : null;
+              syncConversionToScout({
+                email,
+                source: "web",
+                event_type: "renewal",
+                tier: (orgRow.plan || "basic").toLowerCase() as "pro" | "basic" | "free",
+                billing_interval: priceInterval,
+                amount_gross_cents: invoice.amount_paid ?? null,
+                currency: invoice.currency || "usd",
+                provider_subscription_id: subIdStr,
+                provider_customer_id: customerId,
+                dedupe_key: `stripe_invoice_${invoice.id}`,
+                raw_payload: { stripe_event_id: event.id, billing_reason: reason },
+              });
+            }
+          }
+        }
         break;
       }
 

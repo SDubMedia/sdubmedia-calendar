@@ -34,6 +34,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
 import { errorMessage } from "./_auth.js";
+import { syncConversionToScout, type ScoutConversionPayload } from "./_scoutSync.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -75,6 +76,36 @@ function tierFromEntitlements(entitlements: string[] | undefined): "pro" | "basi
   if (set.has("pro")) return "pro";
   if (set.has("basic")) return "basic";
   return "free";
+}
+
+// Derive billing interval from product_id naming convention:
+//   slate_{tier}_monthly | slate_{tier}_annual
+function intervalFromProductId(productId: string | undefined): "month" | "year" | null {
+  if (!productId) return null;
+  const p = productId.toLowerCase();
+  if (p.includes("annual") || p.includes("yearly") || p.includes("year")) return "year";
+  if (p.includes("monthly") || p.includes("month")) return "month";
+  return null;
+}
+
+// Map RevenueCat event types to Scout conversion event_type. Returns null
+// for events Scout doesn't track (e.g. CANCELLATION before EXPIRATION,
+// where the user still has access).
+function scoutEventTypeFor(rcType: string): ScoutConversionPayload["event_type"] | null {
+  switch (rcType) {
+    case "INITIAL_PURCHASE":
+      return "initial_purchase";
+    case "RENEWAL":
+      return "renewal";
+    case "PRODUCT_CHANGE":
+      return "upgrade";
+    case "UNCANCELLATION":
+      return "reactivation";
+    case "EXPIRATION":
+      return "cancellation";
+    default:
+      return null;
+  }
 }
 
 function verifyAuthHeader(headerValue: string | undefined): boolean {
@@ -126,10 +157,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Map Supabase user → org. RC's appUserID was set to the Supabase
-    // user.id by initRevenueCat() in the mobile app.
+    // user.id by initRevenueCat() in the mobile app. Pull email at the
+    // same time — Scout sync needs it to match prospects.
     const { data: profile } = await supabase
       .from("user_profiles")
-      .select("org_id")
+      .select("org_id, email")
       .eq("id", appUserId)
       .maybeSingle();
 
@@ -139,6 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const orgId = profile.org_id as string;
+    const userEmail = (profile.email as string) || "";
     const entitlements = Array.isArray(event.entitlement_ids)
       ? (event.entitlement_ids as string[])
       : [];
@@ -188,6 +221,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       default:
         console.log(`[revenuecat-webhook] unhandled event type: ${type}`);
         break;
+    }
+
+    // Scout sync (fire-and-forget — never throws, never blocks).
+    // Only forward events that represent a real conversion lifecycle moment.
+    const scoutEventType = scoutEventTypeFor(type);
+    if (scoutEventType && userEmail) {
+      const productId = typeof event.product_id === "string" ? event.product_id : "";
+      const priceDollars = typeof event.price_in_purchased_currency === "number"
+        ? event.price_in_purchased_currency
+        : null;
+      const grossCents = priceDollars !== null ? Math.round(priceDollars * 100) : null;
+      const commissionPct = typeof event.commission_percentage === "number" ? event.commission_percentage : null;
+      const netCents = grossCents !== null && commissionPct !== null
+        ? Math.round(grossCents * (1 - commissionPct))
+        : null;
+      const currency = typeof event.currency === "string" ? event.currency.toLowerCase() : "usd";
+      const eventId = String(event.id || `${appUserId}_${event.event_timestamp_ms || Date.now()}`);
+      const txId = typeof event.original_transaction_id === "string"
+        ? event.original_transaction_id
+        : typeof event.transaction_id === "string" ? event.transaction_id : null;
+
+      const tier: "pro" | "basic" | "free" =
+        scoutEventType === "cancellation"
+          ? "free"
+          : tierFromEntitlements(entitlements);
+
+      syncConversionToScout({
+        email: userEmail,
+        source: "ios",
+        event_type: scoutEventType,
+        tier,
+        billing_interval: intervalFromProductId(productId),
+        amount_gross_cents: grossCents,
+        amount_net_cents: netCents,
+        currency,
+        provider_subscription_id: txId,
+        provider_customer_id: appUserId,
+        dedupe_key: `rc_${eventId}`,
+        raw_payload: { rc_event_type: type, product_id: productId, entitlements },
+      });
     }
 
     return res.status(200).json({ ok: true });
