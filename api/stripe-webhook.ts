@@ -447,7 +447,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   } catch (err) {
-    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${errorMessage(err)} raw=${err?.raw?.message}`);
+    const stripeRaw = (err as { raw?: { message?: string } } | null)?.raw?.message ?? "";
+    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${errorMessage(err)} raw=${stripeRaw}`);
     await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${errorMessage(err)}` });
     // Return 200 anyway so Stripe doesn't retry on our internal errors.
     // Webhook replay from dashboard is still possible if needed.
