@@ -165,18 +165,25 @@ export default function DashboardPage() {
     return months;
   }, [data.projects, data.clients, currentYear, currentMonth]);
 
-  // Mileage summary for the current user's crew member.
-  // Mirrors MileageReportPage's three-source aggregation (project crew
-  // trips + manual trips + meeting trips) so the dashboard total matches
-  // the Mileage tab. Was previously project-only, which made manual /
-  // meeting trips silently invisible on the dashboard.
+  // Mileage summary — MUST mirror MileageReportPage's three-source
+  // aggregation exactly so the dashboard total matches the Mileage tab.
+  // Differences that bit us in earlier passes:
+  //   1. Mileage tab counts ONLY p.crew (on-site crew), NOT
+  //      p.postProduction (remote editors don't drive to set).
+  //   2. Distance lookup is keyed by {homeBaseId}|{locationId} with
+  //      a multi-base "pick shortest" fallback — crew members can have
+  //      multiple home bases (Travel Bases).
   const mileageStats = useMemo(() => {
     const crewMemberId = effectiveProfile?.crewMemberId || "";
     const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id || "";
     if (!ownerCrewId) return { monthMiles: 0, yearMiles: 0, tripCount: 0 };
 
-    const distances = data.crewLocationDistances.filter(d => d.crewMemberId === ownerCrewId);
-    const distanceMap = new Map(distances.map(d => [d.locationId, d.distanceMiles]));
+    const crewMember = data.crewMembers.find(c => c.id === ownerCrewId);
+
+    const distanceMap = new Map<string, number>();
+    data.crewLocationDistances
+      .filter(d => d.crewMemberId === ownerCrewId)
+      .forEach(d => distanceMap.set(`${d.homeBaseId}|${d.locationId}`, d.distanceMiles));
 
     let monthMiles = 0;
     let yearMiles = 0;
@@ -190,16 +197,29 @@ export default function DashboardPage() {
       if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
     };
 
-    // Source 1: project crew trips
+    // Source 1: project ON-SITE crew trips (NOT postProduction)
     data.projects.forEach(p => {
-      const isOnProject = [...(p.crew || []), ...(p.postProduction || [])]
-        .some(e => e.crewMemberId === ownerCrewId);
-      if (!isOnProject || !p.locationId) return;
       const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
-      const oneWay = crewEntry?.roundTripMiles
-        ? crewEntry.roundTripMiles / 2
-        : (distanceMap.get(p.locationId) || 0);
-      addTrip(new Date(p.date + "T00:00:00"), oneWay * 2);
+      if (!crewEntry) return;
+
+      let oneWay = 0;
+      if (crewEntry.roundTripMiles && crewEntry.roundTripMiles > 0) {
+        oneWay = crewEntry.roundTripMiles / 2;
+      } else if (p.locationId) {
+        if (crewEntry.homeBaseId) {
+          oneWay = distanceMap.get(`${crewEntry.homeBaseId}|${p.locationId}`) || 0;
+        } else {
+          const baseIds = (crewMember?.homeBases || []).map(b => b.id);
+          if (baseIds.length === 0) baseIds.push("primary");
+          let closest = Infinity;
+          baseIds.forEach(baseId => {
+            const d = distanceMap.get(`${baseId}|${p.locationId}`);
+            if (typeof d === "number" && d < closest) closest = d;
+          });
+          oneWay = closest === Infinity ? 0 : closest;
+        }
+      }
+      addTrip(new Date(p.date + "T00:00:00"), Math.round(oneWay * 2 * 10) / 10);
     });
 
     // Source 2: manual one-off trips
@@ -215,7 +235,7 @@ export default function DashboardPage() {
       const scopedToMe = m.ownerUserId === effectiveProfile?.id
         || (Array.isArray(m.assignedUserIds) && !!effectiveProfile?.id && m.assignedUserIds.includes(effectiveProfile.id));
       if (!scopedToMe) return;
-      addTrip(new Date(m.date + "T00:00:00"), m.oneWayMiles * 2);
+      addTrip(new Date(m.date + "T00:00:00"), Math.round(m.oneWayMiles * 2 * 10) / 10);
     });
 
     return { monthMiles: Math.round(monthMiles * 10) / 10, yearMiles: Math.round(yearMiles * 10) / 10, tripCount };
