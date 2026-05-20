@@ -241,6 +241,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("user_profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     await refreshProfiles();
+    // If the updated profile IS the currently-logged-in user, also
+    // refresh THE current `profile` state. refreshProfiles only updates
+    // the `allProfiles` array; without this, customize-my-menu toggles
+    // (and any other self-profile edits) silently don't take effect
+    // for the user editing them.
+    setProfile(p => {
+      if (!p || p.id !== id) return p;
+      return { ...p, ...updates } as UserProfile;
+    });
   }, [refreshProfiles]);
 
   const deleteUser = useCallback(async (id: string) => {
