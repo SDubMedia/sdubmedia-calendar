@@ -19,7 +19,22 @@ import UsersPage from "./UsersPage";
 import SettingsPage from "./SettingsPage";
 import ServiceCategoriesManager from "@/components/ServiceCategoriesManager";
 
+const MANAGE_TAB_KEY = "manage-tab";
+
 export default function ManagePage() {
+  // Controlled + sessionStorage-persisted so a child triggering a
+  // re-render (e.g. SettingsPage's "Customize my menu" toggle which
+  // updates the user profile and bubbles) doesn't reset the tab
+  // back to Crew & Editors mid-edit.
+  const [tab, setTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "crew";
+    return sessionStorage.getItem(MANAGE_TAB_KEY) || "crew";
+  });
+  const handleTabChange = (v: string) => {
+    setTab(v);
+    try { sessionStorage.setItem(MANAGE_TAB_KEY, v); } catch { /* ignore */ }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-4 border-b border-border bg-card/50">
@@ -27,7 +42,7 @@ export default function ManagePage() {
         <p className="text-sm text-muted-foreground mt-0.5">Crew, project types, and user accounts</p>
       </div>
       <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="crew">
+        <Tabs value={tab} onValueChange={handleTabChange}>
           <div className="-mx-6 px-6 overflow-x-auto mb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsList className="bg-secondary border border-border w-max">
               <TabsTrigger value="crew" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">

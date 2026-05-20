@@ -1173,9 +1173,12 @@ function CustomizeMyMenu({ profile, updateUserProfile }: { profile: CustomizePro
     }
     setSaving(href);
     try {
-      await updateUserProfile(profile.id, {
-        featureOverrides: Object.keys(next).length > 0 ? next : undefined,
-      });
+      // Always send the object (even when empty) so updateUserProfile
+      // writes it to Supabase. If we sent undefined, the guard in
+      // updateUserProfile would skip the field and the old hidden
+      // state would never clear — the bug that made toggles
+      // un-uncheckable.
+      await updateUserProfile(profile.id, { featureOverrides: next });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't update menu");
     } finally {
