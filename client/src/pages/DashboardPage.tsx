@@ -165,10 +165,13 @@ export default function DashboardPage() {
     return months;
   }, [data.projects, data.clients, currentYear, currentMonth]);
 
-  // Mileage summary for the current user's crew member
+  // Mileage summary for the current user's crew member.
+  // Mirrors MileageReportPage's three-source aggregation (project crew
+  // trips + manual trips + meeting trips) so the dashboard total matches
+  // the Mileage tab. Was previously project-only, which made manual /
+  // meeting trips silently invisible on the dashboard.
   const mileageStats = useMemo(() => {
     const crewMemberId = effectiveProfile?.crewMemberId || "";
-    // For owner, find their crew member by matching email
     const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id || "";
     if (!ownerCrewId) return { monthMiles: 0, yearMiles: 0, tripCount: 0 };
 
@@ -179,32 +182,44 @@ export default function DashboardPage() {
     let yearMiles = 0;
     let tripCount = 0;
 
-    data.projects.forEach(p => {
-      const d = new Date(p.date + "T00:00:00");
-      const isThisYear = d.getFullYear() === currentYear;
-      const isThisMonth = isThisYear && d.getMonth() === currentMonth;
+    const addTrip = (date: Date, roundTrip: number) => {
+      if (roundTrip <= 0) return;
+      const isThisYear = date.getFullYear() === currentYear;
+      const isThisMonth = isThisYear && date.getMonth() === currentMonth;
+      if (isThisYear) yearMiles += roundTrip;
+      if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
+    };
 
-      // Check if this crew member is on this project
+    // Source 1: project crew trips
+    data.projects.forEach(p => {
       const isOnProject = [...(p.crew || []), ...(p.postProduction || [])]
         .some(e => e.crewMemberId === ownerCrewId);
+      if (!isOnProject || !p.locationId) return;
+      const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
+      const oneWay = crewEntry?.roundTripMiles
+        ? crewEntry.roundTripMiles / 2
+        : (distanceMap.get(p.locationId) || 0);
+      addTrip(new Date(p.date + "T00:00:00"), oneWay * 2);
+    });
 
-      if (isOnProject && p.locationId) {
-        // Use snapshot miles from crew entry first, fall back to cached distance
-        const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
-        const oneWay = crewEntry?.roundTripMiles
-          ? crewEntry.roundTripMiles / 2
-          : (distanceMap.get(p.locationId) || 0);
-        const roundTrip = oneWay * 2;
+    // Source 2: manual one-off trips
+    (data.manualTrips || []).forEach(t => {
+      if (t.crewMemberId !== ownerCrewId) return;
+      addTrip(new Date(t.date + "T00:00:00"), t.roundTripMiles || 0);
+    });
 
-        if (roundTrip > 0) {
-          if (isThisYear) yearMiles += roundTrip;
-          if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
-        }
-      }
+    // Source 3: meetings with computed distance, scoped same way
+    // MileageReportPage scopes them (owner or assigned).
+    (data.meetings || []).forEach(m => {
+      if (typeof m.oneWayMiles !== "number" || m.oneWayMiles <= 0) return;
+      const scopedToMe = m.ownerUserId === effectiveProfile?.id
+        || (Array.isArray(m.assignedUserIds) && !!effectiveProfile?.id && m.assignedUserIds.includes(effectiveProfile.id));
+      if (!scopedToMe) return;
+      addTrip(new Date(m.date + "T00:00:00"), m.oneWayMiles * 2);
     });
 
     return { monthMiles: Math.round(monthMiles * 10) / 10, yearMiles: Math.round(yearMiles * 10) / 10, tripCount };
-  }, [data.projects, data.crewLocationDistances, data.crewMembers, effectiveProfile, currentYear, currentMonth]);
+  }, [data.projects, data.manualTrips, data.meetings, data.crewLocationDistances, data.crewMembers, effectiveProfile, currentYear, currentMonth]);
 
   return (
     <div className="flex flex-col h-full">
