@@ -18,11 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon, KeyRound, Menu as MenuIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getAuthToken } from "@/lib/supabase";
+import { getAuthToken, supabase } from "@/lib/supabase";
 
 interface FeatureToggle {
   key: keyof OrgFeatures;
@@ -52,7 +53,10 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "reports", label: "Reports", description: "View financial and project reports" },
 ];
 
-export default function SettingsPage() {
+// `embedded` lets ManagePage render Settings inside one of its tabs
+// without its own page header — matches UsersPage's pattern.
+export default function SettingsPage(props?: { embedded?: boolean }) {
+  const embedded = props?.embedded ?? false;
   const { data, updateOrganization, addLocation, updateLocation, updateCrewMember } = useApp();
   const { profile, allProfiles, updateUserProfile } = useAuth();
   const org = data.organization;
@@ -114,6 +118,39 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
   const [connectingStripe, setConnectingStripe] = useState(false);
+
+  // Change-password card state (parity with slate-mobile)
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!profile?.email) {
+      toast.error("Missing account email — sign out and back in, then try again.");
+      return;
+    }
+    if (!currentPassword) { toast.error("Enter your current password first"); return; }
+    if (newPassword.length < 6) { toast.error("New password must be at least 6 characters"); return; }
+    if (newPassword !== confirmPassword) { toast.error("New passwords do not match"); return; }
+    if (newPassword === currentPassword) { toast.error("New password must be different from current"); return; }
+    setChangingPassword(true);
+    try {
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password: currentPassword,
+      });
+      if (verifyErr) { toast.error("Current password is incorrect"); return; }
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateErr) { toast.error(updateErr.message || "Failed to update password"); return; }
+      toast.success("Password updated");
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   // Owner's crew member — looked up by linked crew_member_id, with
   // email fallback (matches MileageReport's approach for owners who
@@ -333,22 +370,32 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div className="min-w-0">
-          <h1 className="text-lg sm:text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Settings
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">Company settings and feature configuration</p>
+    <div className={embedded ? "" : "flex flex-col h-full"}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Settings
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">Company settings and feature configuration</p>
+          </div>
+          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
+            <Save className="w-4 h-4" />
+            <span className="hidden sm:inline">{saving ? "Saving..." : "Save Changes"}</span>
+            <span className="sm:hidden">{saving ? "…" : "Save"}</span>
+          </Button>
         </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
-          <Save className="w-4 h-4" />
-          <span className="hidden sm:inline">{saving ? "Saving..." : "Save Changes"}</span>
-          <span className="sm:hidden">{saving ? "…" : "Save"}</span>
-        </Button>
-      </div>
+      )}
+      {embedded && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
+            <Save className="w-4 h-4" />
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-6 max-w-2xl">
+      <div className={embedded ? "space-y-6 max-w-2xl" : "flex-1 overflow-auto p-3 sm:p-6 space-y-6 max-w-2xl"}>
         {/* Company Info */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
@@ -411,6 +458,41 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Password — change while logged in (parity with slate-mobile) */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <KeyRound className="w-4 h-4 text-primary" />
+              Password
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Change the password for {profile?.email || "your account"}.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Current password</Label>
+              <Input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your current password" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">New password</Label>
+              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" placeholder="Min 6 characters" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Confirm new password</Label>
+              <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter new password" className="bg-secondary border-border" />
+            </div>
+            <Button
+              onClick={handleChangePassword}
+              disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+              className="w-full sm:w-auto"
+            >
+              {changingPassword ? "Updating…" : "Update Password"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Customize my menu — per-user nav visibility toggles */}
+        <CustomizeMyMenu profile={profile} updateUserProfile={updateUserProfile} />
 
         {/* Branding — logo + favicon */}
         <Card className="bg-card border-border">
@@ -1028,6 +1110,119 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// CustomizeMyMenu — per-user nav visibility (parity with slate-mobile).
+// Toggling an item OFF writes `nav.${href}: false` into the user's
+// featureOverrides JSONB. AppLayout's filterItem reads the same key
+// and hides the entry. Owners can declutter their own menu; staff/
+// partner/client can too within their role's allowed items.
+// Dashboard, Manage, and Help are not listed.
+// ============================================================
+type CustomizeProfile = { id: string; featureOverrides?: Record<string, boolean> } | null;
+type UpdateProfileFn = (id: string, patch: { featureOverrides?: Record<string, boolean> }) => Promise<void>;
+
+const HIDEABLE_NAV: { section: string; items: { href: string; label: string }[] }[] = [
+  { section: "Calendar", items: [
+    { href: "/calendar", label: "Calendar" },
+  ]},
+  { section: "Sales", items: [
+    { href: "/pipeline", label: "Pipeline" },
+    { href: "/proposals", label: "Proposals" },
+    { href: "/contracts", label: "Contracts" },
+  ]},
+  { section: "Production", items: [
+    { href: "/clients", label: "Clients" },
+    { href: "/client-health", label: "Client Health" },
+    { href: "/locations", label: "Locations" },
+  ]},
+  { section: "Team", items: [
+    { href: "/staff", label: "Staff" },
+  ]},
+  { section: "Finance", items: [
+    { href: "/billing", label: "Billing" },
+    { href: "/invoices", label: "Invoices" },
+    { href: "/contractor-invoices", label: "Contractor Invoices" },
+    { href: "/outstanding-payments", label: "Outstanding Payments" },
+    { href: "/expenses", label: "Expenses" },
+    { href: "/marketing-budget", label: "Budget" },
+  ]},
+  { section: "Reports", items: [
+    { href: "/reports", label: "Reports" },
+  ]},
+  { section: "Other", items: [
+    { href: "/calendar-sync", label: "Calendar Sync" },
+    { href: "/trash", label: "Archive" },
+  ]},
+];
+
+function CustomizeMyMenu({ profile, updateUserProfile }: { profile: CustomizeProfile; updateUserProfile: UpdateProfileFn }) {
+  const overrides = profile?.featureOverrides || {};
+  const [saving, setSaving] = useState<string | null>(null);
+
+  async function toggle(href: string, visible: boolean) {
+    if (!profile?.id) return;
+    const key = `nav.${href}`;
+    const next: Record<string, boolean> = { ...overrides };
+    if (visible) {
+      delete next[key];
+    } else {
+      next[key] = false;
+    }
+    setSaving(href);
+    try {
+      await updateUserProfile(profile.id, {
+        featureOverrides: Object.keys(next).length > 0 ? next : undefined,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update menu");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          <MenuIcon className="w-4 h-4 text-primary" />
+          Customize my menu
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Hide items you don't use from the navigation menu. Only affects YOUR view — other users keep their own settings.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {HIDEABLE_NAV.map(section => (
+          <div key={section.section}>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">{section.section}</div>
+            <div className="space-y-2">
+              {section.items.map(item => {
+                const hidden = overrides[`nav.${item.href}`] === false;
+                return (
+                  <div key={item.href} className="flex items-center justify-between gap-3 py-1">
+                    <Label className="text-sm text-foreground flex-1 cursor-pointer" htmlFor={`nav-${item.href}`}>
+                      {item.label}
+                    </Label>
+                    <Switch
+                      id={`nav-${item.href}`}
+                      checked={!hidden}
+                      onCheckedChange={(v) => toggle(item.href, v)}
+                      disabled={saving === item.href}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Dashboard, Manage, and Help can't be hidden.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

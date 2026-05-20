@@ -103,16 +103,16 @@ const navStructure: NavEntry[] = [
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner"], feature: "contentSeries" },
   ]},
 
-  // Team — owner and partner only
-  { label: "Team", icon: Users2, roles: ["owner", "partner"], items: [
-    { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
-    { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
-  ]},
+  // Team — only Staff lives here, so render as a direct link instead
+  // of an expandable section (was tap-Team → tap-Staff, now one tap).
+  // Contractor Invoices moved to Finance since it's invoice-related.
+  { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
 
   // Finance — owner and partner only
   { label: "Finance", icon: Receipt, roles: ["owner", "partner"], items: [
     { label: "Billing", href: "/billing", icon: FileText, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
+    { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Outstanding Payments", href: "/outstanding-payments", icon: AlertCircle, roles: ["owner", "partner"] },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "budget" },
@@ -131,11 +131,11 @@ const navStructure: NavEntry[] = [
   // Staff-specific
   { label: "My Invoices", href: "/my-invoices", icon: Receipt, roles: ["staff"], feature: "invoicing" },
 
-  // Admin
+  // Admin — Settings is now a tab inside Manage instead of its own
+  // top-level entry, so we drop it from the nav here.
   { label: "Manage", href: "/manage", icon: Settings, roles: ["owner"] },
   { label: "Calendar Sync", href: "/calendar-sync", icon: CalendarDays, roles: ["owner", "staff", "family"], feature: "calendar" },
   { label: "Archive", href: "/trash", icon: Trash2, roles: ["owner"] },
-  { label: "Settings", href: "/settings", icon: Settings, roles: ["owner"] },
   { label: "Help", href: "/help", icon: HelpCircle, roles: ["owner", "partner", "client", "staff", "family"] },
 ];
 
@@ -169,6 +169,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const userOverrides = effectiveProfile?.featureOverrides;
   const filteredNav = useMemo(() => {
     function filterItem(item: NavItem): boolean {
+      // User-hidden via Settings → "Customize my menu". Applies to ALL
+      // roles including owner so anyone can declutter their own nav.
+      // Key shape: `nav.${href}` → false hides the item.
+      if (userOverrides && item.href) {
+        const navKey = `nav.${item.href}`;
+        if (userOverrides[navKey] === false) return false;
+      }
+
       const roleAllowed = item.roles.includes(role);
       if (role !== "owner" && item.feature && features) {
         // 1. Per-user override — can grant access to role-restricted features
