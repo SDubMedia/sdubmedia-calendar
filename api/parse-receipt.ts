@@ -7,7 +7,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Anthropic from "@anthropic-ai/sdk";
-import { verifyAuth, getUserOrgId } from "./_auth.js";
+import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 import { createClient } from "@supabase/supabase-js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         content: [
           {
             type: "image",
-            source: { type: "base64", media_type: (mimeType as any) || "image/jpeg", data: imageBase64 },
+            source: { type: "base64", media_type: (mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp" | undefined) || "image/jpeg", data: imageBase64 },
           },
           {
             type: "text",
@@ -64,8 +64,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const data = JSON.parse(jsonMatch[0]);
     return res.status(200).json({ data });
-  } catch (err: any) {
-    console.error(`[parse-receipt] msg=${err?.message} type=${err?.type}`);
-    return res.status(500).json({ error: err.message || "Failed to parse receipt" });
+  } catch (err) {
+    console.error(`[parse-receipt] msg=${errorMessage(err)} type=${err?.type}`);
+    return res.status(500).json({ error: errorMessage(err, "Failed to parse receipt") });
   }
 }

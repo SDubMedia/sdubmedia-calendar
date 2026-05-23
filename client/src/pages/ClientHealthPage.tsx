@@ -58,8 +58,8 @@ export default function ClientHealthPage() {
       const marginPercent = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0;
 
       // Project counts
-      const completedProjects = clientProjects.filter(p => p.status === "completed").length;
-      const activeProjects = clientProjects.filter(p => p.status !== "completed").length;
+      const completedProjects = clientProjects.filter(p => p.status === "editing_done" || p.status === "delivered").length;
+      const activeProjects = clientProjects.filter(p => p.status !== "editing_done" && p.status !== "delivered" && p.status !== "cancelled").length;
       const sortedByDate = [...clientProjects].sort((a, b) => b.date.localeCompare(a.date));
       const lastProjectDate = sortedByDate[0]?.date || "";
 

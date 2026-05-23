@@ -13,7 +13,7 @@ import {
   getProjectInvoiceAmount,
   calcHoursWorked,
 } from "../data";
-import type { Client, Project, ProjectCrewEntry, ProjectPostEntry } from "../types";
+import type { Client, Project, ProjectCrewEntry } from "../types";
 
 // ---- Factory helpers ----
 
@@ -46,12 +46,14 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     date: "2026-04-01",
     startTime: "10:00",
     endTime: "14:00",
-    status: "completed",
+    status: "editing_done",
     crew: [],
     postProduction: [],
     editTypes: [],
     notes: "",
     deliverableUrl: "",
+    cancellationReason: "",
+    cancelledAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -416,5 +418,54 @@ describe("getProjectInvoiceAmount edge cases", () => {
       ],
     });
     expect(getProjectInvoiceAmount(p, client)).toBe(400); // (2*1.0 + 4*0.5) * $100
+  });
+});
+
+// ---- Cancelled-project exclusions ----
+
+describe("cancellation: getProjectInvoiceAmount", () => {
+  it("returns 0 for cancelled hourly project even with billable hours", () => {
+    const client = makeClient({ billingRatePerHour: 200 });
+    const p = makeProject({
+      status: "cancelled",
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 5, payRatePerHour: 50 }],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(0);
+  });
+
+  it("returns 0 for cancelled per-project flat-rate project", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 1500 });
+    const p = makeProject({ status: "cancelled" });
+    expect(getProjectInvoiceAmount(p, client)).toBe(0);
+  });
+
+  it("returns 0 for cancelled project with project-level billing override", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 1500 });
+    const p = makeProject({ status: "cancelled", billingRate: 999 });
+    expect(getProjectInvoiceAmount(p, client)).toBe(0);
+  });
+});
+
+describe("cancellation: getProjectBillableHours", () => {
+  it("returns all zeros for cancelled project even with crew", () => {
+    const client = makeClient({ billingRatePerHour: 200 });
+    const p = makeProject({
+      status: "cancelled",
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
+      postProduction: [{ crewMemberId: "c2", role: "Editor", hoursWorked: 2, payRatePerHour: 40 }],
+    });
+    expect(getProjectBillableHours(p, client)).toEqual({
+      crewBillable: 0, postBillable: 0, totalBillable: 0,
+    });
+  });
+
+  it("non-cancelled project still bills normally", () => {
+    const client = makeClient({ billingRatePerHour: 200 });
+    const p = makeProject({
+      status: "editing_done",
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
+    });
+    const result = getProjectBillableHours(p, client);
+    expect(result.totalBillable).toBeGreaterThan(0);
   });
 });

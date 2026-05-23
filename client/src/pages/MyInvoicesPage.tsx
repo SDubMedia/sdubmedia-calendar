@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  FileText, Plus, Download, Trash2, Save, Building2,
+  FileText, Plus, Download, Trash2, Save, Building2, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
@@ -42,7 +42,7 @@ export default function MyInvoicesPage() {
   const myProjects = useMemo(() => {
     if (!crewMember) return [];
     return data.projects.filter(p => {
-      if (p.status !== "completed") return false;
+      if (p.status !== "editing_done" && p.status !== "delivered") return false;
       const inCrew = p.crew.some(c => c.crewMemberId === crewMember.id);
       const inPost = p.postProduction.some(c => c.crewMemberId === crewMember.id);
       return inCrew || inPost;
@@ -301,13 +301,18 @@ export default function MyInvoicesPage() {
                   </Button>
                   {inv.status === "draft" && (
                     <>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleMarkSent(inv)} title="Mark as Sent">
-                        <FileText className="w-4 h-4" />
+                      <Button size="sm" onClick={() => handleMarkSent(inv)} className="gap-1 text-xs">
+                        <Send className="w-3.5 h-3.5" /> Submit for Payment
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(inv)} title="Delete">
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </>
+                  )}
+                  {inv.status === "paid" && (
+                    <Badge className="bg-green-500/15 text-green-300 border border-green-500/30 text-[10px]">
+                      Paid {inv.paidAt ? `· ${new Date(inv.paidAt).toLocaleDateString()}` : ""}
+                    </Badge>
                   )}
                 </div>
               </div>

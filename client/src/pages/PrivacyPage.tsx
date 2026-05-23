@@ -41,6 +41,8 @@ export default function PrivacyPage() {
             <li><strong>Business data you enter:</strong> projects, clients, crew, invoices, contracts, proposals, schedules, financial data — the normal stuff for running a production company. You own this data.</li>
             <li><strong>Billing data:</strong> if you subscribe to a paid plan, Stripe collects your card details directly. We never see or store your card number. We receive and store your Stripe customer ID and subscription status.</li>
             <li><strong>Stripe Connect data:</strong> if you enable Stripe Connect to receive payments from your customers, we store your Stripe account ID. Your customers' payment details never touch our servers.</li>
+            <li><strong>Inbound email replies:</strong> if you configure inbound-email forwarding (e.g., replies@your-slate-address forwards to our webhook), we store the parsed reply text + sender + timestamp on the matching proposal or contract record so you can see threads inside the app. We don't read or analyze the message content beyond matching it to a record.</li>
+            <li><strong>Email send + open metadata:</strong> for each transactional email we send through Resend, we record send timestamp, recipient, subject, and delivery status (sent / bounced / complained). We do not track which links the recipient clicks.</li>
             <li><strong>Usage logs:</strong> standard server logs (IP, browser, timestamps) kept for security and debugging.</li>
           </ul>
         </section>
@@ -49,6 +51,7 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold">How we use it</h2>
           <ul className="list-disc pl-6 space-y-1">
             <li>To run the Service — show you your projects, send you notifications, process payments.</li>
+            <li>To send automated transactional emails on your behalf (contract-for-signature, signed-contract receipts, payment reminders, event reminders, owner notifications). These fire from <code>noreply@slate.sdubmedia.com</code> with your company name as the display name and your business email as reply-to, so replies route directly to you.</li>
             <li>To support you when you contact us.</li>
             <li>To improve the product — aggregated, non-identifying usage signals.</li>
             <li>To comply with legal obligations.</li>

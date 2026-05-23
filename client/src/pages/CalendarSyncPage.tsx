@@ -84,6 +84,29 @@ export default function CalendarSyncPage() {
             </p>
           </div>
 
+          {/* Apple Calendar (shown first — most users reach for it on iOS) */}
+          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <CalendarDays className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Apple Calendar</h2>
+                <p className="text-xs text-muted-foreground">Adds the selected feed as a subscribed calendar (Mac, iPhone, iPad)</p>
+              </div>
+            </div>
+            <a
+              href={webcalUrl}
+              className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-500 transition-colors"
+            >
+              <CalendarDays className="w-4 h-4" />
+              Add to Apple Calendar
+            </a>
+            <p className="text-[10px] text-muted-foreground text-center">
+              Tip: subscribe to Production and My Life separately to toggle them independently.
+            </p>
+          </div>
+
           {/* Google Calendar */}
           <div className="bg-card border border-border rounded-xl p-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -105,29 +128,6 @@ export default function CalendarSyncPage() {
               Add to Google Calendar
             </a>
             <p className="text-[10px] text-muted-foreground text-center">Google Calendar syncs automatically every 12-24 hours</p>
-          </div>
-
-          {/* Apple Calendar */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-zinc-500/10 flex items-center justify-center">
-                <CalendarDays className="w-5 h-5 text-zinc-400" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Apple Calendar</h2>
-                <p className="text-xs text-muted-foreground">Adds the selected feed as a subscribed calendar (Mac, iPhone, iPad)</p>
-              </div>
-            </div>
-            <a
-              href={webcalUrl}
-              className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-secondary border border-border text-foreground rounded-lg text-sm font-semibold hover:bg-secondary/80 transition-colors"
-            >
-              <CalendarDays className="w-4 h-4" />
-              Add to Apple Calendar
-            </a>
-            <p className="text-[10px] text-muted-foreground text-center">
-              Tip: subscribe to Production and My Life separately to toggle them independently.
-            </p>
           </div>
 
           {/* Manual / Other Apps */}

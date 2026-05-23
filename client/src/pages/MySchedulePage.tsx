@@ -12,10 +12,12 @@ import { cn } from "@/lib/utils";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 
 const STATUS_LABELS: Record<string, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
@@ -102,7 +104,7 @@ export default function MySchedulePage() {
           const rate = project.editorBilling?.perImageRate ?? 6;
           const imgs = project.editorBilling?.imageCount ?? 0;
           // Finalized if explicitly set OR project is completed
-          const isFinalized = project.editorBilling?.finalized === true || project.status === "completed";
+          const isFinalized = project.editorBilling?.finalized === true || project.status === "editing_done" || project.status === "delivered";
           const pay = imgs * rate;
           if (imgs > 0) {
             totalPay += pay;
@@ -176,10 +178,12 @@ export default function MySchedulePage() {
                 {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
               </span>
               <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border",
+                project.status === "tentative" && "border-dashed border-amber-400/50 text-amber-300 bg-amber-400/10",
                 project.status === "upcoming" && "border-blue-500/40 text-blue-300 bg-blue-500/10",
                 project.status === "filming_done" && "border-purple-500/40 text-purple-300 bg-purple-500/10",
                 project.status === "in_editing" && "border-amber-500/40 text-amber-300 bg-amber-500/10",
-                project.status === "completed" && "border-green-500/40 text-green-300 bg-green-500/10",
+                project.status === "editing_done" && "border-teal-500/40 text-teal-300 bg-teal-500/10",
+                project.status === "delivered" && "border-green-500/40 text-green-300 bg-green-500/10",
               )}>
                 {STATUS_LABELS[project.status]}
               </span>
@@ -416,10 +420,12 @@ export default function MySchedulePage() {
                         {dayProjects.slice(0, 3).map(p => (
                           <div key={p.id} className={cn(
                             "w-1.5 h-1.5 rounded-full",
+                            p.status === "tentative" && "bg-amber-300 ring-1 ring-amber-400/60",
                             p.status === "upcoming" && "bg-blue-400",
                             p.status === "filming_done" && "bg-purple-400",
                             p.status === "in_editing" && "bg-amber-400",
-                            p.status === "completed" && "bg-green-400",
+                            p.status === "editing_done" && "bg-teal-400",
+                            p.status === "delivered" && "bg-green-400",
                           )} />
                         ))}
                       </div>
@@ -428,17 +434,18 @@ export default function MySchedulePage() {
                     {/* Project chips */}
                     <div className="space-y-0.5 hidden sm:block">
                       {dayProjects.slice(0, 3).map(p => {
-                        const { totalPay } = getMyPay(p);
                         return (
                           <div
                             key={p.id}
                             onClick={() => setSelectedProject(p)}
                             className={cn(
                               "text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              p.status === "tentative" && "bg-amber-400/15 text-amber-300 border border-dashed border-amber-400/40",
                               p.status === "upcoming" && "bg-blue-500/25 text-blue-300",
                               p.status === "filming_done" && "bg-purple-500/25 text-purple-300",
                               p.status === "in_editing" && "bg-amber-500/25 text-amber-300",
-                              p.status === "completed" && "bg-green-500/25 text-green-300",
+                              p.status === "editing_done" && "bg-teal-500/25 text-teal-300",
+                              p.status === "delivered" && "bg-green-500/25 text-green-300",
                             )}
                           >
                             {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}

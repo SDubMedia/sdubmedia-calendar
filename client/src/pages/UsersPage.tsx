@@ -28,10 +28,17 @@ const ROLE_COLORS: Record<UserRole, string> = {
   family: "bg-rose-500/20 text-rose-300 border-rose-500/30",
 };
 
-export default function UsersPage() {
+// `embedded` lets ManagePage render this inside one of its tabs without
+// duplicating the page header / outer flex shell. When false (default),
+// renders as a standalone page at /users.
+export default function UsersPage(props?: { embedded?: boolean }) {
+  const embedded = props?.embedded ?? false;
   const { allProfiles, refreshProfiles, createUser, updateUserProfile, deleteUser, profile: myProfile } = useAuth();
   const { data } = useApp();
   const [showForm, setShowForm] = useState(false);
+  // Role filter pill — defaults to "all". Lets the owner jump to a single
+  // role's user list quickly without scrolling.
+  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "client" as UserRole, clientIds: [] as string[], crewMemberId: "" });
   const [sendInvite, setSendInvite] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +47,7 @@ export default function UsersPage() {
   const [editClientIds, setEditClientIds] = useState<string[]>([]);
   const [editRole, setEditRole] = useState<UserRole>("client");
   const [editCrewMemberId, setEditCrewMemberId] = useState<string>("");
+  const [editShowInMeetings, setEditShowInMeetings] = useState<boolean>(true);
   const [editEmail, setEditEmail] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
   const [editPassword, setEditPassword] = useState("");
@@ -122,6 +130,7 @@ export default function UsersPage() {
     setEditClientIds(u.clientIds);
     setEditRole(u.role);
     setEditCrewMemberId(u.crewMemberId || "");
+    setEditShowInMeetings(u.showInMeetingAssignments !== false);
     setEditEmail(u.email);
     setEditPassword("");
     setEditForceChange(true);
@@ -183,7 +192,12 @@ export default function UsersPage() {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     try {
-      await updateUserProfile(editingUser, { role: editRole, clientIds: editClientIds, crewMemberId: editCrewMemberId });
+      await updateUserProfile(editingUser, {
+        role: editRole,
+        clientIds: editClientIds,
+        crewMemberId: editCrewMemberId,
+        showInMeetingAssignments: editShowInMeetings,
+      });
       toast.success("User updated");
       setEditingUser(null);
     } catch (err: any) {
@@ -197,25 +211,23 @@ export default function UsersPage() {
     );
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Manage Users
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Create accounts and assign roles</p>
+  const body = (
+    <>
+      {/* When embedded inside ManagePage tabs, render a slim Create button
+          row at the top of the tab content instead of a full page header. */}
+      {embedded ? (
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create User</span>
+          </button>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Create User</span>
-        </button>
-      </div>
+      ) : null}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+      <div className={embedded ? "space-y-5" : "flex-1 overflow-auto p-3 sm:p-6 space-y-5"}>
         {/* Create User Form */}
         {showForm && (
           <div className="bg-card border border-border rounded-lg p-5 space-y-4">
@@ -336,6 +348,35 @@ export default function UsersPage() {
           </div>
         )}
 
+        {/* Role filter pills — quick way to scope the list to one role.
+            Each pill shows a count of users in that role. Hidden when
+            there are no users yet. */}
+        {allProfiles.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {(["all", "owner", "partner", "client", "staff", "family"] as const).map(r => {
+              const count = r === "all" ? allProfiles.length : allProfiles.filter(u => u.role === r).length;
+              const active = roleFilter === r;
+              return (
+                <button
+                  key={r}
+                  onClick={() => setRoleFilter(r)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-secondary text-muted-foreground border-border hover:text-foreground"
+                  )}
+                >
+                  {r === "all" ? "All" : ROLE_LABELS[r as UserRole]}
+                  <span className={cn("ml-1.5 text-[10px]", active ? "text-primary-foreground/80" : "text-muted-foreground/70")}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* User List */}
         <div className="space-y-3">
           {allProfiles.length === 0 ? (
@@ -345,7 +386,9 @@ export default function UsersPage() {
               <p className="text-sm text-muted-foreground/60 mt-1">Create the first user account to get started.</p>
             </div>
           ) : (
-            allProfiles.map(u => {
+            allProfiles
+              .filter(u => roleFilter === "all" || u.role === roleFilter)
+              .map(u => {
               const attachedClients = data.clients.filter(c => u.clientIds.includes(c.id));
               const isMe = u.id === myProfile?.id;
               return (
@@ -417,6 +460,22 @@ export default function UsersPage() {
                                 <option key={cm.id} value={cm.id}>{cm.name}</option>
                               ))}
                             </select>
+                          </div>
+                        )}
+                        {(editRole === "staff" || editRole === "partner") && (
+                          <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
+                            <div>
+                              <p className="text-xs font-medium text-foreground">Show in meeting assignments</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                When off, this user is hidden from the "Assign people" picker on meetings.
+                              </p>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={editShowInMeetings}
+                              onChange={e => setEditShowInMeetings(e.target.checked)}
+                              className="mt-0.5 h-4 w-4 accent-primary"
+                            />
                           </div>
                         )}
                         {(editRole === "client" || editRole === "partner") && (
@@ -542,6 +601,29 @@ export default function UsersPage() {
           )}
         </div>
       </div>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Manage Users
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Create accounts and assign roles</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">Create User</span>
+        </button>
+      </div>
+      {body}
     </div>
   );
 }

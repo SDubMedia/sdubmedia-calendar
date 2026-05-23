@@ -6,7 +6,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, isAllowedUrl } from "./_auth.js";
+import { verifyAuth, getUserOrgId, isAllowedUrl, errorMessage } from "./_auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -47,10 +47,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "status": return await getStatus(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    const detail = `type=${err?.type} code=${err?.code} status=${err?.statusCode} msg=${err?.message} raw=${err?.raw?.message}`;
+  } catch (err) {
+    const detail = `type=${err?.type} code=${err?.code} status=${err?.statusCode} msg=${errorMessage(err)} raw=${err?.raw?.message}`;
     console.error(`[stripe-subscribe] ${detail}`);
-    return res.status(500).json({ error: err.message, detail });
+    return res.status(500).json({ error: errorMessage(err), detail });
   }
 }
 

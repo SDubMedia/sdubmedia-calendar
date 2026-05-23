@@ -28,6 +28,11 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { pingCronitor } from "./_cronitor.js";
+import { errorMessage, escapeHtml } from "./_auth.js";
+import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
+import { brandedEmailWrapper } from "./_emailBranding.js";
+import { saveSelectionsAndAlert } from "./delivery-public.js";
+import { syncConversionToScout } from "./_scoutSync.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -51,8 +56,8 @@ async function sendOpsAlert(subject: string, body: string) {
       subject: `[Slate] ${subject}`,
       text: body,
     });
-  } catch (err: any) {
-    console.error(`[stripe-webhook] ops alert failed: ${err?.message}`);
+  } catch (err) {
+    console.error(`[stripe-webhook] ops alert failed: ${errorMessage(err)}`);
   }
 }
 
@@ -61,9 +66,25 @@ async function orgNameFor(orgId: string): Promise<string> {
   return data?.name || orgId;
 }
 
-async function orgByCustomer(customerId: string): Promise<{ id: string; name: string } | null> {
-  const { data } = await supabase.from("organizations").select("id, name").eq("stripe_customer_id", customerId).maybeSingle();
-  return data ? { id: data.id, name: data.name } : null;
+// Owner email lookup for Scout sync — Scout matches conversions to prospects
+// by email. No owner_email column on organizations, so we go via user_profiles.
+async function ownerEmailFor(orgId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("user_profiles")
+    .select("email")
+    .eq("org_id", orgId)
+    .eq("role", "owner")
+    .maybeSingle();
+  return data?.email || null;
+}
+
+// Pull billing interval + unit amount from the first subscription item.
+function subPriceInfo(sub: Stripe.Subscription): { interval: "month" | "year" | null; unitAmountCents: number | null } {
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  const interval = price?.recurring?.interval === "year" ? "year" : price?.recurring?.interval === "month" ? "month" : null;
+  const unitAmountCents = typeof price?.unit_amount === "number" ? price.unit_amount : null;
+  return { interval, unitAmountCents };
 }
 
 export const config = {
@@ -111,6 +132,29 @@ async function setBillingStatusByCustomer(customerId: string, billingStatus: "ok
   await supabase.from("organizations").update({ billing_status: billingStatus }).eq("stripe_customer_id", customerId);
 }
 
+async function handleDeliveryExtrasPaid(session: Stripe.Checkout.Session) {
+  const md = session.metadata || {};
+  const deliveryId = md.deliveryId;
+  const clientName = md.clientName;
+  const clientEmail = md.clientEmail;
+  const fileIdsRaw = md.fileIds;
+  if (!deliveryId || !clientName || !clientEmail || !fileIdsRaw) return;
+
+  let fileIds: string[];
+  try { fileIds = JSON.parse(fileIdsRaw); } catch { return; }
+  if (!Array.isArray(fileIds) || fileIds.length === 0) return;
+
+  // Reload the full delivery row — saveSelectionsAndAlert needs the org_id etc.
+  const { data: delivery } = await supabase.from("deliveries").select("*").eq("id", deliveryId).single();
+  if (!delivery) return;
+
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent?.id || null;
+
+  await saveSelectionsAndAlert(delivery, fileIds, clientName, clientEmail, true, paymentIntentId);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
@@ -130,10 +174,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const body = await getRawBody(req);
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-  } catch (err: any) {
-    console.error(`[stripe-webhook] signature verification failed: ${err?.message}`);
-    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${err?.message}` });
-    return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+  } catch (err) {
+    console.error(`[stripe-webhook] signature verification failed: ${errorMessage(err)}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${errorMessage(err)}` });
+    return res.status(400).json({ error: `Webhook signature verification failed: ${errorMessage(err)}` });
   }
 
   try {
@@ -146,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!orgId) break;
 
         const status = sub.status;
-        const previousStatus = (event.data.previous_attributes as any)?.status;
+        const previousStatus = (event.data.previous_attributes as { status?: string } | undefined)?.status;
 
         // past_due/unpaid: keep paid tier, flag banner. Stripe retries ~3 weeks.
         if (status === "active" || status === "trialing") {
@@ -159,6 +203,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `🎉 New subscriber: ${name}`,
               `${name} just subscribed to ${plan.toUpperCase()} (${interval}).\nStatus: ${status}\nSubscription: ${sub.id}`
             );
+            // Scout sync (fire-and-forget — never throws, never blocks).
+            const email = await ownerEmailFor(orgId);
+            if (email) {
+              const { interval: priceInterval, unitAmountCents } = subPriceInfo(sub);
+              syncConversionToScout({
+                email,
+                source: "web",
+                event_type: "initial_purchase",
+                tier: plan,
+                billing_interval: priceInterval,
+                amount_gross_cents: unitAmountCents,
+                currency: sub.currency || "usd",
+                provider_subscription_id: sub.id,
+                provider_customer_id: typeof sub.customer === "string" ? sub.customer : sub.customer?.id || null,
+                dedupe_key: `stripe_sub_${sub.id}_created`,
+                raw_payload: { stripe_event_id: event.id, status, metadata: sub.metadata || {} },
+              });
+            }
           } else if (previousStatus === "past_due" || previousStatus === "unpaid") {
             const name = await orgNameFor(orgId);
             await sendOpsAlert(
@@ -191,6 +253,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `Cancelled: ${name}`,
             `${name} cancelled their ${prevPlan} subscription. Downgraded to free tier.\nSubscription: ${sub.id}`
           );
+          const email = await ownerEmailFor(orgId);
+          if (email) {
+            const { interval: priceInterval, unitAmountCents } = subPriceInfo(sub);
+            syncConversionToScout({
+              email,
+              source: "web",
+              event_type: "cancellation",
+              tier: (sub.metadata?.plan || "basic").toLowerCase() as "pro" | "basic" | "free",
+              billing_interval: priceInterval,
+              amount_gross_cents: unitAmountCents,
+              currency: sub.currency || "usd",
+              provider_subscription_id: sub.id,
+              provider_customer_id: typeof sub.customer === "string" ? sub.customer : sub.customer?.id || null,
+              dedupe_key: `stripe_sub_${sub.id}_deleted`,
+              raw_payload: { stripe_event_id: event.id, metadata: sub.metadata || {} },
+            });
+          }
         }
         break;
       }
@@ -206,11 +285,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
         if (customerId) await setBillingStatusByCustomer(customerId, "ok");
+
+        // Renewals only — skip the initial-purchase invoice (covered by customer.subscription.created above).
+        const reason = (invoice as Stripe.Invoice & { billing_reason?: string }).billing_reason;
+        const subId = (invoice as Stripe.Invoice & { subscription?: string | Stripe.Subscription }).subscription;
+        const subIdStr = typeof subId === "string" ? subId : subId?.id || null;
+        if (reason === "subscription_cycle" && subIdStr && customerId) {
+          const { data: orgRow } = await supabase
+            .from("organizations")
+            .select("id, plan")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          if (orgRow?.id) {
+            const email = await ownerEmailFor(orgRow.id);
+            if (email) {
+              const line = invoice.lines?.data?.[0];
+              const priceInterval = line?.price?.recurring?.interval === "year"
+                ? "year"
+                : line?.price?.recurring?.interval === "month" ? "month" : null;
+              syncConversionToScout({
+                email,
+                source: "web",
+                event_type: "renewal",
+                tier: (orgRow.plan || "basic").toLowerCase() as "pro" | "basic" | "free",
+                billing_interval: priceInterval,
+                amount_gross_cents: invoice.amount_paid ?? null,
+                currency: invoice.currency || "usd",
+                provider_subscription_id: subIdStr,
+                provider_customer_id: customerId,
+                dedupe_key: `stripe_invoice_${invoice.id}`,
+                raw_payload: { stripe_event_id: event.id, billing_reason: reason },
+              });
+            }
+          }
+        }
         break;
       }
 
       case "checkout.session.completed": {
-        // Invoice-payment mode (via Stripe Connect) — unrelated to SaaS subscription.
+        // Two checkout flavors via Stripe Connect:
+        //   - invoiceId metadata → invoice payment (existing flow)
+        //   - kind=delivery_extras metadata → delivery proofing extras (new flow)
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.mode === "payment" && session.metadata?.invoiceId) {
           const today = new Date().toISOString().slice(0, 10);
@@ -221,23 +336,195 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const { data: invoice } = await supabase.from("invoices").select("line_items").eq("id", session.metadata.invoiceId).maybeSingle();
           if (invoice?.line_items) {
-            const projectIds = (invoice.line_items as any[]).map((li: any) => li.projectId).filter(Boolean);
+            const projectIds = (invoice.line_items as { projectId?: string }[]).map(li => li.projectId).filter(Boolean);
             for (const pid of projectIds) {
               await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
+            }
+          }
+        } else if (session.mode === "payment" && session.metadata?.kind === "delivery_extras") {
+          await handleDeliveryExtrasPaid(session);
+        } else if (session.mode === "payment" && session.metadata?.kind === "milestone_payment") {
+          // Cron-emailed payment link → stamp `paidAt` on the matching
+          // milestone so the payment-reminders cron skips it on subsequent
+          // runs. The milestone is identified by the `milestoneId` we set
+          // when creating the Checkout session.
+          const contractId = session.metadata.contractId;
+          const milestoneId = session.metadata.milestoneId;
+          if (contractId && milestoneId) {
+            const { data: contract } = await supabase
+              .from("contracts")
+              .select("payment_milestones, title, client_email, org_id, sign_token")
+              .eq("id", contractId)
+              .maybeSingle();
+            const ms = (contract?.payment_milestones as Array<Record<string, unknown>> | null) || null;
+            if (Array.isArray(ms)) {
+              // Idempotency: Stripe retries webhooks aggressively on 5xx
+              // errors (and sometimes spuriously even on 200s). If the
+              // milestone was already marked paid, skip the receipt email
+              // entirely — otherwise the client gets 2-3 "Payment received"
+              // emails for one payment. The paidAt update is itself
+              // idempotent (same value re-applied) so re-running is safe.
+              const targetIdx = ms.findIndex((m, i) => (m.id ? m.id === milestoneId : `ms_${i}` === milestoneId));
+              const wasAlreadyPaid = targetIdx >= 0 && !!ms[targetIdx].paidAt;
+              const nowIso = new Date().toISOString();
+              const next = ms.map((m, i) => {
+                const idMatch = m.id ? m.id === milestoneId : `ms_${i}` === milestoneId;
+                return idMatch ? { ...m, paidAt: m.paidAt || nowIso } : m;
+              });
+              await supabase.from("contracts").update({
+                payment_milestones: next,
+                updated_at: nowIso,
+              }).eq("id", contractId);
+
+              // Project-status cascade: when the deposit milestone (the one
+              // with dueType: at_signing) gets paidAt stamped for the first
+              // time, flip the linked project from "tentative" to "upcoming"
+              // on the calendar. Marks the moment a tentative booking
+              // becomes a confirmed booking. Best-effort — webhook retries
+              // are handled by the wasAlreadyPaid gate above (we only run
+              // this on the real first-payment transition).
+              if (!wasAlreadyPaid && targetIdx >= 0 && ms[targetIdx].dueType === "at_signing") {
+                try {
+                  const { data: contractRow2 } = await supabase
+                    .from("contracts")
+                    .select("proposal_id, project_id")
+                    .eq("id", contractId)
+                    .single();
+                  let projectIdToUpdate: string | null = (contractRow2?.project_id as string) || null;
+                  if (!projectIdToUpdate && contractRow2?.proposal_id) {
+                    const { data: prop } = await supabase
+                      .from("proposals")
+                      .select("project_id")
+                      .eq("id", contractRow2.proposal_id as string)
+                      .single();
+                    projectIdToUpdate = (prop?.project_id as string) || null;
+                  }
+                  if (projectIdToUpdate) {
+                    await supabase
+                      .from("projects")
+                      .update({ status: "upcoming", deposit_paid_at: nowIso, updated_at: nowIso })
+                      .eq("id", projectIdToUpdate);
+                  }
+                } catch (err) {
+                  console.error(`[stripe-webhook] project status cascade failed: ${errorMessage(err)}`);
+                }
+              }
+
+              // Send a branded "thanks for paying" receipt to the client
+              // (Stripe also sends its own receipt; this one ties the
+              // payment to the contract + portal link). Best-effort —
+              // don't block the webhook on email send failure. Three
+              // gates here:
+              //   1. wasAlreadyPaid: skip on webhook retries.
+              //   2. targetIdx >= 0: only send when we actually matched a
+              //      milestone. Without this, a Stripe event with a stale
+              //      milestoneId would still email "payment received" even
+              //      though no milestone got marked paid -- false positive
+              //      that erodes client trust.
+              //   3. has client_email + org_id: can't send without them.
+              if (!wasAlreadyPaid && targetIdx >= 0 && contract?.client_email && contract?.org_id) {
+                sendMilestoneReceiptEmail({
+                  contractId: contract.id as string,
+                  contractTitle: contract.title as string,
+                  clientEmail: contract.client_email as string,
+                  signToken: contract.sign_token as string,
+                  orgId: contract.org_id as string,
+                  milestones: next,
+                  paidMilestoneId: milestoneId,
+                  amountCents: session.amount_total ?? 0,
+                }).catch(err => {
+                  console.error(`[stripe-webhook] receipt email failed: ${errorMessage(err)}`);
+                  sendOpsAlertShared(
+                    "Milestone receipt email failed",
+                    `Contract: ${contract.id}\nClient: ${contract.client_email}\nError: ${errorMessage(err)}\n\nThe paidAt was stamped successfully; only the customer's branded receipt failed to send. Stripe's auto-receipt still went out.`,
+                  ).catch(() => {});
+                });
+              }
             }
           }
         }
         break;
       }
     }
-  } catch (err: any) {
-    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${err?.message} raw=${err?.raw?.message}`);
-    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${err?.message}` });
+  } catch (err) {
+    const stripeRaw = (err as { raw?: { message?: string } } | null)?.raw?.message ?? "";
+    console.error(`[stripe-webhook] handler failed: event=${event.type} msg=${errorMessage(err)} raw=${stripeRaw}`);
+    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `handler failed on ${event.type}: ${errorMessage(err)}` });
     // Return 200 anyway so Stripe doesn't retry on our internal errors.
     // Webhook replay from dashboard is still possible if needed.
-    return res.status(200).json({ received: true, error: err.message });
+    return res.status(200).json({ received: true, error: errorMessage(err) });
   }
 
   await pingCronitor(CRONITOR_MONITOR, "complete", { message: event.type });
   return res.status(200).json({ received: true });
 }
+
+/**
+ * Send a branded receipt to the client when a milestone payment completes.
+ * Stripe also sends its own receipt; this one ties the payment to the
+ * specific contract + remaining balance + portal link, so the client can
+ * see what they paid for and what's still due. Sender uses the org's
+ * configured business email.
+ */
+async function sendMilestoneReceiptEmail(input: {
+  contractId: string;
+  contractTitle: string;
+  clientEmail: string;
+  signToken: string;
+  orgId: string;
+  milestones: Array<Record<string, unknown>>;
+  paidMilestoneId: string;
+  amountCents: number;
+}): Promise<void> {
+  // Lookup org branding for from-line + reply-to.
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, business_info")
+    .eq("id", input.orgId)
+    .single();
+  const orgName = org?.name || "Your contractor";
+  const businessInfo = (org?.business_info as { email?: string } | null) || {};
+  // Verified-domain sender (slate.sdubmedia.com) — see cron-payment-reminders
+  // for context. We can't put a customer's unverified email in `from:`.
+  const verifiedFrom = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
+  const orgEmail = businessInfo.email?.trim() || verifiedFrom;
+
+  const paidAmount = input.amountCents / 100;
+  // Compute remaining balance from milestones (sum of unpaid amounts).
+  let total = 0;
+  let unpaidTotal = 0;
+  for (const m of input.milestones) {
+    const amount = m.type === "fixed"
+      ? Number(m.fixedAmount ?? m.amount ?? 0)
+      : 0; // percent milestones contribute to total via fixed siblings
+    total += amount;
+    if (!m.paidAt) unpaidTotal += amount;
+  }
+  // For percent-only schedules, fall back to a simple paid-vs-rest narrative.
+  const stillOwedLine = total > 0 && unpaidTotal > 0
+    ? `Remaining balance: <strong>$${unpaidTotal.toFixed(2)}</strong>`
+    : "All payments are now complete. Thank you!";
+
+  const portalUrl = `${process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com"}/sign/${input.signToken}`;
+
+  const body = `
+    <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
+    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(input.contractTitle)}</p>
+    <table style="border-collapse:collapse;margin:16px 0;font-size:14px;">
+      <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${paidAmount.toFixed(2)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Date</td><td style="padding:4px 0;">${new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</td></tr>
+    </table>
+    <p style="margin:16px 0;font-size:14px;">${stillOwedLine}</p>
+    <p style="margin:24px 0;"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#059669;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your contract + payment status</a></p>
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">Stripe also sent you a separate receipt for tax / accounting purposes. Reply to this email if you have any questions.</p>`;
+  const html = brandedEmailWrapper({ orgName, businessInfo: businessInfo as { email?: string; phone?: string } }, body);
+
+  await resend.emails.send({
+    from: `${orgName} <${verifiedFrom}>`,
+    to: input.clientEmail,
+    subject: `Payment received: $${paidAmount.toFixed(2)} for ${input.contractTitle}`,
+    html,
+    replyTo: orgEmail,
+  });
+}
+

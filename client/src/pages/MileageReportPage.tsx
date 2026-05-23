@@ -3,10 +3,10 @@
 // Each user sees only their own mileage
 // ============================================================
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +33,7 @@ interface MileageTrip {
 }
 
 export default function MileageReportPage() {
-  const { data, upsertDistance, addManualTrip, deleteManualTrip } = useApp();
+  const { data, upsertDistance, addManualTrip, updateManualTrip, deleteManualTrip } = useApp();
   const { effectiveProfile: profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
@@ -51,13 +51,19 @@ export default function MileageReportPage() {
   const [recalculating, setRecalculating] = useState(false);
 
   async function recalculateDistances() {
-    if (!crewMemberId || !crewMember?.homeAddress?.address) {
+    // Manual recalc always uses the primary travel base. If the user
+    // wants distances from a non-primary base they get them via the
+    // auto-recalc effect above when they assign that base on a
+    // project's crew entry.
+    const primaryBase = (crewMember?.homeBases || []).find(b => b.isPrimary);
+    const baseAddress = (primaryBase?.address ? primaryBase : null) || crewMember?.homeAddress;
+    if (!crewMemberId || !baseAddress?.address) {
       toast.error("Set your home address in Staff settings first");
       return;
     }
     setRecalculating(true);
-    const homeAddr = crewMember.homeAddress;
-    const origin = `${homeAddr.address}, ${homeAddr.city}, ${homeAddr.state} ${homeAddr.zip}`;
+    const origin = `${baseAddress.address}, ${baseAddress.city}, ${baseAddress.state} ${baseAddress.zip}`;
+    const baseId = primaryBase?.id || "primary";
     let count = 0;
     let failReason = "";
 
@@ -72,7 +78,7 @@ export default function MileageReportPage() {
         });
         if (res.ok) {
           const { distanceMiles } = await res.json();
-          await upsertDistance(crewMemberId, loc.id, distanceMiles);
+          await upsertDistance(crewMemberId, loc.id, distanceMiles, baseId);
           count++;
         } else {
           const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -94,9 +100,31 @@ export default function MileageReportPage() {
     }
   }
 
-  // Log trip dialog
+  // Log/edit trip dialog. `editingTripId` is null when adding a fresh
+  // trip, set to the manual_trip.id when editing an existing one.
   const [tripDialogOpen, setTripDialogOpen] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [tripForm, setTripForm] = useState({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+
+  function openTripDialog() {
+    setEditingTripId(null);
+    setTripForm({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
+    setTripDialogOpen(true);
+  }
+
+  function openEditManualTrip(manualTripId: string) {
+    const mt = data.manualTrips.find(t => t.id === manualTripId);
+    if (!mt) { toast.error("Trip not found"); return; }
+    setEditingTripId(mt.id);
+    setTripForm({
+      date: mt.date,
+      locationId: mt.locationId || "",
+      destination: mt.destination,
+      purpose: mt.purpose,
+      miles: mt.roundTripMiles,
+    });
+    setTripDialogOpen(true);
+  }
 
   async function handleLogTrip() {
     if (!crewMemberId) { toast.error("No crew profile linked"); return; }
@@ -120,30 +148,139 @@ export default function MileageReportPage() {
     if (miles <= 0) { toast.error("Enter round-trip miles"); return; }
 
     try {
-      await addManualTrip({
-        crewMemberId,
-        date: tripForm.date,
-        destination,
-        locationId,
-        purpose: tripForm.purpose || "Office / Gear Pickup",
-        roundTripMiles: miles,
-      });
-      toast.success("Trip logged");
+      if (editingTripId) {
+        await updateManualTrip(editingTripId, {
+          date: tripForm.date,
+          destination,
+          locationId,
+          purpose: tripForm.purpose || "Office / Gear Pickup",
+          roundTripMiles: miles,
+        });
+        toast.success("Trip updated");
+      } else {
+        await addManualTrip({
+          crewMemberId,
+          date: tripForm.date,
+          destination,
+          locationId,
+          purpose: tripForm.purpose || "Office / Gear Pickup",
+          roundTripMiles: miles,
+        });
+        toast.success("Trip logged");
+      }
       setTripDialogOpen(false);
+      setEditingTripId(null);
       setTripForm({ date: new Date().toISOString().slice(0, 10), locationId: "", destination: "", purpose: "", miles: 0 });
     } catch (e: any) {
-      toast.error(e.message || "Failed to log trip");
+      toast.error(e.message || "Failed to save trip");
     }
   }
 
-  // Build distance lookup from cached distances
+  // Build distance lookup from cached distances. Cache key is
+  // `${homeBaseId}|${locationId}` since distance varies by which
+  // travel base you started from.
   const distanceMap = useMemo(() => {
     const map = new Map<string, number>();
     data.crewLocationDistances
       .filter(d => d.crewMemberId === crewMemberId)
-      .forEach(d => map.set(d.locationId, d.distanceMiles));
+      .forEach(d => map.set(`${d.homeBaseId}|${d.locationId}`, d.distanceMiles));
     return map;
   }, [data.crewLocationDistances, crewMemberId]);
+
+  // Resolve a home base for an arbitrary crew entry. Returns the
+  // explicit homeBaseId if set; otherwise the crew member's primary
+  // base; otherwise "primary" (the synthetic id for legacy data).
+  function resolveHomeBaseId(homeBaseIdFromEntry?: string): string {
+    if (homeBaseIdFromEntry) return homeBaseIdFromEntry;
+    const primary = (crewMember?.homeBases || []).find(b => b.isPrimary);
+    return primary?.id || "primary";
+  }
+  function resolveHomeBaseAddress(homeBaseId: string): { address: string; city: string; state: string; zip: string } | null {
+    const bases = crewMember?.homeBases || [];
+    const match = bases.find(b => b.id === homeBaseId);
+    if (match?.address) return { address: match.address, city: match.city, state: match.state, zip: match.zip };
+    // Fallback to legacy homeAddress for the synthetic "primary" id
+    if (homeBaseId === "primary" && crewMember?.homeAddress?.address) return crewMember.homeAddress;
+    return null;
+  }
+
+  // Auto-recalc distances for any (homeBase, location) combos that
+  // are referenced by an actual project crew entry but missing from
+  // the cache. Without this, a project using a brand-new location —
+  // or starting from a non-primary base — shows 0 miles and gets
+  // filtered out of the report. Silently runs once per session per
+  // missing combo. Skips if the relevant home base address isn't
+  // populated (the API call would fail anyway).
+  //
+  // For projects WITHOUT an explicit homeBaseId (auto-pick mode),
+  // we need distances from every base the user has, so we can
+  // compare and pick the closest at trip-computation time.
+  const autoRanRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!crewMemberId) return;
+
+    const allBaseIds: string[] = (crewMember?.homeBases || []).map(b => b.id);
+    // Legacy users with only homeAddress: synthesize "primary"
+    if (allBaseIds.length === 0 && crewMember?.homeAddress?.address) allBaseIds.push("primary");
+
+    // Collect every (homeBase, location) combo this crew member
+    // actually uses across their projects in the visible year.
+    const wanted = new Set<string>();
+    data.projects.forEach(p => {
+      if (new Date(p.date + "T00:00:00").getFullYear() !== year) return;
+      const entry = (p.crew || []).find(e => e.crewMemberId === crewMemberId);
+      if (!entry || !p.locationId) return;
+      // Skip if the entry has a manual roundTripMiles override —
+      // those don't need a cached distance.
+      if (entry.roundTripMiles && entry.roundTripMiles > 0) return;
+      if (entry.homeBaseId) {
+        // Explicit pick — only this one combo needed.
+        wanted.add(`${entry.homeBaseId}|${p.locationId}`);
+      } else {
+        // Auto-pick — need distance from EVERY base so we can
+        // compare and choose the closest.
+        allBaseIds.forEach(baseId => wanted.add(`${baseId}|${p.locationId}`));
+      }
+    });
+
+    const missing: { baseId: string; loc: typeof data.locations[number] }[] = [];
+    wanted.forEach(key => {
+      if (distanceMap.has(key)) return;
+      if (autoRanRef.current.has(key)) return;
+      const [baseId, locationId] = key.split("|");
+      const loc = data.locations.find(l => l.id === locationId);
+      if (!loc?.address || !loc?.city) return;
+      missing.push({ baseId, loc });
+    });
+    if (missing.length === 0) return;
+
+    (async () => {
+      for (const { baseId, loc } of missing) {
+        const baseAddr = resolveHomeBaseAddress(baseId);
+        if (!baseAddr?.address || !baseAddr?.city) continue;
+        const key = `${baseId}|${loc.id}`;
+        autoRanRef.current.add(key);
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/calculate-distance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              origin: `${baseAddr.address}, ${baseAddr.city}, ${baseAddr.state} ${baseAddr.zip}`,
+              destination: `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`,
+            }),
+          });
+          if (res.ok) {
+            const { distanceMiles } = await res.json();
+            await upsertDistance(crewMemberId, loc.id, distanceMiles, baseId);
+          }
+        } catch (err) {
+          console.warn(`[MileageReport] auto-distance failed for ${loc.name} from ${baseId}:`, err);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.locations, data.projects, distanceMap, crewMemberId, year, crewMember?.homeBases, crewMember?.homeAddress?.address]);
 
   // Build trips for the year (projects + manual trips)
   const trips = useMemo((): MileageTrip[] => {
@@ -163,9 +300,30 @@ export default function MileageReportPage() {
         const loc = data.locations.find(l => l.id === p.locationId);
 
         const crewEntry = (p.crew || []).find(e => e.crewMemberId === crewMemberId);
-        const oneWay = crewEntry?.roundTripMiles
-          ? crewEntry.roundTripMiles / 2
-          : (p.locationId ? distanceMap.get(p.locationId) || 0 : 0);
+
+        // Pick the right base for this project:
+        //  1. If crew entry has explicit homeBaseId, use it.
+        //  2. Otherwise auto-pick — find the cached base with the
+        //     SHORTEST distance to this location across all of the
+        //     crew member's bases. This is why auto-recalc above
+        //     fetches distances from every base to every location.
+        let oneWay = 0;
+        if (crewEntry?.roundTripMiles && crewEntry.roundTripMiles > 0) {
+          oneWay = crewEntry.roundTripMiles / 2;
+        } else if (p.locationId) {
+          if (crewEntry?.homeBaseId) {
+            oneWay = distanceMap.get(`${crewEntry.homeBaseId}|${p.locationId}`) || 0;
+          } else {
+            const allBaseIds = (crewMember?.homeBases || []).map(b => b.id);
+            if (allBaseIds.length === 0) allBaseIds.push("primary");
+            let closest = Infinity;
+            allBaseIds.forEach(baseId => {
+              const d = distanceMap.get(`${baseId}|${p.locationId}`);
+              if (typeof d === "number" && d < closest) closest = d;
+            });
+            oneWay = closest === Infinity ? 0 : closest;
+          }
+        }
 
         return {
           date: p.date,
@@ -187,8 +345,34 @@ export default function MileageReportPage() {
         manualTripId: t.id,
       }));
 
-    return [...projectTrips, ...manual].sort((a, b) => a.date.localeCompare(b.date));
-  }, [data.projects, data.clients, data.projectTypes, data.locations, data.manualTrips, crewMemberId, distanceMap, year]);
+    // Meeting trips — meetings with a saved address + computed oneWayMiles.
+    // Distance is computed at save time against the saver's home base, so
+    // a different assigned viewer here may see slightly off mileage; the
+    // owner is the typical mileage tracker and saves their own meetings.
+    const meetingTrips = data.meetings
+      .filter(m =>
+        m.date.startsWith(String(year))
+        && typeof m.oneWayMiles === "number"
+        && m.oneWayMiles > 0
+        && (
+          // Owner sees all their own meetings; assigned users see meetings
+          // tied to them.
+          m.ownerUserId === profile?.id
+          || (Array.isArray(m.assignedUserIds) && !!profile?.id && m.assignedUserIds.includes(profile.id))
+        )
+      )
+      .map(m => {
+        const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
+        return {
+          date: m.date,
+          purpose: `Meeting — ${m.title}${client ? ` · ${client.company}` : ""}`,
+          destination: m.meetingAddress || "Address",
+          roundTripMiles: Math.round(m.oneWayMiles! * 2 * 10) / 10,
+        };
+      });
+
+    return [...projectTrips, ...manual, ...meetingTrips].sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.projects, data.clients, data.projectTypes, data.locations, data.manualTrips, data.meetings, crewMemberId, profile?.id, distanceMap, year]);
 
   // Group by month
   const monthlyGroups = useMemo(() => {
@@ -240,15 +424,14 @@ export default function MileageReportPage() {
             <span className="text-xs text-muted-foreground">Rate/mi:</span>
             <span className="text-muted-foreground text-sm">$</span>
             <input
-              type="number"
-              step="0.01"
+              type="text" inputMode="decimal"
               min="0"
               value={ratePerMile}
               onChange={e => setRatePerMile(parseFloat(e.target.value) || 0)}
               className="w-16 h-8 bg-secondary border border-border rounded-md px-2 text-sm text-foreground"
             />
           </div>
-          <Button size="sm" variant="outline" onClick={() => setTripDialogOpen(true)} className="gap-2">
+          <Button size="sm" variant="outline" onClick={openTripDialog} className="gap-2">
             <Plus className="w-4 h-4" /> Log Trip
           </Button>
           <Button size="sm" variant="outline" onClick={recalculateDistances} disabled={recalculating} className="gap-2">
@@ -278,21 +461,70 @@ export default function MileageReportPage() {
           <p className="text-sm text-gray-600 mt-1">{crewMember?.name || ""} | Generated {new Date().toLocaleDateString()}</p>
         </div>
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground">{yearTotalMiles.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Miles ({year})</p>
+        {/* Summary cards — always 3-up. Mobile gets smaller padding +
+            type so they fit on a 375px screen without wrapping. */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6 print:mb-4">
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-foreground print:text-black">{yearTotalMiles.toLocaleString()}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">Total Miles</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-foreground">{trips.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total Trips</p>
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-foreground print:text-black">{trips.length}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">Total Trips</p>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
-            <p className="text-2xl font-bold text-primary">{formatCurrency(yearTotalDeduction)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Est. Deduction @ ${ratePerMile}/mi</p>
+          <div className="bg-card border border-border rounded-lg p-2.5 sm:p-4 print:p-2 text-center print:border-gray-300">
+            <p className="text-lg sm:text-2xl font-bold text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 print:text-black">
+              Est. Deduction <span className="hidden sm:inline">@ ${ratePerMile}/mi</span>
+            </p>
           </div>
         </div>
+
+        {/* Monthly summary table — at-a-glance per-month totals.
+            Sits above the detail tables so a CPA / tax filing reader
+            sees the year shape on the first page. */}
+        {monthlyGroups.length > 0 && (
+          <div className="bg-card border border-border rounded-lg mb-6 print:mb-4 print:border-gray-300 print:break-inside-avoid">
+            <div className="px-4 py-3 print:py-1.5 border-b border-border print:border-gray-300">
+              <h3 className="text-sm font-semibold text-foreground print:text-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Monthly Summary — {year}
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm print:text-xs">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300 print:text-black">
+                    <th className="text-left px-4 py-2 print:px-2 print:py-1">Month</th>
+                    <th className="text-right px-3 py-2 print:px-2 print:py-1">Trips</th>
+                    <th className="text-right px-3 py-2 print:px-2 print:py-1">Total Miles</th>
+                    <th className="text-right px-4 py-2 print:px-2 print:py-1">Est. Deduction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyGroups.map(group => {
+                    const monthDeduction = group.totalMiles * ratePerMile;
+                    return (
+                      <tr key={group.monthIndex} className="border-b border-border/50 print:border-gray-200">
+                        <td className="px-4 py-2 print:px-2 print:py-1 font-medium text-foreground print:text-black">{group.month}</td>
+                        <td className="text-right px-3 py-2 print:px-2 print:py-1 text-muted-foreground print:text-black">{group.trips.length}</td>
+                        <td className="text-right px-3 py-2 print:px-2 print:py-1 text-foreground print:text-black">{group.totalMiles.toLocaleString()}</td>
+                        <td className="text-right px-4 py-2 print:px-2 print:py-1 text-primary print:text-black">{formatCurrency(monthDeduction)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="font-bold border-t-2 border-border print:border-gray-400 print:text-black">
+                    <td className="px-4 py-3 print:px-2 print:py-1">TOTAL</td>
+                    <td className="text-right px-3 py-3 print:px-2 print:py-1">{trips.length}</td>
+                    <td className="text-right px-3 py-3 print:px-2 print:py-1">{yearTotalMiles.toLocaleString()}</td>
+                    <td className="text-right px-4 py-3 print:px-2 print:py-1 text-primary print:text-black">{formatCurrency(yearTotalDeduction)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Monthly breakdown */}
         {monthlyGroups.length === 0 ? (
@@ -301,45 +533,60 @@ export default function MileageReportPage() {
             <p className="text-sm">No mileage data for {year}. Set your home address in Staff settings and distances will be calculated.</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 print:space-y-3">
             {monthlyGroups.map(group => (
-              <div key={group.monthIndex} className="bg-card border border-border rounded-lg print:border-gray-300 print:break-inside-avoid">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border print:border-gray-300">
-                  <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <div key={group.monthIndex} className="bg-card border border-border rounded-lg print:border-gray-300">
+                <div className="flex items-center justify-between px-4 py-3 print:py-1.5 border-b border-border print:border-gray-300">
+                  <h3 className="text-sm font-semibold text-foreground print:text-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                     {group.month}
                   </h3>
-                  <span className="text-sm font-bold text-primary">{group.totalMiles} mi</span>
+                  <span className="text-sm font-bold text-primary print:text-black">{group.totalMiles} mi</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm print:text-xs">
                     <thead>
-                      <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300">
-                        <th className="text-left px-4 py-2">Date</th>
-                        <th className="text-left px-4 py-2">Business Purpose</th>
-                        <th className="text-left px-4 py-2">Destination</th>
-                        <th className="text-right px-4 py-2">Round Trip</th>
+                      <tr className="text-xs text-muted-foreground border-b border-border print:border-gray-300 print:text-black">
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Date</th>
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Business Purpose</th>
+                        <th className="text-left px-4 py-2 print:px-2 print:py-1">Destination</th>
+                        <th className="text-right px-4 py-2 print:px-2 print:py-1">Round Trip</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.trips.map((trip, i) => (
                         <tr key={i} className="border-b border-border/50 print:border-gray-200 last:border-0">
-                          <td className="px-4 py-2 whitespace-nowrap">
+                          <td className="px-4 py-2 print:px-2 print:py-1 whitespace-nowrap print:text-black">
                             {new Date(trip.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-4 py-2 print:px-2 print:py-1 print:text-black">
                             {trip.purpose}
-                            {trip.manualTripId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">manual</span>}
+                            {trip.manualTripId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary print:hidden">manual</span>}
                           </td>
-                          <td className="px-4 py-2 text-muted-foreground">{trip.destination}</td>
-                          <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                          <td className="px-4 py-2 print:px-2 print:py-1 text-muted-foreground print:text-black">{trip.destination}</td>
+                          <td className="px-4 py-2 print:px-2 print:py-1 text-right font-medium whitespace-nowrap print:text-black">
                             {trip.roundTripMiles} mi
                             {trip.manualTripId && (
-                              <button
-                                onClick={() => { deleteManualTrip(trip.manualTripId!); toast.success("Trip deleted"); }}
-                                className="ml-2 text-muted-foreground hover:text-destructive print:hidden inline-block"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              <span className="ml-2 inline-flex items-center gap-1 print:hidden">
+                                <button
+                                  onClick={() => openEditManualTrip(trip.manualTripId!)}
+                                  className="text-muted-foreground hover:text-primary"
+                                  title="Edit trip"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm("Delete this trip?")) {
+                                      deleteManualTrip(trip.manualTripId!);
+                                      toast.success("Trip deleted");
+                                    }
+                                  }}
+                                  className="text-muted-foreground hover:text-destructive"
+                                  title="Delete trip"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -347,8 +594,8 @@ export default function MileageReportPage() {
                     </tbody>
                     <tfoot>
                       <tr className="font-semibold">
-                        <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Month Total:</td>
-                        <td className="px-4 py-2 text-right text-primary">{group.totalMiles} mi</td>
+                        <td colSpan={3} className="px-4 py-2 print:px-2 print:py-1 text-right text-muted-foreground print:text-black">Month Total:</td>
+                        <td className="px-4 py-2 print:px-2 print:py-1 text-right text-primary print:text-black">{group.totalMiles} mi</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -373,11 +620,13 @@ export default function MileageReportPage() {
         )}
       </div>
 
-      {/* Log Trip Dialog */}
-      <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
+      {/* Log/Edit Trip Dialog */}
+      <Dialog open={tripDialogOpen} onOpenChange={(open) => { setTripDialogOpen(open); if (!open) setEditingTripId(null); }}>
         <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Log a Trip</DialogTitle>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {editingTripId ? "Edit Trip" : "Log a Trip"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -427,9 +676,7 @@ export default function MileageReportPage() {
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Round-Trip Miles</Label>
               <Input
-                type="number"
-                min="0"
-                step="0.1"
+                type="text" inputMode="decimal"
                 value={tripForm.miles || ""}
                 onChange={e => setTripForm(f => ({ ...f, miles: parseFloat(e.target.value) || 0 }))}
                 className="bg-secondary border-border"
@@ -439,7 +686,7 @@ export default function MileageReportPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTripDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleLogTrip}>Log Trip</Button>
+            <Button onClick={handleLogTrip}>{editingTripId ? "Save Changes" : "Log Trip"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

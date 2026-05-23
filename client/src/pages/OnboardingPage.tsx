@@ -10,7 +10,7 @@ import type { UserRole } from "@/lib/types";
 import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
   Clock, DollarSign, HeartPulse,
-  Film, ChevronRight, ChevronLeft, CheckCircle,
+  ChevronRight, ChevronLeft, CheckCircle,
   Building2, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -155,8 +155,8 @@ function getRoleWelcome(role: UserRole, name: string): { title: string; subtitle
   }
 }
 
-import OwnerOnboardingWizard from "@/components/OwnerOnboardingWizard";
 import StaffOnboardingWelcome from "@/components/StaffOnboardingWelcome";
+import OwnerAutoComplete from "@/components/OwnerAutoComplete";
 
 export default function OnboardingPage() {
   const { profile, completeOnboarding, signOut } = useAuth();
@@ -166,8 +166,11 @@ export default function OnboardingPage() {
   const role = profile?.role ?? "client";
   const name = profile?.name ?? "";
 
-  // Owner gets the setup wizard
-  if (role === "owner") return <OwnerOnboardingWizard />;
+  // Owner skips the wizard — auto-complete and let the
+  // BusinessInfoSetupModal collect identity info from the
+  // dashboard. Defaults for billing rate / production type
+  // come from the org row created at signup.
+  if (role === "owner") return <OwnerAutoComplete />;
   // Staff gets the welcome + address screen
   if (role === "staff") return <StaffOnboardingWelcome />;
 

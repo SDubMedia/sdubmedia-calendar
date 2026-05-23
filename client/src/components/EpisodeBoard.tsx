@@ -1,7 +1,11 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink, MessageSquare, Send, CheckCircle, RotateCcw } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink, MessageSquare, Send, CheckCircle, RotateCcw, GripVertical } from "lucide-react";
+import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import type { SeriesEpisode, EpisodeStatus, EpisodeComment, Location, CrewMember, Project } from "@/lib/types";
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface EpisodeBoardProps {
   episodes: SeriesEpisode[];
@@ -9,6 +13,7 @@ interface EpisodeBoardProps {
   onAddEpisode: () => void;
   onDeleteEpisode: (id: string) => void;
   onScheduleEpisode?: (episode: SeriesEpisode) => void;
+  onSendEpisodeForReview?: (episode: SeriesEpisode) => void;
   onPublishSchedule?: () => void;
   seriesId: string;
   userName: string;
@@ -54,6 +59,7 @@ export default function EpisodeBoard({
   onAddEpisode,
   onDeleteEpisode,
   onScheduleEpisode,
+  onSendEpisodeForReview,
   onPublishSchedule,
   seriesId,
   userName,
@@ -70,84 +76,59 @@ export default function EpisodeBoard({
     (a, b) => a.episodeNumber - b.episodeNumber
   );
 
+  // Drag-to-reorder. Renumbers episodes to 1..N matching the
+  // new order. We only fire updates for episodes whose number
+  // actually changed so a drop adjacent to itself is a no-op.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = sorted.findIndex(e => e.id === active.id);
+    const newIdx = sorted.findIndex(e => e.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const next = arrayMove(sorted, oldIdx, newIdx);
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].episodeNumber !== i + 1) {
+        await onUpdateEpisode(next[i].id, { episodeNumber: i + 1 });
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {sorted.map((ep) => {
-        const isExpanded = expandedId === ep.id;
-
-        return (
-          <div
-            key={ep.id}
-            className="rounded-lg border border-border bg-card overflow-hidden"
-          >
-            {/* Collapsed row */}
-            <button
-              type="button"
-              onClick={() => setExpandedId(isExpanded ? null : ep.id)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-            >
-              <span
-                className="shrink-0 text-sm font-semibold text-muted-foreground"
-                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-              >
-                #{ep.episodeNumber}
-              </span>
-
-              <span
-                className="flex-1 truncate text-foreground font-medium"
-                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-              >
-                {ep.title || "Untitled"}
-              </span>
-
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  STATUS_COLORS[ep.status]
-                )}
-              >
-                {getStatusLabel(ep.status)}
-              </span>
-
-              {ep.draftDate && !ep.projectId && !isExpanded && (
-                <span className="hidden sm:block shrink-0 text-xs text-cyan-400">
-                  {ep.draftDate}
-                </span>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sorted.map(e => e.id)} strategy={verticalListSortingStrategy}>
+          {sorted.map((ep) => (
+            <SortableEpisodeRow
+              key={ep.id}
+              ep={ep}
+              isExpanded={expandedId === ep.id}
+              onToggle={() => setExpandedId(expandedId === ep.id ? null : ep.id)}
+              detail={(
+                <EpisodeDetail
+                  ep={ep}
+                  onUpdateEpisode={onUpdateEpisode}
+                  onDeleteEpisode={onDeleteEpisode}
+                  onScheduleEpisode={onScheduleEpisode}
+                  onSendEpisodeForReview={onSendEpisodeForReview}
+                  seriesId={seriesId}
+                  userName={userName}
+                  userRole={userRole}
+                  onFetchComments={onFetchComments}
+                  onAddComment={onAddComment}
+                  locations={locations}
+                  crewMembers={crewMembers}
+                  existingProjects={existingProjects}
+                  allEpisodes={sorted}
+                />
               )}
-              {!ep.draftDate && ep.concept && !isExpanded && (
-                <span className="hidden sm:block shrink-0 max-w-[200px] truncate text-xs text-muted-foreground">
-                  {ep.concept}
-                </span>
-              )}
-
-              {isExpanded ? (
-                <ChevronUp className="shrink-0 h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="shrink-0 h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
-
-            {/* Expanded detail */}
-            {isExpanded && (
-              <EpisodeDetail
-                ep={ep}
-                onUpdateEpisode={onUpdateEpisode}
-                onDeleteEpisode={onDeleteEpisode}
-                onScheduleEpisode={onScheduleEpisode}
-                seriesId={seriesId}
-                userName={userName}
-                userRole={userRole}
-                onFetchComments={onFetchComments}
-                onAddComment={onAddComment}
-                locations={locations}
-                crewMembers={crewMembers}
-                existingProjects={existingProjects}
-                allEpisodes={sorted}
-              />
-            )}
-          </div>
-        );
-      })}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
 
       {/* Publish Schedule */}
       {onPublishSchedule && sorted.some(e => e.draftDate && !e.projectId && e.status !== "idea") && (
@@ -175,11 +156,112 @@ export default function EpisodeBoard({
 }
 
 /** Episode detail with local state, draft scheduling, comments, and approve/request changes */
-function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, seriesId, userName, userRole, onFetchComments, onAddComment, locations, crewMembers, existingProjects, allEpisodes }: {
+// ── Sortable row wrapper ────────────────────────────────────────
+// Single episode row + its expanded detail. Wrapped here so the
+// drag-to-reorder transform applies cleanly. Drag handle on the
+// left activates the sortable; the rest of the row keeps its
+// existing click targets (title link, expand toggle).
+function SortableEpisodeRow({
+  ep, isExpanded, onToggle, detail,
+}: {
+  ep: SeriesEpisode;
+  isExpanded: boolean;
+  onToggle: () => void;
+  detail: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ep.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  const approvalStatus = ep.approvalStatus || "pending";
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "rounded-lg border bg-card overflow-hidden transition-colors",
+        approvalStatus === "approved" && "border-emerald-500/40",
+        approvalStatus === "changes_requested" && "border-amber-500/50 ring-1 ring-amber-500/20",
+        approvalStatus === "pending" && "border-border",
+      )}
+    >
+      <div className="flex items-center gap-3 px-3 py-3 hover:bg-muted/40 transition-colors">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder"
+          className="shrink-0 p-1 text-muted-foreground/50 hover:text-foreground cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+
+        <span
+          className="shrink-0 text-sm font-semibold text-muted-foreground"
+          style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+        >
+          #{ep.episodeNumber}
+        </span>
+
+        <Link
+          href={`/series/${ep.seriesId}/episode/${ep.id}`}
+          className="flex-1 min-w-0 text-foreground font-medium hover:text-primary transition-colors line-clamp-2"
+          style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+        >
+          {ep.title || "Untitled"}
+        </Link>
+
+        {approvalStatus === "approved" && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            <CheckCircle className="w-3 h-3" /> Approved
+          </span>
+        )}
+        {approvalStatus === "changes_requested" && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            <RotateCcw className="w-3 h-3" /> Changes requested
+          </span>
+        )}
+
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
+            STATUS_COLORS[ep.status]
+          )}
+        >
+          {getStatusLabel(ep.status)}
+        </span>
+
+        {ep.draftDate && !ep.projectId && !isExpanded && (
+          <span className="hidden sm:block shrink-0 text-xs text-cyan-400">{ep.draftDate}</span>
+        )}
+        {!ep.draftDate && ep.concept && !isExpanded && (
+          <span className="hidden lg:block shrink-0 max-w-[160px] truncate text-xs text-muted-foreground">{ep.concept}</span>
+        )}
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
+          aria-label={isExpanded ? "Hide preview" : "Show preview"}
+        >
+          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {isExpanded && detail}
+    </div>
+  );
+}
+
+function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode, onSendEpisodeForReview, seriesId, userName, userRole, onFetchComments, onAddComment, locations, crewMembers, existingProjects, allEpisodes }: {
   ep: SeriesEpisode;
   onUpdateEpisode: (id: string, updates: Partial<SeriesEpisode>) => void;
   onDeleteEpisode: (id: string) => void;
   onScheduleEpisode?: (episode: SeriesEpisode) => void;
+  onSendEpisodeForReview?: (episode: SeriesEpisode) => void;
   seriesId: string;
   userName: string;
   userRole: string;
@@ -292,6 +374,19 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
 
   return (
     <div className="border-t border-border px-4 py-4 flex flex-col gap-4">
+      {/* Client review feedback — surfaces what the client said via
+          the public review link. Read-only here; the source of truth
+          is the public-action endpoint. */}
+      {ep.clientComment && (
+        <div className={cn(
+          "rounded-md border px-3 py-2 text-xs",
+          ep.approvalStatus === "changes_requested" ? "border-amber-500/40 bg-amber-500/5 text-amber-200" : "border-border bg-secondary/40 text-muted-foreground",
+        )}>
+          <div className="font-medium text-foreground mb-0.5">Client note</div>
+          <div className="whitespace-pre-wrap">{ep.clientComment}</div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-muted-foreground">Title</label>
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => saveField("title", title)}
@@ -405,7 +500,12 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
             {STATUS_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
           </select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onSendEpisodeForReview && (
+            <button type="button" onClick={() => onSendEpisodeForReview(ep)} className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-primary hover:bg-primary/10 transition-colors">
+              <Send className="h-4 w-4" /> Send for Review
+            </button>
+          )}
           {!ep.projectId && onScheduleEpisode && ep.status !== "idea" && (
             <button type="button" onClick={() => onScheduleEpisode(ep)} className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-cyan-400 hover:bg-cyan-950/40 transition-colors">
               <CalendarPlus className="h-4 w-4" /> Schedule Shoot

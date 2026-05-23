@@ -8,6 +8,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { timingSafeEqual } from "crypto";
+import { errorMessage } from "./_auth.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -390,7 +391,7 @@ const TOOLS = [
 ];
 
 // ---- Tool Handlers ----
-async function handleToolCall(name: string, args: Record<string, any>): Promise<any> {
+async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
   const db = getDb();
 
   switch (name) {
@@ -720,8 +721,10 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
         }
       }
 
-      const available = (crewResult.data || []).filter((c: any) => !bookedIds.has(c.id));
-      const booked = (crewResult.data || []).filter((c: any) => bookedIds.has(c.id)).map((c: any) => ({
+      type CrewRow = { id: string; [key: string]: unknown };
+      const crewRows = (crewResult.data as CrewRow[] | null) || [];
+      const available = crewRows.filter(c => !bookedIds.has(c.id));
+      const booked = crewRows.filter(c => bookedIds.has(c.id)).map(c => ({
         ...c,
         assignments: assignments[c.id] || [],
       }));
@@ -748,10 +751,12 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       for (const c of clientsResult.data || []) clientMap[c.id] = c.company;
 
       // Revenue from paid invoices in the date range
-      const paidInvoices = (invoicesResult.data || []).filter((inv: any) =>
-        inv.status === "paid" && inv.paid_date && inv.paid_date >= args.from && inv.paid_date <= args.to
+      type InvoiceRow = { id: string; client_id: string; total: number; status: string; paid_date: string | null; issue_date: string };
+      const invoiceRows = (invoicesResult.data as InvoiceRow[] | null) || [];
+      const paidInvoices = invoiceRows.filter(inv =>
+        inv.status === "paid" && inv.paid_date && inv.paid_date >= String(args.from) && inv.paid_date <= String(args.to)
       );
-      const totalRevenue = paidInvoices.reduce((sum: number, inv: any) => sum + (inv.total || 0), 0);
+      const totalRevenue = paidInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
 
       const revenueByClient: Record<string, number> = {};
       for (const inv of paidInvoices) {
@@ -760,10 +765,12 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       }
 
       // Business expenses in date range
-      const periodExpenses = (expensesResult.data || []).filter((exp: any) =>
-        exp.date >= args.from && exp.date <= args.to
+      type ExpenseRow = { id: string; amount: number; category: string; date: string };
+      const expenseRows = (expensesResult.data as ExpenseRow[] | null) || [];
+      const periodExpenses = expenseRows.filter(exp =>
+        exp.date >= String(args.from) && exp.date <= String(args.to)
       );
-      const totalExpenses = periodExpenses.reduce((sum: number, exp: any) => sum + (exp.amount || 0), 0);
+      const totalExpenses = periodExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
       const expensesByCategory: Record<string, number> = {};
       for (const exp of periodExpenses) {
@@ -771,14 +778,18 @@ async function handleToolCall(name: string, args: Record<string, any>): Promise<
       }
 
       // Marketing expenses in date range
-      const periodMktExp = (mktExpResult.data || []).filter((exp: any) =>
-        exp.date >= args.from && exp.date <= args.to
+      type MktExpRow = { id: string; client_id: string | null; amount: number; date: string };
+      const mktExpRows = (mktExpResult.data as MktExpRow[] | null) || [];
+      const periodMktExp = mktExpRows.filter(exp =>
+        exp.date >= String(args.from) && exp.date <= String(args.to)
       );
-      const totalMarketingExpenses = periodMktExp.reduce((sum: number, exp: any) => sum + (exp.amount || 0), 0);
+      const totalMarketingExpenses = periodMktExp.reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
       // Crew costs from projects in date range
-      const periodProjects = (projectsResult.data || []).filter((p: any) =>
-        p.date >= args.from && p.date <= args.to
+      type ProjectRow = { id: string; client_id: string; date: string; crew: unknown; post_production: unknown; status: string };
+      const projectRows = (projectsResult.data as ProjectRow[] | null) || [];
+      const periodProjects = projectRows.filter(p =>
+        p.date >= String(args.from) && p.date <= String(args.to)
       );
       let totalCrewCosts = 0;
       for (const proj of periodProjects) {
@@ -929,7 +940,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json(response);
 }
 
-async function handleJsonRpc(body: any): Promise<any> {
+type JsonRpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
+type JsonRpcResponse = { jsonrpc: "2.0"; id?: string | number | null; result?: unknown; error?: { code: number; message: string; data?: unknown } } | null;
+
+async function handleJsonRpc(body: JsonRpcRequest): Promise<JsonRpcResponse> {
   const { jsonrpc, id, method, params } = body;
 
   // Notifications (no id) don't require a response
@@ -941,7 +955,7 @@ async function handleJsonRpc(body: any): Promise<any> {
   }
 
   try {
-    let result: any;
+    let result: unknown;
 
     switch (method) {
       case "initialize":
@@ -971,10 +985,10 @@ async function handleJsonRpc(body: any): Promise<any> {
               { type: "text", text: JSON.stringify(data, null, 2) },
             ],
           };
-        } catch (err: any) {
+        } catch (err) {
           result = {
             content: [
-              { type: "text", text: `Error: ${err.message}` },
+              { type: "text", text: `Error: ${errorMessage(err)}` },
             ],
             isError: true,
           };
@@ -993,11 +1007,11 @@ async function handleJsonRpc(body: any): Promise<any> {
 
     if (isNotification) return null;
     return { jsonrpc: "2.0", result, id };
-  } catch (err: any) {
+  } catch (err) {
     if (isNotification) return null;
     return {
       jsonrpc: "2.0",
-      error: { code: -32603, message: err.message },
+      error: { code: -32603, message: errorMessage(err) },
       id,
     };
   }

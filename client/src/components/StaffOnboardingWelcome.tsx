@@ -6,10 +6,9 @@ import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { HomeAddress } from "@/lib/types";
-import { Film, CalendarDays, DollarSign, Car, CheckCircle, MapPin } from "lucide-react";
+import { CalendarDays, DollarSign, Car, CheckCircle, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 
 export default function StaffOnboardingWelcome() {

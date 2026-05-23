@@ -34,7 +34,7 @@ export default function PaymentBanner() {
       });
       const json = await res.json();
       if (!res.ok || !json.url) throw new Error(json.error || "Failed to open billing portal");
-      window.location.href = json.url;
+      window.location.assign(json.url);
     } catch (err: any) {
       toast.error(err.message || "Could not open billing portal");
       setLoading(false);

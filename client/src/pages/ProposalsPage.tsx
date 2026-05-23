@@ -3,21 +3,23 @@
 // Bundles services + contract + payment into one client-facing link
 // ============================================================
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Proposal, ProposalTemplate, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
+import type { Proposal, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, DollarSign, Link2, ExternalLink, Copy } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, Link2, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
-import { getAuthToken } from "@/lib/supabase";
+import { getAuthToken, supabase } from "@/lib/supabase";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
+import PrereqGate from "@/components/PrereqGate";
 
 const STATUS_COLORS: Record<ProposalStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -116,11 +118,11 @@ function LineItemEditor({ items, setter, services }: { items: ProposalLineItem[]
           />
           <div className="flex gap-2 items-center">
             <div className="w-16">
-              <Input type="number" value={li.quantity} onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs text-center" min={1} />
+              <Input type="text" inputMode="decimal" value={li.quantity} onChange={e => updateLineItem(items, li.id, "quantity", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs text-center" min={1} />
               <span className="text-[9px] text-muted-foreground">Qty</span>
             </div>
             <div className="flex-1">
-              <Input type="number" value={li.unitPrice || ""} onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs" placeholder="0.00" min={0} step={0.01} />
+              <Input type="text" inputMode="decimal" value={li.unitPrice || ""} onChange={e => updateLineItem(items, li.id, "unitPrice", Number(e.target.value) || 0, setter)} className="bg-secondary border-border text-xs" placeholder="0.00" min={0} step={0.01} />
               <span className="text-[9px] text-muted-foreground">Price</span>
             </div>
             <div className="text-right">
@@ -171,7 +173,7 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <Input
-              type="number"
+              type="text" inputMode="decimal"
               value={config.depositPercent}
               onChange={e => {
                 const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0));
@@ -196,21 +198,10 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
 }
 
 export default function ProposalsPage() {
-  const { data, addClient, addContractTemplate, addProposalTemplate, updateProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
+  const { data, addClient, addContractTemplate, addProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"proposals" | "templates">("templates");
-
-  // Template dialog state
-  const [tplDialogOpen, setTplDialogOpen] = useState(false);
-  const [editingTplId, setEditingTplId] = useState<string | null>(null);
-  const [tplName, setTplName] = useState("");
-  const [tplLineItems, setTplLineItems] = useState<ProposalLineItem[]>([emptyLineItem()]);
-  const [tplContractContent, setTplContractContent] = useState("");
-  const [tplPayment, setTplPayment] = useState<ProposalPaymentConfig>(DEFAULT_PAYMENT);
-  const [tplNotes, setTplNotes] = useState("");
-  const [tplCoverUrl, setTplCoverUrl] = useState("");
-  const [uploadingCover, setUploadingCover] = useState(false);
 
   // Proposal dialog state
   const [proposalDialogOpen, setProposalDialogOpen] = useState(false);
@@ -240,7 +231,6 @@ export default function ProposalsPage() {
   const [importUrl, setImportUrl] = useState("");
   const [importPasteContent, setImportPasteContent] = useState("");
   const [importing, setImporting] = useState(false);
-  const [importTarget, setImportTarget] = useState<"template" | "proposal">("template");
 
   // Quick-add client
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -275,8 +265,7 @@ export default function ProposalsPage() {
     }
   }
 
-  // Textarea refs for cursor-position insert
-  const tplTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Textarea ref for cursor-position insert
   const propTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   function insertAtCursor(ref: React.RefObject<HTMLTextAreaElement | null>, text: string, setter: (val: string) => void, currentVal: string) {
@@ -294,74 +283,7 @@ export default function ProposalsPage() {
   }
 
   // PDF upload
-  const pdfRef = useRef<HTMLInputElement>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
-
-  // ---- Template CRUD ----
-  function openNewTemplate() {
-    setEditingTplId(null);
-    setTplName("");
-    setTplLineItems([emptyLineItem()]);
-    setTplContractContent("");
-    setTplPayment(DEFAULT_PAYMENT);
-    setTplNotes("");
-    setTplCoverUrl("");
-    setTplDialogOpen(true);
-  }
-
-  function openEditTemplate(tpl: ProposalTemplate) {
-    setEditingTplId(tpl.id);
-    setTplName(tpl.name);
-    setTplLineItems(tpl.lineItems.length > 0 ? tpl.lineItems : [emptyLineItem()]);
-    setTplContractContent(tpl.contractContent);
-    setTplPayment(tpl.paymentConfig);
-    setTplNotes(tpl.notes);
-    setTplCoverUrl(tpl.coverImageUrl || "");
-    setTplDialogOpen(true);
-  }
-
-  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setUploadingCover(true);
-    try {
-      const { supabase } = await import("@/lib/supabase");
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `covers/${nanoid(10)}.${ext}`;
-      const { error } = await supabase.storage.from("proposal-assets").upload(path, file, { upsert: true });
-      if (error) throw new Error(error.message);
-      const { data: urlData } = supabase.storage.from("proposal-assets").getPublicUrl(path);
-      setTplCoverUrl(urlData.publicUrl);
-      toast.success("Cover image uploaded");
-    } catch (err: any) {
-      toast.error(err.message || "Upload failed");
-    } finally {
-      setUploadingCover(false);
-    }
-  }
-
-  async function saveTemplate() {
-    if (!tplName.trim()) { toast.error("Template name required"); return; }
-    const payload = {
-      name: tplName.trim(),
-      coverImageUrl: tplCoverUrl,
-      pages: [] as any[],
-      packages: [] as any[],
-      lineItems: calcLineItems(tplLineItems),
-      contractContent: tplContractContent,
-      paymentConfig: { ...tplPayment, depositAmount: tplPayment.option === "deposit" ? Math.round(calcTotal(tplLineItems) * (tplPayment.depositPercent / 100) * 100) / 100 : 0 },
-      notes: tplNotes,
-    };
-    if (editingTplId) {
-      await updateProposalTemplate(editingTplId, payload);
-      toast.success("Template updated");
-    } else {
-      await addProposalTemplate(payload);
-      toast.success("Template created");
-    }
-    setTplDialogOpen(false);
-  }
 
   // ---- Proposal CRUD ----
   function openNewProposal() {
@@ -433,9 +355,13 @@ export default function ProposalsPage() {
       packages: [],
       selectedPackageId: null,
       paymentMilestones: [],
+      sendHistory: [],
+      inboundReplies: [],
+      expiresAt: null,
       pipelineStage: "inquiry",
       viewedAt: null,
       leadSource: "",
+      contractTemplateId: null,
       lineItems: items,
       subtotal,
       taxRate: 0,
@@ -487,6 +413,24 @@ export default function ProposalsPage() {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         throw new Error(err.error || "Failed to send email");
       }
+      // Append to send_history (light versioning — total + selected packages
+       // + milestone count snapshotted per send). Best-effort; failure here
+       // doesn't block the user-facing success path.
+       try {
+         const { data: cur } = await supabase.from("proposals").select("send_history").eq("id", proposalId).single();
+         const history = Array.isArray((cur as { send_history?: unknown[] } | null)?.send_history)
+           ? ((cur as { send_history: unknown[] }).send_history as Array<Record<string, unknown>>)
+           : [];
+         history.push({
+           sentAt: new Date().toISOString(),
+           total: proposal.total,
+           packageIds: (proposal.packages || []).map(p => p.id),
+           milestoneCount: (proposal.paymentMilestones || []).length,
+         });
+         await supabase.from("proposals").update({ send_history: history }).eq("id", proposalId);
+       } catch (err) {
+         console.warn("[proposals] send_history append failed:", err);
+       }
       await updateProposal(proposalId, { status: "sent", sentAt: new Date().toISOString() });
       toast.success("Proposal sent to " + proposal.clientEmail);
     } catch (e: any) {
@@ -505,7 +449,7 @@ export default function ProposalsPage() {
   async function submitSignature() {
     if (!signingProposalId) return;
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       if (!typedName.trim()) { toast.error("Type your name"); return; }
       signatureData = typedName.trim();
@@ -574,8 +518,7 @@ export default function ProposalsPage() {
   }
 
   // ---- HoneyBook Import ----
-  function openImport(target: "template" | "proposal") {
-    setImportTarget(target);
+  function openImport() {
     setImportUrl("");
     setImportPasteContent("");
     setImportDialogOpen(true);
@@ -584,11 +527,7 @@ export default function ProposalsPage() {
   async function doImport() {
     // If user pasted content directly, use that
     if (importPasteContent.trim()) {
-      if (importTarget === "template") {
-        setTplContractContent(importPasteContent.trim());
-      } else {
-        setPropContractContent(importPasteContent.trim());
-      }
+      setPropContractContent(importPasteContent.trim());
       toast.success("Content imported");
       setImportDialogOpen(false);
       return;
@@ -614,23 +553,19 @@ export default function ProposalsPage() {
         toast.warning(result.error);
       }
       if (result.contractContent) {
-        if (importTarget === "template") {
-          setTplContractContent(result.contractContent);
-        } else {
-          setPropContractContent(result.contractContent);
-        }
+        setPropContractContent(result.contractContent);
         toast.success("Contract content imported");
         setImportDialogOpen(false);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Import failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed");
     } finally {
       setImporting(false);
     }
   }
 
   // ---- PDF Upload (for contract content) ----
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>, target: "template" | "proposal") {
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
@@ -652,14 +587,13 @@ export default function ProposalsPage() {
       if (!res.ok) throw new Error("Failed to parse PDF");
       const { text } = await res.json();
       if (text) {
-        if (target === "template") setTplContractContent(text);
-        else setPropContractContent(text);
+        setPropContractContent(text);
         toast.success("PDF content imported");
       } else {
         toast.error("No text found in PDF");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to upload");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload");
     } finally {
       setUploadingPdf(false);
     }
@@ -689,6 +623,9 @@ export default function ProposalsPage() {
           <button onClick={() => setTab("templates")} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors", tab === "templates" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             Templates
           </button>
+          <button onClick={() => setLocation("/trash")} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary" title="View archived items">
+            Archive
+          </button>
         </div>
       </div>
 
@@ -696,9 +633,17 @@ export default function ProposalsPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "proposals" ? (
           <div className="space-y-4">
-            <Button onClick={openNewProposal} className="gap-2">
-              <Plus className="w-4 h-4" /> New Proposal
-            </Button>
+            <PrereqGate
+              met={data.clients.length > 0}
+              title="Add a client first"
+              body="Proposals are addressed to a specific client. Add at least one client and you'll be able to send your first proposal."
+              ctaLabel="Add Client"
+              ctaHref="/clients"
+            >
+              <Button onClick={openNewProposal} className="gap-2">
+                <Plus className="w-4 h-4" /> New Proposal
+              </Button>
+            </PrereqGate>
 
             {data.proposals.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
@@ -746,7 +691,7 @@ export default function ProposalsPage() {
                             <button onClick={async () => { await updateProposal(p.id, { status: "void" }); toast.success("Proposal voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>
                           )}
                           {(p.status === "draft" || p.status === "void") && (
-                            <button onClick={async () => { await deleteProposal(p.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={async () => { await deleteProposal(p.id); toast.success("Archived — restore from Archive"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Archive"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
                       </div>
@@ -772,21 +717,29 @@ export default function ProposalsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {data.proposalTemplates.map(tpl => (
                   <div key={tpl.id} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
-                    {/* Cover Image */}
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
+                    {/* Cover Image — falls back to cream paper with serif
+                        italic title to match the contract template thumbnail
+                        style (kept the dark-gradient previously, but the
+                        cream is more on-brand and matches contracts page). */}
+                    <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
                       {tpl.coverImageUrl ? (
                         <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <FileText className="w-10 h-10 text-primary/30" />
+                        <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                          <div>
+                            <FileText className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                            <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                              {tpl.name}
+                            </div>
+                          </div>
                         </div>
                       )}
                       {/* Hover overlay with actions */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, contractTemplateId: tpl.contractTemplateId ?? null, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: tpl.name, content: tpl.contractContent || tpl.pages?.find((p: any) => p.type === "agreement")?.content || "" }); await deleteProposalTemplate(tpl.id); toast.success("Moved to Contracts"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Move to Contracts"><ExternalLink className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Archived — restore from Archive"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Archive"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                     {/* Info */}
@@ -804,76 +757,6 @@ export default function ProposalsPage() {
           </div>
         )}
       </div>
-
-      {/* ============ TEMPLATE DIALOG ============ */}
-      <Dialog open={tplDialogOpen} onOpenChange={setTplDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              {editingTplId ? "Edit Template" : "New Proposal Template"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-5 py-2">
-            <div className="grid grid-cols-[1fr_auto] gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Template Name</Label>
-                <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Full Day Video Production" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Cover Image</Label>
-                <div className="w-24 h-16 rounded-lg border border-border overflow-hidden bg-secondary relative group">
-                  {tplCoverUrl ? (
-                    <img src={tplCoverUrl} alt="Cover" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <Upload className="w-4 h-4" />
-                    </div>
-                  )}
-                  <input type="file" accept="image/*" onChange={handleCoverUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploadingCover} />
-                  {uploadingCover && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
-                </div>
-              </div>
-            </div>
-
-            <LineItemEditor items={tplLineItems} setter={setTplLineItems} services={data.organization?.services} />
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Agreement / Contract</Label>
-                <div className="flex gap-2">
-                  <button onClick={() => openImport("template")} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <ExternalLink className="w-3 h-3" /> Import from HoneyBook
-                  </button>
-                  <input ref={pdfRef} type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={e => handlePdfUpload(e, "template")} className="hidden" />
-                  <button onClick={() => pdfRef.current?.click()} disabled={uploadingPdf} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <Upload className="w-3 h-3" /> {uploadingPdf ? "Uploading..." : "Upload PDF"}
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-1">
-                {MERGE_FIELDS.map(f => (
-                  <button key={f.key} onClick={() => insertAtCursor(tplTextareaRef, f.key, setTplContractContent, tplContractContent)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              <textarea
-                ref={tplTextareaRef}
-                value={tplContractContent}
-                onChange={e => setTplContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[400px] resize-y font-mono"
-                placeholder="Enter your contract/agreement text here..."
-              />
-            </div>
-
-            <PaymentEditor config={tplPayment} setConfig={setTplPayment} total={calcTotal(tplLineItems)} />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setTplDialogOpen(false)}>Cancel</Button>
-            <Button onClick={saveTemplate}>{editingTplId ? "Save" : "Create Template"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ============ PROPOSAL DIALOG ============ */}
       <Dialog open={proposalDialogOpen} onOpenChange={setProposalDialogOpen}>
@@ -930,10 +813,10 @@ export default function ProposalsPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-muted-foreground">Agreement / Contract</Label>
                 <div className="flex gap-2">
-                  <button onClick={() => openImport("proposal")} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                  <button onClick={openImport} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
                     <ExternalLink className="w-3 h-3" /> Import
                   </button>
-                  <input type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={e => handlePdfUpload(e, "proposal")} className="hidden" id="prop-pdf-upload" />
+                  <input type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={handlePdfUpload} className="hidden" id="prop-pdf-upload" />
                   <button onClick={() => (document.getElementById("prop-pdf-upload") as HTMLInputElement)?.click()} disabled={uploadingPdf} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
                     <Upload className="w-3 h-3" /> {uploadingPdf ? "Uploading..." : "Upload PDF"}
                   </button>
@@ -1001,9 +884,35 @@ export default function ProposalsPage() {
                 )}
               </div>
 
-              {/* Contract preview */}
-              <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto">
-                {viewProposal.contractContent || <span className="text-gray-400 italic">No contract content</span>}
+              {/* Contract preview — renders block-based pages when present,
+                  falls back to legacy contractContent otherwise. */}
+              <div className="max-h-[40vh] overflow-y-auto space-y-3">
+                {viewProposal.pages && viewProposal.pages.length > 0 ? (
+                  viewProposal.pages
+                    .filter(p => p.type === "agreement" || p.type === "custom")
+                    .map(page => (
+                      <ProposalBlockRenderer
+                        key={page.id}
+                        page={page}
+                        libraryPackages={data.packages}
+                      />
+                    ))
+                ) : viewProposal.contractContent ? (
+                  <ProposalBlockRenderer
+                    page={{
+                      id: "legacy",
+                      type: "agreement",
+                      label: "Agreement",
+                      content: viewProposal.contractContent,
+                      sortOrder: 0,
+                    }}
+                    libraryPackages={data.packages}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg p-6 text-sm">
+                    <span className="text-gray-400 italic">No contract content</span>
+                  </div>
+                )}
               </div>
 
               {/* Signatures */}
@@ -1027,6 +936,51 @@ export default function ProposalsPage() {
                     <p className="text-lg italic text-foreground" style={{ fontFamily: "cursive" }}>{viewProposal.ownerSignature.signatureData}</p>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{viewProposal.ownerSignature.name} · {new Date(viewProposal.ownerSignature.timestamp).toLocaleString()}</p>
+                </div>
+              )}
+
+              {/* Send history — when this proposal has been sent more than once,
+                  surface the timeline so the owner can see what changed between sends. */}
+              {viewProposal.sendHistory && viewProposal.sendHistory.length > 0 && (
+                <div className="bg-secondary/50 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Sent {viewProposal.sendHistory.length} time{viewProposal.sendHistory.length === 1 ? "" : "s"}
+                  </p>
+                  <div className="space-y-1.5">
+                    {viewProposal.sendHistory.map((entry, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{new Date(entry.sentAt).toLocaleString()}</span>
+                        {typeof entry.total === "number" && (
+                          <span className="tabular-nums">${entry.total.toFixed(2)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Inbound replies — client emails captured by /api/inbound-email
+                  and threaded onto this proposal. Surfaces what would otherwise
+                  be lost in the owner's personal inbox. */}
+              {viewProposal.inboundReplies && viewProposal.inboundReplies.length > 0 && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">
+                    Replies from client ({viewProposal.inboundReplies.length})
+                  </p>
+                  <div className="space-y-3">
+                    {viewProposal.inboundReplies.map((reply, i) => (
+                      <div key={i} className="bg-card rounded p-3 border border-border">
+                        <div className="flex items-baseline justify-between gap-2 mb-1">
+                          <p className="text-xs font-medium text-foreground truncate">{reply.from}</p>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {new Date(reply.receivedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {reply.subject && <p className="text-[11px] text-muted-foreground italic mb-1.5">Re: {reply.subject}</p>}
+                        <p className="text-xs text-foreground whitespace-pre-wrap">{reply.body}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

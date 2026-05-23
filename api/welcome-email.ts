@@ -13,6 +13,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "./_auth.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@sdubmedia.com";
@@ -103,8 +104,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ ok: true, sent: true });
-  } catch (err: any) {
-    console.error(`[welcome-email] failed: ${err?.message}`);
-    return res.status(500).json({ error: err?.message || "Failed to send welcome email" });
+  } catch (err) {
+    console.error(`[welcome-email] failed: ${errorMessage(err)}`);
+    return res.status(500).json({ error: errorMessage(err, "Failed to send welcome email") });
   }
 }

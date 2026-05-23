@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch } from "wouter";
 import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 
 export default function ViewProposalPage() {
   const params = useParams<{ token: string }>();
@@ -19,6 +20,9 @@ export default function ViewProposalPage() {
   const [loading, setLoading] = useState(true);
   const [proposal, setProposal] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the proposal's expires_at has passed. Renders a dedicated
+  // "link expired" screen instead of the live form.
+  const [expired, setExpired] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paymentVerified, setPaymentVerified] = useState(false);
@@ -38,22 +42,62 @@ export default function ViewProposalPage() {
     fetch(`/api/proposal-view?token=${token}`).catch(() => {});
 
     fetch(`/api/proposal-accept?action=get&token=${token}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) setError(data.error);
-        else {
-          setProposal(data);
-          setSignerEmail(data.clientEmail || "");
-          if (data.alreadyAccepted) setAccepted(true);
-          if (data.paidAt) setPaymentVerified(true);
-          if (data.selectedPackageId) setSelectedPackageId(data.selectedPackageId);
-          // Auto-select if only one package
-          if (data.packages?.length === 1) setSelectedPackageId(data.packages[0].id);
+      .then(async r => ({ status: r.status, body: await r.json() }))
+      .then(({ status, body }) => {
+        if (body.error) {
+          setError(body.error);
+          if (status === 410 || body.expired) setExpired(true);
+        } else {
+          setProposal(body);
+          setSignerEmail(body.clientEmail || "");
+          if (body.alreadyAccepted) setAccepted(true);
+          if (body.paidAt) setPaymentVerified(true);
+          // Restore in-progress selections from localStorage if the client
+          // closed the tab and came back. Server-stored selectedPackageId
+          // (if set) takes precedence; only fall back to local draft when
+          // nothing is committed yet. Lets the partner-review use case work
+          // without losing picks.
+          const draftKey = `slate.proposal-draft.${token}`;
+          let restoredPackage: string | null = null;
+          let restoredEmail: string | null = null;
+          try {
+            const raw = localStorage.getItem(draftKey);
+            if (raw) {
+              const draft = JSON.parse(raw);
+              if (typeof draft.selectedPackageId === "string") restoredPackage = draft.selectedPackageId;
+              if (typeof draft.signerEmail === "string") restoredEmail = draft.signerEmail;
+            }
+          } catch { /* corrupt localStorage — ignore */ }
+
+          if (body.selectedPackageId) setSelectedPackageId(body.selectedPackageId);
+          else if (restoredPackage && (body.packages || []).some((p: { id: string }) => p.id === restoredPackage)) {
+            setSelectedPackageId(restoredPackage);
+          }
+          else if (body.packages?.length === 1) setSelectedPackageId(body.packages[0].id);
+
+          if (restoredEmail && !body.clientEmail) setSignerEmail(restoredEmail);
         }
         setLoading(false);
       })
       .catch(() => { setError("Failed to load proposal"); setLoading(false); });
   }, [token]);
+
+  // Persist in-progress selections to localStorage so closing the tab
+  // doesn't lose them. Cleared on successful submit. Skipped while loading
+  // so the initial-load setSelectedPackageId() doesn't overwrite a future
+  // restore. Per-token key isolates drafts across multiple proposals.
+  useEffect(() => {
+    if (loading || !token) return;
+    if (accepted) return; // don't save after submit
+    const draftKey = `slate.proposal-draft.${token}`;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({
+        selectedPackageId,
+        signerEmail,
+        savedAt: Date.now(),
+      }));
+    } catch { /* private mode / quota — ignore */ }
+  }, [loading, token, accepted, selectedPackageId, signerEmail]);
 
   // Verify payment on return from Stripe
   useEffect(() => {
@@ -67,7 +111,7 @@ export default function ViewProposalPage() {
         })
         .catch(() => setVerifyingPayment(false));
     }
-  }, [paidParam, sessionIdParam, token]);
+  }, [paidParam, sessionIdParam, token, paymentVerified]);
 
   // Canvas drawing
   const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -100,9 +144,8 @@ export default function ViewProposalPage() {
   async function handleAccept() {
     if (!typedName.trim() && signatureType === "typed") return;
     if (!signerEmail.trim()) return;
-    setSubmitting(true);
 
-    let signatureData = "";
+    let signatureData: string;
     if (signatureType === "typed") {
       signatureData = typedName.trim();
     } else {
@@ -111,6 +154,7 @@ export default function ViewProposalPage() {
       signatureData = canvas.toDataURL("image/png");
     }
 
+    setSubmitting(true);
     try {
       const res = await fetch("/api/proposal-accept?action=accept", {
         method: "POST",
@@ -124,8 +168,12 @@ export default function ViewProposalPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error);
 
+      // Submit succeeded — drop the localStorage draft so a future visit
+      // doesn't try to restore stale selections.
+      try { localStorage.removeItem(`slate.proposal-draft.${token}`); } catch { /* ignore */ }
+
       if (result.paymentRequired && result.checkoutUrl) {
-        window.location.href = result.checkoutUrl;
+        window.location.assign(result.checkoutUrl);
         return;
       }
       if (result.paymentRequired && result.paymentError) {
@@ -149,6 +197,20 @@ export default function ViewProposalPage() {
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-gray-400">{verifyingPayment ? "Verifying payment..." : "Loading proposal..."}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (expired) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">This link has expired</h1>
+          <p className="text-gray-500">
+            For security, this proposal link is no longer active. Please reach out to the sender to request a fresh link.
+          </p>
         </div>
       </div>
     );
@@ -209,13 +271,23 @@ export default function ViewProposalPage() {
   const agreementPages = (proposal?.pages || []).filter((p: any) => p.type === "agreement" || p.type === "custom");
   const hasPages = agreementPages.length > 0;
 
+  // Branding extracted once per render — header + footer both consume it.
+  const orgLogo: string = proposal?.orgLogo || "";
+  const orgBI: Record<string, string> = proposal?.orgBusinessInfo || {};
+  const orgAddressLine = [orgBI.address, orgBI.city, orgBI.state, orgBI.zip].filter(Boolean).join(", ");
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="max-w-3xl mx-auto">
-          <p className="text-sm text-gray-400">{proposal?.orgName || "Proposal"}</p>
-          <h1 className="text-lg font-bold text-gray-900">{proposal?.title}</h1>
+      {/* Branded header — logo if set, otherwise the company name */}
+      <div className="bg-white border-b px-6 py-5">
+        <div className="max-w-3xl mx-auto flex items-center gap-4">
+          {orgLogo ? (
+            <img src={orgLogo} alt={proposal?.orgName || ""} className="h-10 w-auto object-contain" />
+          ) : null}
+          <div className="min-w-0">
+            <p className="text-sm text-gray-500">{proposal?.orgName || "Proposal"}</p>
+            <h1 className="text-lg font-bold text-gray-900 truncate">{proposal?.title}</h1>
+          </div>
         </div>
       </div>
 
@@ -316,23 +388,32 @@ export default function ViewProposalPage() {
           </div>
         )}
 
-        {/* ---- AGREEMENT PAGES (V2 multi-page) ---- */}
+        {/* ---- AGREEMENT PAGES (V2 multi-page) ----
+             Each page renders via ProposalBlockRenderer, which uses page.blocks
+             when present and falls back to sanitized page.content for legacy
+             templates. Fixes the original rendering bug where raw HTML tags
+             were displayed as text in a whitespace-pre-wrap div. */}
         {hasPages && agreementPages.map((page: any) => (
-          <div key={page.id} className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">{page.label || "Agreement"}</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
-              {page.content}
-            </div>
+          <div key={page.id} className="space-y-2">
+            <h2 className="text-lg font-bold text-gray-900 px-2">{page.label || "Agreement"}</h2>
+            <ProposalBlockRenderer page={page} libraryPackages={proposal?.libraryPackages || []} />
           </div>
         ))}
 
-        {/* Fallback: legacy contractContent */}
+        {/* Fallback: legacy contractContent (proposal has no pages array yet) */}
         {!hasPages && proposal?.contractContent && (
-          <div className="bg-white rounded-xl shadow-sm border p-6 sm:p-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Agreement</h2>
-            <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" style={{ fontFamily: "'Georgia', serif" }}>
-              {proposal.contractContent}
-            </div>
+          <div className="space-y-2">
+            <h2 className="text-lg font-bold text-gray-900 px-2">Agreement</h2>
+            <ProposalBlockRenderer
+              page={{
+                id: "legacy",
+                type: "agreement",
+                label: "Agreement",
+                content: proposal.contractContent,
+                sortOrder: 0,
+              }}
+              libraryPackages={proposal?.libraryPackages || []}
+            />
           </div>
         )}
 
@@ -408,8 +489,21 @@ export default function ViewProposalPage() {
         </div>
       </div>
 
-      <div className="text-center py-6">
-        <p className="text-xs text-gray-300">Powered by Slate</p>
+      {/* Business info footer — clients see the contractor's company name,
+          address, phone, and email instead of just "Powered by Slate". */}
+      <div className="border-t border-gray-200 mt-6">
+        <div className="max-w-3xl mx-auto px-6 py-5 text-center text-xs text-gray-500 space-y-1">
+          {proposal?.orgName && (
+            <p className="font-semibold text-gray-700">{proposal.orgName}</p>
+          )}
+          {orgAddressLine && <p>{orgAddressLine}</p>}
+          <p>
+            {orgBI.phone && <span>{orgBI.phone}</span>}
+            {orgBI.phone && orgBI.email && <span className="mx-1.5">·</span>}
+            {orgBI.email && <span>{orgBI.email}</span>}
+          </p>
+          <p className="text-gray-300 pt-2">Powered by Slate</p>
+        </div>
       </div>
     </div>
   );

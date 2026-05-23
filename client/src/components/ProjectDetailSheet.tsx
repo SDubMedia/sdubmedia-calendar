@@ -11,11 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
+import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
+import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
@@ -38,31 +40,23 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filming Done",
   in_editing: "In Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
-const STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
-  upcoming: "filming_done",
-  filming_done: "in_editing",
-  in_editing: "completed",
-};
-
-const STATUS_NEXT_LABEL: Partial<Record<ProjectStatus, string>> = {
-  upcoming: "Mark Filming Done",
-  filming_done: "Move to Editing",
-  in_editing: "Mark Completed",
-};
-
-// Map project status → episode status for sync
+// Map project status → episode status for sync. delivered keeps
+// the same downstream meaning as the old "completed".
 const PROJECT_TO_EPISODE_STATUS: Partial<Record<ProjectStatus, EpisodeStatus>> = {
   upcoming: "scheduled",
   filming_done: "filming",
   in_editing: "editing",
-  completed: "delivered",
+  editing_done: "editing",
+  delivered: "delivered",
 };
 
 interface Props {
@@ -73,17 +67,38 @@ interface Props {
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice } = useApp();
   const [, setLocation] = useLocation();
-  const { effectiveProfile } = useAuth();
+  const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const isClient = effectiveProfile?.role === "client";
   // Always read the latest project from context so status updates reflect immediately
   const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  // Reschedule modal state.
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleStartTime, setRescheduleStartTime] = useState("");
+  const [rescheduleEndTime, setRescheduleEndTime] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceEmail, setInvoiceEmail] = useState("");
   const [invoiceMessage, setInvoiceMessage] = useState("");
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
+  // Owner-selected payment methods for THIS invoice. Resets each time
+  // the dialog opens. Default = whatever the org has configured.
+  const [invoicePaymentMethods, setInvoicePaymentMethods] = useState<("stripe" | "venmo")[]>([]);
+  const [deliverablesOpen, setDeliverablesOpen] = useState(false);
+  const [deliverablesEmail, setDeliverablesEmail] = useState("");
+  const [deliverablesSubject, setDeliverablesSubject] = useState("");
+  const [deliverablesMessage, setDeliverablesMessage] = useState("");
+  const [sendingDeliverables, setSendingDeliverables] = useState(false);
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatingPreview, setGeneratingPreview] = useState(false);
@@ -118,8 +133,83 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   );
   const photoEditorName = photoEditorEntry ? getCrewName(photoEditorEntry.crewMemberId) : null;
 
+  const submitRestore = async () => {
+    setRestoring(true);
+    try {
+      await updateProject(project.id, {
+        status: "upcoming",
+        cancellationReason: "",
+        cancelledAt: null,
+      });
+      toast.success("Project restored to Upcoming");
+      setRestoreOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to restore project");
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  // Reschedule: bumps the project's date (and optionally time) on the
+  // calendar, then opens a mailto: with a "moved from previousDate to
+  // newDate" message pre-filled. Owner can edit + send from their own
+  // email account so the conversation stays threaded.
+  const submitReschedule = async () => {
+    if (!rescheduleDate) { toast.error("Pick a new date"); return; }
+    setRescheduling(true);
+    const previousDate = project.date;
+    try {
+      await updateProject(project.id, {
+        date: rescheduleDate,
+        startTime: rescheduleStartTime || project.startTime,
+        endTime: rescheduleEndTime || project.endTime,
+      });
+      toast.success("Project rescheduled");
+      setRescheduleOpen(false);
+      // Open the user's email app with the reschedule message.
+      if (client?.email) {
+        const url = buildProjectMailto({
+          to: client.email,
+          orgName: data.organization?.name || "",
+          ownerName: data.organization?.businessInfo?.ownerName || "",
+          clientName: client.contactName || client.company || "",
+          projectType: pType?.name || "Project",
+          date: rescheduleDate,
+          startTime: rescheduleStartTime || project.startTime,
+          endTime: rescheduleEndTime || project.endTime,
+          location: location?.name || "",
+          cancelled: false,
+          rescheduledFromDate: previousDate,
+        });
+        window.location.assign(url);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  const submitCancel = async () => {
+    setCancelling(true);
+    try {
+      await updateProject(project.id, {
+        status: "cancelled",
+        cancellationReason: cancelReason.trim(),
+        cancelledAt: new Date().toISOString(),
+      });
+      toast.success("Project cancelled");
+      setCancelOpen(false);
+      setCancelReason("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel project");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const advanceStatus = async () => {
-    const next = STATUS_NEXT[project.status];
+    const next = NEXT_STATUS[project.status];
     if (next) {
       await updateProject(project.id, { status: next });
       toast.success(`Status updated to ${STATUS_LABELS[next]}`);
@@ -158,6 +248,34 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const togglePaid = async () => {
     const newPaidDate = project.paidDate ? null : new Date().toISOString().slice(0, 10);
     await updateProject(project.id, { paidDate: newPaidDate });
+
+    // Sync the linked invoice's status. The reverse path (invoice marked
+    // paid → project marked paid) already works; this closes the loop for
+    // when the owner marks paid from the project sheet (e.g. after a
+    // Venmo payment, where there's no Stripe webhook to flip the invoice).
+    const linkedInvoice = data.invoices.find(inv =>
+      inv.status !== "void" && inv.lineItems.some(li => li.projectId === project.id)
+    );
+    if (linkedInvoice) {
+      try {
+        if (newPaidDate) {
+          // Only flip drafts/sent → paid. Already-paid stays paid.
+          if (linkedInvoice.status !== "paid") {
+            await updateInvoice(linkedInvoice.id, { status: "paid", paidDate: newPaidDate });
+          }
+        } else {
+          // Undoing the paid mark — revert the invoice unless it's been
+          // explicitly voided in the meantime.
+          if (linkedInvoice.status === "paid") {
+            await updateInvoice(linkedInvoice.id, { status: "sent", paidDate: null });
+          }
+        }
+      } catch {
+        // Non-fatal — project state is the source of truth, invoice will
+        // resync on next open / page reload.
+      }
+    }
+
     toast.success(newPaidDate ? "Marked as paid" : "Marked as unpaid");
   };
 
@@ -189,9 +307,22 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       toast.error("No billable hours or flat rate on this project");
       return;
     }
-    setInvoiceEmail(client.email || "");
+    setInvoiceEmail(resolvedClientEmail);
     setInvoiceMessage("");
+    // Default payment methods: whichever ones are configured on the org.
+    // If neither is configured, leave empty — the dialog will show a
+    // "configure payment methods in Settings" hint.
+    const defaults: ("stripe" | "venmo")[] = [];
+    if (data.organization?.stripeAccountId) defaults.push("stripe");
+    if (data.organization?.businessInfo?.venmoUsername) defaults.push("venmo");
+    setInvoicePaymentMethods(defaults);
     setInvoiceOpen(true);
+  };
+
+  const togglePaymentMethod = (method: "stripe" | "venmo") => {
+    setInvoicePaymentMethods(prev =>
+      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
+    );
   };
 
   const handlePreviewInvoice = async () => {
@@ -236,18 +367,80 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewUrl]);
 
+  // Random URL-safe token for the public invoice link. Same shape as
+  // the proposal/contract sign tokens already used elsewhere.
+  const makeViewToken = () => Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+
+  // Common save-the-draft path. Returns the persisted Invoice. Generates
+  // an invoice number and a view_token (always — even drafts get a token
+  // so the "Preview client view" button works without a separate save).
+  const persistInvoice = async (): Promise<{ id: string; invoiceNumber: string; viewToken: string; total: number; clientName: string } | null> => {
+    if (!client || !invoiceDraft) return null;
+    const draft = { ...invoiceDraft };
+    draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
+    draft.paymentMethods = invoicePaymentMethods.length > 0 ? invoicePaymentMethods : ["stripe"];
+    draft.viewToken = makeViewToken();
+    const created = await addInvoice(draft);
+    return {
+      id: created.id,
+      invoiceNumber: created.invoiceNumber,
+      viewToken: created.viewToken,
+      total: created.total,
+      clientName: created.clientInfo.contactName || created.clientInfo.company || "",
+    };
+  };
+
+  const handleSaveDraft = async () => {
+    if (!client || !invoiceDraft) return;
+    setSavingDraft(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      toast.success(`Invoice ${created.invoiceNumber} saved as draft`);
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save draft");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleSaveAndCopyLink = async () => {
+    if (!client || !invoiceDraft) return;
+    setCopyingLink(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      const url = `${window.location.origin}/invoice/${created.viewToken}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(`Link copied — ${created.invoiceNumber}`, { description: "Paste it into a text or message." });
+      } catch {
+        // Some browsers block clipboard without user gesture chain — show the URL instead.
+        toast.success(`Invoice ${created.invoiceNumber} saved`, { description: url });
+      }
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save invoice");
+    } finally {
+      setCopyingLink(false);
+    }
+  };
+
   const handleCreateAndSendInvoice = async () => {
     if (!client || !invoiceDraft) return;
     if (!invoiceEmail) { toast.error("Recipient email required"); return; }
 
     setSendingInvoice(true);
     try {
-      const draft = { ...invoiceDraft };
-      draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
-      const created = await addInvoice(draft);
+      const created = await persistInvoice();
+      if (!created) return;
+      const publicUrl = `${window.location.origin}/invoice/${created.viewToken}`;
 
-      // Generate PDF and send
-      const blob = await pdf(<InvoicePDF invoice={created} />).toBlob();
+      // Generate PDF + send. Pass the public URL so the email can render
+      // a "Pay this invoice" CTA in addition to the PDF attachment.
+      const fullInvoice = data.invoices.find(i => i.id === created.id);
+      const blob = await pdf(<InvoicePDF invoice={fullInvoice!} />).toBlob();
       const formData = new FormData();
       formData.append("pdf", blob, `${created.invoiceNumber}.pdf`);
       formData.append("invoiceId", created.id);
@@ -256,7 +449,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       formData.append("message", invoiceMessage);
       formData.append("invoiceNumber", created.invoiceNumber);
       formData.append("total", String(created.total));
-      formData.append("clientName", created.clientInfo.contactName || created.clientInfo.company || "");
+      formData.append("clientName", created.clientName);
+      formData.append("publicUrl", publicUrl);
 
       const token = await getAuthToken();
       const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { Authorization: `Bearer ${token}` } });
@@ -268,10 +462,82 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       await updateInvoice(created.id, { status: "sent" });
       toast.success(`Invoice ${created.invoiceNumber} sent to ${invoiceEmail}`);
       setInvoiceOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send invoice");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send invoice");
     } finally {
       setSendingInvoice(false);
+    }
+  };
+
+  const handlePreviewClientView = async () => {
+    // Persist with a token, then open the public URL in a new tab. Same
+    // page the client will see — payment buttons reflect the checkboxes.
+    if (!client || !invoiceDraft) return;
+    setSavingDraft(true);
+    try {
+      const created = await persistInvoice();
+      if (!created) return;
+      const url = `${window.location.origin}/invoice/${created.viewToken}`;
+      window.open(url, "_blank", "noopener");
+      toast.success(`Preview opened — ${created.invoiceNumber}`);
+      setInvoiceOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't generate preview");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // If the client record has no email but a Slate user has been attached
+  // to this client, fall back to that user's email. Resolves the case where
+  // the owner created a user (with email) attached to a client whose
+  // dedicated email field on the Clients page is still blank.
+  const attachedUserEmail = client && !client.email
+    ? allProfiles.find(u => u.role === "client" && u.clientIds.includes(client.id))?.email || ""
+    : "";
+  const resolvedClientEmail = client?.email || attachedUserEmail || "";
+
+  const openDeliverablesDialog = () => {
+    if (!project.deliverableUrl) {
+      toast.error("Add a Google Drive (or other) deliverable link to this project first");
+      return;
+    }
+    if (!client) return;
+    const projectTypeName = pType?.name || "your project";
+    const greeting = client.contactName ? `Hi ${client.contactName.split(" ")[0]},` : "Hi,";
+    const defaultMessage = `${greeting}\n\nYour ${projectTypeName.toLowerCase()} deliverables are ready to view and download. Click the button below to open the folder.`;
+    setDeliverablesEmail(resolvedClientEmail);
+    setDeliverablesSubject("Your project deliverables are ready");
+    setDeliverablesMessage(defaultMessage);
+    setDeliverablesOpen(true);
+  };
+
+  const handleSendDeliverables = async () => {
+    if (!project.deliverableUrl) { toast.error("No deliverable link on this project"); return; }
+    if (!deliverablesEmail || !deliverablesEmail.includes("@")) { toast.error("Valid recipient email required"); return; }
+    setSendingDeliverables(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/send-deliverables-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          projectId: project.id,
+          toEmail: deliverablesEmail,
+          subject: deliverablesSubject,
+          message: deliverablesMessage,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to send" }));
+        throw new Error(err.error || "Failed to send");
+      }
+      toast.success(`Deliverables link sent to ${deliverablesEmail}`);
+      setDeliverablesOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send deliverables");
+    } finally {
+      setSendingDeliverables(false);
     }
   };
 
@@ -291,10 +557,13 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </SheetTitle>
                 <div className="mt-1">
                   <Badge className={cn("text-xs",
+                    project.status === "tentative" && "bg-amber-400/15 text-amber-300 border border-dashed border-amber-400/40",
                     project.status === "upcoming" && "bg-blue-500/20 text-blue-300 border-blue-500/30",
                     project.status === "filming_done" && "bg-purple-500/20 text-purple-300 border-purple-500/30",
                     project.status === "in_editing" && "bg-amber-500/20 text-amber-300 border-amber-500/30",
-                    project.status === "completed" && "bg-green-500/20 text-green-300 border-green-500/30",
+                    project.status === "editing_done" && "bg-teal-500/20 text-teal-300 border-teal-500/30",
+                    project.status === "delivered" && "bg-green-500/20 text-green-300 border-green-500/30",
+                    project.status === "cancelled" && "bg-red-500/20 text-red-300 border-red-500/30",
                   )}>
                     {STATUS_LABELS[project.status]}
                   </Badge>
@@ -319,6 +588,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
           </SheetHeader>
 
           <div className="space-y-5">
+            {/* Cancellation banner — read-only, shown only on cancelled projects */}
+            {project.status === "cancelled" && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-300">Cancelled{project.cancelledAt ? ` · ${new Date(project.cancelledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}</p>
+                {project.cancellationReason && (
+                  <p className="text-sm text-red-100/90 mt-1.5 whitespace-pre-wrap">{project.cancellationReason}</p>
+                )}
+              </div>
+            )}
+
             {/* Date, Time, Client, Location */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-secondary rounded-lg p-3 space-y-1">
@@ -593,12 +872,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
             {/* Actions */}
             <div className="flex flex-col gap-2">
-              {!isClient && STATUS_NEXT[project.status] && (
-                <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
-                  <CheckCircle2 className="w-4 h-4" />
-                  {STATUS_NEXT_LABEL[project.status]}
-                </Button>
-              )}
+              {/* Advance-status button — gated by role on the project.
+                  Filming-camera roles can advance through filming;
+                  Editor roles can advance through editing/delivery.
+                  Owner / partner can always advance. */}
+              {(() => {
+                if (isClient) return null;
+                const myCrewMemberId = effectiveProfile?.crewMemberId
+                  || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id;
+                const myProjectRoles: string[] = [];
+                if (myCrewMemberId) {
+                  (project.crew || []).forEach(e => { if (e.crewMemberId === myCrewMemberId) myProjectRoles.push(e.role); });
+                  (project.postProduction || []).forEach(e => { if (e.crewMemberId === myCrewMemberId) myProjectRoles.push(e.role); });
+                }
+                const allowed = canAdvanceProjectStatus(project.status, effectiveProfile?.role, myProjectRoles);
+                if (!allowed) return null;
+                return (
+                  <Button onClick={advanceStatus} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 w-full">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {NEXT_STATUS_LABEL[project.status]}
+                  </Button>
+                );
+              })()}
               {isOwner && (
                 <Button
                   variant="outline"
@@ -636,10 +931,188 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   Edit Project
                 </Button>
               )}
+              {isOwner && project.deliverableUrl && (
+                <Button
+                  variant="outline"
+                  onClick={openDeliverablesDialog}
+                  className="w-full border-border gap-2 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                >
+                  <Send className="w-4 h-4" />
+                  Send Client Deliverables
+                </Button>
+              )}
+              {isOwner && client?.email && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const url = buildProjectMailto({
+                      to: client.email,
+                      orgName: data.organization?.name || "",
+                      ownerName: data.organization?.businessInfo?.ownerName || "",
+                      clientName: client.contactName || client.company || "",
+                      projectType: pType?.name || "Project",
+                      date: project.date,
+                      startTime: project.startTime,
+                      endTime: project.endTime,
+                      location: location?.name || "",
+                      cancelled: project.status === "cancelled",
+                      cancellationReason: project.cancellationReason || "",
+                    });
+                    window.location.assign(url);
+                  }}
+                  className="w-full border-border gap-2"
+                  title="Open your email app with a pre-filled confirmation message"
+                >
+                  <Mail className="w-4 h-4" />
+                  {project.status === "cancelled" ? "Email cancellation to client" : "Email project details to client"}
+                </Button>
+              )}
+              {isOwner && project.status !== "cancelled" && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setRescheduleDate(project.date);
+                    setRescheduleStartTime(project.startTime);
+                    setRescheduleEndTime(project.endTime);
+                    setRescheduleOpen(true);
+                  }}
+                  className="w-full border-border gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  Reschedule Project
+                </Button>
+              )}
+              {isOwner && project.status !== "cancelled" && (
+                <Button
+                  variant="outline"
+                  onClick={() => { setCancelReason(""); setCancelOpen(true); }}
+                  className="w-full border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200 gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Cancel Project
+                </Button>
+              )}
+              {isOwner && project.status === "cancelled" && (
+                <Button
+                  variant="outline"
+                  onClick={() => setRestoreOpen(true)}
+                  className="w-full border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 hover:text-emerald-200 gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Restore Project
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Restore (uncancel) project confirm */}
+      <AlertDialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Restore this project?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              The project will move back to Upcoming and start counting toward invoices, hours, and partner splits again. The previous cancellation reason will be cleared. You can advance the status from the detail sheet.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restoring}>Keep cancelled</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={submitRestore}
+              disabled={restoring}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {restoring ? "Restoring…" : "Restore project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reschedule project — date+time picker, then opens client mailto:
+          with reschedule message pre-filled. */}
+      <AlertDialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Reschedule project</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              Pick a new date and time. After saving, your email app will open with a "moved to" message pre-filled for {client?.contactName || "the client"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">New date</label>
+              <input
+                type="date"
+                value={rescheduleDate}
+                onChange={e => setRescheduleDate(e.target.value)}
+                className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Start</label>
+                <input
+                  type="time"
+                  value={rescheduleStartTime}
+                  onChange={e => setRescheduleStartTime(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">End</label>
+                <input
+                  type="time"
+                  value={rescheduleEndTime}
+                  onChange={e => setRescheduleEndTime(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); submitReschedule(); }}
+              disabled={rescheduling || !rescheduleDate}
+            >
+              {rescheduling ? "Saving…" : "Save & email client"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel project confirm — captures the reason and stamps cancelled_at */}
+      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Cancel this project?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              The project will move to Cancelled status and stop counting toward invoices, hours, and partner splits. It still appears on the calendar (in red) and on reports under Cancelled Projects.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5 py-2">
+            <label className="text-xs text-muted-foreground">Reason for cancellation</label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. client postponed, weather, scope changed"
+              rows={3}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Keep project</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={submitCancel}
+              disabled={cancelling}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {cancelling ? "Cancelling…" : "Cancel project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Create & Send Invoice dialog */}
       <AlertDialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
@@ -668,6 +1141,18 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
               </div>
 
+              {client && (
+                <div className="bg-secondary/30 border border-border rounded-md p-3">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Sending to</div>
+                  <div className="text-sm text-foreground font-medium">
+                    {client.contactName || client.company || "Client"}
+                  </div>
+                  {client.company && client.contactName && (
+                    <div className="text-xs text-muted-foreground">{client.company}</div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
                 <input
@@ -677,6 +1162,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   placeholder="client@example.com"
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
+                {client && !resolvedClientEmail && (
+                  <p className="text-xs text-amber-300/90 mt-1.5">
+                    No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -689,25 +1179,178 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                 />
               </div>
+
+              {/* Payment methods the client will see on the public page */}
+              <div className="bg-secondary/30 border border-border rounded-md p-3 space-y-2">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Payment Methods Visible to Client</div>
+                {(() => {
+                  const stripeConnected = !!data.organization?.stripeAccountId;
+                  const venmoConfigured = !!data.organization?.businessInfo?.venmoUsername;
+                  return (
+                    <>
+                      <label className={cn("flex items-start gap-2 text-sm", !stripeConnected && "opacity-50")}>
+                        <input
+                          type="checkbox"
+                          checked={invoicePaymentMethods.includes("stripe")}
+                          onChange={() => togglePaymentMethod("stripe")}
+                          disabled={!stripeConnected}
+                          className="mt-0.5 rounded border-border"
+                        />
+                        <span>
+                          <span className="text-foreground font-medium">Stripe Checkout</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {stripeConnected ? "Card payment, auto-confirmed" : "Not connected — set up in Settings → Stripe"}
+                          </span>
+                        </span>
+                      </label>
+                      <label className={cn("flex items-start gap-2 text-sm", !venmoConfigured && "opacity-50")}>
+                        <input
+                          type="checkbox"
+                          checked={invoicePaymentMethods.includes("venmo")}
+                          onChange={() => togglePaymentMethod("venmo")}
+                          disabled={!venmoConfigured}
+                          className="mt-0.5 rounded border-border"
+                        />
+                        <span>
+                          <span className="text-foreground font-medium">Venmo</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {venmoConfigured ? `@${data.organization?.businessInfo?.venmoUsername} — manual confirmation required` : "No username set — add one in Settings"}
+                          </span>
+                        </span>
+                      </label>
+                      {!stripeConnected && !venmoConfigured && (
+                        <p className="text-[11px] text-amber-300/90">No payment methods configured yet. Add at least one in Settings or send the invoice without an online payment option.</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Preview the public client-facing page */}
+              <button
+                type="button"
+                onClick={handlePreviewClientView}
+                disabled={savingDraft || copyingLink || sendingInvoice}
+                className="text-xs text-primary hover:text-primary/80 underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                Preview client view ↗
+              </button>
             </div>
           )}
 
           <AlertDialogFooter className="gap-2 flex-col sm:flex-row">
-            <AlertDialogCancel className="border-border" disabled={sendingInvoice}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border" disabled={sendingInvoice || savingDraft || copyingLink}>Cancel</AlertDialogCancel>
             <Button
               variant="outline"
               onClick={handlePreviewInvoice}
-              disabled={generatingPreview || sendingInvoice}
+              disabled={generatingPreview || sendingInvoice || savingDraft || copyingLink}
+              className="gap-2 border-border"
+              title="Preview the PDF that will be attached to the email"
+            >
+              {generatingPreview ? "Generating…" : "Preview PDF"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={sendingInvoice || savingDraft || copyingLink}
               className="gap-2 border-border"
             >
-              {generatingPreview ? "Generating..." : "Preview PDF"}
+              {savingDraft ? "Saving…" : "Save Draft"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveAndCopyLink}
+              disabled={sendingInvoice || savingDraft || copyingLink}
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+            >
+              {copyingLink ? "Saving…" : "Save & Copy Link"}
             </Button>
             <AlertDialogAction
               onClick={handleCreateAndSendInvoice}
-              disabled={sendingInvoice || !invoiceEmail}
+              disabled={sendingInvoice || savingDraft || copyingLink || !invoiceEmail}
               className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
             >
-              {sendingInvoice ? "Sending..." : <><Send className="w-4 h-4" /> Create &amp; Send</>}
+              {sendingInvoice ? "Sending…" : <><Send className="w-4 h-4" /> Save & Send</>}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Send Client Deliverables dialog */}
+      <AlertDialog open={deliverablesOpen} onOpenChange={setDeliverablesOpen}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send Client Deliverables</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              Email a download link to the client. They&apos;ll see simple instructions for opening the folder.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 my-2">
+            {client && (
+              <div className="bg-secondary/30 border border-border rounded-md p-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Sending to</div>
+                <div className="text-sm text-foreground font-medium">
+                  {client.contactName || client.company || "Client"}
+                </div>
+                {client.company && client.contactName && (
+                  <div className="text-xs text-muted-foreground">{client.company}</div>
+                )}
+              </div>
+            )}
+
+            {project.deliverableUrl && (
+              <div className="bg-secondary/30 border border-border rounded-md p-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Link</div>
+                <div className="text-xs text-emerald-300 font-mono break-all">{project.deliverableUrl}</div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Recipient Email</label>
+              <input
+                type="email"
+                value={deliverablesEmail}
+                onChange={e => setDeliverablesEmail(e.target.value)}
+                placeholder="client@example.com"
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {client && !client.email && (
+                <p className="text-xs text-amber-300/90 mt-1.5">
+                  No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Subject</label>
+              <input
+                type="text"
+                value={deliverablesSubject}
+                onChange={e => setDeliverablesSubject(e.target.value)}
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Message</label>
+              <textarea
+                value={deliverablesMessage}
+                onChange={e => setDeliverablesMessage(e.target.value)}
+                rows={4}
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+              />
+            </div>
+          </div>
+
+          <AlertDialogFooter className="gap-2 flex-col sm:flex-row">
+            <AlertDialogCancel className="border-border" disabled={sendingDeliverables}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSendDeliverables}
+              disabled={sendingDeliverables || !deliverablesEmail}
+              className="bg-emerald-500 text-white hover:bg-emerald-600 gap-2"
+            >
+              {sendingDeliverables ? "Sending..." : <><Send className="w-4 h-4" /> Send</>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

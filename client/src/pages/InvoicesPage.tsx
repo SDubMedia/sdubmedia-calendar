@@ -9,11 +9,13 @@ import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
 import InvoicePDF from "@/components/InvoicePDF";
-import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, AlertCircle } from "lucide-react";
+import { Plus, Download, Send, CheckCircle, XCircle, Eye, Trash2, FileText, X, CreditCard, DollarSign, Clock, Copy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import TestimonialPromptDialog from "@/components/TestimonialPromptDialog";
+import PrereqGate from "@/components/PrereqGate";
+import InvoiceEditDialog from "@/components/InvoiceEditDialog";
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -57,6 +59,7 @@ export default function InvoicesPage() {
   const [creating, setCreating] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all");
   const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
   const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
@@ -80,6 +83,19 @@ export default function InvoicesPage() {
       if (result.url) {
         setPaymentLinks(prev => ({ ...prev, [invoiceId]: result.url }));
         toast.success("Payment link created!");
+
+        // Owner clicked "Create Payment Link" — that's an explicit signal
+        // they want Stripe enabled on this invoice. If the pill isn't
+        // already on, flip it so the public payment page shows Stripe too.
+        const inv = data.invoices.find(i => i.id === invoiceId);
+        if (inv && !inv.paymentMethods.includes("stripe")) {
+          try {
+            await updateInvoice(invoiceId, { paymentMethods: [...inv.paymentMethods, "stripe"] });
+          } catch {
+            // Non-fatal — link was created, pill state is the only thing
+            // that didn't sync. Owner can flip it manually.
+          }
+        }
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to create payment link");
@@ -101,6 +117,26 @@ export default function InvoicesPage() {
       return true;
     });
   }, [data.invoices, filterStatus, filterClient]);
+
+  // Clients split into "booked this period" vs the rest, each
+  // alphabetical. Lets the picker surface clients with actual
+  // invoiceable work first instead of making the owner scroll
+  // through every client they've ever added.
+  const { bookedClients, otherClients } = useMemo(() => {
+    const inPeriod = (date: string) =>
+      (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd);
+    const bookedIds = new Set(
+      data.projects
+        .filter((p) => inPeriod(p.date))
+        .map((p) => p.clientId)
+    );
+    const sortByCompany = (a: { company: string }, b: { company: string }) =>
+      a.company.localeCompare(b.company);
+    return {
+      bookedClients: data.clients.filter((c) => bookedIds.has(c.id)).sort(sortByCompany),
+      otherClients: data.clients.filter((c) => !bookedIds.has(c.id)).sort(sortByCompany),
+    };
+  }, [data.clients, data.projects, periodStart, periodEnd]);
 
   // Preview line items before creating
   const previewLineItems = useMemo(() => {
@@ -208,12 +244,70 @@ export default function InvoicesPage() {
     setSendMessage("");
   };
 
+  // Inline toggle for an invoice's payment methods. Clicking the Stripe
+  // or Venmo pill flips the method on/off. Refuses to enable a method
+  // the org hasn't configured (no Stripe Connect / no Venmo username).
+  const togglePaymentMethodOnInvoice = async (inv: Invoice, method: "stripe" | "venmo") => {
+    const stripeReady = !!data.organization?.stripeAccountId;
+    const venmoReady = !!data.organization?.businessInfo?.venmoUsername;
+    const isCurrentlyOn = inv.paymentMethods.includes(method);
+    if (!isCurrentlyOn) {
+      if (method === "stripe" && !stripeReady) {
+        toast.error("Connect Stripe in Settings before enabling it on invoices");
+        return;
+      }
+      if (method === "venmo" && !venmoReady) {
+        toast.error("Add a Venmo username in Settings before enabling it on invoices");
+        return;
+      }
+    }
+    const next = isCurrentlyOn
+      ? inv.paymentMethods.filter(m => m !== method)
+      : [...inv.paymentMethods, method];
+    try {
+      await updateInvoice(inv.id, { paymentMethods: next });
+      toast.success(isCurrentlyOn ? `${method === "stripe" ? "Stripe" : "Venmo"} removed` : `${method === "stripe" ? "Stripe" : "Venmo"} added`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update");
+    }
+  };
+
+  // Ensure the invoice has a view_token. Generates + persists one if
+  // missing (older invoices created before this column existed). Returns
+  // the token so the caller can build the public URL.
+  const ensureViewToken = async (invoice: Invoice): Promise<string> => {
+    if (invoice.viewToken) return invoice.viewToken;
+    const token = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+    await updateInvoice(invoice.id, { viewToken: token });
+    return token;
+  };
+
+  const handleCopyPublicLink = async (invoice: Invoice) => {
+    try {
+      const tok = await ensureViewToken(invoice);
+      const url = `${window.location.origin}/invoice/${tok}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied", { description: url });
+      } catch {
+        toast.success("Link ready", { description: url });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't generate link");
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!sendingId || !sendEmail) { toast.error("Please enter an email address"); return; }
     const invoice = data.invoices.find(i => i.id === sendingId);
     if (!invoice) return;
 
     try {
+      // Ensure token before generating PDF / posting — public Pay button
+      // in the email needs a real, persistent URL.
+      const tok = await ensureViewToken(invoice);
+      const publicUrl = `${window.location.origin}/invoice/${tok}`;
+
       const blob = await pdf(<InvoicePDF invoice={invoice} />).toBlob();
       const formData = new FormData();
       formData.append("pdf", blob, `${invoice.invoiceNumber}.pdf`);
@@ -224,6 +318,7 @@ export default function InvoicesPage() {
       formData.append("invoiceNumber", invoice.invoiceNumber);
       formData.append("total", String(invoice.total));
       formData.append("clientName", invoice.clientInfo.contactName || invoice.clientInfo.company || "");
+      formData.append("publicUrl", publicUrl);
 
       const token = await getAuthToken();
       const res = await fetch("/api/send-invoice", { method: "POST", body: formData, headers: { "Authorization": `Bearer ${token}` } });
@@ -235,8 +330,8 @@ export default function InvoicesPage() {
       await updateInvoice(invoice.id, { status: "sent" });
       toast.success(`Invoice emailed to ${sendEmail}`);
       setSendingId(null);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send invoice");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send invoice");
     }
   };
 
@@ -250,13 +345,23 @@ export default function InvoicesPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage client invoices</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+        <PrereqGate
+          met={data.clients.length > 0 && data.projects.some(p => p.status !== "cancelled")}
+          title={data.clients.length === 0 ? "Add a client first" : "Add a project first"}
+          body={data.clients.length === 0
+            ? "Invoices bill a client for completed work. Add at least one client to get started."
+            : "Invoices roll up billable projects in a date range. Add at least one project (filming done, editing, or completed) and you'll have something to invoice."}
+          ctaLabel={data.clients.length === 0 ? "Add Client" : "Open Calendar"}
+          ctaHref={data.clients.length === 0 ? "/clients" : "/calendar"}
         >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Create Invoice</span>
-        </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Create Invoice</span>
+          </button>
+        </PrereqGate>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
@@ -328,9 +433,20 @@ export default function InvoicesPage() {
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="">Select client...</option>
-                  {data.clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.company}</option>
-                  ))}
+                  {bookedClients.length > 0 && (
+                    <optgroup label="Booked this period">
+                      {bookedClients.map(c => (
+                        <option key={c.id} value={c.id}>{c.company}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {otherClients.length > 0 && (
+                    <optgroup label={bookedClients.length > 0 ? "Other clients" : "All clients"}>
+                      {otherClients.map(c => (
+                        <option key={c.id} value={c.id}>{c.company}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
               <div>
@@ -435,11 +551,42 @@ export default function InvoicesPage() {
                 <div key={inv.id} className="bg-card border border-border rounded-lg p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center flex-wrap gap-2 mb-1">
                         <span className="text-sm font-semibold text-foreground">{inv.invoiceNumber}</span>
                         <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[inv.status])}>
                           {STATUS_LABELS[inv.status]}
                         </span>
+                        {/* Click to toggle. Filled = active for this invoice's
+                            public page; outlined = available but not selected. */}
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentMethodOnInvoice(inv, "stripe")}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            inv.paymentMethods.includes("stripe")
+                              ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                              : "text-muted-foreground border-border hover:bg-blue-500/10 hover:text-blue-300"
+                          )}
+                          title={inv.paymentMethods.includes("stripe") ? "Stripe enabled — click to remove" : "Click to enable Stripe on this invoice"}
+                        >
+                          Stripe
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentMethodOnInvoice(inv, "venmo")}
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                            inv.paymentMethods.includes("venmo")
+                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                              : "text-muted-foreground border-border hover:bg-cyan-500/10 hover:text-cyan-300"
+                          )}
+                          title={inv.paymentMethods.includes("venmo") ? "Venmo enabled — click to remove" : "Click to enable Venmo on this invoice"}
+                        >
+                          Venmo
+                        </button>
+                        {inv.viewToken && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20" title="A public payment link has been generated">Link ready</span>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">{client?.company || inv.clientInfo.company}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
@@ -459,12 +606,26 @@ export default function InvoicesPage() {
                     <button onClick={() => handlePreview(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">
                       <Eye className="w-3.5 h-3.5" /> Preview
                     </button>
+                    {(inv.status === "draft" || inv.status === "sent") && (
+                      <button onClick={() => setEditingInvoice(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors">
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                    )}
                     <button onClick={() => handleDownload(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">
                       <Download className="w-3.5 h-3.5" /> Download
                     </button>
                     {(inv.status === "draft" || inv.status === "sent") && (
                       <button onClick={() => openSendDialog(inv)} className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors">
                         <Send className="w-3.5 h-3.5" /> Email
+                      </button>
+                    )}
+                    {inv.status !== "void" && (
+                      <button
+                        onClick={() => handleCopyPublicLink(inv)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
+                        title="Copy a public link clients can open and pay from"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Copy Link
                       </button>
                     )}
                     {(inv.status === "draft" || inv.status === "sent") && (
@@ -591,6 +752,11 @@ export default function InvoicesPage() {
         onClose={() => setTestimonialOpen(false)}
         trigger="first_paid_invoice"
         defaultCompany={data.organization?.name}
+      />
+
+      <InvoiceEditDialog
+        invoice={editingInvoice}
+        onClose={() => setEditingInvoice(null)}
       />
     </div>
   );

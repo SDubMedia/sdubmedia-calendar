@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, OrgFeatures, PersonalEvent } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -67,9 +67,10 @@ interface AppContextValue {
   fetchComments: (episodeId: string) => Promise<EpisodeComment[]>;
   addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
   // Crew Location Distances
-  upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number) => Promise<void>;
+  upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId?: string) => Promise<void>;
   // Manual Trips
   addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
+  updateManualTrip: (id: string, patch: Partial<Omit<ManualTrip, "id" | "createdAt">>) => Promise<void>;
   deleteManualTrip: (id: string) => Promise<void>;
   // Business Expenses
   addBusinessExpense: (e: Omit<BusinessExpense, "id" | "createdAt">) => Promise<BusinessExpense>;
@@ -103,6 +104,42 @@ interface AppContextValue {
   addPersonalEvent: (e: Omit<PersonalEvent, "id" | "createdAt">) => Promise<PersonalEvent>;
   updatePersonalEvent: (id: string, e: Partial<PersonalEvent>) => Promise<void>;
   deletePersonalEvent: (id: string) => Promise<void>;
+  addMeeting: (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">) => Promise<Meeting>;
+  updateMeeting: (id: string, m: Partial<Meeting>) => Promise<void>;
+  deleteMeeting: (id: string) => Promise<void>;
+  // Packages library
+  addPackage: (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<Package>;
+  updatePackage: (id: string, p: Partial<Package>) => Promise<void>;
+  deletePackage: (id: string) => Promise<void>;
+  // Proposal images library
+  addProposalImage: (i: Omit<ProposalImage, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<ProposalImage>;
+  updateProposalImage: (id: string, i: Partial<ProposalImage>) => Promise<void>;
+  deleteProposalImage: (id: string) => Promise<void>;
+  // Deliveries (galleries)
+  addDelivery: (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">) => Promise<Delivery>;
+  updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
+  deleteDelivery: (id: string) => Promise<void>;
+  setDeliveryStatus: (id: string, status: DeliveryStatus) => Promise<void>;
+  // Delivery files (metadata; actual upload goes through Storage SDK)
+  registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds">>) => Promise<void>;
+  deleteDeliveryFile: (id: string) => Promise<void>;
+  reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
+  markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
+  // Delivery collections
+  addDeliveryCollection: (c: { name: string; slug: string | null; coverSubtitle: string | null }) => Promise<DeliveryCollection>;
+  updateDeliveryCollection: (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => Promise<void>;
+  deleteDeliveryCollection: (id: string) => Promise<void>;
+  // Service categories / services / variants — hierarchical pricing model
+  addServiceCategory: (c: Omit<ServiceCategory, "id" | "createdAt">) => Promise<ServiceCategory>;
+  updateServiceCategory: (id: string, c: Partial<ServiceCategory>) => Promise<void>;
+  deleteServiceCategory: (id: string) => Promise<void>;
+  addService: (s: Omit<Service, "id" | "createdAt">) => Promise<Service>;
+  updateService: (id: string, s: Partial<Service>) => Promise<void>;
+  deleteService: (id: string) => Promise<void>;
+  addServiceVariant: (v: Omit<ServiceVariant, "id" | "createdAt">) => Promise<ServiceVariant>;
+  updateServiceVariant: (id: string, v: Partial<ServiceVariant>) => Promise<void>;
+  deleteServiceVariant: (id: string) => Promise<void>;
   // Trash
   restoreItem: (table: string, id: string) => Promise<void>;
   permanentlyDelete: (table: string, id: string) => Promise<void>;
@@ -128,10 +165,12 @@ function rowToClient(r: any): Client {
     billingRatePerHour: Number(r.billing_rate_per_hour ?? 0),
     perProjectRate: Number(r.per_project_rate ?? 0),
     projectTypeRates: r.project_type_rates || [],
+    serviceRates: Array.isArray(r.service_rates) ? r.service_rates : [],
     allowedProjectTypeIds: r.allowed_project_type_ids || [],
     defaultProjectTypeId: r.default_project_type_id || "",
     roleBillingMultipliers: r.role_billing_multipliers || [],
     partnerSplit: r.partner_split || null,
+    brandNotes: r.brand_notes || "",
     createdAt: r.created_at,
   };
 }
@@ -145,6 +184,9 @@ function rowToCrew(r: any): CrewMember {
     email: r.email,
     defaultPayRatePerHour: Number(r.default_pay_rate_per_hour ?? 0),
     homeAddress: r.home_address || null,
+    homeBases: Array.isArray(r.home_bases) ? r.home_bases : [],
+    preferredPaymentMethod: r.preferred_payment_method || null,
+    preferredPaymentDetails: r.preferred_payment_details || "",
     businessName: r.business_name || "",
     businessAddress: r.business_address || "",
     businessCity: r.business_city || "",
@@ -160,6 +202,7 @@ function rowToCrewLocationDistance(r: any): CrewLocationDistance {
   return {
     id: r.id,
     crewMemberId: r.crew_member_id,
+    homeBaseId: r.home_base_id || "primary",
     locationId: r.location_id,
     distanceMiles: Number(r.distance_miles ?? 0),
     createdAt: r.created_at,
@@ -179,7 +222,12 @@ function rowToTimeEntry(r: any): TimeEntry {
 }
 
 function rowToContractTemplate(r: any): ContractTemplate {
-  return { id: r.id, name: r.name || "", content: r.content || "", createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null };
+  return {
+    id: r.id, name: r.name || "", content: r.content || "",
+    blocks: Array.isArray(r.blocks) ? r.blocks : [],
+    pages: Array.isArray(r.pages) ? r.pages : [],
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
 }
 
 function rowToContract(r: any): Contract {
@@ -190,6 +238,18 @@ function rowToContract(r: any): Contract {
     clientSignedAt: r.client_signed_at || null, ownerSignedAt: r.owner_signed_at || null,
     clientSignature: r.client_signature || null, ownerSignature: r.owner_signature || null,
     clientEmail: r.client_email || "", signToken: r.sign_token || "",
+    fieldValues: (r.field_values && typeof r.field_values === "object") ? r.field_values : {},
+    additionalSigners: Array.isArray(r.additional_signers) ? r.additional_signers : [],
+    documentExpiresAt: r.document_expires_at || null,
+    remindersEnabled: !!r.reminders_enabled,
+    lastReminderSentAt: r.last_reminder_sent_at || null,
+    proposalId: r.proposal_id || null,
+    masterTemplateVersionId: r.master_template_version_id || "",
+    firingLog: Array.isArray(r.firing_log) ? r.firing_log : [],
+    sendBackReason: r.send_back_reason || "",
+    paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
+    inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
+    pages: Array.isArray(r.pages) ? r.pages : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -200,6 +260,7 @@ function rowToProposalTemplate(r: any): ProposalTemplate {
     coverImageUrl: r.cover_image_url || "",
     pages: Array.isArray(r.pages) ? r.pages : [],
     packages: Array.isArray(r.packages) ? r.packages : [],
+    contractTemplateId: r.contract_template_id || null,
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     contractContent: r.contract_content || "",
     paymentConfig: r.payment_config || { option: "none", depositPercent: 0, depositAmount: 0 },
@@ -219,6 +280,7 @@ function rowToProposal(r: any): Proposal {
     pipelineStage: r.pipeline_stage || "inquiry",
     viewedAt: r.viewed_at || null,
     leadSource: r.lead_source || "",
+    contractTemplateId: r.contract_template_id || null,
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     subtotal: Number(r.subtotal ?? 0), taxRate: Number(r.tax_rate ?? 0),
     taxAmount: Number(r.tax_amount ?? 0), total: Number(r.total ?? 0),
@@ -231,6 +293,9 @@ function rowToProposal(r: any): Proposal {
     paidAt: r.paid_at || null,
     clientEmail: r.client_email || "", viewToken: r.view_token || "",
     notes: r.notes || "",
+    sendHistory: Array.isArray(r.send_history) ? r.send_history : [],
+    inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
+    expiresAt: r.expires_at || null,
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -299,6 +364,9 @@ function rowToContractorInvoice(r: any): ContractorInvoice {
     total: Number(r.total ?? 0),
     status: r.status,
     notes: r.notes || "",
+    paidAt: r.paid_at || null,
+    paymentMethod: r.payment_method || null,
+    paymentReference: r.payment_reference || "",
     createdAt: r.created_at,
   };
 }
@@ -345,6 +413,14 @@ function rowToProject(r: any): Project {
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     deliverableUrl: r.deliverable_url || "",
+    cancellationReason: r.cancellation_reason || "",
+    cancelledAt: r.cancelled_at || null,
+    depositPaidAt: r.deposit_paid_at || null,
+    discountType: (r.discount_type as "percent" | "fixed" | null) || null,
+    discountAmount: r.discount_amount != null ? Number(r.discount_amount) : 0,
+    discountReason: r.discount_reason || "",
+    serviceCategoryId: r.service_category_id || null,
+    services: Array.isArray(r.services) ? r.services : [],
     createdAt: r.created_at,
   };
 }
@@ -363,6 +439,8 @@ function rowToExpense(r: any): MarketingExpense {
 }
 
 function rowToInvoice(r: any): Invoice {
+  const rawMethods = Array.isArray(r.payment_methods) ? r.payment_methods : [];
+  const validMethods = rawMethods.filter((m: unknown): m is "stripe" | "venmo" => m === "stripe" || m === "venmo");
   return {
     id: r.id,
     invoiceNumber: r.invoice_number,
@@ -383,6 +461,8 @@ function rowToInvoice(r: any): Invoice {
     notes: r.notes || "",
     createdAt: r.created_at,
     updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+    paymentMethods: validMethods.length > 0 ? validMethods : ["stripe"],
+    viewToken: r.view_token || "",
   };
 }
 
@@ -396,6 +476,10 @@ function rowToSeries(r: any): Series {
     monthlyTokenLimit: Number(r.monthly_token_limit ?? 500000),
     tokensUsedThisMonth: Number(r.tokens_used_this_month ?? 0),
     tokenResetDate: r.token_reset_date || "",
+    reviewToken: r.review_token || null,
+    reviewStatus: r.review_status || "draft",
+    sentForReviewAt: r.sent_for_review_at || null,
+    clientReviewedAt: r.client_reviewed_at || null,
     createdAt: r.created_at,
   };
 }
@@ -415,6 +499,8 @@ function rowToEpisode(r: any): SeriesEpisode {
     draftEndTime: r.draft_end_time || "",
     draftLocationId: r.draft_location_id || "",
     draftCrew: r.draft_crew || [],
+    approvalStatus: r.approval_status || "pending",
+    clientComment: r.client_comment || "",
     createdAt: r.created_at,
   };
 }
@@ -443,6 +529,36 @@ function rowToComment(r: any): EpisodeComment {
   };
 }
 
+function rowToExternalCalendar(r: any): ExternalCalendar {
+  return {
+    id: r.id,
+    ownerUserId: r.owner_user_id,
+    label: r.label || "",
+    url: r.url,
+    color: r.color || "#94a3b8",
+    enabled: r.enabled ?? true,
+    lastSyncedAt: r.last_synced_at || null,
+    lastError: r.last_error || "",
+    eventCount: Number(r.event_count ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToExternalEvent(r: any): ExternalEvent {
+  return {
+    id: r.id,
+    externalCalendarId: r.external_calendar_id,
+    icalUid: r.ical_uid || "",
+    title: r.title || "",
+    description: r.description || "",
+    location: r.location || "",
+    startAt: r.start_at,
+    endAt: r.end_at || null,
+    allDay: r.all_day ?? false,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToPersonalEvent(r: any): PersonalEvent {
   return {
     id: r.id,
@@ -461,9 +577,166 @@ function rowToPersonalEvent(r: any): PersonalEvent {
   };
 }
 
+function rowToPackage(r: any): Package {
+  return {
+    id: r.id, orgId: r.org_id || "",
+    name: r.name || "", icon: r.icon || "heart",
+    iconCustomDataUrl: r.icon_custom_data_url || "",
+    description: r.description || "",
+    defaultPrice: Number(r.default_price ?? 0),
+    discountFromPrice: r.discount_from_price === null || r.discount_from_price === undefined ? null : Number(r.discount_from_price),
+    photoDataUrl: r.photo_data_url || "",
+    deliverables: Array.isArray(r.deliverables) ? r.deliverables : [],
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToProposalImage(r: any): ProposalImage {
+  return {
+    id: r.id, orgId: r.org_id || "",
+    name: r.name || "",
+    imageDataUrl: r.image_data_url || "",
+    width: Number(r.width ?? 0), height: Number(r.height ?? 0),
+    sortOrder: Number(r.sort_order ?? 0),
+    createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToMeeting(r: any): Meeting {
+  return {
+    id: r.id,
+    ownerUserId: r.owner_user_id || "",
+    title: r.title || "",
+    date: r.date,
+    startTime: r.start_time || "",
+    endTime: r.end_time || "",
+    clientId: r.client_id || null,
+    locationText: r.location_text || "",
+    notes: r.notes || "",
+    visibleToClient: r.visible_to_client ?? false,
+    color: r.color || "",
+    assignedUserIds: Array.isArray(r.assigned_user_ids) ? r.assigned_user_ids : [],
+    meetingAddress: r.meeting_address || undefined,
+    oneWayMiles: typeof r.one_way_miles === "number" ? r.one_way_miles : (r.one_way_miles ? Number(r.one_way_miles) : undefined),
+    orgId: r.org_id || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToServiceCategory(r: any): ServiceCategory {
+  return {
+    id: r.id,
+    name: r.name || "",
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToService(r: any): Service {
+  return {
+    id: r.id,
+    categoryId: r.category_id,
+    name: r.name || "",
+    defaultPrice: Number(r.default_price ?? 0),
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToServiceVariant(r: any): ServiceVariant {
+  return {
+    id: r.id,
+    serviceId: r.service_id,
+    label: r.label || "",
+    price: Number(r.price ?? 0),
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToDeliveryCollection(r: any): DeliveryCollection {
+  return {
+    id: r.id,
+    name: r.name || "",
+    slug: r.slug || null,
+    coverSubtitle: r.cover_subtitle || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function rowToDelivery(r: any): Delivery {
+  return {
+    id: r.id,
+    projectId: r.project_id || null,
+    collectionId: r.collection_id || null,
+    title: r.title || "",
+    coverFileId: r.cover_file_id || null,
+    watermarkText: r.watermark_text || null,
+    watermarkUseLogo: !!r.watermark_use_logo,
+    printsEnabled: !!r.prints_enabled,
+    // Coerce unknown / removed layouts (e.g. "outline" pre-2026-04-30) → "center".
+    coverLayout: (["center","vintage","minimal","left","stripe","frame","divider","stamp"].includes(r.cover_layout) ? r.cover_layout : "center") as Delivery["coverLayout"],
+    coverFont: r.cover_font || "",
+    coverSubtitle: r.cover_subtitle || null,
+    coverDate: r.cover_date || null,
+    slug: r.slug || null,
+    requireEmail: !!r.require_email,
+    token: r.token || "",
+    hasPassword: !!r.password_hash,
+    expiresAt: r.expires_at || null,
+    selectionLimit: Number(r.selection_limit ?? 0),
+    perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
+    buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
+    status: (r.status || "draft") as DeliveryStatus,
+    clientName: r.client_name || null,
+    clientEmail: r.client_email || null,
+    submittedAt: r.submitted_at || null,
+    workingAt: r.working_at || null,
+    deliveredAt: r.delivered_at || null,
+    viewCount: Number(r.view_count ?? 0),
+    downloadCount: Number(r.download_count ?? 0),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function rowToDeliveryFile(r: any): DeliveryFile {
+  const mediaType = r.media_type === "video" ? "video" : "image";
+  return {
+    id: r.id,
+    deliveryId: r.delivery_id,
+    storagePath: r.storage_path || "",
+    originalName: r.original_name || "",
+    sizeBytes: Number(r.size_bytes ?? 0),
+    width: r.width ?? null,
+    height: r.height ?? null,
+    mimeType: r.mime_type || "",
+    position: Number(r.position ?? 0),
+    downloadCount: Number(r.download_count ?? 0),
+    createdAt: r.created_at,
+    mediaType,
+    thumbnailStoragePath: r.thumbnail_storage_path || "",
+    durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+  };
+}
+
+function rowToDeliverySelection(r: any): DeliverySelection {
+  return {
+    id: r.id,
+    deliveryId: r.delivery_id,
+    fileId: r.file_id,
+    isPaid: !!r.is_paid,
+    stripePaymentIntentId: r.stripe_payment_intent_id || null,
+    editedAt: r.edited_at || null,
+    createdAt: r.created_at,
+  };
+}
+
 function rowToOrg(r: any): Organization {
   return {
-    id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", plan: r.plan,
+    id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", faviconUrl: r.favicon_url || "", plan: r.plan,
     features: { ...DEFAULT_FEATURES, ...(r.features || {}) },
     productionType: r.production_type || "both",
     defaultBillingModel: r.default_billing_model || "hourly",
@@ -473,16 +746,18 @@ function rowToOrg(r: any): Organization {
     pipelineStages: Array.isArray(r.pipeline_stages) && r.pipeline_stages.length > 0 ? r.pipeline_stages : DEFAULT_PIPELINE_STAGES,
     services: Array.isArray(r.services) ? r.services : [],
     projectLimit: r.project_limit ?? 10,
+    stripeAccountId: r.stripe_account_id || "",
     stripeCustomerId: r.stripe_customer_id || "",
     stripeSubscriptionId: r.stripe_subscription_id || "",
     billingStatus: r.billing_status || "ok",
     testimonialPromptedAt: r.testimonial_prompted_at || null,
+    seriesReviewMessageTemplate: r.series_review_message_template || "",
     createdAt: r.created_at,
   };
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -499,6 +774,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const targetRole = targetUser?.role || effectiveProfile?.role;
     const clientIds = targetUser?.clientIds || effectiveProfile?.clientIds || [];
     const crewMemberId = targetUser?.crewMemberId || effectiveProfile?.crewMemberId || "";
+    const targetUserId = targetUser?.id || effectiveProfile?.id || "";
 
     // Staff: filter projects by crew assignment
     if (targetRole === "staff" && crewMemberId) {
@@ -507,6 +783,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         p.postProduction.some(c => c.crewMemberId === crewMemberId)
       );
       const staffClientIds = new Set(staffProjects.map(p => p.clientId));
+      const staffProjectIds = new Set(staffProjects.map(p => p.id));
+      // Meetings: staff sees ONLY meetings explicitly assigned to them.
+      // No assignment = admin-only (don't leak the owner's calendar).
+      const staffMeetings = rawData.meetings.filter(m =>
+        !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
+      );
       return {
         ...rawData,
         projects: staffProjects,
@@ -514,19 +796,135 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: [],
         contracts: [],
         proposals: [],
+        meetings: staffMeetings,
+        deliveries: rawData.deliveries.filter(d => d.projectId && staffProjectIds.has(d.projectId)),
       };
     }
 
-    // Partner/Client: filter by assigned clientIds
+    // Partner/Client: filter by assigned clientIds.
+    // This must mirror what RLS allows when the user logs in directly — see
+    // migrations/2026-04-28-partner-rls-tighten.sql et al. Owner finance
+    // (contractor invoices, expenses, leads) is hidden entirely.
     if (clientIds.length > 0) {
       const allowedClientIds = new Set(clientIds);
+      // For the partner role: when a client's partnership has ended,
+      // hide projects + invoices dated AFTER the end date. Past data
+      // remains visible so the partner can still review history.
+      // Lookup endedAt per allowed client up-front to keep the filter
+      // tight.
+      const partnerEndedAtByClient = new Map<string, string>();
+      if (targetRole === "partner") {
+        for (const c of rawData.clients) {
+          if (allowedClientIds.has(c.id) && c.partnerSplit?.endedAt) {
+            partnerEndedAtByClient.set(c.id, c.partnerSplit.endedAt);
+          }
+        }
+      }
+      const isPartnerCutoff = (clientId: string, dateStr: string): boolean => {
+        if (targetRole !== "partner") return false;
+        const endedAt = partnerEndedAtByClient.get(clientId);
+        return !!endedAt && dateStr > endedAt;
+      };
+      const allowedProjects = rawData.projects.filter(p =>
+        allowedClientIds.has(p.clientId) && !isPartnerCutoff(p.clientId, p.date)
+      );
+      const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
+      // Meetings:
+      //  - client role gets only meetings explicitly shared (visibleToClient=true)
+      //    AND tied to one of their clients.
+      //  - partner role gets only meetings where they're explicitly
+      //    assigned via assignedCrewMemberIds. Same rule as staff —
+      //    no meeting shows up on a partner's calendar unless they
+      //    were specifically added. Partners without a crew_member_id
+      //    linked won't see any meetings (admin-only by default).
+      const allowedMeetings = targetRole === "client"
+        ? rawData.meetings.filter(m => m.visibleToClient && m.clientId && allowedClientIds.has(m.clientId))
+        : rawData.meetings.filter(m =>
+            !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
+          );
+      // Galleries: clients keep access to their own deliveries; partners
+      // and family don't get the gallery feature at all (owner-only).
+      const allowedDeliveries = targetRole === "client"
+        ? rawData.deliveries.filter(d => d.projectId && allowedProjectIds.has(d.projectId))
+        : [];
+      const allowedDeliveryIds = new Set(allowedDeliveries.map(d => d.id));
       return {
         ...rawData,
         clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
-        projects: rawData.projects.filter(p => allowedClientIds.has(p.clientId)),
-        invoices: rawData.invoices.filter(i => allowedClientIds.has(i.clientId)),
-        contracts: rawData.contracts.filter(c => allowedClientIds.has(c.clientId)),
-        proposals: rawData.proposals.filter(p => allowedClientIds.has(p.clientId)),
+        projects: allowedProjects,
+        invoices: rawData.invoices.filter(i =>
+          allowedClientIds.has(i.clientId) && !isPartnerCutoff(i.clientId, i.issueDate)
+        ),
+        contracts: rawData.contracts.filter(c =>
+          allowedClientIds.has(c.clientId) && !isPartnerCutoff(c.clientId, c.createdAt.slice(0, 10))
+        ),
+        proposals: rawData.proposals.filter(p =>
+          allowedClientIds.has(p.clientId) && !isPartnerCutoff(p.clientId, p.createdAt.slice(0, 10))
+        ),
+        deliveries: allowedDeliveries,
+        deliveryFiles: rawData.deliveryFiles.filter(f => allowedDeliveryIds.has(f.deliveryId)),
+        deliverySelections: rawData.deliverySelections.filter(s => allowedDeliveryIds.has(s.deliveryId)),
+        deliveryCollections: targetRole === "client" ? rawData.deliveryCollections : [],
+        meetings: allowedMeetings,
+        // Hidden from partners/clients entirely — owner-only data
+        contractorInvoices: [],
+        marketingExpenses: [],
+        businessExpenses: [],
+        pipelineLeads: [],
+        categoryRules: [],
+        manualTrips: [],
+        // Templates & Inquiry Pipeline libraries — owner-only per PRD RBAC
+        packages: [],
+        proposalImages: [],
+        // Time entries — only show entries on allowed projects
+        timeEntries: rawData.timeEntries.filter(t => t.projectId && allowedProjectIds.has(t.projectId)),
+      };
+    }
+
+    // Final guard for non-owner roles who didn't match either earlier
+    // branch — typically a partner or family member whose profile has
+    // no client_ids assigned. Returns a restrictive empty view —
+    // everything client-scoped is empty, everything admin-scoped is
+    // empty, only org metadata + their own meetings/personal events
+    // come through. Mirrors the RLS rule: no client assignment =
+    // no data access.
+    if (targetRole !== "owner") {
+      return {
+        ...rawData,
+        // Client-scoped — empty since no clients are assigned
+        clients: [],
+        projects: [],
+        invoices: [],
+        contracts: [],
+        proposals: [],
+        deliveries: [],
+        deliveryFiles: [],
+        deliverySelections: [],
+        deliveryCollections: [],
+        timeEntries: [],
+        // Owner-only data — never visible to non-owner without clients
+        contractorInvoices: [],
+        marketingExpenses: [],
+        businessExpenses: [],
+        pipelineLeads: [],
+        categoryRules: [],
+        manualTrips: [],
+        contractTemplates: [],
+        proposalTemplates: [],
+        packages: [],
+        proposalImages: [],
+        series: [],
+        // Crew + locations are org-wide directory info; show empty
+        // for true lockdown so impersonation matches what RLS gives
+        // a clientless partner (which is nothing useful).
+        crewMembers: [],
+        // Meetings: only those explicitly assigned to this user
+        meetings: rawData.meetings.filter(m =>
+          !!targetUserId && Array.isArray(m.assignedUserIds) && m.assignedUserIds.includes(targetUserId)
+        ),
+        // Keep org metadata + project/edit/location reference data
+        // visible (these are pure config — locations have no PII).
+        // Partners need them for any UI that tries to render labels.
       };
     }
 
@@ -560,6 +958,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: pipelineLeadsData, error: _e7l },
         { data: seriesData, error: e8 },
         { data: personalEventsData, error: _e8b },
+        { data: externalCalendarsData, error: _e8b1 },
+        { data: externalEventsData, error: _e8b1b },
+        { data: meetingsData, error: _e8b2 },
+        { data: packagesData, error: _e8b3 },
+        { data: proposalImagesData, error: _e8b4 },
+        { data: deliveriesData, error: _e8c },
+        { data: deliveryFilesData, error: _e8d },
+        { data: deliverySelectionsData, error: _e8e },
+        { data: deliveryCollectionsData, error: _e8f },
+        { data: serviceCategoriesData, error: _e8g },
+        { data: servicesData, error: _e8h },
+        { data: serviceVariantsData, error: _e8i },
         { data: orgData, error: _e9 },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
@@ -583,6 +993,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("pipeline_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("series").select("*").order("created_at", { ascending: false }),
         supabase.from("personal_events").select("*").order("date"),
+        supabase.from("external_calendars").select("*").order("created_at", { ascending: false }),
+        supabase.from("external_events").select("*").order("start_at"),
+        supabase.from("meetings").select("*").order("date"),
+        supabase.from("packages").select("*").is("deleted_at", null).order("sort_order"),
+        supabase.from("proposal_images").select("*").is("deleted_at", null).order("sort_order", { ascending: false }),
+        supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
+        supabase.from("delivery_files").select("*").order("position"),
+        supabase.from("delivery_selections").select("*").order("created_at"),
+        supabase.from("delivery_collections").select("*").order("created_at", { ascending: false }),
+        supabase.from("service_categories").select("*").is("deleted_at", null).order("position"),
+        supabase.from("services").select("*").is("deleted_at", null).order("position"),
+        supabase.from("service_variants").select("*").is("deleted_at", null).order("position"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
@@ -611,6 +1033,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
         series: (seriesData || []).map(rowToSeries),
         personalEvents: (personalEventsData || []).map(r => { try { return rowToPersonalEvent(r); } catch { return null; } }).filter(Boolean) as PersonalEvent[],
+        externalCalendars: (externalCalendarsData || []).map(rowToExternalCalendar),
+        externalEvents: (externalEventsData || []).map(rowToExternalEvent),
+        meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
+        packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
+        proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
+        deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
+        deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
+        deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
+        deliveryCollections: (deliveryCollectionsData || []).map(r => { try { return rowToDeliveryCollection(r); } catch { return null; } }).filter(Boolean) as DeliveryCollection[],
+        serviceCategories: (serviceCategoriesData || []).map(r => { try { return rowToServiceCategory(r); } catch { return null; } }).filter(Boolean) as ServiceCategory[],
+        services: (servicesData || []).map(r => { try { return rowToService(r); } catch { return null; } }).filter(Boolean) as Service[],
+        serviceVariants: (serviceVariantsData || []).map(r => { try { return rowToServiceVariant(r); } catch { return null; } }).filter(Boolean) as ServiceVariant[],
         organization: orgData ? rowToOrg(orgData) : null,
       });
     } catch (err: any) {
@@ -657,6 +1091,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
       series: { key: "series", convert: rowToSeries },
       personal_events: { key: "personalEvents", convert: rowToPersonalEvent, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      external_calendars: { key: "externalCalendars", convert: rowToExternalCalendar },
+      external_events: { key: "externalEvents", convert: rowToExternalEvent, sort: (a: any, b: any) => a.startAt.localeCompare(b.startAt) },
+      meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      packages: { key: "packages", convert: rowToPackage, softDelete: true, sort: (a: any, b: any) => a.sortOrder - b.sortOrder },
+      proposal_images: { key: "proposalImages", convert: rowToProposalImage, softDelete: true, sort: (a: any, b: any) => b.sortOrder - a.sortOrder },
+      deliveries: { key: "deliveries", convert: rowToDelivery },
+      delivery_files: { key: "deliveryFiles", convert: rowToDeliveryFile, sort: (a: any, b: any) => a.position - b.position },
+      delivery_selections: { key: "deliverySelections", convert: rowToDeliverySelection },
+      delivery_collections: { key: "deliveryCollections", convert: rowToDeliveryCollection },
+      service_categories: { key: "serviceCategories", convert: rowToServiceCategory, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
+      services: { key: "services", convert: rowToService, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
+      service_variants: { key: "serviceVariants", convert: rowToServiceVariant, softDelete: true, sort: (a: any, b: any) => a.position - b.position },
       organizations: { key: "organization", convert: rowToOrg, isSingleton: true },
     };
 
@@ -740,9 +1186,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       billing_model: c.billingModel ?? "hourly",
       billing_rate_per_hour: c.billingRatePerHour, per_project_rate: c.perProjectRate ?? 0,
       project_type_rates: c.projectTypeRates ?? [],
+      service_rates: c.serviceRates ?? [],
       allowed_project_type_ids: c.allowedProjectTypeIds ?? [],
       default_project_type_id: c.defaultProjectTypeId ?? "",
       role_billing_multipliers: c.roleBillingMultipliers ?? [],
+      brand_notes: c.brandNotes || "",
     }).select().single();
     if (error) throw new Error(error.message);
     const client = rowToClient(row);
@@ -764,10 +1212,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.billingRatePerHour !== undefined) patch.billing_rate_per_hour = c.billingRatePerHour;
     if (c.perProjectRate !== undefined) patch.per_project_rate = c.perProjectRate;
     if (c.projectTypeRates !== undefined) patch.project_type_rates = c.projectTypeRates;
+    if (c.serviceRates !== undefined) patch.service_rates = c.serviceRates;
     if (c.allowedProjectTypeIds !== undefined) patch.allowed_project_type_ids = c.allowedProjectTypeIds;
     if (c.defaultProjectTypeId !== undefined) patch.default_project_type_id = c.defaultProjectTypeId;
     if (c.roleBillingMultipliers !== undefined) patch.role_billing_multipliers = c.roleBillingMultipliers;
     if (c.partnerSplit !== undefined) patch.partner_split = c.partnerSplit;
+    if (c.brandNotes !== undefined) patch.brand_notes = c.brandNotes;
     const { error } = await supabase.from("clients").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, clients: d.clients.map(x => x.id === id ? { ...x, ...c } : x) }));
@@ -785,6 +1235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("crew_members").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour, home_address: c.homeAddress || null,
+      home_bases: c.homeBases ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const member = rowToCrew(row);
@@ -800,6 +1251,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.email !== undefined) patch.email = c.email;
     if (c.defaultPayRatePerHour !== undefined) patch.default_pay_rate_per_hour = c.defaultPayRatePerHour;
     if (c.homeAddress !== undefined) patch.home_address = c.homeAddress;
+    if (c.homeBases !== undefined) patch.home_bases = c.homeBases;
+    if (c.preferredPaymentMethod !== undefined) patch.preferred_payment_method = c.preferredPaymentMethod;
+    if (c.preferredPaymentDetails !== undefined) patch.preferred_payment_details = c.preferredPaymentDetails;
     if (c.businessName !== undefined) patch.business_name = c.businessName;
     if (c.businessAddress !== undefined) patch.business_address = c.businessAddress;
     if (c.businessCity !== undefined) patch.business_city = c.businessCity;
@@ -852,7 +1306,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const now = new Date().toISOString();
     const { data: row, error } = await supabase.from("contract_templates").insert({
-      id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content, updated_at: now,
+      id, ...(orgId ? { org_id: orgId } : {}), name: t.name, content: t.content,
+      blocks: t.blocks ?? [],
+      pages: t.pages ?? [],
+      updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
     const tpl = rowToContractTemplate(row);
@@ -864,6 +1321,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = { updated_at: new Date().toISOString() };
     if (t.name !== undefined) patch.name = t.name;
     if (t.content !== undefined) patch.content = t.content;
+    if (t.blocks !== undefined) patch.blocks = t.blocks;
+    if (t.pages !== undefined) patch.pages = t.pages;
     const { error } = await supabase.from("contract_templates").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contractTemplates: d.contractTemplates.map(x => x.id === id ? { ...x, ...t, updatedAt: patch.updated_at } : x) }));
@@ -885,6 +1344,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sent_at: c.sentAt, client_email: c.clientEmail, sign_token: c.signToken,
       client_signature: c.clientSignature, owner_signature: c.ownerSignature,
       client_signed_at: c.clientSignedAt, owner_signed_at: c.ownerSignedAt,
+      field_values: c.fieldValues || {},
+      additional_signers: c.additionalSigners || [],
+      document_expires_at: c.documentExpiresAt || null,
+      reminders_enabled: c.remindersEnabled ?? false,
+      proposal_id: c.proposalId ?? null,
+      master_template_version_id: c.masterTemplateVersionId || "",
+      firing_log: c.firingLog || [],
+      send_back_reason: c.sendBackReason || "",
+      payment_milestones: c.paymentMilestones || [],
+      pages: c.pages || [],
       updated_at: now,
     }).select().single();
     if (error) throw new Error(error.message);
@@ -907,9 +1376,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.ownerSignedAt !== undefined) patch.owner_signed_at = c.ownerSignedAt;
     if (c.clientId !== undefined) patch.client_id = c.clientId;
     if (c.projectId !== undefined) patch.project_id = c.projectId;
+    if (c.fieldValues !== undefined) patch.field_values = c.fieldValues;
+    if (c.additionalSigners !== undefined) patch.additional_signers = c.additionalSigners;
+    if (c.documentExpiresAt !== undefined) patch.document_expires_at = c.documentExpiresAt;
+    if (c.remindersEnabled !== undefined) patch.reminders_enabled = c.remindersEnabled;
+    if (c.proposalId !== undefined) patch.proposal_id = c.proposalId;
+    if (c.masterTemplateVersionId !== undefined) patch.master_template_version_id = c.masterTemplateVersionId;
+    if (c.firingLog !== undefined) patch.firing_log = c.firingLog;
+    if (c.sendBackReason !== undefined) patch.send_back_reason = c.sendBackReason;
+    if (c.pages !== undefined) patch.pages = c.pages;
+    if (c.paymentMilestones !== undefined) patch.payment_milestones = c.paymentMilestones;
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
+
+    // When a contract flips to "sent" status, mark the linked project as
+    // "tentative" on the calendar. Stays tentative until the deposit
+    // milestone gets paidAt stamped (handled in the Stripe webhook), at
+    // which point it transitions back to "upcoming". Best-effort —
+    // failure here doesn't block the contract update.
+    if (c.status === "sent") {
+      try {
+        const { data: contractRow } = await supabase
+          .from("contracts")
+          .select("proposal_id, project_id")
+          .eq("id", id)
+          .single();
+        let projectIdToUpdate: string | null = contractRow?.project_id || null;
+        if (!projectIdToUpdate && contractRow?.proposal_id) {
+          const { data: prop } = await supabase
+            .from("proposals")
+            .select("project_id")
+            .eq("id", contractRow.proposal_id)
+            .single();
+          projectIdToUpdate = prop?.project_id || null;
+        }
+        if (projectIdToUpdate) {
+          await supabase
+            .from("projects")
+            .update({ status: "tentative", updated_at: new Date().toISOString() })
+            .eq("id", projectIdToUpdate);
+          setRawData(d => ({
+            ...d,
+            projects: d.projects.map(p => p.id === projectIdToUpdate ? { ...p, status: "tentative" as const } : p),
+          }));
+        }
+      } catch (err) {
+        console.warn("[updateContract] project status cascade failed:", err);
+      }
+    }
   }, []);
 
   const deleteContract = useCallback(async (id: string) => {
@@ -925,6 +1440,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("proposal_templates").insert({
       id, ...(orgId ? { org_id: orgId } : {}), name: t.name,
       cover_image_url: t.coverImageUrl || "", pages: t.pages || [], packages: t.packages || [],
+      contract_template_id: t.contractTemplateId ?? null,
       line_items: t.lineItems, contract_content: t.contractContent,
       payment_config: t.paymentConfig, notes: t.notes, updated_at: now,
     }).select().single();
@@ -942,6 +1458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (t.packages !== undefined) patch.packages = t.packages;
     if (t.lineItems !== undefined) patch.line_items = t.lineItems;
     if (t.contractContent !== undefined) patch.contract_content = t.contractContent;
+    if (t.contractTemplateId !== undefined) patch.contract_template_id = t.contractTemplateId;
     if (t.paymentConfig !== undefined) patch.payment_config = t.paymentConfig;
     if (t.notes !== undefined) patch.notes = t.notes;
     const { error } = await supabase.from("proposal_templates").update(patch).eq("id", id);
@@ -965,6 +1482,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pages: p.pages || [], packages: p.packages || [],
       selected_package_id: p.selectedPackageId, payment_milestones: p.paymentMilestones || [],
       pipeline_stage: p.pipelineStage || "inquiry", lead_source: p.leadSource || "",
+      contract_template_id: p.contractTemplateId ?? null,
       line_items: p.lineItems, subtotal: p.subtotal, tax_rate: p.taxRate,
       tax_amount: p.taxAmount, total: p.total,
       contract_content: p.contractContent, payment_config: p.paymentConfig,
@@ -989,6 +1507,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.pipelineStage !== undefined) patch.pipeline_stage = p.pipelineStage;
     if (p.viewedAt !== undefined) patch.viewed_at = p.viewedAt;
     if (p.leadSource !== undefined) patch.lead_source = p.leadSource;
+    if (p.contractTemplateId !== undefined) patch.contract_template_id = p.contractTemplateId;
     if (p.lineItems !== undefined) patch.line_items = p.lineItems;
     if (p.subtotal !== undefined) patch.subtotal = p.subtotal;
     if (p.taxRate !== undefined) patch.tax_rate = p.taxRate;
@@ -1105,6 +1624,426 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, personalEvents: d.personalEvents.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Meetings (lightweight unpaid calendar entries) ----
+  const addMeeting = useCallback(async (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">): Promise<Meeting> => {
+    if (!profile?.id) throw new Error("Not signed in");
+    const id = `mtg_${Date.now()}`;
+    const { data: row, error } = await supabase.from("meetings").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      owner_user_id: profile.id,
+      title: m.title,
+      date: m.date,
+      start_time: m.startTime || "",
+      end_time: m.endTime || "",
+      client_id: m.clientId || null,
+      location_text: m.locationText || "",
+      notes: m.notes || "",
+      visible_to_client: m.visibleToClient ?? false,
+      color: m.color || "",
+      assigned_user_ids: m.assignedUserIds ?? [],
+      meeting_address: m.meetingAddress || null,
+      one_way_miles: typeof m.oneWayMiles === "number" ? m.oneWayMiles : null,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const meeting = rowToMeeting(row);
+    setRawData(d => ({ ...d, meetings: [...d.meetings, meeting].sort((a, b) => a.date.localeCompare(b.date)) }));
+    return meeting;
+  }, [orgId, profile?.id]);
+
+  const updateMeeting = useCallback(async (id: string, m: Partial<Meeting>) => {
+    const patch: any = {};
+    if (m.title !== undefined) patch.title = m.title;
+    if (m.date !== undefined) patch.date = m.date;
+    if (m.startTime !== undefined) patch.start_time = m.startTime;
+    if (m.endTime !== undefined) patch.end_time = m.endTime;
+    if (m.clientId !== undefined) patch.client_id = m.clientId || null;
+    if (m.locationText !== undefined) patch.location_text = m.locationText;
+    if (m.notes !== undefined) patch.notes = m.notes;
+    if (m.visibleToClient !== undefined) patch.visible_to_client = m.visibleToClient;
+    if (m.color !== undefined) patch.color = m.color;
+    if (m.assignedUserIds !== undefined) patch.assigned_user_ids = m.assignedUserIds;
+    if (m.meetingAddress !== undefined) patch.meeting_address = m.meetingAddress || null;
+    if (m.oneWayMiles !== undefined) patch.one_way_miles = m.oneWayMiles ?? null;
+    const { error } = await supabase.from("meetings").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, meetings: d.meetings.map(x => x.id === id ? { ...x, ...m } : x) }));
+  }, []);
+
+  const deleteMeeting = useCallback(async (id: string) => {
+    const { error } = await supabase.from("meetings").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, meetings: d.meetings.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Packages library ----
+  const addPackage = useCallback(async (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">): Promise<Package> => {
+    const id = `pkg_${Date.now()}_${nanoid(4)}`;
+    const { data: row, error } = await supabase.from("packages").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      name: p.name,
+      icon: p.icon || "heart",
+      icon_custom_data_url: p.iconCustomDataUrl || "",
+      description: p.description || "",
+      default_price: p.defaultPrice || 0,
+      discount_from_price: p.discountFromPrice ?? null,
+      photo_data_url: p.photoDataUrl || "",
+      deliverables: p.deliverables || [],
+      sort_order: p.sortOrder || 0,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const pkg = rowToPackage(row);
+    setRawData(d => ({ ...d, packages: [...d.packages, pkg].sort((a, b) => a.sortOrder - b.sortOrder) }));
+    return pkg;
+  }, [orgId]);
+
+  const updatePackage = useCallback(async (id: string, p: Partial<Package>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (p.name !== undefined) patch.name = p.name;
+    if (p.icon !== undefined) patch.icon = p.icon;
+    if (p.iconCustomDataUrl !== undefined) patch.icon_custom_data_url = p.iconCustomDataUrl;
+    if (p.description !== undefined) patch.description = p.description;
+    if (p.defaultPrice !== undefined) patch.default_price = p.defaultPrice;
+    if (p.discountFromPrice !== undefined) patch.discount_from_price = p.discountFromPrice;
+    if (p.photoDataUrl !== undefined) patch.photo_data_url = p.photoDataUrl;
+    if (p.deliverables !== undefined) patch.deliverables = p.deliverables;
+    if (p.sortOrder !== undefined) patch.sort_order = p.sortOrder;
+    const { error } = await supabase.from("packages").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, packages: d.packages.map(x => x.id === id ? { ...x, ...p } : x) }));
+  }, []);
+
+  const deletePackage = useCallback(async (id: string) => {
+    const { error } = await supabase.from("packages").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, packages: d.packages.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Proposal images library ----
+  const addProposalImage = useCallback(async (i: Omit<ProposalImage, "id" | "orgId" | "createdAt" | "updatedAt">): Promise<ProposalImage> => {
+    const id = `img_${Date.now()}_${nanoid(4)}`;
+    const { data: row, error } = await supabase.from("proposal_images").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      name: i.name,
+      image_data_url: i.imageDataUrl,
+      width: i.width || 0,
+      height: i.height || 0,
+      sort_order: i.sortOrder || Date.now(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const img = rowToProposalImage(row);
+    setRawData(d => ({ ...d, proposalImages: [img, ...d.proposalImages] }));
+    return img;
+  }, [orgId]);
+
+  const updateProposalImage = useCallback(async (id: string, i: Partial<ProposalImage>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (i.name !== undefined) patch.name = i.name;
+    if (i.sortOrder !== undefined) patch.sort_order = i.sortOrder;
+    const { error } = await supabase.from("proposal_images").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, proposalImages: d.proposalImages.map(x => x.id === id ? { ...x, ...i } : x) }));
+  }, []);
+
+  const deleteProposalImage = useCallback(async (id: string) => {
+    const { error } = await supabase.from("proposal_images").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, proposalImages: d.proposalImages.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Deliveries (galleries) ----
+  const addDelivery = useCallback(async (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">): Promise<Delivery> => {
+    const id = nanoid(10);
+    const token = nanoid(16); // longer for public URL — harder to guess
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("deliveries").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      project_id: d.projectId, title: d.title, cover_file_id: d.coverFileId,
+      cover_layout: d.coverLayout || "center",
+      cover_font: d.coverFont || "",
+      cover_subtitle: d.coverSubtitle,
+      cover_date: d.coverDate,
+      token, expires_at: d.expiresAt,
+      selection_limit: d.selectionLimit, per_extra_photo_cents: d.perExtraPhotoCents,
+      buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
+      updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const delivery = rowToDelivery(row);
+    setRawData(d => ({ ...d, deliveries: [delivery, ...d.deliveries] }));
+    return delivery;
+  }, [orgId]);
+
+  const updateDelivery = useCallback(async (id: string, d: Partial<Delivery>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (d.title !== undefined) patch.title = d.title;
+    if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
+    if (d.coverLayout !== undefined) patch.cover_layout = d.coverLayout;
+    if (d.coverFont !== undefined) patch.cover_font = d.coverFont;
+    if (d.coverSubtitle !== undefined) patch.cover_subtitle = d.coverSubtitle;
+    if (d.coverDate !== undefined) patch.cover_date = d.coverDate;
+    if (d.slug !== undefined) patch.slug = d.slug;
+    if (d.requireEmail !== undefined) patch.require_email = d.requireEmail;
+    if (d.collectionId !== undefined) patch.collection_id = d.collectionId;
+    if (d.watermarkText !== undefined) patch.watermark_text = d.watermarkText;
+    if (d.watermarkUseLogo !== undefined) patch.watermark_use_logo = d.watermarkUseLogo;
+    if (d.printsEnabled !== undefined) patch.prints_enabled = d.printsEnabled;
+    if (d.projectId !== undefined) patch.project_id = d.projectId;
+    if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
+    if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
+    if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
+    if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;
+    if (d.status !== undefined) patch.status = d.status;
+    const { error } = await supabase.from("deliveries").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({ ...s, deliveries: s.deliveries.map(x => x.id === id ? { ...x, ...d, updatedAt: patch.updated_at } : x) }));
+  }, []);
+
+  const deleteDelivery = useCallback(async (id: string) => {
+    // Hard delete (cascades to delivery_files + delivery_selections via FK).
+    // Storage-side cleanup happens via the API endpoint, which can also unlink R2 objects.
+    const { error } = await supabase.from("deliveries").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveries: s.deliveries.filter(x => x.id !== id),
+      deliveryFiles: s.deliveryFiles.filter(f => f.deliveryId !== id),
+      deliverySelections: s.deliverySelections.filter(sel => sel.deliveryId !== id),
+    }));
+  }, []);
+
+  const setDeliveryStatus = useCallback(async (id: string, status: DeliveryStatus) => {
+    const now = new Date().toISOString();
+    const patch: any = { status, updated_at: now };
+    if (status === "submitted") patch.submitted_at = now;
+    else if (status === "working") patch.working_at = now;
+    else if (status === "delivered") patch.delivered_at = now;
+    const { error } = await supabase.from("deliveries").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveries: s.deliveries.map(x => x.id === id
+        ? { ...x, status, updatedAt: now,
+            submittedAt: status === "submitted" ? now : x.submittedAt,
+            workingAt: status === "working" ? now : x.workingAt,
+            deliveredAt: status === "delivered" ? now : x.deliveredAt }
+        : x),
+    }));
+  }, []);
+
+  const registerDeliveryFile = useCallback(async (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">): Promise<DeliveryFile> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("delivery_files").insert({
+      id, delivery_id: f.deliveryId, ...(orgId ? { org_id: orgId } : {}),
+      storage_path: f.storagePath, original_name: f.originalName,
+      size_bytes: f.sizeBytes, width: f.width, height: f.height,
+      mime_type: f.mimeType, position: f.position,
+      media_type: f.mediaType ?? "image",
+      thumbnail_storage_path: f.thumbnailStoragePath ?? "",
+      duration_seconds: f.durationSeconds ?? null,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const file = rowToDeliveryFile(row);
+    setRawData(s => ({ ...s, deliveryFiles: [...s.deliveryFiles, file] }));
+    return file;
+  }, [orgId]);
+
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds">>) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
+    if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
+    if (Object.keys(dbPatch).length === 0) return;
+    const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryFiles: s.deliveryFiles.map(f => f.id === id ? { ...f, ...patch } : f),
+    }));
+  }, []);
+
+  const deleteDeliveryFile = useCallback(async (id: string) => {
+    const { error } = await supabase.from("delivery_files").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({ ...s, deliveryFiles: s.deliveryFiles.filter(f => f.id !== id) }));
+  }, []);
+
+  const reorderDeliveryFiles = useCallback(async (deliveryId: string, orderedIds: string[]) => {
+    // Update positions in a single round-trip via .upsert on (id, position).
+    const updates = orderedIds.map((id, i) => ({ id, position: i }));
+    const { error } = await supabase.from("delivery_files").upsert(updates, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+    setRawData(s => {
+      const positionMap = new Map(orderedIds.map((id, i) => [id, i]));
+      return {
+        ...s,
+        deliveryFiles: s.deliveryFiles.map(f =>
+          f.deliveryId === deliveryId && positionMap.has(f.id)
+            ? { ...f, position: positionMap.get(f.id)! }
+            : f
+        ),
+      };
+    });
+  }, []);
+
+  // ---- Delivery Collections ----
+  const addDeliveryCollection = useCallback(async (c: { name: string; slug: string | null; coverSubtitle: string | null }): Promise<DeliveryCollection> => {
+    const id = nanoid(10);
+    const now = new Date().toISOString();
+    const { data: row, error } = await supabase.from("delivery_collections").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      name: c.name, slug: c.slug, cover_subtitle: c.coverSubtitle,
+      updated_at: now,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const coll = rowToDeliveryCollection(row);
+    setRawData(s => ({ ...s, deliveryCollections: [coll, ...s.deliveryCollections] }));
+    return coll;
+  }, [orgId]);
+
+  const updateDeliveryCollection = useCallback(async (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (c.name !== undefined) patch.name = c.name;
+    if (c.slug !== undefined) patch.slug = c.slug;
+    if (c.coverSubtitle !== undefined) patch.cover_subtitle = c.coverSubtitle;
+    const { error } = await supabase.from("delivery_collections").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryCollections: s.deliveryCollections.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x),
+    }));
+  }, []);
+
+  const deleteDeliveryCollection = useCallback(async (id: string) => {
+    const { error } = await supabase.from("delivery_collections").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryCollections: s.deliveryCollections.filter(x => x.id !== id),
+      // Detach any galleries that pointed at this collection
+      deliveries: s.deliveries.map(d => d.collectionId === id ? { ...d, collectionId: null } : d),
+    }));
+  }, []);
+
+  // ---- Service Categories / Services / Variants ----
+  // Hierarchical pricing model: Category → Service → Variant.
+  // Each level has CRUD; cascading deletes (variants on service delete,
+  // services + variants on category delete) are handled by the
+  // ON DELETE CASCADE foreign keys in the schema.
+  const addServiceCategory = useCallback(async (c: Omit<ServiceCategory, "id" | "createdAt">): Promise<ServiceCategory> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("service_categories").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      name: c.name, position: c.position ?? 0, updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const cat = rowToServiceCategory(row);
+    setRawData(d => ({ ...d, serviceCategories: [...d.serviceCategories, cat].sort((a, b) => a.position - b.position) }));
+    return cat;
+  }, [orgId]);
+
+  const updateServiceCategory = useCallback(async (id: string, c: Partial<ServiceCategory>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (c.name !== undefined) patch.name = c.name;
+    if (c.position !== undefined) patch.position = c.position;
+    const { error } = await supabase.from("service_categories").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceCategories: d.serviceCategories.map(x => x.id === id ? { ...x, ...c } : x) }));
+  }, []);
+
+  const deleteServiceCategory = useCallback(async (id: string) => {
+    // Soft delete — cascades to services + variants through their FK
+    // ON DELETE CASCADE since the DB foreign keys reference the same
+    // row even when deleted_at is set. We rely on the load query's
+    // `.is("deleted_at", null)` filter to hide it from the UI.
+    const { error } = await supabase.from("service_categories").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({
+      ...d,
+      serviceCategories: d.serviceCategories.filter(x => x.id !== id),
+      // Hide services + variants under the deleted category too.
+      services: d.services.filter(s => s.categoryId !== id),
+      serviceVariants: d.serviceVariants.filter(v => !d.services.find(s => s.id === v.serviceId && s.categoryId === id)),
+    }));
+  }, []);
+
+  const addService = useCallback(async (s: Omit<Service, "id" | "createdAt">): Promise<Service> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("services").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      category_id: s.categoryId, name: s.name,
+      default_price: s.defaultPrice ?? 0, position: s.position ?? 0,
+      updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const svc = rowToService(row);
+    setRawData(d => ({ ...d, services: [...d.services, svc].sort((a, b) => a.position - b.position) }));
+    return svc;
+  }, [orgId]);
+
+  const updateService = useCallback(async (id: string, s: Partial<Service>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (s.name !== undefined) patch.name = s.name;
+    if (s.defaultPrice !== undefined) patch.default_price = s.defaultPrice;
+    if (s.position !== undefined) patch.position = s.position;
+    if (s.categoryId !== undefined) patch.category_id = s.categoryId;
+    const { error } = await supabase.from("services").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, services: d.services.map(x => x.id === id ? { ...x, ...s } : x) }));
+  }, []);
+
+  const deleteService = useCallback(async (id: string) => {
+    const { error } = await supabase.from("services").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({
+      ...d,
+      services: d.services.filter(x => x.id !== id),
+      serviceVariants: d.serviceVariants.filter(v => v.serviceId !== id),
+    }));
+  }, []);
+
+  const addServiceVariant = useCallback(async (v: Omit<ServiceVariant, "id" | "createdAt">): Promise<ServiceVariant> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("service_variants").insert({
+      id, ...(orgId ? { org_id: orgId } : {}),
+      service_id: v.serviceId, label: v.label,
+      price: v.price ?? 0, position: v.position ?? 0,
+      updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const variant = rowToServiceVariant(row);
+    setRawData(d => ({ ...d, serviceVariants: [...d.serviceVariants, variant].sort((a, b) => a.position - b.position) }));
+    return variant;
+  }, [orgId]);
+
+  const updateServiceVariant = useCallback(async (id: string, v: Partial<ServiceVariant>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (v.label !== undefined) patch.label = v.label;
+    if (v.price !== undefined) patch.price = v.price;
+    if (v.position !== undefined) patch.position = v.position;
+    if (v.serviceId !== undefined) patch.service_id = v.serviceId;
+    const { error } = await supabase.from("service_variants").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceVariants: d.serviceVariants.map(x => x.id === id ? { ...x, ...v } : x) }));
+  }, []);
+
+  const deleteServiceVariant = useCallback(async (id: string) => {
+    const { error } = await supabase.from("service_variants").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, serviceVariants: d.serviceVariants.filter(x => x.id !== id) }));
+  }, []);
+
+  const markSelectionEdited = useCallback(async (selectionId: string, edited: boolean) => {
+    const editedAt = edited ? new Date().toISOString() : null;
+    const { error } = await supabase.from("delivery_selections").update({ edited_at: editedAt }).eq("id", selectionId);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliverySelections: s.deliverySelections.map(sel => sel.id === selectionId ? { ...sel, editedAt } : sel),
+    }));
+  }, []);
+
   // ---- Trash ----
   const restoreItem = useCallback(async (table: string, id: string) => {
     const { error } = await supabase.from(table).update({ deleted_at: null }).eq("id", id);
@@ -1123,6 +2062,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!orgId) return;
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
+    if (updates.logoUrl !== undefined) patch.logo_url = updates.logoUrl;
+    if (updates.faviconUrl !== undefined) patch.favicon_url = updates.faviconUrl;
     if (updates.features !== undefined) patch.features = updates.features;
     if (updates.productionType !== undefined) patch.production_type = updates.productionType;
     if (updates.defaultBillingModel !== undefined) patch.default_billing_model = updates.defaultBillingModel;
@@ -1131,24 +2072,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.dashboardWidgets !== undefined) patch.dashboard_widgets = updates.dashboardWidgets;
     if (updates.pipelineStages !== undefined) patch.pipeline_stages = updates.pipelineStages;
     if (updates.services !== undefined) patch.services = updates.services;
+    if (updates.seriesReviewMessageTemplate !== undefined) patch.series_review_message_template = updates.seriesReviewMessageTemplate;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));
   }, [orgId]);
 
   // ---- Crew Location Distances ----
-  const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number) => {
-    const id = `${crewMemberId}_${locationId}`;
+  // Distances are now keyed by (crew_member, home_base, location).
+  // Defaults to "primary" if no home base is specified — matches the
+  // backfill default for legacy rows.
+  const upsertDistance = useCallback(async (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId: string = "primary") => {
+    const id = `${crewMemberId}_${homeBaseId}_${locationId}`;
     const { error } = await supabase.from("crew_location_distances").upsert({
-      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: crewMemberId, location_id: locationId, distance_miles: distanceMiles,
-    }, { onConflict: "crew_member_id,location_id" });
+      id, ...(orgId ? { org_id: orgId } : {}), crew_member_id: crewMemberId, home_base_id: homeBaseId, location_id: locationId, distance_miles: distanceMiles,
+    }, { onConflict: "crew_member_id,home_base_id,location_id" });
     if (error) throw new Error(error.message);
     setRawData(d => {
-      const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.locationId === locationId);
+      const existing = d.crewLocationDistances.find(x => x.crewMemberId === crewMemberId && x.homeBaseId === homeBaseId && x.locationId === locationId);
       if (existing) {
         return { ...d, crewLocationDistances: d.crewLocationDistances.map(x => x.id === existing.id ? { ...x, distanceMiles } : x) };
       }
-      return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
+      return { ...d, crewLocationDistances: [...d.crewLocationDistances, { id, crewMemberId, homeBaseId, locationId, distanceMiles, createdAt: new Date().toISOString() }] };
     });
   }, [orgId]);
 
@@ -1163,6 +2108,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const trip = rowToManualTrip(row);
     setRawData(d => ({ ...d, manualTrips: [trip, ...d.manualTrips] }));
     return trip;
+  }, [orgId]);
+
+  const updateManualTrip = useCallback(async (id: string, patch: Partial<Omit<ManualTrip, "id" | "createdAt">>) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.crewMemberId !== undefined) dbPatch.crew_member_id = patch.crewMemberId;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    if (patch.destination !== undefined) dbPatch.destination = patch.destination;
+    if (patch.locationId !== undefined) dbPatch.location_id = patch.locationId || null;
+    if (patch.purpose !== undefined) dbPatch.purpose = patch.purpose;
+    if (patch.roundTripMiles !== undefined) dbPatch.round_trip_miles = patch.roundTripMiles;
+    if (Object.keys(dbPatch).length === 0) return;
+    const { error } = await supabase.from("manual_trips").update(dbPatch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, manualTrips: d.manualTrips.map(t => t.id === id ? { ...t, ...patch } : t) }));
   }, []);
 
   const deleteManualTrip = useCallback(async (id: string) => {
@@ -1336,6 +2295,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       edit_types: p.editTypes,
       notes: p.notes,
       deliverable_url: p.deliverableUrl || "",
+      cancellation_reason: p.cancellationReason || "",
+      cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
+      discount_type: p.discountType || null,
+      discount_amount: p.discountAmount ?? 0,
+      discount_reason: p.discountReason || "",
+      service_category_id: p.serviceCategoryId || null,
+      services: p.services ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -1355,8 +2321,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.crew !== undefined) patch.crew = p.crew;
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
-    // Auto-finalize editor billing when project is completed
-    if (p.status === "completed" && !patch.editor_billing) {
+    // Auto-finalize editor billing when project transitions to a
+    // finished state (editing_done OR delivered).
+    if ((p.status === "editing_done" || p.status === "delivered") && !patch.editor_billing) {
       const { data: current } = await supabase.from("projects").select("editor_billing").eq("id", id).single();
       if (current?.editor_billing && !current.editor_billing.finalized) {
         patch.editor_billing = { ...current.editor_billing, finalized: true };
@@ -1369,12 +2336,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
+    if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
+    if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;
+    if (p.discountType !== undefined) patch.discount_type = p.discountType;
+    if (p.discountAmount !== undefined) patch.discount_amount = p.discountAmount;
+    if (p.discountReason !== undefined) patch.discount_reason = p.discountReason;
+    if (p.serviceCategoryId !== undefined) patch.service_category_id = p.serviceCategoryId || null;
+    if (p.services !== undefined) patch.services = p.services;
+    // Auto-stamp cancelled_at the first time status flips to "cancelled" if
+    // the caller didn't supply one explicitly. Doesn't fire if status is
+    // already cancelled or unchanged.
+    if (p.status === "cancelled" && p.cancelledAt === undefined) {
+      const { data: current } = await supabase.from("projects").select("status,cancelled_at").eq("id", id).single();
+      if (current && current.status !== "cancelled" && !current.cancelled_at) {
+        patch.cancelled_at = new Date().toISOString();
+      }
+    }
     const { data: updated, error } = await supabase.from("projects").update(patch).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     if (!updated) throw new Error("Update failed — row not returned (possible RLS restriction)");
     const normalized = rowToProject(updated);
     setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
-  }, []);
+
+    // Notify owners/partners when staff advances a project status. The
+    // owner moving things themselves doesn't need a ping (they already
+    // know). Best-effort — never block the update on a notification fail.
+    if (p.status !== undefined && profile && profile.role !== "owner" && profile.role !== "partner") {
+      try {
+        const recipients = allProfiles.filter(u => (u.role === "owner" || u.role === "partner") && u.orgId === profile.orgId);
+        const projectClient = rawData.clients.find(c => c.id === normalized.clientId);
+        const projectType = rawData.projectTypes.find(t => t.id === normalized.projectTypeId);
+        const projLabel = `${projectType?.name || "Project"}${projectClient ? ` — ${projectClient.company}` : ""}`;
+        const statusLabels: Record<string, string> = {
+          filming_done: "Filming Done", in_editing: "In Editing", editing_done: "Editing Done", delivered: "Delivered",
+        };
+        const newStatusLabel = statusLabels[p.status] || p.status;
+        for (const r of recipients) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: r.id,
+            type: "status_change",
+            title: `${profile.name} moved a project`,
+            message: `${projLabel} → ${newStatusLabel}`,
+            link: "/calendar",
+          });
+        }
+      } catch (err) {
+        console.warn("[updateProject] notify owners failed:", err);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, allProfiles]);
 
   const deleteProject = useCallback(async (id: string) => {
     const { error } = await supabase.from("projects").delete().eq("id", id);
@@ -1423,6 +2435,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       company_info: inv.companyInfo,
       client_info: inv.clientInfo,
       notes: inv.notes,
+      payment_methods: inv.paymentMethods && inv.paymentMethods.length > 0 ? inv.paymentMethods : ["stripe"],
+      view_token: inv.viewToken || null,
     }).select().single();
     if (error) throw new Error(error.message);
     const invoice = rowToInvoice(row);
@@ -1448,6 +2462,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.companyInfo !== undefined) patch.company_info = inv.companyInfo;
     if (inv.clientInfo !== undefined) patch.client_info = inv.clientInfo;
     if (inv.notes !== undefined) patch.notes = inv.notes;
+    if (inv.paymentMethods !== undefined) patch.payment_methods = inv.paymentMethods;
+    if (inv.viewToken !== undefined) patch.view_token = inv.viewToken || null;
     patch.updated_at = new Date().toISOString();
     const { error } = await supabase.from("invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
@@ -1506,10 +2522,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.notes !== undefined) patch.notes = inv.notes;
     if (inv.lineItems !== undefined) patch.line_items = inv.lineItems;
     if (inv.total !== undefined) patch.total = inv.total;
+    if (inv.paidAt !== undefined) patch.paid_at = inv.paidAt;
+    if (inv.paymentMethod !== undefined) patch.payment_method = inv.paymentMethod;
+    if (inv.paymentReference !== undefined) patch.payment_reference = inv.paymentReference;
     const { error } = await supabase.from("contractor_invoices").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
+    const existing = rawData.contractorInvoices.find(x => x.id === id);
     setRawData(d => ({ ...d, contractorInvoices: d.contractorInvoices.map(x => x.id === id ? { ...x, ...inv } : x) }));
-  }, []);
+
+    // Notifications:
+    //  - Status moved to "sent" (i.e. submitted by staff) → ping owners.
+    //  - Status moved to "paid" (i.e. admin marked it) → ping the staff member.
+    try {
+      if (inv.status === "sent" && existing && profile) {
+        const recipients = allProfiles.filter(u => (u.role === "owner" || u.role === "partner") && u.orgId === profile.orgId);
+        const submitter = rawData.crewMembers.find(c => c.id === existing.crewMemberId);
+        for (const r of recipients) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: r.id,
+            type: "invoice_submitted",
+            title: `${submitter?.name || "A contractor"} submitted an invoice`,
+            message: `${existing.invoiceNumber} · $${existing.total.toFixed(2)}`,
+            link: "/contractor-invoices",
+          });
+        }
+      }
+      if (inv.status === "paid" && existing) {
+        // Find the user_profile that maps to this crew member
+        const member = rawData.crewMembers.find(c => c.id === existing.crewMemberId);
+        const recipientProfile = allProfiles.find(u => u.crewMemberId === existing.crewMemberId)
+          || (member?.email ? allProfiles.find(u => u.email === member.email) : null);
+        if (recipientProfile) {
+          await supabase.from("notifications").insert({
+            id: nanoid(12),
+            user_id: recipientProfile.id,
+            type: "invoice_paid",
+            title: "Your invoice was paid",
+            message: `${existing.invoiceNumber} · $${existing.total.toFixed(2)}`,
+            link: "/my-invoices",
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[updateContractorInvoice] notify failed:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, allProfiles]);
 
   const deleteContractorInvoice = useCallback(async (id: string) => {
     const { error } = await supabase.from("contractor_invoices").delete().eq("id", id);
@@ -1541,6 +2600,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.monthlyTokenLimit !== undefined) patch.monthly_token_limit = s.monthlyTokenLimit;
     if (s.tokensUsedThisMonth !== undefined) patch.tokens_used_this_month = s.tokensUsedThisMonth;
     if (s.tokenResetDate !== undefined) patch.token_reset_date = s.tokenResetDate;
+    if (s.reviewToken !== undefined) patch.review_token = s.reviewToken;
+    if (s.reviewStatus !== undefined) patch.review_status = s.reviewStatus;
+    if (s.sentForReviewAt !== undefined) patch.sent_for_review_at = s.sentForReviewAt;
+    if (s.clientReviewedAt !== undefined) patch.client_reviewed_at = s.clientReviewedAt;
     const { error } = await supabase.from("series").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, series: d.series.map(x => x.id === id ? { ...x, ...s } : x) }));
@@ -1585,6 +2648,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (e.draftEndTime !== undefined) patch.draft_end_time = e.draftEndTime;
     if (e.draftLocationId !== undefined) patch.draft_location_id = e.draftLocationId;
     if (e.draftCrew !== undefined) patch.draft_crew = e.draftCrew;
+    if (e.approvalStatus !== undefined) patch.approval_status = e.approvalStatus;
+    if (e.clientComment !== undefined) patch.client_comment = e.clientComment;
     const { error } = await supabase.from("series_episodes").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
   }, []);
@@ -1645,7 +2710,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       fetchMessages, addMessage, fetchEpisodes,
       fetchComments, addComment,
       upsertDistance,
-      addManualTrip, deleteManualTrip,
+      addManualTrip, updateManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
       addTimeEntry, updateTimeEntry,
@@ -1655,6 +2720,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposal, updateProposal, deleteProposal,
       addPipelineLead, updatePipelineLead, deletePipelineLead,
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
+      addMeeting, updateMeeting, deleteMeeting,
+      addPackage, updatePackage, deletePackage,
+      addProposalImage, updateProposalImage, deleteProposalImage,
+      addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
+      registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
+      addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
+      addServiceCategory, updateServiceCategory, deleteServiceCategory,
+      addService, updateService, deleteService,
+      addServiceVariant, updateServiceVariant, deleteServiceVariant,
       restoreItem, permanentlyDelete,
       updateOrganization,
     }}>

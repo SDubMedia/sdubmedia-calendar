@@ -290,28 +290,28 @@ export default function BillingPage() {
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
         {/* View toggle + navigator + client filter */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {/* Monthly/Annual toggle */}
-            <div className="flex rounded-lg overflow-hidden border border-border">
+            <div className="flex rounded-lg overflow-hidden border border-border shrink-0">
               <button
                 onClick={() => setView("monthly")}
-                className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "monthly" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
+                className={cn("px-2.5 sm:px-3 py-1.5 text-xs font-medium transition-colors", view === "monthly" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
               >Monthly</button>
               <button
                 onClick={() => setView("annual")}
-                className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "annual" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
+                className={cn("px-2.5 sm:px-3 py-1.5 text-xs font-medium transition-colors", view === "annual" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}
               >Annual</button>
             </div>
 
             {/* Navigator */}
-            <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2">
-              <button onClick={view === "monthly" ? prevMonth : () => setYear(y => y - 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3 bg-card border border-border rounded-lg px-2 sm:px-4 py-2 flex-1 sm:flex-initial justify-center">
+              <button onClick={view === "monthly" ? prevMonth : () => setYear(y => y - 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors shrink-0">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-base font-semibold text-foreground min-w-[140px] text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <span className="text-sm sm:text-base font-semibold text-foreground min-w-[100px] sm:min-w-[140px] text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {view === "monthly" ? `${MONTH_NAMES[month]} ${year}` : String(year)}
               </span>
-              <button onClick={view === "monthly" ? nextMonth : () => setYear(y => y + 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={view === "monthly" ? nextMonth : () => setYear(y => y + 1)} className="p-1 rounded hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors shrink-0">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>

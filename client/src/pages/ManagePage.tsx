@@ -10,31 +10,63 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Edit3, Trash2, Users, Briefcase } from "lucide-react";
+import { Plus, Edit3, Trash2, Users, Briefcase, Shield, Layers, Settings } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useApp } from "@/contexts/AppContext";
 import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
+import UsersPage from "./UsersPage";
+import SettingsPage from "./SettingsPage";
+import ServiceCategoriesManager from "@/components/ServiceCategoriesManager";
+
+const MANAGE_TAB_KEY = "manage-tab";
 
 export default function ManagePage() {
+  // Controlled + sessionStorage-persisted so a child triggering a
+  // re-render (e.g. SettingsPage's "Customize my menu" toggle which
+  // updates the user profile and bubbles) doesn't reset the tab
+  // back to Crew & Editors mid-edit.
+  const [tab, setTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "crew";
+    return sessionStorage.getItem(MANAGE_TAB_KEY) || "crew";
+  });
+  const handleTabChange = (v: string) => {
+    setTab(v);
+    try { sessionStorage.setItem(MANAGE_TAB_KEY, v); } catch { /* ignore */ }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-4 border-b border-border bg-card/50">
         <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Manage</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Crew members, project types, and settings</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Crew, project types, and user accounts</p>
       </div>
       <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="crew">
-          <TabsList className="bg-secondary border border-border mb-6">
-            <TabsTrigger value="crew" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Users className="w-3.5 h-3.5 mr-1.5" /> Crew & Editors
-            </TabsTrigger>
-            <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
-            </TabsTrigger>
-          </TabsList>
+        <Tabs value={tab} onValueChange={handleTabChange}>
+          <div className="-mx-6 px-6 overflow-x-auto mb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsList className="bg-secondary border border-border w-max">
+              <TabsTrigger value="crew" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Users className="w-3.5 h-3.5 mr-1.5" /> Crew & Editors
+              </TabsTrigger>
+              <TabsTrigger value="types" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Briefcase className="w-3.5 h-3.5 mr-1.5" /> Project Types
+              </TabsTrigger>
+              <TabsTrigger value="services" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Layers className="w-3.5 h-3.5 mr-1.5" /> Services
+              </TabsTrigger>
+              <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Shield className="w-3.5 h-3.5 mr-1.5" /> Users
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Settings className="w-3.5 h-3.5 mr-1.5" /> Settings
+              </TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="crew"><CrewTab /></TabsContent>
           <TabsContent value="types"><ProjectTypesTab /></TabsContent>
+          <TabsContent value="services"><ServiceCategoriesManager /></TabsContent>
+          <TabsContent value="users"><UsersPage embedded /></TabsContent>
+          <TabsContent value="settings"><SettingsPage embedded /></TabsContent>
         </Tabs>
       </div>
     </div>
@@ -129,7 +161,7 @@ function CrewTab() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Default Pay Rate ($/hr)</Label>
-              <Input type="number" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
+              <Input type="text" inputMode="decimal" value={defaultPayRate} onChange={(e) => setDefaultPayRate(parseFloat(e.target.value) || 0)} className="bg-secondary border-border" placeholder="0" />
             </div>
             <p className="text-xs text-muted-foreground">To assign roles and per-role pay rates, go to the <strong>Staff</strong> page after saving.</p>
           </div>

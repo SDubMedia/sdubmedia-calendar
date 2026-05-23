@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Upload, Plus, Trash2, Printer, ChevronLeft, ChevronRight, FileText, X, Download, Sparkles, Loader2 } from "lucide-react";
+import { Upload, Plus, Trash2, ChevronLeft, ChevronRight, FileText, Download, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getAuthToken, supabase } from "@/lib/supabase";
@@ -428,19 +428,19 @@ export default function BusinessExpensesPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 print:hidden space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               Business Expenses
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
               {yearExpenses.length} transactions · {formatCurrency(yearTotal)}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setView("list")}
-              className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              className={cn("px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
                 view === "list" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
               )}
             >
@@ -448,7 +448,7 @@ export default function BusinessExpensesPage() {
             </button>
             <button
               onClick={() => setView("report")}
-              className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              className={cn("px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
                 view === "report" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
               )}
             >
@@ -815,7 +815,7 @@ export default function BusinessExpensesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Amount ($)</Label>
-                <Input type="number" min="0" step="0.01" value={addForm.amount || ""} onChange={e => setAddForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border" />
+                <Input type="text" inputMode="decimal" value={addForm.amount || ""} onChange={e => setAddForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border" />
               </div>
             </div>
             <div className="space-y-1.5">

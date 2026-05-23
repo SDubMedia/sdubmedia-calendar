@@ -5,7 +5,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, escapeHtml } from "./_auth.js";
+import { verifyAuth, getUserOrgId, escapeHtml, isAllowedUrl, errorMessage } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -40,6 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let total: string;
     let clientName: string;
     let pdfBuffer: Buffer;
+    let publicUrl = "";
 
     if (contentType.includes("multipart/form-data")) {
       // Vercel parses multipart — fields in req.body, files in req.body
@@ -79,8 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           readable.push(null);
           readable.pipe(busboy);
         } else {
-          // req is already a readable stream
-          (req as any).pipe(busboy);
+          // req is already a readable stream — VercelRequest extends IncomingMessage which is a Readable
+          (req as unknown as Readable).pipe(busboy);
         }
       });
 
@@ -90,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       invoiceNumber = fields.invoiceNumber || "";
       total = fields.total || "0";
       clientName = fields.clientName || "";
+      publicUrl = fields.publicUrl || "";
       pdfBuffer = fileBuffer!;
     } else {
       // JSON body with base64 PDF
@@ -100,6 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       invoiceNumber = body.invoiceNumber || "";
       total = body.total || "0";
       clientName = body.clientName || "";
+      publicUrl = body.publicUrl || "";
       pdfBuffer = Buffer.from(body.pdf, "base64");
     }
 
@@ -113,13 +116,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from("clients")
         .select("email")
         .eq("org_id", callerOrgId);
-      const knownEmails = (clients || []).map((c: any) => (c.email || "").toLowerCase()).filter(Boolean);
+      const knownEmails = ((clients as { email: string | null }[] | null) || []).map(c => (c.email || "").toLowerCase()).filter(Boolean);
       if (knownEmails.length > 0 && !knownEmails.includes(recipientEmail.toLowerCase())) {
         return res.status(403).json({ error: "Recipient is not a known client for this organization" });
       }
     }
 
     const totalFormatted = `$${Number(total).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    // Only render the Pay button if we got a publicUrl AND it's on an
+    // allowed domain (defense against header-spoofed redirects).
+    const safePayUrl = publicUrl && isAllowedUrl(publicUrl) ? publicUrl : "";
+
+    const payButtonHtml = safePayUrl ? `
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${safePayUrl}" style="display: inline-block; background: #0088ff; color: #ffffff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">Pay this Invoice</a>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8;">Or paste this link into your browser: <span style="color: #0088ff;">${escapeHtml(safePayUrl)}</span></p>
+          </div>
+    ` : "";
 
     const emailHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff;">
@@ -134,6 +147,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             <p style="margin: 0; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Amount Due</p>
             <p style="margin: 4px 0 0; font-size: 28px; font-weight: 700; color: #0088ff;">${totalFormatted}</p>
           </div>
+          ${payButtonHtml}
           <p style="margin: 0 0 16px; color: #334155;"><strong>Payment terms:</strong> Due on receipt</p>
           ${message ? `<div style="margin: 20px 0; padding: 16px; background: #f8fafc; border-left: 3px solid #0088ff; border-radius: 0 6px 6px 0;"><p style="margin: 0; color: #475569; font-size: 14px;">${escapeHtml(message)}</p></div>` : ""}
           <p style="margin: 24px 0 0; color: #334155;">Thank you for your business!</p>
@@ -162,8 +176,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ success: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Send invoice error:", err);
-    return res.status(500).json({ error: err.message || "Internal server error" });
+    return res.status(500).json({ error: errorMessage(err, "Internal server error") });
   }
 }

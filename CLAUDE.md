@@ -76,11 +76,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4. Business logic
     // 5. Return response
     return res.status(200).json({ ok: true });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || "Failed" });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err, "Failed") });
   }
 }
 ```
+
+**`catch (err: any)` is forbidden.** Use `catch (err)` (TS infers `unknown`) and the shared `errorMessage(err, fallback)` helper from `api/_auth.ts`. Mirrors `err.message || fallback` semantics without the `any` escape hatch.
 
 **Public endpoints** (no auth): `contract-sign.ts`, `proposal-accept.ts`, `proposal-view.ts` — these use token-based verification instead of Bearer auth.
 
@@ -93,6 +95,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - Service role key for API endpoints: `SUPABASE_SERVICE_ROLE_KEY`
 - Anon key for frontend: `VITE_SUPABASE_ANON_KEY`
 
+### Generated types
+
+Schema types live at `client/src/lib/database.types.ts`. Regenerate after any migration:
+
+```sh
+SUPABASE_ACCESS_TOKEN=sbp_... pnpm gen:types
+```
+
+The global `supabase` client in `client/src/lib/supabase.ts` is **not yet typed** with `<Database>` — flipping it on surfaces ~14 strict-typing errors in AppContext's CRUD payloads (JSONB columns spreading as `Json`, etc.). Migrating the global client to `<Database>` is its own focused task — until then, use `import type { Database, Tables } from "@/lib/database.types"` in isolated helpers where you want type safety.
+
 **Every new table MUST have:**
 - `org_id text NOT NULL DEFAULT ''` column
 - RLS enabled: `ALTER TABLE x ENABLE ROW LEVEL SECURITY`
@@ -102,10 +114,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 **RLS checklist for every new table (non-negotiable):**
 1. `ALTER TABLE x ENABLE ROW LEVEL SECURITY;`
 2. Create owner policy with `AND org_id = public.user_org_id()` — NEVER omit the org_id check
-3. Create read policies for other roles that need access (partner, staff, client, family)
+3. **Decide policies for every role that touches this table — owner, partner, staff, client, family.** A missing role = silent denial, not "no access yet." If staff users will read or write this table, they need an explicit policy. We got burned on `contractor_invoices` (May 2026): staff role had no policy, so Melissa got "new row violates RLS" on every create. Pattern for own-row staff scoping (see `staff_own_trips`, `staff_own_time_entries`, `staff_own_contractor_invoices`):
+   ```sql
+   CREATE POLICY "staff_own_x" ON x FOR ALL USING (
+     public.user_role() = 'staff'
+     AND org_id = public.user_org_id()
+     AND crew_member_id = (SELECT crew_member_id FROM user_profiles WHERE id = auth.uid())
+   );
+   ```
 4. **Verify with anon key after deploying** — `curl` the table with the anon key and confirm 0 rows returned
-5. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
-6. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
+5. **Test as each non-owner role you added a policy for** — owner-only testing hides missing staff/client/partner policies until a real user hits them in prod
+6. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
+7. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
 
 **JSONB columns**: Always provide a default in the CREATE TABLE statement (e.g., `DEFAULT '[]'`). Never assume JSONB columns are non-null in application code.
 
@@ -203,6 +223,11 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't use bare local imports in `api/` files.** Always use `.js` extensions: `from "./_auth.js"`. Never use `require()` — this is ESM.
 - **Don't reset form state in useEffect based on context data props.** With Supabase Realtime, any DB change gives props new references, which re-triggers the effect and wipes the form mid-edit. Use a `wasOpen` ref to only reset on open transition, or use event handlers (`openEdit()`/`openAdd()`) to populate forms instead.
 - **Don't portal to `document.body` from inside an open Radix Dialog/AlertDialog/Sheet without `pointer-events-auto`.** Radix locks `pointer-events: none` on body while a modal is open, so sibling portals are inert until you re-enable pointer events on the overlay. We've been burned by this twice on the invoice preview.
+- **Don't use `catch (err: any)`.** Use `catch (err)` and `errorMessage(err, fallback)` from `_auth.ts`. The `any` escape hatch is forbidden — TypeScript infers `unknown` in catch blocks under strict mode for a reason.
+- **Don't write to refs during render.** `myRef.current = value` belongs inside a `useEffect(() => { ... })` (no deps array). Writing during render breaks React's purity rules and can cause stale captures.
+- **Don't `setLoading(true)` before validation.** In any async submit handler, validate first (canvas exists, required fields filled, etc.), THEN flip the loading flag. We had a stuck-button bug on every signing surface (4 places) where missed validation left the button hung in "signing…" with no recovery.
+- **Don't use `window.location.href = url`.** Use `window.location.assign(url)` — same effect, doesn't trip React's purity/immutability rule.
+- **Don't write narrow useEffect deps without a `// eslint-disable-next-line react-hooks/exhaustive-deps` comment.** Sometimes deps must be narrowed (e.g. only re-fire on id-change, not on every realtime update). When you do that, leave a one-line comment naming the reason — bare disable comments are not OK.
 
 ## Security — Mandatory Rules
 
@@ -250,3 +275,43 @@ Format: add the rule where it belongs (API section, Security section, etc.) and 
 - **Never trust silent catch blocks.** If a catch block swallows errors, fix it — log or surface the error.
 - **Test the actual endpoint** (`curl`) before assuming the problem is in the frontend.
 - **When the user reports a symptom, find the root cause.** Don't fix the surface-level error message — trace it back to what's actually broken.
+
+## Stable Slate Conventions
+
+Things baked into the codebase. Re-using these saves re-discovering them.
+
+### Forms
+- **Numeric inputs use `type="text" inputMode="decimal"`**, not `type="number"`. The native iOS numeric keypad has no Done button. There are 30+ inputs in the codebase using this pattern; don't break it on new forms.
+- **Don't define React components inside other components.** Extract to top-level. Causes focus loss + state reset on every parent render (we got burned by this on the LineItemEditor).
+
+### Cancellation (projects)
+- **Cancelled projects bill $0.** `getProjectInvoiceAmount` and `getProjectBillableHours` short-circuit to 0 when `status === "cancelled"`. Any new billing surface that does its own math must respect this.
+- **`buildLineItems` filters out cancelled.** Don't add cancelled to invoices/reports/totals.
+- **Reports surface cancelled in a separate section.** Monthly + annual reports (both internal and client-facing) include a "Cancelled Projects" block — don't merge it into active project lists.
+
+### Contracts
+- **Contract editor route:** `/contracts/:id/edit` (full-page, autosaves every 800ms after hydration).
+- **New contract wizard route:** `/contracts/new` — 3 steps (Client → Project → Template). Accepts `?template=<id>` to pre-select.
+- **`hydrated` state gate.** EditContractPage doesn't mount the WysiwygContractEditor until local state is hydrated from the contract row. Don't introduce a different mount pattern — the race causes a render loop.
+- **Multi-signer tokens.** `api/contract-sign.ts`'s `findContractByToken` resolves a token by trying `contracts.sign_token` first, then scanning `additional_signers` JSONB. Never write a sign-flow that only checks the primary token.
+- **Status flow:** `draft → sent → client_signed → completed`. Owner countersign is gated on `clientSignedAt && additionalSigners.every(s => s.signedAt)` — don't let the owner countersign while other signers are pending.
+- **`useSignatureCanvas` hook.** Use `client/src/hooks/useSignatureCanvas.ts` for any signature drawing surface. Don't reinvent canvas event handlers — three sites already used the duplicated version before extraction.
+
+### Galleries
+- **Cover layouts:** `center | vintage | minimal | left | stripe | frame | divider | stamp` (Outline was removed 2026-04-30). Any new layout needs entries in `Delivery` type, `DeliveriesPage` chooser, `DeliverGalleryPage` `CoverHero`, and the Delivery row sanitizer in AppContext.
+- **Cover fonts:** Cormorant (default) / Playfair / Marcellus / Inter / Sans / Serif Timeless / Serif Modern. Stored in `cover_font` column. Two parallel arrays keep admin + public in sync (`COVER_FONTS` in DeliveriesPage, `COVER_HERO_FONTS` in DeliverGalleryPage). Update both.
+- **Watermark:** logo (org `logo_url`) tiles at 18% opacity when `watermark_use_logo=true`. Text watermark still works alongside.
+- **Eager cover signed URL.** Cover thumbnails fetch the cover photo's signed URL in a separate fast call before the bulk fetch. Don't regress this — galleries with 200+ photos noticeably degrade.
+
+### Calendar
+- **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.
+- **Per-meeting color.** Use `getMeetingColor(value)` from `MeetingDialog.tsx` — same swatch shape as `getEventColor` for personal events. Empty value = slate default.
+
+### Cron pattern
+- **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
+- **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
+- **Idempotency.** Persist last-fired timestamp on the row (`last_reminder_sent_at`, `reminder_sent_at`, etc.) so reruns don't double-send.
+
+### Branding (org logo + favicon)
+- **Stored as data URLs on the `organizations` row.** No upload endpoint, no R2, no expiring URLs. Logos ≤250KB, favicons ≤50KB.
+- **`<FaviconSync />`** in `App.tsx` reflects `org.faviconUrl` onto the live `<link rel="icon">`. Don't add a separate favicon mechanism.

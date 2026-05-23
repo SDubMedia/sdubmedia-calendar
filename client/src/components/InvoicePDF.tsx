@@ -175,6 +175,24 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
           </View>
         </View>
 
+        {/* Payment Options — printed for visibility. Online payment happens
+            via the Pay button in the email (or the public link), but seeing
+            it on the PDF tells everyone what's available at a glance. */}
+        {invoice.paymentMethods && invoice.paymentMethods.length > 0 && (
+          <View style={s.notes}>
+            <Text style={s.notesLabel}>Payment Options</Text>
+            <Text style={s.notesText}>
+              {invoice.paymentMethods.includes("stripe") && invoice.paymentMethods.includes("venmo")
+                ? "Online: Credit Card (Stripe) or Venmo — open the payment link in your invoice email."
+                : invoice.paymentMethods.includes("stripe")
+                ? "Online: Credit Card (Stripe) — open the payment link in your invoice email."
+                : invoice.paymentMethods.includes("venmo")
+                ? "Online: Venmo — open the payment link in your invoice email."
+                : ""}
+            </Text>
+          </View>
+        )}
+
         {/* Notes */}
         {invoice.notes && (
           <View style={s.notes}>

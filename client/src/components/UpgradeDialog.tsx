@@ -99,7 +99,7 @@ export default function UpgradeDialog({ open, onClose }: Props) {
         successUrl: `${window.location.origin}/?upgraded=${planId}`,
         cancelUrl: `${window.location.origin}/`,
       });
-      if (url) window.location.href = url;
+      if (url) window.location.assign(url);
     } catch (err: any) {
       toast.error(err.message || "Could not start checkout");
       setLoadingId(null);
@@ -114,7 +114,7 @@ export default function UpgradeDialog({ open, onClose }: Props) {
         orgId,
         returnUrl: `${window.location.origin}/`,
       });
-      if (url) window.location.href = url;
+      if (url) window.location.assign(url);
     } catch (err: any) {
       toast.error(err.message || "Could not open billing portal");
       setLoadingId(null);

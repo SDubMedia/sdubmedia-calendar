@@ -5,7 +5,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, isAllowedUrl } from "./_auth.js";
+import { verifyAuth, getUserOrgId, isAllowedUrl, errorMessage } from "./_auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -34,8 +34,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "disconnect": return await disconnect(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }
 

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewMember } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense } from "./types";
 
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
@@ -76,6 +76,8 @@ export const seedData: AppData = {
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -95,6 +97,8 @@ export const seedData: AppData = {
       editTypes: ["Podcast Edit"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -111,6 +115,8 @@ export const seedData: AppData = {
       editTypes: [],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -121,12 +127,14 @@ export const seedData: AppData = {
       date: "2026-02-20",
       startTime: "14:00",
       endTime: "16:00",
-      status: "completed",
+      status: "editing_done",
       crew: [{ crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1.5, payRatePerHour: 0 }],
       editTypes: ["Social Vertical"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
     {
@@ -143,6 +151,8 @@ export const seedData: AppData = {
       editTypes: ["Social Vertical", "Social Horizontal"],
       notes: "",
       deliverableUrl: "",
+      cancellationReason: "",
+      cancelledAt: null,
       createdAt: new Date().toISOString(),
     },
   ],
@@ -161,6 +171,18 @@ export const seedData: AppData = {
   pipelineLeads: [],
   series: [],
   personalEvents: [],
+  externalCalendars: [],
+  externalEvents: [],
+  meetings: [],
+  packages: [],
+  proposalImages: [],
+  deliveries: [],
+  deliveryFiles: [],
+  deliverySelections: [],
+  deliveryCollections: [],
+  serviceCategories: [],
+  services: [],
+  serviceVariants: [],
   organization: null,
 };
 
@@ -184,14 +206,22 @@ export function getProjectWorkedHours(project: Project): { crewHours: number; po
  * Get total crew cost for a project, using editorBilling for photo editors.
  */
 export function getProjectCrewCost(project: Project): number {
+  // Honor per-entry flat pay. If entry.payType === "flat", use
+  // flatAmount instead of hoursWorked × payRatePerHour. Lets crew
+  // be hourly on one project and flat on another without changing
+  // their global rate.
+  const entryCost = (e: ProjectCrewEntry | ProjectPostEntry): number => {
+    if (e.payType === "flat") return Number(e.flatAmount ?? 0);
+    return Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+  };
   const crewCost = (project.crew || []).filter(e => e.role !== "Travel").reduce(
-    (s, e) => s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0), 0
+    (s, e) => s + entryCost(e), 0
   );
   const postCost = (project.postProduction || []).filter(e => e.role !== "Travel").reduce((s, e) => {
     if (e.role === "Photo Editor" && project.editorBilling) {
       return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
     }
-    return s + Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+    return s + entryCost(e);
   }, 0);
   return crewCost + postCost;
 }
@@ -234,17 +264,27 @@ export function getProjectBillableHours(project: Project, client: Client): {
   postBillable: number;
   totalBillable: number;
 } {
-  const crewBillable = (project.crew || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  // Cancelled projects don't bill — zero hours surface everywhere.
+  if (project.status === "cancelled") {
+    return { crewBillable: 0, postBillable: 0, totalBillable: 0 };
+  }
+  // Travel role is internal-only — it's tracked as a separate cost via
+  // getProjectTravelCost and is never billed to the client. Mirrors the same
+  // exclusion in getProjectCrewCost above so client invoices and internal
+  // billing stay consistent.
+  const crewBillable = (project.crew || []).filter(e => e.role !== "Travel")
+    .reduce((s, e) => s + getBillableHours(e, client), 0);
 
   if (project.editorBilling?.finalHours != null) {
     // Photo editor hours come from the calculator; exclude photo editor entries from normal calculation
-    const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor");
+    const nonPhotoEditorPost = (project.postProduction || []).filter(e => e.role !== "Photo Editor" && e.role !== "Travel");
     const postBillable = nonPhotoEditorPost.reduce((s, e) => s + getBillableHours(e, client), 0);
     const editorBillable = project.editorBilling.finalHours;
     return { crewBillable, postBillable: postBillable + editorBillable, totalBillable: crewBillable + postBillable + editorBillable };
   }
 
-  const postBillable = (project.postProduction || []).reduce((s, e) => s + getBillableHours(e, client), 0);
+  const postBillable = (project.postProduction || []).filter(e => e.role !== "Travel")
+    .reduce((s, e) => s + getBillableHours(e, client), 0);
   return { crewBillable, postBillable, totalBillable: crewBillable + postBillable };
 }
 
@@ -253,24 +293,35 @@ export function getProjectBillableHours(project: Project, client: Client): {
  * Hourly: billable hours × rate.
  * Per-project: project-level override → type-specific rate → client default rate.
  */
-export function getProjectInvoiceAmount(project: Project, client: Client): number {
+// Computes the pre-discount billable amount. Used internally and as
+// the "subtotal" displayed in the Edit Project dialog.
+export function getProjectSubtotal(project: Project, client: Client): number {
+  if (project.status === "cancelled") return 0;
   const effectiveModel = project.billingModel ?? client.billingModel;
   if (effectiveModel === "per_project") {
-    // 1. Project-level billing override (new: per-project flat rate)
-    if (project.billingRate != null && project.billingRate > 0) {
-      return project.billingRate;
-    }
-    // 2. Legacy project.projectRate override
-    if (project.projectRate != null && project.projectRate > 0) {
-      return project.projectRate;
-    }
-    // 3. Project-type-specific rate, 4. Client default per-project rate
+    if (project.billingRate != null && project.billingRate > 0) return project.billingRate;
+    if (project.projectRate != null && project.projectRate > 0) return project.projectRate;
     const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
   const { totalBillable } = getProjectBillableHours(project, client);
   const effectiveHourly = project.billingRate ?? client.billingRatePerHour ?? 0;
   return totalBillable * Number(effectiveHourly);
+}
+
+// Computes the discount value (always positive — caller subtracts).
+export function getProjectDiscountValue(project: Project, subtotal: number): number {
+  if (!project.discountType || !project.discountAmount) return 0;
+  if (project.discountType === "percent") {
+    return Math.max(0, subtotal * (Number(project.discountAmount) / 100));
+  }
+  return Math.max(0, Math.min(subtotal, Number(project.discountAmount)));
+}
+
+export function getProjectInvoiceAmount(project: Project, client: Client): number {
+  const subtotal = getProjectSubtotal(project, client);
+  const discount = getProjectDiscountValue(project, subtotal);
+  return Math.max(0, subtotal - discount);
 }
 
 /**
@@ -302,6 +353,10 @@ export interface MonthlyEarnings {
   ownerCrewPay: number;
   travelCost: number;
   marketingExpenses: number;
+  // Legacy contract bucket: 10% of partner-client profit set aside for
+  // marketing/spending. 0 outside legacy months. Distinct from the
+  // marketingExpenses ledger field which tracks actual spend.
+  spendingBudget: number;
   partnerPayout: number;
   adminSplit: number;
   nonPartnerProfit: number;
@@ -327,6 +382,11 @@ export function getMonthlyEarningsBreakdown(
   let partnerPayout = 0;
   let adminSplit = 0;
   let nonPartnerProfit = 0;
+  // Legacy contract allocates 10% of project profit (revenue minus crew
+  // and travel) as a spending budget bucket; the remaining 90% is split
+  // 50/50 between admin (owner) and partner. Tracked monthly so the
+  // monthly row reads: crew + geoff + spendingBudget + partner + admin = revenue.
+  let spendingBudget = 0;
 
   // Use new split logic for March 2026+
   const useNewSplitLogic = year > 2026 || (year === 2026 && month >= 3);
@@ -362,12 +422,35 @@ export function getMonthlyEarningsBreakdown(
       return;
     }
 
+    // Partnership ended? Projects on/before clientSplit.endedAt keep
+    // their partner split for historical P&L. Projects after that
+    // date flow through as non-partner — owner keeps everything
+    // after costs. Lets a partnership end without rewriting history.
+    if (clientSplit.endedAt && p.date > clientSplit.endedAt) {
+      nonPartnerProfit += projRevenue - projCrewCost - projTravelCost;
+      return;
+    }
+
     if (!useNewSplitLogic) {
-      // Legacy split (Jan/Feb 2026)
-      const pPct = clientSplit.partnerPercent ?? 0;
-      const aPct = clientSplit.adminPercent ?? 0.45;
-      partnerPayout += projRevenue * pPct;
-      adminSplit += projRevenue * aPct;
+      // Legacy split (Jan/Feb 2026): contract allocates project PROFIT
+      // (after crew + travel) as 10% spending budget + 90% split 50/50
+      // between admin and partner. So: revenue = crew + travel +
+      // spendingBudget + partner + admin. If profit is negative
+      // (over-budget on crew), zero everything out — nothing to split.
+      //
+      // Spending budget honors both the per-client toggle AND a
+      // per-client end date — projects after spendingBudgetEndedAt
+      // skip the 10% allocation and the full 100% gets split 50/50.
+      const projProfit = projRevenue - projCrewCost - projTravelCost;
+      if (projProfit > 0) {
+        const budgetActive = clientSplit.spendingBudgetEnabled !== false
+          && (!clientSplit.spendingBudgetEndedAt || p.date <= clientSplit.spendingBudgetEndedAt);
+        const projSpending = budgetActive ? projProfit * 0.10 : 0;
+        const projSplittable = projProfit - projSpending;
+        spendingBudget += projSpending;
+        partnerPayout += projSplittable * 0.50;
+        adminSplit += projSplittable * 0.50;
+      }
       return;
     }
 
@@ -445,7 +528,13 @@ export function getMonthlyEarningsBreakdown(
     .reduce((s, e) => s + e.amount, 0);
 
   const grossProfit = revenue - totalCrewCost;
-  const netProfit = revenue - totalCrewCost - travelCost - mktgExp - partnerPayout;
+  // Net profit = what the company actually keeps as profit. In legacy
+  // contracts that's revenue minus crew, travel, partner payout, and
+  // the spending-budget bucket (which is allocated away from the
+  // company). In non-legacy months we fall back to actual marketing
+  // expenses since there's no contractual budget allocation.
+  const allocatedSpend = spendingBudget > 0 ? spendingBudget : mktgExp;
+  const netProfit = revenue - totalCrewCost - travelCost - allocatedSpend - partnerPayout;
 
   return {
     year, month,
@@ -455,6 +544,7 @@ export function getMonthlyEarningsBreakdown(
     ownerCrewPay,
     travelCost,
     marketingExpenses: mktgExp,
+    spendingBudget,
     partnerPayout,
     adminSplit,
     nonPartnerProfit,

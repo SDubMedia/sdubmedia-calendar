@@ -17,6 +17,7 @@ export interface OrgFeatures {
   pipeline: boolean;
   proposals: boolean;
   contracts: boolean;
+  deliveries: boolean;
   clientHealth: boolean;
   profitLoss: boolean;
   contractor1099: boolean;
@@ -30,22 +31,27 @@ export interface OrgFeatures {
   familyFeatures?: Partial<OrgFeatures>;
 }
 
+// Default ON for the core flow. Niche features (Content Series,
+// 1099 summary, Partner Splits, Marketing Budget) default OFF —
+// user enables them in Settings if they need them. Replaces the
+// old onboarding wizard's "what features do you want?" step.
 export const DEFAULT_FEATURES: OrgFeatures = {
   calendar: true,
   crewManagement: true,
   invoicing: true,
-  mileage: false,
-  expenses: false,
-  clientPortal: false,
+  mileage: true,
+  expenses: true,
+  clientPortal: true,
   contentSeries: false,
   partnerSplits: false,
-  budget: true,
+  budget: false,
   pipeline: true,
   proposals: true,
   contracts: true,
+  deliveries: true,
   clientHealth: true,
   profitLoss: true,
-  contractor1099: true,
+  contractor1099: false,
   clientManagement: true,
   locationManagement: true,
   reports: true,
@@ -54,7 +60,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
 export type ProductionType = "video" | "photo" | "both";
 
 // Dashboard widget configuration
-export type DashboardWidgetId = "metrics" | "upcoming" | "invoices" | "mileage" | "revenue";
+export type DashboardWidgetId = "metrics" | "activity" | "upcoming" | "invoices" | "mileage" | "revenue";
 
 export interface DashboardWidgetConfig {
   id: DashboardWidgetId;
@@ -63,6 +69,7 @@ export interface DashboardWidgetConfig {
 
 export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   { id: "metrics", enabled: true },
+  { id: "activity", enabled: true },
   { id: "upcoming", enabled: true },
   { id: "invoices", enabled: true },
   { id: "mileage", enabled: true },
@@ -71,6 +78,7 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
 
 export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
   metrics: "Status Cards (Upcoming, In Editing, Outstanding, Completed)",
+  activity: "Activity Feed (recent client interactions)",
   upcoming: "Upcoming Shoots",
   invoices: "Recent Invoices",
   mileage: "Mileage Summary",
@@ -86,7 +94,16 @@ export interface OrgBusinessInfo {
   email: string;
   website: string;
   ein: string;
+  // The signing/owner's name — printed on vendor signature blocks. Distinct
+  // from `Organization.name` (the company name shown elsewhere). Optional
+  // for back-compat with rows saved before this field existed.
+  ownerName?: string;
+  // Venmo @username (no @ prefix in storage). Used to render a "Pay with
+  // Venmo" button on public invoice pages.
+  venmoUsername?: string;
 }
+
+export type InvoicePaymentMethod = "stripe" | "venmo";
 
 export interface ServiceItem {
   id: string;
@@ -107,6 +124,7 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStageConfig[] = [
   { id: "follow_up", label: "Follow-up", color: "cyan" },
   { id: "proposal_sent", label: "Proposal Sent", color: "indigo" },
   { id: "proposal_signed", label: "Proposal Signed", color: "amber" },
+  { id: "awaiting_approval", label: "Awaiting Approval", color: "yellow" },
   { id: "retainer_paid", label: "Retainer Paid", color: "green" },
   { id: "final_payment", label: "Final Payment", color: "emerald" },
   { id: "in_production", label: "In Production", color: "orange" },
@@ -120,6 +138,7 @@ export interface Organization {
   name: string;
   slug: string;
   logoUrl: string;
+  faviconUrl: string;
   plan: string;
   features: OrgFeatures;
   productionType: ProductionType;
@@ -133,10 +152,15 @@ export interface Organization {
   // to enforce project limits, show the Manage Subscription button, and render
   // the PaymentBanner when a charge has failed.
   projectLimit: number;          // -1 = unlimited (paid tier or grandfathered), otherwise the free-tier cap (10)
+  stripeAccountId: string;       // Stripe Connect account for collecting client payments (empty = not connected)
   stripeCustomerId: string;      // empty string until user first opens checkout
   stripeSubscriptionId: string;  // empty string when no active subscription
   billingStatus: string;         // 'ok' | 'past_due' | 'cancelled'
   testimonialPromptedAt: string | null; // when the testimonial prompt last fired (null = never asked)
+  // Saved template for the "send series for review" message. Placeholders
+  // {first_name} / {company} / {url} get substituted at copy time.
+  // Empty = use the built-in default.
+  seriesReviewMessageTemplate?: string;
   createdAt: string;
 }
 
@@ -162,11 +186,49 @@ export interface UserProfile {
   mustChangePassword: boolean; // force password change on first login
   hasCompletedOnboarding: boolean;
   featureOverrides?: Record<string, boolean>; // per-user feature overrides (most specific wins)
+  // When false, this user is hidden from the "Assign people" picker on
+  // meetings. Only staff/partner roles ever appear there in the first
+  // place — toggle defaults to true (visible).
+  showInMeetingAssignments?: boolean;
   personalEventTemplates: PersonalEventTemplate[];
+  guidance?: UserGuidanceState; // first-visit guides + setup-checklist dismiss state
   createdAt: string;
 }
 
-export type ProjectStatus = "upcoming" | "filming_done" | "in_editing" | "completed" | "cancelled";
+// Tracks which guidance modals the user has dismissed. Each fires at
+// most once. The business-info modal is the only auto-fire — page-guide
+// modals are no longer auto-popped, they only open when the user clicks
+// the floating ? button on pages that have help content.
+export interface UserGuidanceState {
+  seenGuides: Record<string, string>; // pageId -> ISO timestamp first-seen (legacy field; kept so the ? button can still log re-opens later)
+  businessInfoSetupSeen?: boolean; // set true after the one-time business-info collection modal
+  // User explicitly opted out of collecting payments through Slate. We
+  // still let them send proposals/contracts but skip the Stripe-Connect
+  // prereq blocker on the assumption they bill clients elsewhere.
+  stripeOptedOut?: boolean;
+  // First-time educational modal for the Travel Bases section in
+  // Staff. Fires when the user expands the section the first time.
+  // After dismiss, an info icon next to the section header re-opens
+  // it on demand.
+  seenTravelBaseInfo?: boolean;
+  // Manual checklist completions for items we can't auto-detect (calendar
+  // sync is a copy-paste flow into Google/Apple Calendar — there's no
+  // server-side signal we can read, so the user marks it themselves).
+  manualCompletions?: { calendarSynced?: boolean };
+}
+
+// Status flow: tentative → upcoming → filming_done → in_editing →
+// editing_done → delivered. Cancelled is separate (terminal).
+// `completed` was the old name for what's now `editing_done`; the
+// migration renames any existing rows so old records still work.
+export type ProjectStatus =
+  | "tentative"
+  | "upcoming"
+  | "filming_done"
+  | "in_editing"
+  | "editing_done"
+  | "delivered"
+  | "cancelled";
 
 export type CrewRole =
   | "Main Videographer"
@@ -212,10 +274,23 @@ export interface Client {
   billingRatePerHour: number; // $ per hour (for hourly model)
   perProjectRate: number; // default $ per project (for per_project model)
   projectTypeRates: { projectTypeId: string; rate: number }[]; // per-type rates (for per_project model)
+  // Per-service price overrides for the new categories/services/variants model.
+  // Optional (defaults to []) so older fixtures, test data, and call sites
+  // that build a Client without the new model still typecheck.
+  // Lookup priority when pricing a service on a project:
+  //   1. Match on { serviceId, variantId } here → use that rate
+  //   2. Match on { serviceId, variantId: null } → use that rate
+  //   3. Fall back to variant.price (if variantId set) or service.defaultPrice
+  serviceRates?: { serviceId: string; variantId: string | null; rate: number }[];
   allowedProjectTypeIds: string[]; // if set, only these types show in project form (empty = all)
   defaultProjectTypeId: string; // auto-selected project type for new projects
   roleBillingMultipliers: RoleBillingMultiplier[]; // per-role hour adjustments (hourly only)
   partnerSplit?: PartnerSplit | null; // profit split config for partner clients
+  // Long-form notes about the client's brand, voice, products, audience,
+  // socials, etc. Auto-included in series-chat AI prompts so video
+  // suggestions are grounded in who the client actually is. Optional
+  // for back-compat with old rows / fixtures saved before this column.
+  brandNotes?: string;
   createdAt: string;
 }
 
@@ -232,6 +307,24 @@ export interface HomeAddress {
   zip: string;
 }
 
+// A "home base" is a place a crew member starts driving from
+// for some shoots. Most folks have one (their actual home). But
+// people who travel for work often have a "travel base" — e.g.,
+// a family member's house in another state where their car is
+// parked between trips. Mileage is calculated from whichever
+// base is selected on the project's crew entry, falling back to
+// the primary base.
+export interface TravelBase {
+  id: string;        // stable identifier — referenced by ProjectCrewEntry.homeBaseId
+  type?: "home" | "travel"; // category for UI clarity (defaults to "home" when missing)
+  label: string;     // user-defined ("Tennessee", "California (sister's house)")
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  isPrimary?: boolean; // exactly one base per crew member is primary
+}
+
 export interface CrewMember {
   id: string;
   name: string;
@@ -239,7 +332,13 @@ export interface CrewMember {
   phone: string;
   email: string;
   defaultPayRatePerHour: number;   // fallback rate if role-specific rate not found
-  homeAddress?: HomeAddress | null; // for mileage calculation
+  homeAddress?: HomeAddress | null; // legacy single-home address (kept for back-compat; new code reads from homeBases)
+  homeBases?: TravelBase[]; // multiple home bases for travel-heavy crew members; one is marked primary
+  // How this person prefers to be paid. The admin sees this when
+  // marking a contractor invoice paid; defaults the payment-method
+  // dropdown so they don't have to remember each contractor's preference.
+  preferredPaymentMethod?: ContractorPaymentMethod | null;
+  preferredPaymentDetails?: string; // free-text handle/email/notes (e.g. "@sarah-thompson" for Venmo)
   // Business info for contractor invoicing (optional, self-managed by staff)
   businessName?: string;
   businessAddress?: string;
@@ -275,6 +374,12 @@ export interface ProjectCrewEntry {
   hoursWorked: number;
   payRatePerHour: number; // $ per hour — set per-entry so it can be overridden
   roundTripMiles?: number; // miles from crew member's home to location and back (snapshot at project time)
+  homeBaseId?: string; // which TravelBase to drive from for THIS project (defaults to primary)
+  // Optional flat-pay override. When payType==="flat", cost calculations
+  // use flatAmount directly and ignore hoursWorked × payRatePerHour.
+  // Hours stay tracked separately so reports still know who worked when.
+  payType?: "hourly" | "flat";
+  flatAmount?: number;
 }
 
 // A post-production person assigned to a project (editing)
@@ -283,6 +388,9 @@ export interface ProjectPostEntry {
   role: string;
   hoursWorked: number;
   payRatePerHour: number; // $ per hour
+  // Optional flat-pay override (same semantics as ProjectCrewEntry).
+  payType?: "hourly" | "flat";
+  flatAmount?: number;
 }
 
 // Photo editor billing calculator data (stored per-project)
@@ -310,6 +418,18 @@ export interface PartnerSplit {
   editorMarketingPercent: number; // e.g. 0.10
   // Spending budget
   spendingBudgetEnabled: boolean; // whether to track marketing budget for this client
+  // Spending-budget end date (ISO YYYY-MM-DD). When set, projects
+  // dated after this value skip the 10% spending-budget allocation —
+  // the full profit goes to the partner/admin split instead.
+  // Projects on/before keep allocating the budget. Lets the spending
+  // budget arrangement end without losing historical data.
+  spendingBudgetEndedAt?: string;
+  // Partnership end date (ISO YYYY-MM-DD). When set, projects with a
+  // date AFTER this value are treated as non-partner — owner keeps
+  // 100% (after costs). Projects on/before this date keep using the
+  // partner split. Lets historical P&L data stay intact when a
+  // partnership ends. Optional for back-compat with existing rows.
+  endedAt?: string;
 }
 
 export interface Project {
@@ -331,6 +451,61 @@ export interface Project {
   editTypes: string[]; // edit_type IDs
   notes: string;
   deliverableUrl: string; // Google Drive link to final deliverables
+  cancellationReason: string; // populated when status === "cancelled"
+  cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
+  depositPaidAt?: string | null; // ISO timestamp stamped when at_signing milestone paid → flips tentative to upcoming
+  // Per-project discount applied to the billable amount when this
+  // project hits an invoice. % off (discountType="percent") subtracts
+  // discountAmount as a percentage of subtotal; $ off subtracts the
+  // dollar value directly. Free-text reason printed on the invoice
+  // line so the client sees why.
+  discountType?: "percent" | "fixed" | null;
+  discountAmount?: number;
+  discountReason?: string;
+  // Service-bundle pricing (new model, lives alongside flat projectTypeId).
+  // If serviceCategoryId is set, `services` holds the picked variants
+  // with denormalized snapshots so historical invoices stay accurate
+  // even if list prices change later.
+  serviceCategoryId?: string | null;
+  services?: ProjectServiceSelection[];
+  createdAt: string;
+}
+
+export interface ProjectServiceSelection {
+  serviceId: string;
+  variantId: string | null;
+  label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
+  price: number;    // snapshot of the price at the time the project was created/edited
+}
+
+// ============================================================
+// Service Categories — hierarchical pricing model
+//   Category → Services → priced Variants (or default_price)
+// Lives alongside the flat ProjectType model. Either model can be
+// used per-project; new projects can opt into the bundle flow.
+// ============================================================
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  position: number;
+  createdAt: string;
+}
+
+export interface Service {
+  id: string;
+  categoryId: string;
+  name: string;
+  defaultPrice: number;    // used when the service has zero variants
+  position: number;
+  createdAt: string;
+}
+
+export interface ServiceVariant {
+  id: string;
+  serviceId: string;
+  label: string;          // e.g. "2,000–3,000 sqft"
+  price: number;
+  position: number;
   createdAt: string;
 }
 
@@ -366,7 +541,11 @@ export interface MonthlyBillingSummary {
 }
 
 // ---- Contractor Invoices (1099 crew self-service) ----
-export type ContractorInvoiceStatus = "draft" | "sent";
+export type ContractorInvoiceStatus = "draft" | "sent" | "paid";
+
+// Method the admin used to pay a contractor's invoice. Slate doesn't
+// process the payment itself — this is just record-keeping.
+export type ContractorPaymentMethod = "venmo" | "zelle" | "check" | "cash" | "bank_transfer" | "stripe" | "other";
 
 export interface ContractorInvoiceLineItem {
   projectId: string;
@@ -399,6 +578,9 @@ export interface ContractorInvoice {
   total: number;
   status: ContractorInvoiceStatus;
   notes: string;
+  paidAt?: string | null;            // ISO timestamp stamped when admin marks paid
+  paymentMethod?: ContractorPaymentMethod | null; // how the admin paid the contractor
+  paymentReference?: string;         // optional confirmation # / check #
   createdAt: string;
 }
 
@@ -435,11 +617,21 @@ export interface Invoice {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  // Owner-selected payment options shown on the public invoice page.
+  // Defaults to ["stripe"] for back-compat with rows saved before this field.
+  paymentMethods: InvoicePaymentMethod[];
+  // Random token gating the public payment page. Generated on demand
+  // (when the owner clicks Save & Copy Link or Save & Send Email);
+  // remains "" for invoices saved as draft only.
+  viewToken: string;
 }
 
 // ---- Content Series ----
-export type SeriesStatus = "draft" | "active" | "completed";
+export type SeriesStatus = "draft" | "active" | "completed" | "archived";
 export type EpisodeStatus = "idea" | "concept" | "script" | "client_review" | "scheduled" | "filming" | "editing" | "review" | "delivered";
+
+export type SeriesReviewStatus = "draft" | "sent" | "approved" | "changes_requested";
+export type EpisodeApprovalStatus = "pending" | "approved" | "changes_requested";
 
 export interface Series {
   id: string;
@@ -450,6 +642,12 @@ export interface Series {
   monthlyTokenLimit: number;
   tokensUsedThisMonth: number;
   tokenResetDate: string;
+  // Client review flow — owner generates a public link, client opens it
+  // (no login), approves/rejects episodes individually or the whole series.
+  reviewToken?: string | null;
+  reviewStatus?: SeriesReviewStatus;
+  sentForReviewAt?: string | null;
+  clientReviewedAt?: string | null;
   createdAt: string;
 }
 
@@ -468,6 +666,9 @@ export interface SeriesEpisode {
   draftEndTime: string;
   draftLocationId: string;
   draftCrew: string[]; // crew member IDs
+  // Client review approval (separate from production status)
+  approvalStatus?: EpisodeApprovalStatus;
+  clientComment?: string;
   createdAt: string;
 }
 
@@ -552,6 +753,7 @@ export interface ManualTrip {
 export interface CrewLocationDistance {
   id: string;
   crewMemberId: string;
+  homeBaseId: string; // which travel base this distance was measured FROM
   locationId: string;
   distanceMiles: number;
   createdAt: string;
@@ -578,7 +780,17 @@ export type ContractStatus = "draft" | "sent" | "client_signed" | "completed" | 
 export interface ContractTemplate {
   id: string;
   name: string;
-  content: string; // HTML content
+  // Block-based authoring (Phase B). When non-empty, the editor uses these
+  // blocks and `content` is kept in sync as the rendered HTML for backward
+  // compat with rendering surfaces that read the flat string.
+  blocks?: ProposalBlock[];
+  content: string; // HTML content (legacy + render output)
+  // Multi-page authoring (HoneyBook-style "Smart Files"). When non-empty,
+  // the editor + renderer use these pages and the legacy single-page
+  // blocks/content are ignored. Each page can be agreement / invoice /
+  // payment / custom — invoice pages auto-render from contract milestones.
+  // Reuses ProposalPage shape since the rendering pipeline is the same.
+  pages?: ProposalPage[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -591,6 +803,19 @@ export interface ContractSignature {
   timestamp: string;
   signatureData: string; // base64 image or typed name
   signatureType: "drawn" | "typed";
+}
+
+// Extra signers beyond the always-present client + owner. Each gets their
+// own sign URL via a unique signToken so the UX matches what the primary
+// client sees today. Stored inline on the contract row as JSONB.
+export interface AdditionalSigner {
+  id: string;
+  name: string;
+  email: string;
+  role: string;        // free-form label: "Business Partner", "Second Shooter", etc.
+  signToken: string;
+  signature: ContractSignature | null;
+  signedAt: string | null;
 }
 
 export interface Contract {
@@ -609,9 +834,49 @@ export interface Contract {
   clientEmail: string;
   signToken: string;
   pdfUrl?: string; // for uploaded PDF contracts
+  /**
+   * Bracket-field values keyed by the placeholder text (e.g. "PURPOSE — what
+   * are you discussing?"). Populated when the user fills `[BRACKETED]` chips
+   * in the WYSIWYG editor. Same key used across the document so filling one
+   * chip fills every duplicate.
+   */
+  fieldValues: Record<string, string>;
+  additionalSigners: AdditionalSigner[];
+  documentExpiresAt: string | null;   // ISO date — auto-void after this date
+  remindersEnabled: boolean;          // when true, scheduled cron pings unsigned signers
+  lastReminderSentAt: string | null;  // last time the reminder cron emailed unsigned signers
+  // Phase A — auto-generated drafts from proposal acceptance.
+  proposalId: string | null;          // links back to the source proposal (null for standalone contracts)
+  masterTemplateVersionId: string;    // audit stamp of which master template version produced this draft
+  firingLog: ConditionalRuleFiring[]; // future use — which conditional clauses fired and why (Phase B)
+  sendBackReason: string;             // populated when owner clicks "Send Back"; empty otherwise
+  // Per-milestone payment tracking — same shape as proposals.payment_milestones
+  // plus `id`, `lastReminderSentAt`, and `paidAt` populated by the proposal-
+  // accept handler and the Stripe webhook respectively. Drives the payment-
+  // reminders cron + Outstanding Payments page + pipeline lateness badge.
+  paymentMilestones: PaymentMilestone[];
+  // Inbound email replies captured by /api/inbound-email and threaded onto
+  // this contract. Each entry: { receivedAt, from, subject, body }.
+  inboundReplies: Array<{ receivedAt: string; from: string; subject: string; body: string }>;
+  // Multi-page contract document. When non-empty, takes precedence over the
+  // legacy single-page blocks/content. Each page renders as its own panel
+  // in the contract editor + on /sign/<token>. Invoice pages auto-render
+  // from paymentMilestones — no user authoring required.
+  pages?: ProposalPage[];
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+}
+
+// One entry per conditional clause that fired (or was suppressed) when the
+// rule engine generated a draft contract. Reserved for Phase B (conditional
+// clauses); Phase A always produces an empty array.
+export interface ConditionalRuleFiring {
+  clauseLabel: string;
+  rule: "always" | "if_package" | "if_not_package";
+  packageId?: string;
+  fired: boolean;
+  reason: string;
 }
 
 // ---- Proposals ----
@@ -620,6 +885,7 @@ export type ProposalPaymentOption = "none" | "deposit" | "full";
 
 export type PipelineStage =
   | "inquiry" | "follow_up" | "proposal_sent" | "proposal_signed"
+  | "awaiting_approval"
   | "retainer_paid" | "final_payment" | "in_production"
   | "delivered" | "review" | "archived";
 
@@ -641,11 +907,131 @@ export interface ProposalPaymentConfig {
   depositAmount: number;
 }
 
+// ---- Proposal blocks (block-based template editor — sub-phase 1A) ----
+//
+// Pages are rendered via `blocks[]` when present. When `blocks` is undefined
+// or empty, the renderer falls back to `content` (legacy raw HTML/text). This
+// preserves every existing template untouched while letting new templates use
+// the block-based editor.
+//
+// Future blocks (package_row variants pulling from a reusable Packages library,
+// conditional clauses, etc.) ship in sub-phases 1B+1C — not here.
+
+export type ProposalBlock =
+  | {
+      id: string;
+      type: "hero";
+      // Data URL for v1; R2/Supabase storage migration is a separate task.
+      imageDataUrl: string;
+      height?: "sm" | "md" | "lg";
+    }
+  | {
+      id: string;
+      type: "image";
+      imageDataUrl: string;
+      caption?: string;
+    }
+  | {
+      id: string;
+      type: "centered_title";
+      text: string;
+      // Defaults to "center" if omitted (legacy blocks).
+      align?: "left" | "center" | "right";
+      // Visual scale: "sm" subheading, "md" heading, "lg" hero (default).
+      size?: "sm" | "md" | "lg";
+      // Inline formatting flags — applied to the whole heading.
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+    }
+  | {
+      id: string;
+      type: "section_divider";
+      // Uppercase letter-spaced section header, e.g. "FILM COLLECTION".
+      text: string;
+      // Defaults to "center" if omitted (legacy blocks).
+      align?: "left" | "center" | "right";
+    }
+  | {
+      id: string;
+      type: "prose";
+      // Sanitised HTML produced by TipTap. Renderer must DOMPurify before injecting.
+      html: string;
+    }
+  | {
+      // Inline payment-schedule editor (contract templates only). User
+      // configures deposit + balance terms in the canvas; at signing time
+      // the contract generator converts percentages to dollar amounts using
+      // the proposal's package total.
+      id: string;
+      type: "payment_schedule";
+      deposit: {
+        kind: "percent" | "fixed";
+        value: number;             // percent (0-100) or fixed dollars
+        dueType: "at_signing" | "absolute_date" | "relative_days";
+        dueDays?: number;          // for relative_days: days from signing
+        dueDate?: string;          // for absolute_date: ISO YYYY-MM-DD
+        label?: string;            // override default "Deposit"
+      };
+      balance: {
+        dueType: "at_signing" | "absolute_date" | "relative_days" | "on_event_date";
+        dueDays?: number;          // for relative_days: days BEFORE event (positive number)
+        dueDate?: string;          // for absolute_date
+        label?: string;            // override default "Balance"
+      };
+    }
+  | {
+      id: string;
+      type: "package_row";
+      // References a Package in the org's central Packages library. The
+      // renderer is given the library list and resolves the lookup at render
+      // time. For sent proposals, pin-by-default semantics will snapshot the
+      // resolved data at send time (Sub-Phase 1B/1C concern).
+      packageId: string;
+      // Optional icon override; when blank, the renderer uses the Package's
+      // own icon. Lets a template highlight a package with a different icon
+      // without mutating the library entry.
+      icon?: string;
+    }
+  | {
+      id: string;
+      type: "divider";
+    }
+  | {
+      id: string;
+      type: "spacer";
+      size: "sm" | "md" | "lg";
+    }
+  | {
+      id: string;
+      type: "signature";
+      // Renders the existing signature surface — the actual signing flow lives in ViewProposalPage.
+      label?: string;
+      // Distinguishes who signs on this line. "client" → client signing UI;
+      // "vendor" → owner/vendor counter-signing UI; undefined → legacy
+      // generic line (kept for back-compat with old templates).
+      role?: "client" | "vendor";
+    }
+  | {
+      id: string;
+      type: "merge_field";
+      // One of the SUPPORTED_MERGE_FIELDS keys defined in api/_contractGenerator.ts —
+      // e.g. "client_name", "event_date", "packages_block", "payment_schedule_block".
+      // Renders inline as the literal token `{{key}}` so the contract generator's
+      // server-side substitution can find and replace it. In the editor, displays
+      // as a styled chip showing the human-readable label.
+      field: string;
+    };
+
 export interface ProposalPage {
   id: string;
   type: ProposalPageType;
   label: string;
+  // Legacy raw content (HTML or plain text). Required for backward compat with
+  // every existing template. New templates set `blocks[]` and leave this empty.
   content: string;
+  // Block-based content. When non-empty, the renderer uses this and ignores `content`.
+  blocks?: ProposalBlock[];
   sortOrder: number;
 }
 
@@ -661,6 +1047,10 @@ export interface PaymentMilestone {
   status: MilestoneStatus;
   paidAt?: string | null;
   stripeSessionId?: string | null;
+  // ISO timestamp the payment-reminders cron last emailed about this
+  // milestone. Used to dedupe sends within a single day. Optional — older
+  // milestones written before the cron existed won't have this set.
+  lastReminderSentAt?: string;
 }
 
 export interface ProposalPackage {
@@ -678,6 +1068,10 @@ export interface ProposalTemplate {
   coverImageUrl: string;
   pages: ProposalPage[];
   packages: ProposalPackage[];
+  // Master contract template used by Phase A auto-generation. When a client
+  // accepts a proposal built from this template, the server resolves the
+  // linked contract template and renders a draft Contract for owner review.
+  contractTemplateId: string | null;
   // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   contractContent: string;
@@ -701,6 +1095,10 @@ export interface Proposal {
   pipelineStage: PipelineStage;
   viewedAt: string | null;
   leadSource: string;
+  // Master contract template used to auto-generate the draft contract when
+  // this proposal is accepted. Inherited from the proposal template at send
+  // time; null falls back to the legacy embedded contractContent flow.
+  contractTemplateId: string | null;
   // Legacy fields (backward compat)
   lineItems: ProposalLineItem[];
   subtotal: number;
@@ -721,6 +1119,15 @@ export interface Proposal {
   clientEmail: string;
   viewToken: string;
   notes: string;
+  // Per-send snapshot history. Appended each time the proposal moves to
+  // "sent" status. Each entry: { sentAt, total, packageIds, milestoneCount }.
+  sendHistory: Array<{ sentAt: string; total?: number; packageIds?: string[]; milestoneCount?: number }>;
+  // Inbound email replies captured by /api/inbound-email and threaded onto
+  // this proposal. Each entry: { receivedAt, from, subject, body }.
+  inboundReplies: Array<{ receivedAt: string; from: string; subject: string; body: string }>;
+  // Optional expiration. When set and elapsed, the public proposal page
+  // shows an "expired" state instead of the live form.
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -746,6 +1153,37 @@ export interface PipelineLead {
   deletedAt?: string | null;
 }
 
+// External calendar subscription — owner pastes a webcal://, https://,
+// or http:// URL pointing to an iCal feed (e.g., published Apple
+// Calendar). Slate fetches the feed every 30 minutes via cron, parses
+// VEVENT blocks (including recurring events), and stores them in
+// external_events for read-only display on My Life.
+export interface ExternalCalendar {
+  id: string;
+  ownerUserId: string;
+  label: string;
+  url: string;
+  color: string;          // hex, used as the chip color on the calendar
+  enabled: boolean;       // toggle without deleting
+  lastSyncedAt: string | null;
+  lastError: string;      // populated when the most recent sync failed
+  eventCount: number;     // events from the latest sync
+  createdAt: string;
+}
+
+export interface ExternalEvent {
+  id: string;
+  externalCalendarId: string;
+  icalUid: string;
+  title: string;
+  description: string;
+  location: string;
+  startAt: string;        // ISO timestamp
+  endAt: string | null;   // ISO timestamp, null if not specified
+  allDay: boolean;
+  createdAt: string;
+}
+
 export interface PersonalEvent {
   id: string;
   title: string;
@@ -760,6 +1198,167 @@ export interface PersonalEvent {
   priority: boolean;
   orgId: string;
   createdAt: string;
+}
+
+// Lightweight unpaid calendar entry. Optionally tied to a client; when the
+// visibleToClient flag is on, the assigned client sees it on their calendar.
+export interface Meeting {
+  id: string;
+  ownerUserId: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  clientId: string | null;
+  locationText: string;
+  notes: string;
+  visibleToClient: boolean;
+  color: string; // "" = default slate; otherwise one of MEETING_COLORS values
+  // Users (staff or partner) explicitly assigned to this meeting.
+  // Anyone not in this list and not the owner won't see the meeting
+  // on their calendar. Stored as user_profile ids — works for staff,
+  // partners, family. Empty list = admin-only.
+  assignedUserIds: string[];
+  // Free-text street address for the meeting. When set, oneWayMiles is
+  // computed (Google Maps Distance Matrix) against the saver's home
+  // base at save time and the meeting flows into the saver's mileage
+  // tracker.
+  meetingAddress?: string;
+  oneWayMiles?: number;
+  orgId: string;
+  createdAt: string;
+}
+
+// ----------------------------------------------------------------------
+// Packages library — reusable services that drop into proposal templates
+// as `package_row` blocks. Owner-administered org-wide list. The icon key
+// resolves against the curated Lucide vocabulary in
+// client/src/components/proposal/icons.ts.
+// ----------------------------------------------------------------------
+
+export interface Package {
+  id: string;
+  orgId: string;
+  name: string;
+  icon: string;                        // ICON_VOCABULARY key (used when iconCustomDataUrl is empty)
+  iconCustomDataUrl: string;           // optional custom PNG/SVG data URL (≤50KB); takes precedence over `icon`
+  description: string;
+  defaultPrice: number;
+  discountFromPrice: number | null;    // null = no strikethrough crossed-out price
+  photoDataUrl: string;                // v1 data URL ≤500KB; R2 migration deferred
+  deliverables: string[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+// ----------------------------------------------------------------------
+// Proposal image library — uploaded images saved org-wide so they can be
+// re-picked across proposal templates without re-uploading. Each block
+// type that takes an image (hero / image / package photo) can pick from
+// this library. Data URLs in v1; R2 migration is its own task.
+// ----------------------------------------------------------------------
+
+export interface ProposalImage {
+  id: string;
+  orgId: string;
+  name: string;
+  imageDataUrl: string;
+  width: number;
+  height: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+// ----------------------------------------------------------------------
+// Galleries (deliveries)
+// ----------------------------------------------------------------------
+
+export type DeliveryStatus = "draft" | "sent" | "submitted" | "working" | "delivered";
+
+export type DeliveryFileMediaType = "image" | "video";
+
+export interface DeliveryFile {
+  id: string;
+  deliveryId: string;
+  storagePath: string;
+  originalName: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  mimeType: string;
+  position: number;
+  downloadCount: number;
+  createdAt: string;
+  mediaType: DeliveryFileMediaType;
+  // For videos: R2 key for the JPEG thumbnail captured from playback.
+  // Empty for images and for videos that haven't had a thumbnail captured yet.
+  thumbnailStoragePath: string;
+  // Video duration in whole seconds. Null for images and unknown.
+  durationSeconds: number | null;
+}
+
+export interface DeliverySelection {
+  id: string;
+  deliveryId: string;
+  fileId: string;
+  isPaid: boolean;
+  stripePaymentIntentId: string | null;
+  editedAt: string | null;
+  createdAt: string;
+}
+
+export type CoverLayout = "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
+
+export interface DeliveryCollection {
+  id: string;
+  name: string;
+  slug: string | null;
+  coverSubtitle: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Delivery {
+  id: string;
+  projectId: string | null;
+  collectionId: string | null;
+  title: string;
+  coverFileId: string | null;
+  watermarkText: string | null;
+  watermarkUseLogo: boolean;
+  printsEnabled: boolean;
+  coverLayout: CoverLayout;
+  coverFont: string;             // "" = Cormorant Garamond default; see COVER_FONTS in MeetingDialog... err, DeliveriesPage
+  coverSubtitle: string | null;  // tagline / location / event subtitle
+  coverDate: string | null;      // free-form date string ("16th March, 2026")
+  slug: string | null;           // vanity URL — /g/<slug>; null = use /deliver/<token> only
+  requireEmail: boolean;         // when true, visitors must enter email before viewing
+  token: string;
+  hasPassword: boolean;          // never expose the hash; UI just needs to know it's set
+  expiresAt: string | null;
+
+  // Proofing config
+  selectionLimit: number;        // 0 disables proofing entirely
+  perExtraPhotoCents: number;    // 0 = no per-photo upsell
+  buyAllFlatCents: number;       // 0 = no flat unlock-all option
+
+  status: DeliveryStatus;
+
+  clientName: string | null;
+  clientEmail: string | null;
+  submittedAt: string | null;
+  workingAt: string | null;
+  deliveredAt: string | null;
+
+  viewCount: number;
+  downloadCount: number;
+
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppData {
@@ -784,5 +1383,17 @@ export interface AppData {
   pipelineLeads: PipelineLead[];
   series: Series[];
   personalEvents: PersonalEvent[];
+  externalCalendars: ExternalCalendar[];
+  externalEvents: ExternalEvent[];
+  meetings: Meeting[];
+  packages: Package[];
+  proposalImages: ProposalImage[];
+  deliveries: Delivery[];
+  deliveryFiles: DeliveryFile[];
+  deliverySelections: DeliverySelection[];
+  deliveryCollections: DeliveryCollection[];
+  serviceCategories: ServiceCategory[];
+  services: Service[];
+  serviceVariants: ServiceVariant[];
   organization: Organization | null;
 }

@@ -14,12 +14,14 @@ const STATUS_COLORS: Record<SeriesStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
   active: "bg-green-500/20 text-green-300 border-green-500/30",
   completed: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  archived: "bg-stone-500/15 text-stone-400 border-stone-500/30",
 };
 
 const STATUS_LABELS: Record<SeriesStatus, string> = {
   draft: "Draft",
   active: "Active",
   completed: "Completed",
+  archived: "Archived",
 };
 
 export default function SeriesPage() {
@@ -29,6 +31,10 @@ export default function SeriesPage() {
   const [clientId, setClientId] = useState("");
   const [goal, setGoal] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const visibleSeries = data.series.filter(s => showArchived ? s.status === "archived" : s.status !== "archived");
+  const archivedCount = data.series.filter(s => s.status === "archived").length;
 
   const handleCreate = async () => {
     if (!name || !clientId) { toast.error("Please fill in name and client"); return; }
@@ -124,15 +130,58 @@ export default function SeriesPage() {
           </div>
         )}
 
+        {/* Archive toggle — only render when there's archived data
+            to avoid noise in early-empty state. */}
+        {archivedCount > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowArchived(false)}
+              className={cn(
+                "px-2.5 py-1 rounded text-xs border transition-colors",
+                !showArchived ? "bg-primary/20 border-primary/50 text-primary" : "border-border text-muted-foreground hover:border-primary/30",
+              )}
+            >
+              Active
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowArchived(true)}
+              className={cn(
+                "px-2.5 py-1 rounded text-xs border transition-colors",
+                showArchived ? "bg-primary/20 border-primary/50 text-primary" : "border-border text-muted-foreground hover:border-primary/30",
+              )}
+            >
+              Archived ({archivedCount})
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.series.length === 0 && !showForm ? (
-            <div className="col-span-full bg-card border border-border rounded-lg p-8 text-center">
-              <Film className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">No series yet</p>
-              <p className="text-sm text-muted-foreground/60 mt-1">Create your first content series to start collaborating with clients.</p>
+          {visibleSeries.length === 0 && !showForm ? (
+            <div className="col-span-full bg-card border border-border rounded-lg p-10 text-center max-w-2xl mx-auto">
+              <Film className="w-10 h-10 text-primary mx-auto mb-4 opacity-80" />
+              <h3 className="text-base font-semibold text-foreground mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {showArchived ? "Nothing archived yet" : "Plan a video series with AI"}
+              </h3>
+              {!showArchived && (
+                <>
+                  <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                    Brainstorm episodes with Claude, develop talking points and visuals,<br className="hidden sm:inline" />
+                    schedule shoots, and send the plan to your client for approval — all in one workspace.
+                  </p>
+                  <button
+                    onClick={() => setShowForm(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create your first series
+                  </button>
+                </>
+              )}
             </div>
           ) : (
-            data.series.map(s => {
+            visibleSeries.map(s => {
               const client = data.clients.find(c => c.id === s.clientId);
               return (
                 <Link key={s.id} href={`/series/${s.id}`}>

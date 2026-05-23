@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Film } from "lucide-react";
+import { Plus, Trash2, Film, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import BrandNotesAssistant from "./BrandNotesAssistant";
 
 interface ClientFormData {
   company: string;
@@ -31,6 +32,7 @@ interface ClientFormData {
   defaultProjectTypeId: string;
   roleBillingMultipliers: RoleBillingMultiplier[];
   partnerSplit: PartnerSplit | null;
+  brandNotes: string;
 }
 
 const DEFAULT_PARTNER_SPLIT: PartnerSplit = {
@@ -64,6 +66,7 @@ const emptyForm = (): ClientFormData => ({
   defaultProjectTypeId: "",
   roleBillingMultipliers: [],
   partnerSplit: null,
+  brandNotes: "",
 });
 
 interface Props {
@@ -75,6 +78,7 @@ interface Props {
 
 export default function ClientProfileSheet({ client, open, onOpenChange }: Props) {
   const { data, addClient, updateClient } = useApp();
+  const [brandAssistantOpen, setBrandAssistantOpen] = useState(false);
   const [form, setForm] = useState<ClientFormData>(emptyForm());
 
   // Hydrate form when sheet opens or client changes
@@ -98,6 +102,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
         defaultProjectTypeId: client.defaultProjectTypeId || "",
         roleBillingMultipliers: client.roleBillingMultipliers || [],
         partnerSplit: client.partnerSplit || null,
+        brandNotes: client.brandNotes || "",
       });
     } else {
       setForm(emptyForm());
@@ -226,7 +231,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Billing Rate ($/hr)</Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={form.billingRatePerHour}
                 onChange={(e) => setForm({ ...form, billingRatePerHour: parseFloat(e.target.value) || 0 })}
                 className="bg-secondary border-border"
@@ -238,7 +243,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Default Rate Per Project ($)</Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={form.perProjectRate}
                 onChange={(e) => setForm({ ...form, perProjectRate: parseFloat(e.target.value) || 0 })}
                 className="bg-secondary border-border"
@@ -277,8 +282,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     ))}
                   </select>
                   <Input
-                    type="number"
-                    min="0"
+                    type="text" inputMode="decimal"
                     value={ptr.rate || ""}
                     onChange={e => {
                       const updated = [...form.projectTypeRates];
@@ -334,8 +338,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   placeholder="e.g. 2nd Videographer"
                 />
                 <Input
-                  type="number"
-                  step="0.1"
+                  type="text" inputMode="decimal"
                   min="0"
                   value={m.multiplier}
                   onChange={e => {
@@ -358,7 +361,38 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
               </div>
             ))}
           </div>
-          {/* Partner Toggle */}
+          {/* Brand & Voice Notes — long-form context the AI uses when
+              suggesting video series. Has a "Help me fill this in"
+              button that launches a guided AI interview to draft notes. */}
+          <div className="space-y-2 border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Brand & Voice Notes</Label>
+              <button
+                type="button"
+                onClick={() => setBrandAssistantOpen(true)}
+                disabled={!form.company.trim()}
+                className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={form.company.trim() ? "Open the brand-notes interviewer" : "Enter a company name first"}
+              >
+                <Sparkles className="w-3 h-3" /> Help me fill this in
+              </button>
+            </div>
+            <textarea
+              value={form.brandNotes}
+              onChange={e => setForm(f => ({ ...f, brandNotes: e.target.value }))}
+              rows={8}
+              placeholder="Who they are, what they sell, audience, voice, hooks, what to avoid. Paste socials/website links too. The AI uses this for every series suggestion."
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            />
+            <p className="text-[10px] text-muted-foreground">Auto-included in series-chat AI prompts. Plain text or markdown — your call.</p>
+          </div>
+
+          {/* Partner Toggle — only shown when the org has Partner Splits
+              enabled in feature flags. Profit-sharing partners are niche;
+              hiding this for new users avoids "what's a partner split?"
+              confusion. Existing clients with partnerSplit set still
+              honor the data even if the toggle is hidden. */}
+          {(data.organization?.features?.partnerSplits || form.partnerSplit) && (
           <div className="space-y-2 border-t border-border pt-4">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Partner</Label>
@@ -392,7 +426,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Partner %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.partnerPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, partnerPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -400,7 +434,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Admin %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.adminPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, adminPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -408,7 +442,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
-                    <Input type="number" min="0" max="1" step="0.05"
+                    <Input type="text" inputMode="decimal"
                       value={form.partnerSplit.marketingPercent}
                       onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, marketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                       className="bg-secondary border-border h-8 text-xs"
@@ -422,7 +456,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Crew Cost Threshold</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.crewSplitThreshold}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewSplitThreshold: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -431,7 +465,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Crew Marketing %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.crewMarketingPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, crewMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -446,7 +480,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Partner %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorPartnerPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorPartnerPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -454,7 +488,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Admin %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorAdminPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorAdminPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -462,7 +496,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] text-muted-foreground">Marketing %</Label>
-                      <Input type="number" min="0" max="1" step="0.05"
+                      <Input type="text" inputMode="decimal"
                         value={form.partnerSplit.editorMarketingPercent}
                         onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, editorMarketingPercent: parseFloat(e.target.value) || 0 } : null }))}
                         className="bg-secondary border-border h-8 text-xs"
@@ -471,31 +505,88 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
                   </div>
                 </div>
 
-                {/* Spending Budget Toggle */}
-                <div className="flex items-center justify-between border-t border-border/50 pt-2">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Spending Budget</Label>
-                    <p className="text-[9px] text-muted-foreground">Track marketing budget deductions for this client</p>
+                {/* Spending Budget Toggle + end date */}
+                <div className="space-y-2 border-t border-border/50 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Spending Budget</Label>
+                      <p className="text-[9px] text-muted-foreground">Track marketing budget deductions for this client</p>
+                    </div>
+                    <button
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEnabled: !f.partnerSplit.spendingBudgetEnabled } : null,
+                      }))}
+                      className={cn(
+                        "relative w-10 h-5 rounded-full transition-colors",
+                        form.partnerSplit?.spendingBudgetEnabled ? "bg-primary" : "bg-secondary border border-border"
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                        form.partnerSplit?.spendingBudgetEnabled ? "translate-x-5" : "translate-x-0.5"
+                      )} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setForm(f => ({
-                      ...f,
-                      partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEnabled: !f.partnerSplit.spendingBudgetEnabled } : null,
-                    }))}
-                    className={cn(
-                      "relative w-10 h-5 rounded-full transition-colors",
-                      form.partnerSplit?.spendingBudgetEnabled ? "bg-primary" : "bg-secondary border border-border"
+                  {form.partnerSplit?.spendingBudgetEnabled && (
+                    <div className="space-y-1.5 pl-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Budget Active Through</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={form.partnerSplit.spendingBudgetEndedAt || ""}
+                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: e.target.value || undefined } : null }))}
+                          className="bg-secondary border-border h-8 text-xs flex-1"
+                        />
+                        {form.partnerSplit.spendingBudgetEndedAt && (
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: undefined } : null }))}
+                            className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-muted-foreground">
+                        Leave blank if active. Projects after this date skip the 10% budget allocation — full profit splits 50/50 between you and the partner.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Partnership end date — leave blank for active. Projects
+                    after this date treat the client as non-partner so the
+                    owner keeps 100% of profit; on/before stays under the
+                    legacy split. Preserves historical P&L when a partnership
+                    actually ends. */}
+                <div className="space-y-1.5 border-t border-border/50 pt-2">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Partnership Active Through</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={form.partnerSplit.endedAt || ""}
+                      onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: e.target.value || undefined } : null }))}
+                      className="bg-secondary border-border h-8 text-xs flex-1"
+                    />
+                    {form.partnerSplit.endedAt && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: undefined } : null }))}
+                        className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+                      >
+                        Clear
+                      </button>
                     )}
-                  >
-                    <span className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
-                      form.partnerSplit?.spendingBudgetEnabled ? "translate-x-5" : "translate-x-0.5"
-                    )} />
-                  </button>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground">
+                    Leave blank if active. Projects dated after this end with the partnership and flow as non-partner in P&L (no partner/admin/spending split).
+                  </p>
                 </div>
               </div>
             )}
           </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-4 sm:px-6 pt-4 mt-4 border-t border-border">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -504,6 +595,15 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
           </Button>
         </div>
       </SheetContent>
+
+      {/* Brand-notes guided interview. Drafts a notes blob the owner
+          reviews + appends to the textarea above. */}
+      <BrandNotesAssistant
+        open={brandAssistantOpen}
+        onOpenChange={setBrandAssistantOpen}
+        clientName={form.company}
+        onApply={(draft) => setForm(f => ({ ...f, brandNotes: f.brandNotes ? `${f.brandNotes}\n\n${draft}` : draft }))}
+      />
     </Sheet>
   );
 }

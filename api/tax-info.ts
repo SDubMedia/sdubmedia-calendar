@@ -7,7 +7,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { verifyAuth, getUserOrgId } from "./_auth.js";
+import { verifyAuth } from "./_auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -101,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
     if (!member || member.org_id !== callerOrgId) return res.status(403).json({ error: "Not in your org" });
 
-    const patch: any = {};
+    const patch: Record<string, unknown> = {};
     if (taxId !== undefined) patch.tax_id = encrypt(taxId);
     if (taxIdType !== undefined) patch.tax_id_type = taxIdType;
 

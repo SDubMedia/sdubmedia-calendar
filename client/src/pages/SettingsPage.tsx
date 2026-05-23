@@ -6,7 +6,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, DashboardWidgetId, PipelineStageConfig, ServiceItem } from "@/lib/types";
+import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem, TravelBase } from "@/lib/types";
+import TravelBasesEditor from "@/components/TravelBasesEditor";
+import ExternalCalendarsCard from "@/components/ExternalCalendarsCard";
+import { MapPinned } from "lucide-react";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -15,11 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon, KeyRound, Menu as MenuIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getAuthToken } from "@/lib/supabase";
+import { getAuthToken, supabase } from "@/lib/supabase";
 
 interface FeatureToggle {
   key: keyof OrgFeatures;
@@ -33,6 +37,7 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "pipeline", label: "Sales Pipeline", description: "CRM pipeline for tracking leads and proposals" },
   { key: "proposals", label: "Proposals", description: "Create and send proposals with packages and e-signatures" },
   { key: "contracts", label: "Contracts", description: "Create and send contracts for e-signatures" },
+  { key: "deliveries", label: "Galleries", description: "Photo delivery + client proofing with optional paid extras" },
   { key: "invoicing", label: "Invoicing", description: "Create invoices, track payments, contractor invoices" },
   { key: "clientHealth", label: "Client Health", description: "Client engagement scoring and health dashboard" },
   { key: "contentSeries", label: "Content Series", description: "Plan multi-episode video series with AI brainstorming" },
@@ -48,9 +53,12 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   { key: "reports", label: "Reports", description: "View financial and project reports" },
 ];
 
-export default function SettingsPage() {
-  const { data, updateOrganization, addLocation, updateLocation } = useApp();
-  const { allProfiles, updateUserProfile } = useAuth();
+// `embedded` lets ManagePage render Settings inside one of its tabs
+// without its own page header — matches UsersPage's pattern.
+export default function SettingsPage(props?: { embedded?: boolean }) {
+  const embedded = props?.embedded ?? false;
+  const { data, updateOrganization, addLocation, updateLocation, updateCrewMember } = useApp();
+  const { profile, allProfiles, updateUserProfile } = useAuth();
   const org = data.organization;
 
   // Per-user override state
@@ -94,8 +102,12 @@ export default function SettingsPage() {
   const [partnerFeatures, setPartnerFeatures] = useState<Record<string, boolean>>((org?.features?.partnerFeatures as any) || {});
   const [clientFeatures, setClientFeatures] = useState<Record<string, boolean>>((org?.features?.clientFeatures as any) || {});
   const [businessInfo, setBusinessInfo] = useState<OrgBusinessInfo>(org?.businessInfo || {
-    address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "",
+    address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "", ownerName: "",
   });
+  const [logoUrl, setLogoUrl] = useState(org?.logoUrl || "");
+  const [faviconUrl, setFaviconUrl] = useState(org?.faviconUrl || "");
+  const [logoErr, setLogoErr] = useState<string | null>(null);
+  const [faviconErr, setFaviconErr] = useState<string | null>(null);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
     org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
   );
@@ -106,6 +118,93 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; loading: boolean }>({ connected: false, loading: true });
   const [connectingStripe, setConnectingStripe] = useState(false);
+
+  // Change-password card state (parity with slate-mobile)
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!profile?.email) {
+      toast.error("Missing account email — sign out and back in, then try again.");
+      return;
+    }
+    if (!currentPassword) { toast.error("Enter your current password first"); return; }
+    if (newPassword.length < 6) { toast.error("New password must be at least 6 characters"); return; }
+    if (newPassword !== confirmPassword) { toast.error("New passwords do not match"); return; }
+    if (newPassword === currentPassword) { toast.error("New password must be different from current"); return; }
+    setChangingPassword(true);
+    try {
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password: currentPassword,
+      });
+      if (verifyErr) { toast.error("Current password is incorrect"); return; }
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateErr) { toast.error(updateErr.message || "Failed to update password"); return; }
+      toast.success("Password updated");
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  // Owner's crew member — looked up by linked crew_member_id, with
+  // email fallback (matches MileageReport's approach for owners who
+  // don't have an explicit crewMemberId on their profile).
+  const ownerCrewMember = useMemo(() => {
+    if (!profile) return null;
+    if (profile.crewMemberId) {
+      return data.crewMembers.find(c => c.id === profile.crewMemberId) || null;
+    }
+    return data.crewMembers.find(c => c.email === profile.email) || null;
+  }, [profile, data.crewMembers]);
+  const [homeBases, setHomeBases] = useState<TravelBase[]>([]);
+  const [savingHomeBases, setSavingHomeBases] = useState(false);
+  // Hydrate when the owner's crew member loads. Same pattern as the
+  // Staff page: convert legacy single home_address into a primary
+  // base if the user hasn't explicitly added bases yet.
+  useEffect(() => {
+    if (!ownerCrewMember) return;
+    if (Array.isArray(ownerCrewMember.homeBases) && ownerCrewMember.homeBases.length > 0) {
+      setHomeBases(ownerCrewMember.homeBases);
+    } else if (ownerCrewMember.homeAddress?.address) {
+      setHomeBases([{
+        id: "primary",
+        type: "home",
+        label: "Home",
+        address: ownerCrewMember.homeAddress.address,
+        city: ownerCrewMember.homeAddress.city,
+        state: ownerCrewMember.homeAddress.state,
+        zip: ownerCrewMember.homeAddress.zip,
+        isPrimary: true,
+      }]);
+    }
+  }, [ownerCrewMember?.id, ownerCrewMember?.homeBases, ownerCrewMember?.homeAddress?.address]);
+
+  async function saveHomeBases() {
+    if (!ownerCrewMember) return;
+    setSavingHomeBases(true);
+    try {
+      // Mirror the primary base into homeAddress for back-compat with
+      // anything that still reads the singular field.
+      const primary = homeBases.find(b => b.isPrimary) || homeBases[0] || null;
+      await updateCrewMember(ownerCrewMember.id, {
+        homeBases,
+        homeAddress: primary?.address
+          ? { address: primary.address, city: primary.city, state: primary.state, zip: primary.zip }
+          : null,
+      });
+      toast.success("Home bases saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSavingHomeBases(false);
+    }
+  }
 
   // Check Stripe Connect status
   useEffect(() => {
@@ -134,7 +233,7 @@ export default function SettingsPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to connect Stripe");
       if (result.url) {
-        window.location.href = result.url;
+        window.location.assign(result.url);
       } else {
         throw new Error("No redirect URL received from Stripe");
       }
@@ -169,16 +268,59 @@ export default function SettingsPage() {
       setBillingModel(org.defaultBillingModel);
       setBillingRate(org.defaultBillingRate);
       setFeatures(org.features);
-      setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "" });
+      setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "", ownerName: "" });
+      setLogoUrl(org.logoUrl || "");
+      setFaviconUrl(org.faviconUrl || "");
       setDashboardWidgets(org.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS);
     }
   }, [org]);
+
+  // File → data URL with size cap. Logos up to 400KB, favicons up to 50KB.
+  // Stored inline on the org row — no upload endpoint needed.
+  function readImageAsDataUrl(file: File, maxBytes: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/")) return reject(new Error("Must be an image"));
+      if (file.size > maxBytes) return reject(new Error(`Too large (max ${Math.round(maxBytes / 1024)}KB)`));
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(new Error("Failed to read file"));
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setLogoErr(null);
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const url = await readImageAsDataUrl(f, 400 * 1024);
+      setLogoUrl(url);
+    } catch (err: any) {
+      setLogoErr(err.message || "Failed to load image");
+    }
+  }
+
+  async function handleFaviconFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setFaviconErr(null);
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const url = await readImageAsDataUrl(f, 50 * 1024);
+      setFaviconUrl(url);
+    } catch (err: any) {
+      setFaviconErr(err.message || "Failed to load image");
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
     try {
       await updateOrganization({
         name,
+        logoUrl,
+        faviconUrl,
         productionType,
         defaultBillingModel: billingModel,
         defaultBillingRate: billingRate,
@@ -227,26 +369,33 @@ export default function SettingsPage() {
     }
   }
 
-  function toggleFeature(key: keyof OrgFeatures) {
-    setFeatures(f => ({ ...f, [key]: !f[key] }));
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Settings
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Company settings and feature configuration</p>
+    <div className={embedded ? "" : "flex flex-col h-full"}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Settings
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">Company settings and feature configuration</p>
+          </div>
+          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
+            <Save className="w-4 h-4" />
+            <span className="hidden sm:inline">{saving ? "Saving..." : "Save Changes"}</span>
+            <span className="sm:hidden">{saving ? "…" : "Save"}</span>
+          </Button>
         </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          <Save className="w-4 h-4" />
-          {saving ? "Saving..." : "Save Changes"}
-        </Button>
-      </div>
+      )}
+      {embedded && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={handleSave} disabled={saving} className="gap-2 shrink-0">
+            <Save className="w-4 h-4" />
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-6 max-w-2xl">
+      <div className={embedded ? "space-y-6 max-w-2xl" : "flex-1 overflow-auto p-3 sm:p-6 space-y-6 max-w-2xl"}>
         {/* Company Info */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
@@ -264,6 +413,26 @@ export default function SettingsPage() {
                 className="bg-secondary border-border"
                 placeholder="Your company name"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Owner Name</Label>
+              <Input
+                value={businessInfo.ownerName ?? ""}
+                onChange={e => setBusinessInfo(b => ({ ...b, ownerName: e.target.value }))}
+                className="bg-secondary border-border"
+                placeholder="Your full name (printed on contract signatures)"
+              />
+              <p className="text-[11px] text-muted-foreground">Auto-fills the Vendor signature block on contract templates.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Venmo Username</Label>
+              <Input
+                value={businessInfo.venmoUsername ?? ""}
+                onChange={e => setBusinessInfo(b => ({ ...b, venmoUsername: e.target.value.replace(/^@/, "").trim() }))}
+                className="bg-secondary border-border"
+                placeholder="your-venmo-username (without the @)"
+              />
+              <p className="text-[11px] text-muted-foreground">Optional. Adds a "Pay with Venmo" option on public invoice pages. Venmo personal accounts don't notify Slate of payment — you'll mark the invoice paid yourself.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Production Type</Label>
@@ -285,6 +454,118 @@ export default function SettingsPage() {
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Password — change while logged in (parity with slate-mobile) */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <KeyRound className="w-4 h-4 text-primary" />
+              Password
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Change the password for {profile?.email || "your account"}.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Current password</Label>
+              <Input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your current password" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">New password</Label>
+              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" placeholder="Min 6 characters" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Confirm new password</Label>
+              <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter new password" className="bg-secondary border-border" />
+            </div>
+            <Button
+              onClick={handleChangePassword}
+              disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+              className="w-full sm:w-auto"
+            >
+              {changingPassword ? "Updating…" : "Update Password"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Customize my menu — per-user nav visibility toggles */}
+        <CustomizeMyMenu profile={profile} updateUserProfile={updateUserProfile} />
+
+        {/* Branding — logo + favicon */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Building2 className="w-4 h-4 text-primary" />
+              Branding
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Logo */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Business Logo</Label>
+              <p className="text-[11px] text-muted-foreground">Used on contracts, gallery covers, and as a watermark option. PNG with transparency works best. Max 400KB.</p>
+              <div className="flex items-start gap-3">
+                <div className="w-32 h-20 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo preview" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">No logo</span>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <label className="inline-block">
+                    <input type="file" accept="image/*" onChange={handleLogoFile} className="hidden" />
+                    <span className="inline-block px-3 py-1.5 rounded-md border border-border bg-secondary text-sm cursor-pointer hover:bg-secondary/80">
+                      {logoUrl ? "Replace logo" : "Upload logo"}
+                    </span>
+                  </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl("")}
+                      className="ml-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {logoErr && <p className="text-xs text-destructive">{logoErr}</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Favicon */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label className="text-xs text-muted-foreground">Favicon</Label>
+              <p className="text-[11px] text-muted-foreground">Tab icon shown in the browser. Square PNG/ICO recommended (32×32 or 64×64). Max 50KB.</p>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                  {faviconUrl ? (
+                    <img src={faviconUrl} alt="Favicon preview" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-muted-foreground">None</span>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <label className="inline-block">
+                    <input type="file" accept="image/png,image/x-icon,image/svg+xml,image/jpeg" onChange={handleFaviconFile} className="hidden" />
+                    <span className="inline-block px-3 py-1.5 rounded-md border border-border bg-secondary text-sm cursor-pointer hover:bg-secondary/80">
+                      {faviconUrl ? "Replace favicon" : "Upload favicon"}
+                    </span>
+                  </label>
+                  {faviconUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFaviconUrl("")}
+                      className="ml-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {faviconErr && <p className="text-xs text-destructive">{faviconErr}</p>}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -331,6 +612,28 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Home Bases — multiple driving start points for mileage.
+            Sits directly after My Business since the primary base is
+            usually the same as your business address. Embedded mode
+            renders the editor expanded inline. */}
+        {ownerCrewMember && (
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                <MapPinned className="w-4 h-4 text-primary" />
+                Home Bases
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Where you start driving from for shoots. Most people have one (their home). Add a Travel Base if you keep a vehicle in another location and drive to shoots from there.</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <TravelBasesEditor bases={homeBases} onChange={setHomeBases} embedded />
+              <Button onClick={saveHomeBases} disabled={savingHomeBases} size="sm" className="gap-1">
+                <Save className="w-3.5 h-3.5" /> {savingHomeBases ? "Saving..." : "Save bases"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stripe Connect */}
         <Card className="bg-card border-border">
@@ -405,7 +708,7 @@ export default function SettingsPage() {
                 {billingModel === "hourly" ? "Default Rate ($/hr)" : "Default Rate ($/project)"}
               </Label>
               <Input
-                type="number"
+                type="text" inputMode="decimal"
                 value={billingRate || ""}
                 onChange={e => setBillingRate(parseFloat(e.target.value) || 0)}
                 className="bg-secondary border-border w-32"
@@ -625,6 +928,11 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* External Calendars (import) — owner pastes a webcal:// URL
+            (e.g. published Apple Calendar) and we pull events into
+            My Life. Owner-only, refreshed every 30 minutes by cron. */}
+        {profile?.role === "owner" && <ExternalCalendarsCard />}
+
         {/* My Services */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
@@ -657,7 +965,7 @@ export default function SettingsPage() {
                     placeholder="Service name"
                   />
                   <Input
-                    type="number"
+                    type="text" inputMode="decimal"
                     value={svc.defaultPrice || ""}
                     onChange={e => setServices(s => s.map(x => x.id === svc.id ? { ...x, defaultPrice: Number(e.target.value) || 0 } : x))}
                     className="bg-secondary border-border text-sm w-24"
@@ -805,30 +1113,119 @@ export default function SettingsPage() {
   );
 }
 
-function FeatureToggleRow({ ft, features, onToggle }: { ft: FeatureToggle; features: OrgFeatures; onToggle: () => void }) {
+// ============================================================
+// CustomizeMyMenu — per-user nav visibility (parity with slate-mobile).
+// Toggling an item OFF writes `nav.${href}: false` into the user's
+// featureOverrides JSONB. AppLayout's filterItem reads the same key
+// and hides the entry. Owners can declutter their own menu; staff/
+// partner/client can too within their role's allowed items.
+// Dashboard, Manage, and Help are not listed.
+// ============================================================
+type CustomizeProfile = { id: string; featureOverrides?: Record<string, boolean> } | null;
+type UpdateProfileFn = (id: string, patch: { featureOverrides?: Record<string, boolean> }) => Promise<void>;
+
+const HIDEABLE_NAV: { section: string; items: { href: string; label: string }[] }[] = [
+  { section: "Calendar", items: [
+    { href: "/calendar", label: "Calendar" },
+  ]},
+  { section: "Sales", items: [
+    { href: "/pipeline", label: "Pipeline" },
+    { href: "/proposals", label: "Proposals" },
+    { href: "/contracts", label: "Contracts" },
+  ]},
+  { section: "Production", items: [
+    { href: "/clients", label: "Clients" },
+    { href: "/client-health", label: "Client Health" },
+    { href: "/locations", label: "Locations" },
+  ]},
+  { section: "Team", items: [
+    { href: "/staff", label: "Staff" },
+  ]},
+  { section: "Finance", items: [
+    { href: "/billing", label: "Billing" },
+    { href: "/invoices", label: "Invoices" },
+    { href: "/contractor-invoices", label: "Contractor Invoices" },
+    { href: "/outstanding-payments", label: "Outstanding Payments" },
+    { href: "/expenses", label: "Expenses" },
+    { href: "/marketing-budget", label: "Budget" },
+  ]},
+  { section: "Reports", items: [
+    { href: "/reports", label: "Reports" },
+  ]},
+  { section: "Other", items: [
+    { href: "/calendar-sync", label: "Calendar Sync" },
+    { href: "/trash", label: "Archive" },
+  ]},
+];
+
+function CustomizeMyMenu({ profile, updateUserProfile }: { profile: CustomizeProfile; updateUserProfile: UpdateProfileFn }) {
+  const overrides = profile?.featureOverrides || {};
+  const [saving, setSaving] = useState<string | null>(null);
+
+  async function toggle(href: string, visible: boolean) {
+    if (!profile?.id) return;
+    const key = `nav.${href}`;
+    const next: Record<string, boolean> = { ...overrides };
+    if (visible) {
+      delete next[key];
+    } else {
+      next[key] = false;
+    }
+    setSaving(href);
+    try {
+      // Always send the object (even when empty) so updateUserProfile
+      // writes it to Supabase. If we sent undefined, the guard in
+      // updateUserProfile would skip the field and the old hidden
+      // state would never clear — the bug that made toggles
+      // un-uncheckable.
+      await updateUserProfile(profile.id, { featureOverrides: next });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update menu");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        "w-full flex items-center justify-between p-2.5 rounded-lg border transition-colors text-left",
-        features[ft.key] ? "border-primary/30 bg-primary/5" : "border-border hover:border-primary/20"
-      )}
-    >
-      <div className="min-w-0">
-        <p className={cn("text-sm font-medium", features[ft.key] ? "text-foreground" : "text-muted-foreground")}>
-          {ft.label}
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          <MenuIcon className="w-4 h-4 text-primary" />
+          Customize my menu
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Hide items you don't use from the navigation menu. Only affects YOUR view — other users keep their own settings.
         </p>
-      </div>
-      <div className={cn(
-        "w-10 h-5 rounded-full transition-colors shrink-0 ml-3",
-        features[ft.key] ? "bg-primary" : "bg-secondary border border-border"
-      )}>
-        <span className={cn(
-          "block w-4 h-4 rounded-full bg-white transition-transform mt-0.5",
-          features[ft.key] ? "translate-x-5" : "translate-x-0.5"
-        )} />
-      </div>
-    </button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {HIDEABLE_NAV.map(section => (
+          <div key={section.section}>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">{section.section}</div>
+            <div className="space-y-2">
+              {section.items.map(item => {
+                const hidden = overrides[`nav.${item.href}`] === false;
+                return (
+                  <div key={item.href} className="flex items-center justify-between gap-3 py-1">
+                    <Label className="text-sm text-foreground flex-1 cursor-pointer" htmlFor={`nav-${item.href}`}>
+                      {item.label}
+                    </Label>
+                    <Switch
+                      id={`nav-${item.href}`}
+                      checked={!hidden}
+                      onCheckedChange={(v) => toggle(item.href, v)}
+                      disabled={saving === item.href}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Dashboard, Manage, and Help can't be hidden.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

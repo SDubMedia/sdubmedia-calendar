@@ -25,10 +25,15 @@ const MySchedulePage = lazy(() => import("./pages/MySchedulePage"));
 const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const ContractorInvoicesPage = lazy(() => import("./pages/ContractorInvoicesPage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
+const OutstandingPaymentsPage = lazy(() => import("./pages/OutstandingPaymentsPage"));
+const PipelineAnalyticsPage = lazy(() => import("./pages/PipelineAnalyticsPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SeriesPage = lazy(() => import("./pages/SeriesPage"));
 const ClientHealthPage = lazy(() => import("./pages/ClientHealthPage"));
 const SeriesWorkspacePage = lazy(() => import("./pages/SeriesWorkspacePage"));
+const EpisodeEditorPage = lazy(() => import("./pages/EpisodeEditorPage"));
+const SeriesReviewPage = lazy(() => import("./pages/SeriesReviewPage"));
+const InvoicePublicPage = lazy(() => import("./pages/InvoicePublicPage"));
 const ClientDashboardPage = lazy(() => import("./pages/ClientDashboardPage"));
 const StaffDashboardPage = lazy(() => import("./pages/StaffDashboardPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -41,10 +46,19 @@ const ProfitLossPage = lazy(() => import("./pages/ProfitLossPage"));
 const BusinessExpensesPage = lazy(() => import("./pages/BusinessExpensesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ContractsPage = lazy(() => import("./pages/ContractsPage"));
+const NewContractPage = lazy(() => import("./pages/NewContractPage"));
+const EditContractPage = lazy(() => import("./pages/EditContractPage"));
+const DeliveriesPage = lazy(() => import("./pages/DeliveriesPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
+const PackagesPage = lazy(() => import("./pages/PackagesPage"));
+const ReviewContractPage = lazy(() => import("./pages/ReviewContractPage"));
+const EditContractTemplatePage = lazy(() => import("./pages/EditContractTemplatePage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
+const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const CollectionPage = lazy(() => import("./pages/CollectionPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
 const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
@@ -52,6 +66,7 @@ const ContractorSummaryPage = lazy(() => import("./pages/ContractorSummaryPage")
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const RefundPage = lazy(() => import("./pages/RefundPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
+const SupportPage = lazy(() => import("./pages/SupportPage"));
 
 function LoadingScreen() {
   return (
@@ -77,8 +92,7 @@ function ErrorScreen({ message }: { message: string }) {
 function Router() {
   const { effectiveProfile } = useAuth();
   const { loading, error } = useApp();
-  if (loading) return <LoadingScreen />;
-  if (error) return <ErrorScreen message={error} />;
+  const [location, navigate] = useLocation();
 
   const role = effectiveProfile?.role ?? "client";
   const isOwner = role === "owner";
@@ -88,10 +102,12 @@ function Router() {
 
   // Belt-and-suspenders redirect for family — catches the case where
   // effectiveProfile loads after the initial route match.
-  const [location, navigate] = useLocation();
   useEffect(() => {
     if (isFamily && location === "/") navigate("/calendar", { replace: true });
   }, [isFamily, location, navigate]);
+
+  if (loading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={error} />;
 
   return (
     <AppLayout>
@@ -113,10 +129,13 @@ function Router() {
 
         {/* Owner-only admin (no feature toggle) */}
         {isOwner && <Route path="/manage" component={ManagePage} />}
-        {isOwner && <Route path="/settings" component={SettingsPage} />}
-        {isOwner && <Route path="/users" component={UsersPage} />}
+        {isOwner && <Route path="/settings">{() => <SettingsPage />}</Route>}
+        {isOwner && <Route path="/users">{() => <UsersPage />}</Route>}
         {isOwner && <Route path="/trash" component={TrashPage} />}
         {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
+        {isOwner && <Route path="/packages" component={PackagesPage} />}
+        {isOwner && <Route path="/contracts/:id/review" component={ReviewContractPage} />}
+        {isOwner && <Route path="/contracts/templates/:id/edit" component={EditContractTemplatePage} />}
 
         {/* Feature-gated pages — sidebar toggles control visibility, routes always available */}
         <Route path="/calendar" component={CalendarPage} />
@@ -126,8 +145,11 @@ function Router() {
         <Route path="/clients" component={ClientsPage} />
         <Route path="/staff" component={StaffPage} />
         <Route path="/invoices" component={InvoicesPage} />
-        <Route path="/series" component={SeriesPage} />
-        <Route path="/series/:id" component={SeriesWorkspacePage} />
+        <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />
+        {isOwner && <Route path="/pipeline-analytics" component={PipelineAnalyticsPage} />}
+        {isOwner && <Route path="/series" component={SeriesPage} />}
+        {isOwner && <Route path="/series/:id/episode/:episodeId" component={EpisodeEditorPage} />}
+        {isOwner && <Route path="/series/:id" component={SeriesWorkspacePage} />}
         <Route path="/marketing-budget" component={MarketingBudgetPage} />
         <Route path="/client-health" component={ClientHealthPage} />
         <Route path="/locations" component={LocationsPage} />
@@ -135,6 +157,10 @@ function Router() {
         <Route path="/profit-loss" component={ProfitLossPage} />
         <Route path="/expenses" component={BusinessExpensesPage} />
         <Route path="/contracts" component={ContractsPage} />
+        {isOwner && <Route path="/contracts/new" component={NewContractPage} />}
+        {isOwner && <Route path="/contracts/:id/edit" component={EditContractPage} />}
+        <Route path="/deliveries" component={DeliveriesPage} />
+        <Route path="/deliveries/:id" component={DeliveriesPage} />
         <Route path="/proposals" component={ProposalsPage} />
         <Route path="/pipeline" component={PipelinePage} />
         <Route path="/1099" component={ContractorSummaryPage} />
@@ -153,12 +179,35 @@ function AuthGate() {
   if (loading) return <LoadingScreen />;
   if (!user) return <Suspense fallback={<LoadingScreen />}><LoginPage /></Suspense>;
   if (profile?.mustChangePassword) return <Suspense fallback={<LoadingScreen />}><ChangePasswordPage /></Suspense>;
-  if (!profile?.hasCompletedOnboarding && profile?.role !== "owner") return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
+  if (!profile?.hasCompletedOnboarding) return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
   return (
     <AppProvider>
+      <FaviconSync />
       <Router />
     </AppProvider>
   );
+}
+
+// Keep the browser tab icon in sync with the org's chosen favicon. Empty
+// string clears any custom icon (browser falls back to default).
+function FaviconSync() {
+  const { data } = useApp();
+  const url = data.organization?.faviconUrl || "";
+  useEffect(() => {
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    if (url) {
+      link.href = url;
+    } else if (link.href) {
+      // Remove any previously-set icon so the browser uses its default.
+      link.removeAttribute("href");
+    }
+  }, [url]);
+  return null;
 }
 
 function App() {
@@ -189,10 +238,65 @@ function App() {
     );
   }
 
-  // Legal pages — always public so Stripe + marketing sites can link in
+  if (window.location.pathname.startsWith("/invoice/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/invoice/:token" component={InvoicePublicPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/review/series/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/review/series/:token" component={SeriesReviewPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/deliver/") || window.location.pathname.startsWith("/g/") || window.location.pathname.startsWith("/c/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/deliver/:token" component={DeliverGalleryPage} />
+            <Route path="/g/:token" component={DeliverGalleryPage} />
+            <Route path="/c/:slug" component={CollectionPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname === "/reset-password") {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/reset-password" component={ResetPasswordPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // Legal + support pages — always public so Stripe + marketing sites + the
+  // App Store listing can link in.
   const legalPath = window.location.pathname;
-  if (legalPath === "/terms" || legalPath === "/refund" || legalPath === "/privacy") {
-    const Page = legalPath === "/terms" ? TermsPage : legalPath === "/refund" ? RefundPage : PrivacyPage;
+  if (legalPath === "/terms" || legalPath === "/refund" || legalPath === "/privacy" || legalPath === "/support") {
+    const Page = legalPath === "/terms" ? TermsPage : legalPath === "/refund" ? RefundPage : legalPath === "/support" ? SupportPage : PrivacyPage;
     return (
       <ErrorBoundary>
         <ThemeProvider defaultTheme="dark" switchable>

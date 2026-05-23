@@ -2,21 +2,26 @@
 // ContractsPage — Create, send, and manage contracts with e-signatures
 // ============================================================
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Contract, ContractTemplate, ContractStatus } from "@/lib/types";
+import type { ContractTemplate, ContractStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, Copy, PenTool, Upload, X, ExternalLink } from "lucide-react";
+import { Plus, FileText, Trash2, Edit3, Copy, X, Clapperboard, ScrollText, Handshake, Package, UserCheck, Baby, MapPin, Key, Music, Sparkles, MoreHorizontal, ArrowRight, ChevronUp, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import type { LucideIcon } from "lucide-react";
+import { WysiwygContractEditor } from "@/components/WysiwygContractEditor";
+import { ContractLetterhead } from "@/components/ContractLetterhead";
+import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { nanoid } from "nanoid";
-import { getAuthToken } from "@/lib/supabase";
+import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
+import InvoicePageRenderer from "@/components/proposal/InvoicePageRenderer";
+import PrereqGate from "@/components/PrereqGate";
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30",
@@ -34,21 +39,97 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
   void: "Void",
 };
 
-// Merge fields that can be used in templates
-const MERGE_FIELDS = [
-  { key: "{{client_name}}", label: "Client Name" },
-  { key: "{{client_company}}", label: "Client Company" },
-  { key: "{{client_email}}", label: "Client Email" },
-  { key: "{{project_type}}", label: "Project Type" },
-  { key: "{{project_date}}", label: "Project Date" },
-  { key: "{{project_location}}", label: "Location" },
-  { key: "{{date}}", label: "Today's Date" },
-  { key: "{{owner_name}}", label: "Your Name" },
-  { key: "{{company_name}}", label: "Your Company" },
-];
+// Maps the seeded library template names to a display category.
+// User-created templates that don't match fall through to "Custom".
+const TEMPLATE_CATEGORIES: Record<string, "Agreements" | "Releases & Licensing"> = {
+  "Video Production Contract": "Agreements",
+  "Proposal / Statement of Work": "Agreements",
+  "Independent Contractor Agreement": "Agreements",
+  "Equipment Rental Agreement": "Agreements",
+  "Model Release": "Releases & Licensing",
+  "Minor Model Release": "Releases & Licensing",
+  "Location Release": "Releases & Licensing",
+  "Usage License": "Releases & Licensing",
+  "Music License Request": "Releases & Licensing",
+};
+
+const DEFAULT_CATEGORY_ORDER = ["Proposals", "Agreements", "Releases & Licensing", "Custom"] as const;
+type CategoryName = typeof DEFAULT_CATEGORY_ORDER[number];
+
+// LocalStorage key for the user's preferred category ordering. Stored as
+// JSON (array of category names). Falls back to default if missing or
+// stale (e.g., a category got renamed in a future release).
+const CATEGORY_ORDER_KEY = "slate.contracts.categoryOrder.v1";
+
+function loadCategoryOrder(): readonly CategoryName[] {
+  try {
+    const raw = localStorage.getItem(CATEGORY_ORDER_KEY);
+    if (!raw) return DEFAULT_CATEGORY_ORDER;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_CATEGORY_ORDER;
+    // Reconcile: keep saved order, but append any default categories the
+    // saved order doesn't know about (forward-compat with future seeds).
+    const known = new Set(DEFAULT_CATEGORY_ORDER as readonly string[]);
+    const filtered = parsed.filter((x): x is CategoryName => known.has(x));
+    const missing = DEFAULT_CATEGORY_ORDER.filter(c => !filtered.includes(c));
+    return [...filtered, ...missing];
+  } catch {
+    return DEFAULT_CATEGORY_ORDER;
+  }
+}
+
+function saveCategoryOrder(order: readonly CategoryName[]): void {
+  try { localStorage.setItem(CATEGORY_ORDER_KEY, JSON.stringify(order)); } catch { /* private mode */ }
+}
+
+// Visual identity per category. Icon in a tinted box, short subtitle.
+const CATEGORY_META: Record<CategoryName, { icon: LucideIcon; subtitle: string; tint: string; iconColor: string }> = {
+  "Proposals": {
+    icon: ScrollText,
+    subtitle: "Pre-contract pitches with packages and milestones",
+    tint: "bg-sky-500/10 border-sky-500/20",
+    iconColor: "text-sky-300",
+  },
+  "Agreements": {
+    icon: Handshake,
+    subtitle: "Signable contracts you send to clients",
+    tint: "bg-amber-500/10 border-amber-500/20",
+    iconColor: "text-amber-300",
+  },
+  "Releases & Licensing": {
+    icon: Key,
+    subtitle: "On-set permissions and rights grants",
+    tint: "bg-purple-500/10 border-purple-500/20",
+    iconColor: "text-purple-300",
+  },
+  "Custom": {
+    icon: Sparkles,
+    subtitle: "Templates you've created or duplicated",
+    tint: "bg-zinc-500/10 border-zinc-500/20",
+    iconColor: "text-zinc-300",
+  },
+};
+
+// Template icon by name. Falls back to FileText for user-created templates.
+const TEMPLATE_ICONS: Record<string, LucideIcon> = {
+  "Video Production Contract": Clapperboard,
+  "Proposal / Statement of Work": ScrollText,
+  "Independent Contractor Agreement": Handshake,
+  "Equipment Rental Agreement": Package,
+  "Model Release": UserCheck,
+  "Minor Model Release": Baby,
+  "Location Release": MapPin,
+  "Usage License": Key,
+  "Music License Request": Music,
+};
+
+function templateIcon(name: string): LucideIcon {
+  return TEMPLATE_ICONS[name] || FileText;
+}
+
 
 export default function ContractsPage() {
-  const { data, addClient, addContractTemplate, updateContractTemplate, deleteContractTemplate, addContract, updateContract, deleteContract, addProposalTemplate } = useApp();
+  const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, updateContract, deleteContract, addProposalTemplate } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");
@@ -59,66 +140,34 @@ export default function ContractsPage() {
   const [tplName, setTplName] = useState("");
   const [tplContent, setTplContent] = useState("");
 
-  // Contract dialog
-  const [contractDialogOpen, setContractDialogOpen] = useState(false);
-  const [contractTitle, setContractTitle] = useState("");
-  const [contractClientId, setContractClientId] = useState("");
-  const [contractProjectId, setContractProjectId] = useState("");
-  const [contractTemplateId, setContractTemplateId] = useState("");
-  const [contractContent, setContractContent] = useState("");
-  const [contractClientEmail, setContractClientEmail] = useState("");
+  // Template detail panel — opens before edit so user can preview + see usage stats
+  const [detailTplId, setDetailTplId] = useState<string | null>(null);
 
-  // Quick-add client
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickAddName, setQuickAddName] = useState("");
-  const [quickAddEmail, setQuickAddEmail] = useState("");
+  // Custom category ordering — persisted to localStorage so it sticks
+  // across sessions on the same device. Use ↑↓ buttons on each category
+  // header to reorder.
+  const [categoryOrder, setCategoryOrder] = useState<readonly CategoryName[]>(() => loadCategoryOrder());
 
-  async function quickAddClient() {
-    if (!quickAddName.trim() || !quickAddEmail.trim()) { toast.error("Name and email required"); return; }
-    try {
-      const client = await addClient({
-        company: quickAddName.trim(), contactName: quickAddName.trim(), email: quickAddEmail.trim(), phone: "",
-        address: "", city: "", state: "", zip: "",
-        billingModel: "per_project" as any, billingRatePerHour: 0, perProjectRate: 0,
-        projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "", roleBillingMultipliers: [],
-      });
-      setContractClientId(client.id);
-      setContractClientEmail(quickAddEmail.trim());
-      setQuickAddOpen(false);
-      setQuickAddName(""); setQuickAddEmail("");
-      toast.success(`Client "${client.company}" created`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to create client");
-    }
-  }
-
-  // View contract
-  const [viewContract, setViewContract] = useState<Contract | null>(null);
-
-  // Signature dialog
-  const [signDialogOpen, setSignDialogOpen] = useState(false);
-  const [signingContractId, setSigningContractId] = useState<string | null>(null);
-  const [signatureType, setSignatureType] = useState<"drawn" | "typed">("typed");
-  const [typedName, setTypedName] = useState("");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  // Upload PDF
-  const pdfRef = useRef<HTMLInputElement>(null);
-  const [uploadingPdf, setUploadingPdf] = useState(false);
-
-  function openNewTemplate() {
-    setEditingTplId(null);
-    setTplName("");
-    setTplContent("");
-    setTplDialogOpen(true);
+  function moveCategory(name: CategoryName, dir: -1 | 1) {
+    setCategoryOrder(prev => {
+      const idx = prev.indexOf(name);
+      const newIdx = idx + dir;
+      if (idx < 0 || newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      saveCategoryOrder(next);
+      return next;
+    });
   }
 
   function openEditTemplate(tpl: ContractTemplate) {
-    setEditingTplId(tpl.id);
-    setTplName(tpl.name);
-    setTplContent(tpl.content);
-    setTplDialogOpen(true);
+    // Phase B: route to the full-page block-based editor instead of the
+    // legacy WysiwygContractEditor dialog.
+    setLocation(`/contracts/templates/${tpl.id}/edit`);
+  }
+
+  function openNewTemplate() {
+    setLocation("/contracts/templates/new/edit");
   }
 
   async function saveTemplate() {
@@ -133,235 +182,23 @@ export default function ContractsPage() {
     setTplDialogOpen(false);
   }
 
-  function openNewContract() {
-    setContractTitle("");
-    setContractClientId("");
-    setContractProjectId("");
-    setContractTemplateId("");
-    setContractContent("");
-    setContractClientEmail("");
-    setContractDialogOpen(true);
+  // From the template detail panel, "Use in new contract" sends the user
+  // to the wizard. The wizard's step-3 list pre-selects via ?template=<id>.
+  function applyTemplateToNewContract(tpl: ContractTemplate) {
+    setDetailTplId(null);
+    setLocation(`/contracts/new?template=${encodeURIComponent(tpl.id)}`);
   }
 
-  function applyTemplate(templateId: string) {
-    setContractTemplateId(templateId);
-    const tpl = data.contractTemplates.find(t => t.id === templateId);
-    if (tpl) {
-      setContractContent(tpl.content);
-      if (!contractTitle) setContractTitle(tpl.name);
-    }
-  }
-
-  function resolveMergeFields(content: string): string {
-    const client = data.clients.find(c => c.id === contractClientId);
-    const project = contractProjectId ? data.projects.find(p => p.id === contractProjectId) : null;
-    const projectType = project ? data.projectTypes.find(t => t.id === project.projectTypeId) : null;
-    const location = project ? data.locations.find(l => l.id === project.locationId) : null;
-    return content
-      .replace(/\{\{client_name\}\}/g, client?.contactName || "")
-      .replace(/\{\{client_company\}\}/g, client?.company || "")
-      .replace(/\{\{client_email\}\}/g, client?.email || "")
-      .replace(/\{\{project_type\}\}/g, projectType?.name || "")
-      .replace(/\{\{project_date\}\}/g, project?.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "TBD")
-      .replace(/\{\{project_location\}\}/g, location?.name || "TBD")
-      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))
-      .replace(/\{\{owner_name\}\}/g, profile?.name || "")
-      .replace(/\{\{company_name\}\}/g, data.organization?.name || "");
-  }
-
-  async function createContract() {
-    if (!contractTitle.trim()) { toast.error("Title required"); return; }
-    if (!contractClientId) { toast.error("Select a client"); return; }
-    if (!contractClientEmail.trim()) { toast.error("Client email required"); return; }
-
-    const resolved = resolveMergeFields(contractContent);
-    const token = nanoid(32);
-
-    await addContract({
-      templateId: contractTemplateId || null,
-      clientId: contractClientId,
-      projectId: contractProjectId || null,
-      title: contractTitle.trim(),
-      content: resolved,
-      status: "draft",
-      sentAt: null,
-      clientSignedAt: null,
-      ownerSignedAt: null,
-      clientSignature: null,
-      ownerSignature: null,
-      clientEmail: contractClientEmail.trim(),
-      signToken: token,
-    });
-    toast.success("Contract created as draft");
-    setContractDialogOpen(false);
-  }
-
-  async function sendContract(contractId: string) {
-    const contract = data.contracts.find(c => c.id === contractId);
-    if (!contract) return;
-
-    // Send email with signing link
-    try {
-      const token = await getAuthToken();
-      const signUrl = `${window.location.origin}/sign/${contract.signToken}`;
-      const orgName = data.organization?.name || "Your production company";
-      const res = await fetch("/api/send-contract-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          to: contract.clientEmail,
-          cc: profile?.email || "",
-          subject: `Contract: ${contract.title} — ${orgName}`,
-          signUrl,
-          contractTitle: contract.title,
-          orgName,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed" }));
-        throw new Error(err.error || "Failed to send email");
-      }
-      await updateContract(contractId, { status: "sent", sentAt: new Date().toISOString() });
-      toast.success("Contract sent to " + contract.clientEmail);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send");
-    }
-  }
-
-  // Owner countersign
-  function openSignDialog(contractId: string) {
-    setSigningContractId(contractId);
-    setTypedName(profile?.name || "");
-    setSignatureType("typed");
-    setSignDialogOpen(true);
-  }
-
-  async function submitSignature() {
-    if (!signingContractId) return;
-
-    let signatureData = "";
-    if (signatureType === "typed") {
-      if (!typedName.trim()) { toast.error("Type your name"); return; }
-      signatureData = typedName.trim();
-    } else {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      signatureData = canvas.toDataURL("image/png");
-    }
-
-    const sig = {
-      name: profile?.name || "",
-      email: profile?.email || "",
-      ip: "server-side",
-      timestamp: new Date().toISOString(),
-      signatureData,
-      signatureType,
-    };
-
-    await updateContract(signingContractId, {
-      ownerSignature: sig,
-      ownerSignedAt: new Date().toISOString(),
-      status: "completed",
-    });
-    toast.success("Contract signed and completed!");
-    setSignDialogOpen(false);
-    setViewContract(null);
-  }
-
-  // Canvas drawing handlers
-  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    setIsDrawing(true);
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  }, []);
-
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ("touches" in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = ("touches" in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  }, [isDrawing]);
-
-  const stopDraw = useCallback(() => setIsDrawing(false), []);
-
-  function clearCanvas() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // Auto-fill client email
-  function handleClientChange(clientId: string) {
-    setContractClientId(clientId);
-    const client = data.clients.find(c => c.id === clientId);
-    if (client?.email) setContractClientEmail(client.email);
-  }
-
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-
-    const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
-
-    if (isPdf) {
-      setUploadingPdf(true);
-      try {
-        const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const base64 = btoa(binary);
-
-        const token = await getAuthToken();
-        const res = await fetch("/api/parse-pdf", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ fileData: base64 }),
-        });
-        if (!res.ok) throw new Error("Failed to parse PDF");
-        const { text } = await res.json();
-        if (text) {
-          setContractContent(text);
-          toast.success("PDF content imported — review and edit as needed");
-        } else {
-          toast.error("No text found in PDF");
-        }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to upload");
-      } finally {
-        setUploadingPdf(false);
-      }
-    } else {
-      // Text file
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        if (text) {
-          setContractContent(text);
-          toast.success("Document imported");
-        }
-      };
-      reader.readAsText(file);
-    }
-  }
+  // Stats for detail panel
+  const detailTpl = detailTplId ? data.contractTemplates.find(t => t.id === detailTplId) : null;
+  const detailUsage = useMemo(() => {
+    if (!detailTpl) return { count: 0, lastUsed: null as string | null };
+    const matching = data.contracts.filter(c => c.templateId === detailTpl.id);
+    const lastUsed = matching.length > 0
+      ? matching.map(c => c.sentAt || c.createdAt).filter(Boolean).sort().pop() || null
+      : null;
+    return { count: matching.length, lastUsed };
+  }, [detailTpl, data.contracts]);
 
   return (
     <div className="flex flex-col h-full">
@@ -379,73 +216,125 @@ export default function ContractsPage() {
           <button onClick={() => setTab("templates")} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-colors", tab === "templates" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             Templates
           </button>
+          <button onClick={() => setLocation("/trash")} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary" title="View archived items">
+            Archive
+          </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "contracts" ? (
           <div className="space-y-4">
-            <Button onClick={openNewContract} className="gap-2">
-              <Plus className="w-4 h-4" /> New Contract
-            </Button>
+            <PrereqGate
+              met={data.clients.length > 0}
+              title="Add a client first"
+              body="Contracts need a client to address and sign. Add at least one client and you'll be able to draft your first contract."
+              ctaLabel="Add Client"
+              ctaHref="/clients"
+            >
+              <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
+                <Plus className="w-4 h-4" /> New Contract
+              </Button>
+            </PrereqGate>
 
             {data.contracts.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No contracts yet. Create your first contract or template.</p>
+              <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-10 text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary/15 mb-4">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-1.5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  You haven't sent your first contract
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+                  {data.contractTemplates.length === 0
+                    ? "Build a reusable template first, then create + send your first contract."
+                    : `Pick from ${data.contractTemplates.length} lawyer-vetted templates and send your first contract in under a minute.`}
+                </p>
+                <PrereqGate
+                  met={data.clients.length > 0}
+                  title="Add a client first"
+                  body="Contracts need a client to address and sign. Add at least one client and you'll be able to draft your first contract."
+                  ctaLabel="Add Client"
+                  ctaHref="/clients"
+                >
+                  <Button onClick={() => setLocation("/contracts/new")} className="gap-2">
+                    <Plus className="w-4 h-4" /> Start your first contract
+                  </Button>
+                </PrereqGate>
               </div>
             ) : (
-              <div className="space-y-3">
-                {data.contracts.map(c => {
-                  const client = data.clients.find(cl => cl.id === c.clientId);
-                  return (
-                    <div key={c.id} className="bg-card border border-border rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-foreground text-sm">{c.title}</span>
+              <div className="space-y-2">
+                {(() => {
+                  // Action-required rows pinned to the top (Pixieset-style)
+                  // so the user sees what's blocking them first.
+                  const sorted = [...data.contracts].sort((a, b) => {
+                    const aPriority = a.status === "client_signed" ? 0 : a.status === "sent" ? 1 : a.status === "draft" ? 2 : 3;
+                    const bPriority = b.status === "client_signed" ? 0 : b.status === "sent" ? 1 : b.status === "draft" ? 2 : 3;
+                    if (aPriority !== bPriority) return aPriority - bPriority;
+                    return b.updatedAt.localeCompare(a.updatedAt);
+                  });
+                  return sorted.map(c => {
+                    const client = data.clients.find(cl => cl.id === c.clientId);
+                    const isActionRequired = c.status === "client_signed";
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setLocation(`/contracts/${c.id}/edit`)}
+                        className={cn(
+                          "group w-full text-left bg-card border rounded-xl p-3 sm:p-4 transition-all hover:border-primary/40 hover:shadow-md flex items-stretch gap-3",
+                          isActionRequired ? "border-amber-500/40 bg-amber-500/[0.04]" : "border-border",
+                        )}
+                      >
+                        {/* Cream-paper thumbnail — ties the list to the wizard/editor visual language */}
+                        <div className="hidden sm:flex shrink-0 w-12 h-16 rounded bg-[#f6f2e8] border border-zinc-300/40 items-center justify-center">
+                          <FileText className="w-5 h-5 text-zinc-700/60" strokeWidth={1.5} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-semibold text-foreground text-sm truncate">{c.title}</span>
                             <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[c.status])}>
                               {STATUS_LABELS[c.status]}
                             </span>
+                            {isActionRequired && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300">⚡ Action required</span>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground">{client?.company || "Unknown"} · {c.clientEmail}</p>
-                          {c.clientSignedAt && <p className="text-xs text-green-400 mt-1">Client signed {new Date(c.clientSignedAt).toLocaleDateString()}</p>}
-                          {c.ownerSignedAt && <p className="text-xs text-green-400">You signed {new Date(c.ownerSignedAt).toLocaleDateString()}</p>}
+                          <p className="text-xs text-muted-foreground truncate">{client?.company || "Unknown"} · {c.clientEmail}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                            {c.sentAt && <span className="text-[10px] text-muted-foreground">Sent {new Date(c.sentAt).toLocaleDateString()}</span>}
+                            {c.clientSignedAt && <span className="text-[10px] text-green-400">Client ✓ {new Date(c.clientSignedAt).toLocaleDateString()}</span>}
+                            {c.ownerSignedAt && <span className="text-[10px] text-green-400">You ✓ {new Date(c.ownerSignedAt).toLocaleDateString()}</span>}
+                            {c.additionalSigners.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                +{c.additionalSigners.filter(s => s.signedAt).length}/{c.additionalSigners.length} co-signers
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setViewContract(c)} className="p-1.5 text-muted-foreground hover:text-foreground"><Eye className="w-4 h-4" /></button>
-                          {c.status === "draft" && (
-                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
-                          )}
-                          {c.status === "sent" && (
-                            <button onClick={() => sendContract(c.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
-                          )}
-                          {c.status === "client_signed" && (
-                            <button onClick={() => openSignDialog(c.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
-                          )}
+                        <div className="flex items-start gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           {c.status !== "completed" && (
-                            <button onClick={async () => { await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>
+                            <button onClick={async (e) => { e.stopPropagation(); await updateContract(c.id, { status: "void" }); toast.success("Contract voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Void"><X className="w-4 h-4" /></button>
                           )}
                           {(c.status === "draft" || c.status === "void") && (
-                            <button onClick={async () => { await deleteContract(c.id); toast.success("Deleted"); }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            <button onClick={async (e) => { e.stopPropagation(); await deleteContract(c.id); toast.success("Archived — restore from Archive"); }} className="p-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Archive"><Trash2 className="w-4 h-4" /></button>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
         ) : (
           /* Templates Tab */
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex gap-2">
               <Button onClick={() => setLocation("/proposals/templates/new/edit")} className="gap-2">
-                <Plus className="w-4 h-4" /> New Template
+                <Plus className="w-4 h-4" /> New Proposal Template
               </Button>
-              <Button variant="outline" onClick={openNewTemplate} className="gap-2 text-xs">
-                <Plus className="w-4 h-4" /> Quick Template (text only)
+              <Button onClick={openNewTemplate} variant="outline" className="gap-2">
+                <Plus className="w-4 h-4" /> New Contract Template
               </Button>
             </div>
 
@@ -455,51 +344,123 @@ export default function ContractsPage() {
                 <p className="text-sm">No templates yet. Create a reusable template.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {/* Proposal templates (V2 - full editor) */}
-                {data.proposalTemplates.map(tpl => (
-                  <div key={`p-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}>
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                      {tpl.coverImageUrl ? (
-                        <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-                          <FileText className="w-10 h-10 text-primary/30" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+              categoryOrder.map((cat, catIdx) => {
+                const proposalsForCat = cat === "Proposals" ? data.proposalTemplates : [];
+                const contractsForCat = data.contractTemplates.filter(t => {
+                  const c = TEMPLATE_CATEGORIES[t.name];
+                  if (cat === "Custom") return !c;
+                  if (cat === "Proposals") return false;
+                  return c === cat;
+                });
+                const total = proposalsForCat.length + contractsForCat.length;
+                if (total === 0) return null;
+                const meta = CATEGORY_META[cat];
+                const CatIcon = meta.icon;
+                return (
+                  <div key={cat} className="space-y-4">
+                    <div className="group flex items-center gap-3 pb-2 border-b border-border/60">
+                      <div className={cn("shrink-0 rounded-lg border p-2", meta.tint)}>
+                        <CatIcon className={cn("w-5 h-5", meta.iconColor)} strokeWidth={1.75} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{cat}</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">{meta.subtitle}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums">{total} {total === 1 ? "template" : "templates"}</span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => moveCategory(cat, -1)}
+                          disabled={catIdx === 0}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move category up"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => moveCategory(cat, 1)}
+                          disabled={catIdx === categoryOrder.length - 1}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Move category down"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Saved template"}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {/* Proposal templates (V2 - full editor) */}
+                      {proposalsForCat.map(tpl => {
+                        const Icon = templateIcon(tpl.name);
+                        return (
+                          <div
+                            key={`p-${tpl.id}`}
+                            className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
+                            onClick={() => setLocation(`/proposals/templates/${tpl.id}/edit`)}
+                          >
+                            <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
+                              {tpl.coverImageUrl ? (
+                                <img src={tpl.coverImageUrl} alt={tpl.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                                  <div>
+                                    <Icon className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                                    <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                                      {tpl.name}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                                <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, contractTemplateId: tpl.contractTemplateId ?? null, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                            <div className="p-3 flex items-start gap-2">
+                              <Icon className="w-4 h-4 text-muted-foreground/60 shrink-0 mt-0.5" strokeWidth={1.75} />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{tpl.pages.length > 0 ? `${tpl.pages.length} pages` : "Proposal template"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {/* Contract templates — match proposal card style: centered
+                          serif title on cream paper, no raw HTML excerpt. */}
+                      {contractsForCat.map(tpl => {
+                        const Icon = templateIcon(tpl.name);
+                        return (
+                          <div
+                            key={`c-${tpl.id}`}
+                            className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
+                            onClick={() => setDetailTplId(tpl.id)}
+                          >
+                            <div className="aspect-[4/3] relative overflow-hidden bg-[#f6f2e8]">
+                              <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                                <div>
+                                  <Icon className="w-8 h-8 mx-auto mb-2 text-zinc-700/40" strokeWidth={1.5} />
+                                  <div className="text-zinc-800 leading-tight" style={{ fontFamily: "'Source Serif Pro', 'Georgia', serif", fontStyle: "italic", fontSize: "13px" }}>
+                                    {tpl.name}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-white/90 text-xs font-medium">Click to preview</span>
+                              </div>
+                            </div>
+                            <div className="p-3 flex items-start gap-2">
+                              <Icon className="w-4 h-4 text-muted-foreground/60 shrink-0 mt-0.5" strokeWidth={1.75} />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-foreground text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{tpl.name}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">Contract template</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
-                {/* Legacy contract templates */}
-                {data.contractTemplates.map(tpl => (
-                  <div key={`c-${tpl.id}`} className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors cursor-pointer" onClick={() => openEditTemplate(tpl)}>
-                    <div className="aspect-[4/3] bg-secondary relative overflow-hidden">
-                      <div className="w-full h-full flex flex-col items-start justify-end p-3 bg-gradient-to-br from-zinc-500/10 to-zinc-500/5">
-                        <p className="text-[8px] text-muted-foreground/60 line-clamp-6 leading-tight font-mono">
-                          {tpl.content?.slice(0, 200) || "Empty template"}
-                        </p>
-                      </div>
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); openEditTemplate(tpl); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await deleteContractTemplate(tpl.id); toast.success("Deleted"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                      <div className="absolute top-2 right-2 text-[8px] bg-zinc-700/80 text-zinc-300 px-1.5 py-0.5 rounded">Legacy</div>
-                    </div>
-                    <div className="p-3">
-                      <p className="font-semibold text-foreground text-sm truncate">{tpl.name}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Text-only template</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                );
+              })
             )}
           </div>
         )}
@@ -519,22 +480,12 @@ export default function ContractsPage() {
               <Input value={tplName} onChange={e => setTplName(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Standard Video Production Agreement" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Merge Fields (click to insert)</Label>
-              <div className="flex flex-wrap gap-1">
-                {MERGE_FIELDS.map(f => (
-                  <button key={f.key} onClick={() => setTplContent(c => c + f.key)} className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Contract Content</Label>
-              <textarea
+              <WysiwygContractEditor
                 value={tplContent}
-                onChange={e => setTplContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[60vh] resize-y font-mono"
-                placeholder="Enter your contract text here. Use merge fields like {{client_name}} for dynamic content..."
+                onChange={setTplContent}
+                placeholder="Start typing or paste your contract. Insert merge fields from the toolbar — they'll auto-fill with client and project data when used."
+                minHeight="55vh"
               />
             </div>
           </div>
@@ -545,200 +496,184 @@ export default function ContractsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* New Contract Dialog */}
-      <Dialog open={contractDialogOpen} onOpenChange={setContractDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>New Contract</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Title</Label>
-              <Input value={contractTitle} onChange={e => setContractTitle(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Video Production Agreement — CBSR" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Client</Label>
-                  <button onClick={() => setQuickAddOpen(!quickAddOpen)} className="text-[10px] text-primary hover:text-primary/80">
-                    {quickAddOpen ? "Cancel" : "+ New Client"}
-                  </button>
-                </div>
-                {quickAddOpen ? (
-                  <div className="space-y-2 p-2 bg-secondary/50 rounded-lg border border-border">
-                    <Input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Client name" />
-                    <Input value={quickAddEmail} onChange={e => setQuickAddEmail(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Email" />
-                    <Button size="sm" onClick={quickAddClient} className="w-full text-xs">Create & Select</Button>
-                  </div>
-                ) : (
-                  <Select value={contractClientId} onValueChange={handleClientChange}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
-                    <SelectContent className="bg-popover border-border">
-                      {data.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Client Email</Label>
-                <Input value={contractClientEmail} onChange={e => setContractClientEmail(e.target.value)} className="bg-secondary border-border" placeholder="client@email.com" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Start from Template (optional)</Label>
-              <Select value={contractTemplateId} onValueChange={applyTemplate}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Blank contract" /></SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {data.contractTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Contract Content</Label>
-                <div className="flex gap-2">
-                  <input ref={pdfRef} type="file" accept=".pdf,.txt,.doc,.docx,text/plain,application/pdf" onChange={handlePdfUpload} className="hidden" />
-                  <button
-                    onClick={() => pdfRef.current?.click()}
-                    disabled={uploadingPdf}
-                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-                  >
-                    <Upload className="w-3 h-3" />
-                    {uploadingPdf ? "Uploading..." : "Upload PDF/Doc"}
-                  </button>
-                </div>
-              </div>
-              <textarea
-                value={contractContent}
-                onChange={e => setContractContent(e.target.value)}
-                className="w-full bg-secondary border border-border rounded-md p-3 text-sm text-foreground min-h-[50vh] resize-y"
-                placeholder="Enter or paste your contract text, or upload a PDF..."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setContractDialogOpen(false)}>Cancel</Button>
-            <Button onClick={createContract}>Create Draft</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Contract Dialog */}
-      <Dialog open={!!viewContract} onOpenChange={o => !o && setViewContract(null)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-4xl max-h-[95dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{viewContract?.title}</DialogTitle>
-          </DialogHeader>
-          {viewContract && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className={cn("text-xs font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[viewContract.status])}>
-                  {STATUS_LABELS[viewContract.status]}
-                </span>
-                <span className="text-xs text-muted-foreground">{data.clients.find(c => c.id === viewContract.clientId)?.company}</span>
-              </div>
-              <div className="bg-white text-black rounded-lg p-6 text-sm leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">
-                {viewContract.content}
-              </div>
-              {viewContract.clientSignature && (
-                <div className="bg-secondary/50 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Client Signature</p>
-                  {viewContract.clientSignature.signatureType === "drawn" ? (
-                    <img src={viewContract.clientSignature.signatureData} alt="Client signature" className="h-12" />
-                  ) : (
-                    <p className="text-lg font-cursive italic text-foreground">{viewContract.clientSignature.signatureData}</p>
-                  )}
-                  <p className="text-[10px] text-muted-foreground mt-1">{viewContract.clientSignature.name} · {new Date(viewContract.clientSignature.timestamp).toLocaleString()}</p>
-                </div>
-              )}
-              {viewContract.ownerSignature && (
-                <div className="bg-secondary/50 rounded-lg p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Owner Signature</p>
-                  {viewContract.ownerSignature.signatureType === "drawn" ? (
-                    <img src={viewContract.ownerSignature.signatureData} alt="Owner signature" className="h-12" />
-                  ) : (
-                    <p className="text-lg font-cursive italic text-foreground">{viewContract.ownerSignature.signatureData}</p>
-                  )}
-                  <p className="text-[10px] text-muted-foreground mt-1">{viewContract.ownerSignature.name} · {new Date(viewContract.ownerSignature.timestamp).toLocaleString()}</p>
-                </div>
-              )}
-              <div className="flex gap-2">
-                {viewContract.status === "draft" && (
-                  <Button onClick={() => { sendContract(viewContract.id); setViewContract(null); }} className="gap-2">
-                    <Send className="w-4 h-4" /> Send to Client
-                  </Button>
-                )}
-                {viewContract.status === "client_signed" && (
-                  <Button onClick={() => { openSignDialog(viewContract.id); }} className="gap-2">
-                    <PenTool className="w-4 h-4" /> Countersign
-                  </Button>
-                )}
-              </div>
-            </div>
+      {/* Template Detail — desktop modal, mobile bottom-sheet feel via responsive
+          full-screen + pinned-bottom CTA. One layout, breakpoint-driven. */}
+      <Dialog open={!!detailTpl} onOpenChange={(open) => !open && setDetailTplId(null)}>
+        <DialogContent
+          className={cn(
+            "bg-card border-border text-foreground p-0 gap-0 overflow-hidden flex flex-col",
+            // Mobile: full viewport, no rounding
+            "max-w-[100vw] w-[100vw] h-[100dvh] rounded-none",
+            // Desktop: standard centered modal
+            "sm:max-w-3xl sm:w-auto sm:h-auto sm:max-h-[90dvh] sm:rounded-lg",
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Signature Dialog (Owner Countersign) */}
-      <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Sign Contract</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex gap-2">
-              <button onClick={() => setSignatureType("typed")} className={cn("flex-1 py-2 rounded-lg border text-sm font-medium", signatureType === "typed" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
-                Type Name
-              </button>
-              <button onClick={() => setSignatureType("drawn")} className={cn("flex-1 py-2 rounded-lg border text-sm font-medium", signatureType === "drawn" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground")}>
-                Draw Signature
-              </button>
-            </div>
-
-            {signatureType === "typed" ? (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Full Legal Name</Label>
-                <Input value={typedName} onChange={e => setTypedName(e.target.value)} className="bg-secondary border-border text-lg" placeholder="Your full name" />
-                {typedName && (
-                  <div className="p-4 bg-white rounded-lg text-center">
-                    <p className="text-2xl italic text-black" style={{ fontFamily: "cursive" }}>{typedName}</p>
+        >
+          {detailTpl && (() => {
+            const Icon = templateIcon(detailTpl.name);
+            const cat = TEMPLATE_CATEGORIES[detailTpl.name] || "Custom";
+            const useCta = () => applyTemplateToNewContract(detailTpl);
+            const editCta = () => { setDetailTplId(null); openEditTemplate(detailTpl); };
+            const dupCta = async () => {
+              const copy = await addContractTemplate({ name: `${detailTpl.name} (Copy)`, content: detailTpl.content });
+              toast.success("Duplicated — opening your copy");
+              setDetailTplId(copy.id);
+            };
+            const delCta = async () => {
+              if (!confirm(`Archive "${detailTpl.name}"? You can restore it from the Archive page.`)) return;
+              await deleteContractTemplate(detailTpl.id);
+              setDetailTplId(null);
+              toast.success("Template archived");
+            };
+            return (
+              <>
+                {/* Sticky header — title + category + secondary-actions menu + desktop CTA */}
+                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 border-b border-border shrink-0">
+                  <div className="shrink-0 rounded-lg bg-primary/10 p-2">
+                    <Icon className="w-5 h-5 text-primary" strokeWidth={1.75} />
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Draw your signature below</Label>
-                <div className="border border-border rounded-lg bg-[#1a1a2e] overflow-hidden">
-                  <canvas
-                    ref={canvasRef}
-                    width={350}
-                    height={120}
-                    className="w-full cursor-crosshair touch-none"
-                    onMouseDown={startDraw}
-                    onMouseMove={draw}
-                    onMouseUp={stopDraw}
-                    onMouseLeave={stopDraw}
-                    onTouchStart={startDraw}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDraw}
-                  />
+                  <div className="flex-1 min-w-0">
+                    <DialogTitle className="text-base sm:text-lg leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                      {detailTpl.name}
+                    </DialogTitle>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mt-0.5">{cat}</p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary touch-manipulation"
+                        aria-label="More actions"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={editCta}>
+                        <Edit3 className="w-4 h-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={dupCta}>
+                        <Copy className="w-4 h-4 mr-2" /> Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={delCta} className="text-destructive focus:text-destructive">
+                        <Trash2 className="w-4 h-4 mr-2" /> Archive
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button onClick={useCta} className="hidden sm:inline-flex">
+                    Use in new contract <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
                 </div>
-                <button onClick={clearCanvas} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
-              </div>
-            )}
 
-            <p className="text-[10px] text-muted-foreground">
-              By signing, you agree this is your legal signature and you accept the terms of this contract. Timestamp and IP will be recorded.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSignDialogOpen(false)}>Cancel</Button>
-            <Button onClick={submitSignature} className="gap-2">
-              <CheckCircle className="w-4 h-4" /> Sign Contract
-            </Button>
-          </DialogFooter>
+                {/* Body — fills remaining height, scrolls internally. Inline stat
+                    line replaces the old 3-card grid; preview owns the fold. */}
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 space-y-3 min-h-0">
+                  <p className="text-xs text-muted-foreground">
+                    Used in <span className="text-foreground font-medium tabular-nums">{detailUsage.count}</span>{" "}
+                    {detailUsage.count === 1 ? "contract" : "contracts"}
+                    <span className="mx-1.5">·</span>
+                    Last used <span className="text-foreground font-medium">{detailUsage.lastUsed ? new Date(detailUsage.lastUsed).toLocaleDateString() : "Never"}</span>
+                    <span className="mx-1.5">·</span>
+                    <span className="text-foreground font-medium tabular-nums">{detailTpl.content.length.toLocaleString()}</span> chars
+                  </p>
+                  {Array.isArray(detailTpl.pages) && detailTpl.pages.length > 0 ? (
+                    // Multi-page template — show ONLY the first page as a
+                    // glance preview, with a small "+N more pages" hint
+                    // so the dialog isn't a 3000px-tall full-document scroll.
+                    // Owner clicks Edit / Use in new contract to see the
+                    // full thing in context.
+                    (() => {
+                      const sortedPages = [...detailTpl.pages].sort((a, b) => a.sortOrder - b.sortOrder);
+                      const firstAgreement = sortedPages.find(p => p.type === "agreement") || sortedPages[0];
+                      const otherCount = sortedPages.length - 1;
+                      const otherTypes = sortedPages.filter(p => p.id !== firstAgreement?.id).map(p => p.label).join(", ");
+                      return (
+                        <div className="space-y-2">
+                          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                            <ContractLetterhead
+                              orgName={data.organization?.name}
+                              ownerName={profile?.name}
+                              orgLogo={data.organization?.logoUrl}
+                              businessInfo={data.organization?.businessInfo}
+                              intro="Preview — this is what your client will see when you send it."
+                            />
+                            {firstAgreement?.type === "invoice" ? (
+                              <InvoicePageRenderer
+                                contractTitle={detailTpl.name}
+                                org={data.organization}
+                                client={null}
+                                milestones={[
+                                  { id: "p1", label: "Deposit", type: "fixed", fixedAmount: 600, dueType: "at_signing", status: "due" },
+                                  { id: "p2", label: "Balance", type: "fixed", fixedAmount: 600, dueType: "absolute_date", dueDate: "2026-06-14", status: "pending" },
+                                ]}
+                              />
+                            ) : (
+                              <div
+                                className="px-6 sm:px-10 py-8 contract-html-light max-h-[40vh] overflow-y-auto"
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(
+                                    renderTemplatePreviewHtml(firstAgreement?.content || "", data.organization),
+                                    { ADD_ATTR: ["class"] },
+                                  ),
+                                }}
+                              />
+                            )}
+                          </div>
+                          {otherCount > 0 && (
+                            <p className="text-[11px] text-muted-foreground text-center px-2">
+                              + {otherCount} more page{otherCount === 1 ? "" : "s"} ({otherTypes}). Click <strong>Edit</strong> or <strong>Use in new contract</strong> to see them all.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                      <ContractLetterhead
+                        orgName={data.organization?.name}
+                        ownerName={profile?.name}
+                        orgLogo={data.organization?.logoUrl}
+                        businessInfo={data.organization?.businessInfo}
+                        intro="The contract is ready for review and signature. If you have any questions, just ask."
+                      />
+                      {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(detailTpl.content) ? (
+                        <div
+                          className="px-6 sm:px-10 py-8 contract-html-light"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(
+                              renderTemplatePreviewHtml(detailTpl.content, data.organization),
+                              { ADD_ATTR: ["class"] },
+                            ),
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="px-6 sm:px-10 py-8 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap"
+                          style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}
+                        >
+                          {detailTpl.content || "Empty template"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground/60 text-center pb-1">This is what your client sees when you send it</p>
+                </div>
+
+                {/* Mobile-only pinned CTA — safe-area-aware so it clears the iOS home indicator */}
+                <div
+                  className="sm:hidden border-t border-border bg-card p-3 shrink-0"
+                  style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+                >
+                  <Button onClick={useCta} className="w-full" size="lg">
+                    Use in new contract <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

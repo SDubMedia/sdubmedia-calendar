@@ -73,43 +73,55 @@ export default function TermsPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">8. AI Features</h2>
+          <h2 className="text-lg font-semibold">8. Automated Client Communication</h2>
+          <p>Slate sends automated emails to your clients on your behalf based on actions you take in the app: contract-for-signature emails, signed-contract receipts, payment reminders on milestone due dates, reschedule notifications, and (optionally) event reminders. These emails are sent from a Slate-controlled mail server with your company name as the display sender and your business email as Reply-To, so client replies route directly to you.</p>
+          <p>You can configure inbound email forwarding so client replies to those emails are captured and threaded onto the matching proposal or contract inside the app. We don't read or analyze inbound message content beyond matching it to a record.</p>
+          <p>You're responsible for the accuracy of the contract templates, package descriptions, and payment schedules you configure — we render them as-is to your clients.</p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">9. Reschedules, Cancellations, Refunds</h2>
+          <p>Slate provides tools to reschedule a project (which updates the calendar entry and opens a pre-filled email to the client) and to archive contracts or proposals. <strong>Refunds of customer payments are your responsibility</strong> — you initiate refunds through your Stripe dashboard, and Slate's records reflect what Stripe reports back via webhook. SDub Media doesn't issue refunds on your behalf and isn't a party to your contracts with your clients.</p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">10. AI Features</h2>
           <p>AI-powered features (receipt scanning, content brainstorming) are available on the Pro tier. When you use an AI feature, the content you submit is sent to our AI provider for processing. We do not use your content to train AI models. AI outputs may contain errors — always verify before relying on them for financial or legal decisions.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">9. Our Intellectual Property</h2>
+          <h2 className="text-lg font-semibold">11. Our Intellectual Property</h2>
           <p>The Slate software, design, and brand are owned by SDub Media LLC. These Terms grant you a limited, non-exclusive, non-transferable license to use the Service for your business. You may not copy, modify, or distribute the Slate software.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">10. Service Availability</h2>
+          <h2 className="text-lg font-semibold">12. Service Availability</h2>
           <p>We aim for high availability but do not guarantee uninterrupted service. We may perform maintenance, updates, or temporarily suspend the Service for technical reasons. We are not liable for losses caused by downtime.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">11. Limitation of Liability</h2>
+          <h2 className="text-lg font-semibold">13. Limitation of Liability</h2>
           <p>To the maximum extent permitted by law, SDub Media LLC is not liable for indirect, incidental, special, or consequential damages, or for lost profits, revenue, data, or goodwill. Our total liability in any 12-month period is limited to the amount you paid us in that period.</p>
           <p>The Service is provided "as is" without warranties of any kind, express or implied.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">12. Termination</h2>
+          <h2 className="text-lg font-semibold">14. Termination</h2>
           <p>You may close your account at any time. We may suspend or terminate your account for material violations of these Terms, non-payment, or if required by law. On termination, your right to use the Service ends immediately.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">13. Governing Law</h2>
+          <h2 className="text-lg font-semibold">15. Governing Law</h2>
           <p>These Terms are governed by the laws of the State of Tennessee, without regard to conflict of law rules. Any dispute will be resolved in the state or federal courts located in Davidson County, Tennessee.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">14. Changes to these Terms</h2>
+          <h2 className="text-lg font-semibold">16. Changes to these Terms</h2>
           <p>We may update these Terms occasionally. We'll notify you of material changes by email or through the app at least 30 days before they take effect. Continued use of the Service after changes take effect means you accept the new Terms.</p>
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">15. Contact</h2>
+          <h2 className="text-lg font-semibold">17. Contact</h2>
           <p>Questions? Email <a href="mailto:support@sdubmedia.com" className="text-primary hover:underline">support@sdubmedia.com</a>.</p>
         </section>
 

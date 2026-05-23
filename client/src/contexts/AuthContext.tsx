@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from "@/lib/supabase";
 import type { UserProfile, UserRole, PersonalEventTemplate } from "@/lib/types";
 import type { User, Session } from "@supabase/supabase-js";
+import { rememberAccount } from "@/lib/recent-accounts";
 
 interface AuthContextValue {
   user: User | null;
@@ -16,11 +17,14 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   // User management (owner only)
   createUser: (email: string, password: string, name: string, role: UserRole, clientIds: string[], crewMemberId?: string) => Promise<string>;
-  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => Promise<void>;
+  updateUserProfile: (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides" | "showInMeetingAssignments">>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   saveMyTemplates: (templates: PersonalEventTemplate[]) => Promise<void>;
+  markGuideSeen: (pageId: string) => Promise<void>;
+  markBusinessInfoSetupSeen: (opts?: { stripeOptedOut?: boolean }) => Promise<void>;
+  markSeenTravelBaseInfo: () => Promise<void>;
   allProfiles: UserProfile[];
   refreshProfiles: () => Promise<void>;
   // View As (owner only) — preview the app as another role
@@ -47,9 +51,39 @@ function rowToProfile(r: any): UserProfile {
     mustChangePassword: r.must_change_password ?? true,
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
     featureOverrides: r.feature_overrides || undefined,
+    showInMeetingAssignments: r.show_in_meeting_assignments ?? true,
     personalEventTemplates: Array.isArray(r.personal_event_templates) ? r.personal_event_templates : [],
+    guidance: (r.guidance && typeof r.guidance === "object")
+      ? {
+          seenGuides: r.guidance.seenGuides || {},
+          businessInfoSetupSeen: r.guidance.businessInfoSetupSeen ?? false,
+          stripeOptedOut: r.guidance.stripeOptedOut ?? false,
+          manualCompletions: r.guidance.manualCompletions || {},
+        }
+      : { seenGuides: {}, businessInfoSetupSeen: false, stripeOptedOut: false, manualCompletions: {} },
     createdAt: r.created_at,
   };
+}
+
+// Decorate the recent-accounts entry with org name + role so the login
+// card picker can show "SDub Media · Owner" instead of just the email.
+// Fire-and-forget; never blocks login.
+async function rememberAccountFromSession(email: string | null | undefined, profile: UserProfile | null) {
+  if (!email) return;
+  let orgName: string | undefined;
+  if (profile?.orgId) {
+    try {
+      const { data } = await supabase.from("organizations").select("name").eq("id", profile.orgId).single();
+      orgName = data?.name;
+    } catch {
+      // Non-fatal — card just won't show org name.
+    }
+  }
+  rememberAccount(email, {
+    displayName: profile?.name,
+    orgName,
+    role: profile?.role,
+  });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -116,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchProfile(s.user.id).then(p => {
           setProfile(p);
           if (p?.role === "owner") refreshProfiles();
+          rememberAccountFromSession(s.user.email, p);
           setLoading(false);
         });
       } else {
@@ -127,14 +162,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        fetchProfile(s.user.id).then(p => { setProfile(p); if (p?.role === "owner") refreshProfiles(); });
+        fetchProfile(s.user.id).then(p => {
+          setProfile(p);
+          if (p?.role === "owner") refreshProfiles();
+          rememberAccountFromSession(s.user.email, p);
+        });
       } else {
         setProfile(null);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+  }, [fetchProfile, refreshProfiles]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     // Clear any stale impersonation from previous session
@@ -191,16 +230,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return authData.user.id;
   }, [refreshProfiles, profile?.orgId]);
 
-  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides">>) => {
+  const updateUserProfile = useCallback(async (id: string, updates: Partial<Pick<UserProfile, "name" | "role" | "clientIds" | "crewMemberId" | "featureOverrides" | "showInMeetingAssignments">>) => {
     const patch: any = {};
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.role !== undefined) patch.role = updates.role;
     if (updates.clientIds !== undefined) patch.client_ids = updates.clientIds;
     if (updates.crewMemberId !== undefined) patch.crew_member_id = updates.crewMemberId;
     if (updates.featureOverrides !== undefined) patch.feature_overrides = updates.featureOverrides;
+    if (updates.showInMeetingAssignments !== undefined) patch.show_in_meeting_assignments = updates.showInMeetingAssignments;
     const { error } = await supabase.from("user_profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     await refreshProfiles();
+    // If the updated profile IS the currently-logged-in user, also
+    // refresh THE current `profile` state. refreshProfiles only updates
+    // the `allProfiles` array; without this, customize-my-menu toggles
+    // (and any other self-profile edits) silently don't take effect
+    // for the user editing them.
+    setProfile(p => {
+      if (!p || p.id !== id) return p;
+      return { ...p, ...updates } as UserProfile;
+    });
   }, [refreshProfiles]);
 
   const deleteUser = useCallback(async (id: string) => {
@@ -254,10 +303,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(p => p ? { ...p, personalEventTemplates: templates } : p);
   }, [user]);
 
+  // Mark a per-page first-visit guide as seen. Idempotent — calling
+  // again with the same pageId is a no-op (we keep the original
+  // first-seen timestamp). Optimistic local update so the modal
+  // closes instantly without waiting for the round-trip.
+  // The mark-* helpers ALL await the supabase update before flipping
+  // local state. The previous fire-and-forget version (`void` + setState)
+  // had a real bug: if the update failed silently (RLS, network blip),
+  // local state showed the modal dismissed but DB stayed stale, and
+  // the modal popped right back up on next page load. Awaiting the
+  // update + only updating local on success keeps the two in sync.
+  const markGuideSeen = useCallback(async (pageId: string) => {
+    if (!user || !profile) return;
+    const seen = profile.guidance?.seenGuides || {};
+    if (seen[pageId]) return;
+    const nextGuidance = {
+      seenGuides: { ...seen, [pageId]: new Date().toISOString() },
+      businessInfoSetupSeen: profile.guidance?.businessInfoSetupSeen ?? false,
+      stripeOptedOut: profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: profile.guidance?.seenTravelBaseInfo ?? false,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markGuideSeen] DB update failed:", error); return; }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
+
+  const markBusinessInfoSetupSeen = useCallback(async (opts?: { stripeOptedOut?: boolean }) => {
+    if (!user || !profile) return;
+    const nextGuidance = {
+      seenGuides: profile.guidance?.seenGuides || {},
+      businessInfoSetupSeen: true,
+      stripeOptedOut: opts?.stripeOptedOut ?? profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: profile.guidance?.seenTravelBaseInfo ?? false,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markBusinessInfoSetupSeen] DB update failed:", error); throw new Error(error.message); }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
+
+  const markSeenTravelBaseInfo = useCallback(async () => {
+    if (!user || !profile) return;
+    if (profile.guidance?.seenTravelBaseInfo) return;
+    const nextGuidance = {
+      seenGuides: profile.guidance?.seenGuides || {},
+      businessInfoSetupSeen: profile.guidance?.businessInfoSetupSeen ?? false,
+      stripeOptedOut: profile.guidance?.stripeOptedOut ?? false,
+      seenTravelBaseInfo: true,
+      manualCompletions: profile.guidance?.manualCompletions || {},
+    };
+    const { error } = await supabase.from("user_profiles").update({ guidance: nextGuidance }).eq("id", user.id);
+    if (error) { console.error("[markSeenTravelBaseInfo] DB update failed:", error); return; }
+    setProfile(p => p ? { ...p, guidance: nextGuidance } : p);
+  }, [user, profile]);
+
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
       signIn, signOut, changePassword, completeOnboarding, saveMyTemplates,
+      markGuideSeen, markBusinessInfoSetupSeen, markSeenTravelBaseInfo,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
       viewAsRole, setViewAsRole: setViewAsRoleWrapped, impersonateUserId, setImpersonateUserId, effectiveProfile,

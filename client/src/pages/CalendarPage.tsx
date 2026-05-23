@@ -4,26 +4,30 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, PersonalEvent, PersonalEventTemplate } from "@/lib/types";
+import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
+import MeetingDialog, { getMeetingColor } from "@/components/MeetingDialog";
 import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
+import AddUserDialog from "@/components/AddUserDialog";
 import { Settings } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
+  tentative: "Tentative",
   upcoming: "Upcoming",
   filming_done: "Filmed",
   in_editing: "Editing",
-  completed: "Completed",
+  editing_done: "Editing Done",
+  delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
@@ -33,6 +37,17 @@ const MONTH_NAMES = [
 ];
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Show the "Deposit Paid" pill for this many days after the at_signing
+// milestone gets paid. After that, it just looks like a regular upcoming
+// project — the highlight is for celebrating the moment, not for permanent
+// state tracking.
+const DEPOSIT_PAID_PILL_DAYS = 7;
+function depositRecentlyPaid(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const ageMs = Date.now() - new Date(iso).getTime();
+  return ageMs >= 0 && ageMs <= DEPOSIT_PAID_PILL_DAYS * 24 * 60 * 60 * 1000;
+}
 
 export default function CalendarPage() {
   const { data, addPersonalEvent } = useApp();
@@ -45,6 +60,7 @@ export default function CalendarPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [clientFilter, setClientFilter] = useState<string>("all");
   const [viewScope, setViewScope] = useState<"month" | "all">("month");
   const [calendarMode, setCalendarMode] = useState<"production" | "personal" | "both">(isFamily ? "personal" : "production");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -52,11 +68,19 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const isOwner = role === "owner";
 
   // Bulk-apply template to multiple dates
   const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
   const [bulkDates, setBulkDates] = useState<Set<string>>(new Set());
+  // Anchor for shift-click range select. Stores the last cell the
+  // user clicked while selecting, so a subsequent shift-click fills
+  // every date between the two.
+  const [shiftAnchor, setShiftAnchor] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
   const myTemplates = effectiveProfile?.personalEventTemplates || [];
 
@@ -72,6 +96,74 @@ export default function CalendarPage() {
   const exitBulkMode = () => {
     setBulkTemplate(null);
     setBulkDates(new Set());
+    setShiftAnchor(null);
+  };
+
+  // Shift-click range fill: from anchor to target, both inclusive.
+  // Adds every day in between to the bulk selection. If no anchor
+  // exists yet, just adds this single date and stamps the anchor.
+  const handleShiftSelect = (dateStr: string) => {
+    if (!shiftAnchor) {
+      setBulkDates(prev => new Set(prev).add(dateStr));
+      setShiftAnchor(dateStr);
+      return;
+    }
+    const start = shiftAnchor < dateStr ? shiftAnchor : dateStr;
+    const end = shiftAnchor < dateStr ? dateStr : shiftAnchor;
+    const next = new Set(bulkDates);
+    const cursor = new Date(start + "T00:00:00");
+    const stop = new Date(end + "T00:00:00");
+    while (cursor <= stop) {
+      next.add(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    setBulkDates(next);
+    setShiftAnchor(dateStr);
+  };
+
+  // Cmd/Ctrl-click toggle: add or remove a single date from the
+  // bulk selection without disturbing other selected days.
+  const handleToggleSelect = (dateStr: string) => {
+    setBulkDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+    setShiftAnchor(dateStr);
+  };
+
+  // Quick-apply: takes whatever is in bulkDates and writes a
+  // personal event for each day using the picked template. Same
+  // logic as the original bulk apply, but reusable for the new
+  // chip-based UI when dates were selected before a template.
+  const applyTemplateToBulk = async (tpl: PersonalEventTemplate) => {
+    if (bulkDates.size === 0) return;
+    setBulkSaving(true);
+    const dates = Array.from(bulkDates).sort();
+    try {
+      for (const d of dates) {
+        await addPersonalEvent({
+          title: tpl.title,
+          date: d,
+          startTime: "",
+          endTime: "",
+          allDay: true,
+          location: "",
+          notes: "",
+          category: tpl.category,
+          color: tpl.color,
+          priority: false,
+          orgId: "",
+        });
+      }
+      toast.success(`Added ${dates.length} ${tpl.label} event${dates.length === 1 ? "" : "s"}`);
+      exitBulkMode();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add events");
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const applyBulk = async () => {
@@ -191,11 +283,16 @@ export default function CalendarPage() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
 
-  // Projects for this month
+  // Projects for this month — already pre-filtered by clientFilter so every
+  // downstream consumer (grid cells, status counts, hours totals, list view)
+  // reflects the picked client without each one having to re-filter.
   const monthProjects = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return data.projects.filter((p) => p.date.startsWith(prefix));
-  }, [data.projects, year, month]);
+    return data.projects.filter((p) =>
+      p.date.startsWith(prefix) &&
+      (clientFilter === "all" || p.clientId === clientFilter)
+    );
+  }, [data.projects, year, month, clientFilter]);
 
   // Personal events for this month
   const monthPersonalEvents = useMemo(() => {
@@ -210,6 +307,39 @@ export default function CalendarPage() {
       .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
   };
 
+  // External calendar events (subscribed iCal feeds, e.g. Apple Cal).
+  // Pre-index per visible-month-day for efficient lookup. Only enabled
+  // calendars are shown. Events use the parent calendar's color so
+  // it's visually clear which feed each event came from.
+  const monthExternalEvents = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const enabledIds = new Set(data.externalCalendars.filter(c => c.enabled).map(c => c.id));
+    const calColor = new Map(data.externalCalendars.map(c => [c.id, c.color] as const));
+    return data.externalEvents
+      .filter(e => enabledIds.has(e.externalCalendarId) && e.startAt.startsWith(prefix))
+      .map(e => ({ ...e, color: calColor.get(e.externalCalendarId) || "#94a3b8" }));
+  }, [data.externalEvents, data.externalCalendars, year, month]);
+
+  const getExternalEventsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return monthExternalEvents.filter(e => e.startAt.startsWith(dateStr));
+  };
+
+  const monthMeetings = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return data.meetings.filter((m) =>
+      m.date.startsWith(prefix) &&
+      // When a client is filtered, show meetings for that client OR meetings
+      // with no client (general meetings stay visible across filter views).
+      (clientFilter === "all" || m.clientId === clientFilter || !m.clientId)
+    );
+  }, [data.meetings, year, month, clientFilter]);
+
+  const getMeetingsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return monthMeetings.filter((m) => m.date === dateStr);
+  };
+
   // Projects filtered by selected date, or scope (month/all) and status
   const filteredProjects = useMemo(() => {
     let projects;
@@ -218,10 +348,14 @@ export default function CalendarPage() {
     } else {
       projects = viewScope === "month" ? monthProjects : data.projects;
     }
+    // Apply clientFilter when viewing "all" — monthProjects is already filtered.
+    if (viewScope === "all" && clientFilter !== "all") {
+      projects = projects.filter((p) => p.clientId === clientFilter);
+    }
     const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate]);
+  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate, clientFilter]);
 
   const filteredPersonalEvents = useMemo(() => {
     if (selectedDate) {
@@ -263,25 +397,32 @@ export default function CalendarPage() {
 
   const statusCounts = useMemo(() => {
     const projects = viewScope === "month" ? monthProjects : data.projects;
-    const counts: Record<string, number> = { all: projects.length, upcoming: 0, filming_done: 0, in_editing: 0, completed: 0 };
+    const counts: Record<string, number> = { all: projects.length, tentative: 0, upcoming: 0, filming_done: 0, in_editing: 0, editing_done: 0, delivered: 0 };
     projects.forEach((p) => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
   }, [data.projects, monthProjects, viewScope]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Page header */}
+    <div className="h-full overflow-auto">
+      {/* Page header — lives inside the scroll area so it scrolls with
+          the calendar (matches the iOS layout). When the user is at the
+          top, the add buttons + mode toggle + filter row are visible;
+          scrolling down reveals more grid; scrolling back up brings the
+          header back. */}
       <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50 space-y-2">
-        {/* Top row: title + action buttons */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+        {/* Top row: title + action buttons. min-w-0 lets the title shrink
+            so the buttons can stay on-row at narrow widths instead of forcing
+            page-level horizontal scroll. flex-wrap kicks in only if even the
+            icon-only buttons + a tight title can't fit. */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {calendarMode === "production" ? "Production Calendar" : calendarMode === "personal" ? "My Life" : "All Calendars"}
             </h1>
             {!(isFamily && calendarMode !== "personal") && (
               <p className="text-sm text-muted-foreground mt-0.5">
                 {calendarMode === "production"
-                  ? `${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
+                  ? `${clientFilter !== "all" ? `${data.clients.find(c => c.id === clientFilter)?.company || ""} · ` : ""}${monthProjects.length} projects · ${monthlyHoursTotals.worked.toFixed(1)} worked · ${monthlyHoursTotals.billed.toFixed(1)} billed`
                   : calendarMode === "personal"
                   ? `${monthPersonalEvents.length} events this month`
                   : `${monthProjects.length} projects · ${monthPersonalEvents.length} personal events`}
@@ -314,13 +455,36 @@ export default function CalendarPage() {
                 ))}
               </select>
             )}
+            {isOwner && (
+              <Button
+                variant="outline"
+                onClick={() => setAddUserOpen(true)}
+                className="gap-2 border-blue-500/40 text-blue-300 hover:bg-blue-500/10 px-3 sm:px-4"
+                title="Add a new user — owner only"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span className="hidden sm:inline">User</span>
+              </Button>
+            )}
+            {!isClient && (
+              <Button
+                variant="outline"
+                onClick={() => { setEditingMeeting(null); setMeetingOpen(true); }}
+                className="gap-2 border-slate-500/40 text-slate-700 dark:text-slate-300 hover:bg-slate-500/10 px-3 sm:px-4"
+                title="Schedule a meeting (unpaid)"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Meeting</span>
+              </Button>
+            )}
             {!isClient && (
               <Button
                 onClick={() => openAddForDate(null)}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 px-3 sm:px-4"
+                title="Add a new project"
               >
                 <Plus className="w-4 h-4" />
-                <span>New</span>
+                <span className="hidden sm:inline">Project</span>
               </Button>
             )}
           </div>
@@ -364,21 +528,87 @@ export default function CalendarPage() {
             Both
           </button>
         </div>}
+
+        {/* Filters box — applies to both projects and meetings on the grid */}
+        {!isClient && !isFamily && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Filter</span>
+            <span className="text-xs text-muted-foreground">Client</span>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className="bg-background border border-border rounded px-2 py-1 text-xs font-medium text-foreground outline-none focus:border-primary max-w-[180px]"
+            >
+              <option value="all">All clients</option>
+              {data.clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.company}</option>
+              ))}
+            </select>
+            {clientFilter !== "all" && (
+              <button
+                onClick={() => setClientFilter("all")}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="flex-1 overflow-auto px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
-        {bulkTemplate && (
-          <div className="sticky top-0 z-20 mx-3 sm:mx-0 rounded-lg border border-primary/40 bg-primary/15 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 shadow-lg">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground truncate">{bulkTemplate.label}</div>
-              <div className="text-[11px] text-muted-foreground">
-                {bulkDates.size === 0 ? "Tap dates to select" : `${bulkDates.size} selected`}
+      <div className="px-0 py-3 sm:p-6 space-y-4 sm:space-y-6">
+        {/* Bulk-mode bar — shown when either:
+              - user picked a template via the "Bulk Apply" dropdown (legacy flow)
+              - user shift- or cmd-clicked dates and is now picking a template (new flow)
+            In the second case, the bar surfaces template chips so the
+            owner can quick-apply without a separate dropdown click. */}
+        {(bulkTemplate || bulkDates.size > 0) && (
+          <div className="sticky top-0 z-20 mx-3 sm:mx-0 rounded-lg border border-primary/40 bg-primary/15 backdrop-blur px-3 sm:px-4 py-2.5 shadow-lg space-y-2">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {bulkTemplate ? bulkTemplate.label : "Quick Apply"}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {bulkDates.size === 0
+                    ? "Tap dates to select. Hold Shift to fill a range."
+                    : bulkTemplate
+                      ? `${bulkDates.size} selected`
+                      : `${bulkDates.size} day${bulkDates.size === 1 ? "" : "s"} selected — pick a template below`}
+                </div>
               </div>
+              <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving} className="shrink-0">Cancel</Button>
+              {bulkTemplate && (
+                <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground shrink-0">
+                  {bulkSaving ? "Adding…" : `Add${bulkDates.size > 0 ? ` (${bulkDates.size})` : ""}`}
+                </Button>
+              )}
             </div>
-            <Button size="sm" variant="ghost" onClick={exitBulkMode} disabled={bulkSaving} className="shrink-0">Cancel</Button>
-            <Button size="sm" onClick={applyBulk} disabled={bulkDates.size === 0 || bulkSaving} className="bg-primary text-primary-foreground shrink-0">
-              {bulkSaving ? "Adding…" : `Add${bulkDates.size > 0 ? ` (${bulkDates.size})` : ""}`}
-            </Button>
+
+            {/* Template chips — shown when dates are selected but no
+                template has been picked yet. One tap = apply that
+                template to all selected dates. */}
+            {!bulkTemplate && bulkDates.size > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {myTemplates.length === 0 && (
+                  <span className="text-xs text-muted-foreground italic">
+                    No templates yet — add some in Settings → Personal templates.
+                  </span>
+                )}
+                {myTemplates.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={bulkSaving}
+                    onClick={() => applyTemplateToBulk(t)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-background text-xs text-foreground hover:bg-secondary hover:border-primary/40 transition-colors disabled:opacity-50"
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || "#94a3b8" }} />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {/* Calendar */}
@@ -427,6 +657,32 @@ export default function CalendarPage() {
               const isToday = isCurrentMonth && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
               const dayProjects = isCurrentMonth ? getProjectsForDay(day) : [];
               const dayEvents = isCurrentMonth ? getPersonalEventsForDay(day) : [];
+              const dayExternalEvents = isCurrentMonth ? getExternalEventsForDay(day) : [];
+              const dayMeetings = isCurrentMonth ? getMeetingsForDay(day) : [];
+
+              // For non-current-month cells, compute the actual date in
+              // the previous or next month. Lets us show the real day
+              // number (28, 29, 30 for the leading week; 1, 2, 3 for the
+              // trailing week) instead of blank cells.
+              let displayDay: number;
+              let displayMonth: number;
+              let displayYear: number;
+              if (day < 1) {
+                const prevMonthIdx = month === 0 ? 11 : month - 1;
+                const prevYear = month === 0 ? year - 1 : year;
+                const daysInPrevMonth = new Date(prevYear, prevMonthIdx + 1, 0).getDate();
+                displayDay = daysInPrevMonth + day;
+                displayMonth = prevMonthIdx;
+                displayYear = prevYear;
+              } else if (day > daysInMonth) {
+                displayDay = day - daysInMonth;
+                displayMonth = month === 11 ? 0 : month + 1;
+                displayYear = month === 11 ? year + 1 : year;
+              } else {
+                displayDay = day;
+                displayMonth = month;
+                displayYear = year;
+              }
               const dateStr = isCurrentMonth
                 ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                 : null;
@@ -439,13 +695,13 @@ export default function CalendarPage() {
                   key={i}
                   className={cn(
                     "min-h-[90px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-border relative select-none [&:nth-child(7n)]:border-r-0 sm:[&:nth-child(7n)]:border-r",
-                    !isCurrentMonth && "opacity-30",
+                    !isCurrentMonth && "bg-muted/10 cursor-pointer hover:bg-muted/20 transition-colors",
                     isToday && !isSelected && !isBulkSelected && "bg-primary/5",
                     isSelected && "bg-primary/15 ring-2 ring-primary/60 ring-inset",
                     isBulkSelected && "bg-emerald-500/20 ring-2 ring-emerald-500/60 ring-inset",
                     isCurrentMonth && "hover:bg-white/3 cursor-pointer transition-colors"
                   )}
-                  onClick={() => {
+                  onClick={(e) => {
                     if (longPressTriggeredRef.current) {
                       longPressTriggeredRef.current = false;
                       return;
@@ -454,7 +710,25 @@ export default function CalendarPage() {
                       swipeFiredRef.current = false;
                       return;
                     }
-                    if (!isCurrentMonth || !dateStr || isClient) return;
+                    // Out-of-month cell: jump to that month so the user
+                    // can interact with the date there. Avoids any confused
+                    // selection / bulk state across months.
+                    if (!isCurrentMonth) {
+                      setYear(displayYear);
+                      setMonth(displayMonth);
+                      return;
+                    }
+                    if (!dateStr || isClient) return;
+                    // Shift = range select, Cmd/Ctrl = toggle individual.
+                    // Both work whether or not a bulk template is active —
+                    // owner can pre-select dates and pick a template after.
+                    // Personal/Both modes only (range-fill makes no sense
+                    // when scoped to production projects).
+                    if ((e.shiftKey || e.metaKey || e.ctrlKey) && (calendarMode === "personal" || calendarMode === "both")) {
+                      if (e.shiftKey) handleShiftSelect(dateStr);
+                      else handleToggleSelect(dateStr);
+                      return;
+                    }
                     if (bulkTemplate) {
                       toggleBulkDate(dateStr);
                       return;
@@ -470,9 +744,9 @@ export default function CalendarPage() {
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
                       "text-xs font-medium w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full",
-                      isToday ? "bg-primary text-primary-foreground" : "text-foreground"
+                      isToday ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-foreground" : "text-muted-foreground/50",
                     )}>
-                      {isCurrentMonth ? day : ""}
+                      {displayDay}
                     </span>
                     {!isFamily && calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
@@ -498,19 +772,55 @@ export default function CalendarPage() {
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
                             "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            // Tentative = agreement sent but not yet paid.
+                            // Dashed border + softer fill so it visually
+                            // reads "not locked in yet" vs the solid blue
+                            // of an upcoming/confirmed booking.
+                            p.status === "tentative" && "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-dashed border-amber-500/50",
                             p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
                             p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
                             p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
-                            p.status === "completed" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                            p.status === "editing_done" && "bg-teal-500/25 text-teal-700 dark:text-teal-300",
+                            p.status === "delivered" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                            p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
                           )}
                         >
                           {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
+                          {depositRecentlyPaid(p.depositPaidAt) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline-block flex-shrink-0 mr-0.5" aria-label="Deposit paid" />}
                           <span className="hidden sm:inline">{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}</span>
                           <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
                         </div>
                       ))}
                       {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Meeting chips — only show in production / both modes. */}
+                  {(calendarMode === "production" || calendarMode === "both") && dayMeetings.length > 0 && (
+                    <div className="space-y-0.5">
+                      {dayMeetings.slice(0, 2).map((m) => {
+                        const client = m.clientId ? data.clients.find(c => c.id === m.clientId) : null;
+                        const mc = getMeetingColor(m.color);
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={(ev) => { ev.stopPropagation(); setEditingMeeting(m); setMeetingOpen(true); }}
+                            onPointerDown={(ev) => ev.stopPropagation()}
+                            className={cn(
+                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity border",
+                              mc.bg, mc.text, mc.border
+                            )}
+                            title={m.title}
+                          >
+                            <span className="hidden sm:inline">{m.startTime ? `${m.startTime} ` : ""}{m.title}{client ? ` · ${client.company}` : ""}</span>
+                            <span className="sm:hidden">{m.title}</span>
+                          </div>
+                        );
+                      })}
+                      {dayMeetings.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayMeetings.length - 2} mtg</div>
                       )}
                     </div>
                   )}
@@ -538,6 +848,30 @@ export default function CalendarPage() {
                       })}
                       {dayEvents.length > (calendarMode === "both" ? 2 : 3) && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayEvents.length - (calendarMode === "both" ? 2 : 3)}</div>
+                      )}
+
+                      {/* External calendar events (e.g. Apple Cal). Rendered
+                          beneath personal events with the parent calendar's
+                          color and a small dotted border to signal "imported".
+                          Read-only — click does nothing for now. */}
+                      {dayExternalEvents.slice(0, 2).map((e) => (
+                        <div
+                          key={e.id}
+                          onClick={(ev) => ev.stopPropagation()}
+                          onPointerDown={(ev) => ev.stopPropagation()}
+                          className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate border border-dashed text-foreground/80"
+                          style={{ borderColor: e.color, backgroundColor: e.color + "20" }}
+                          title={e.title + (e.location ? ` · ${e.location}` : "")}
+                        >
+                          <span className="hidden sm:inline">
+                            {e.allDay ? "" : new Date(e.startAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " "}
+                            {e.title}
+                          </span>
+                          <span className="sm:hidden">{e.title}</span>
+                        </div>
+                      ))}
+                      {dayExternalEvents.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayExternalEvents.length - 2} ext</div>
                       )}
                     </div>
                   )}
@@ -587,14 +921,29 @@ export default function CalendarPage() {
                     All Projects
                   </button>
                 </div>
+                {/* Client filter */}
+                <div className="sm:mr-3 sm:pr-3 sm:border-r sm:border-border">
+                  <select
+                    value={clientFilter}
+                    onChange={(e) => setClientFilter(e.target.value)}
+                    className="bg-secondary border border-border rounded px-2 py-1.5 text-xs font-medium text-foreground outline-none focus:border-primary max-w-[200px]"
+                  >
+                    <option value="all">All clients</option>
+                    {data.clients.map((c) => (
+                      <option key={c.id} value={c.id}>{c.company}</option>
+                    ))}
+                  </select>
+                </div>
                 {/* Status filters */}
                 <div className="flex gap-1 overflow-x-auto">
                 {[
                   { key: "all", label: "All" },
+                  { key: "tentative", label: "Tentative" },
                   { key: "upcoming", label: "Upcoming" },
                   { key: "filming_done", label: "Filmed" },
                   { key: "in_editing", label: "In Editing" },
-                  { key: "completed", label: "Completed" },
+                  { key: "editing_done", label: "Editing Done" },
+                  { key: "delivered", label: "Delivered" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -652,10 +1001,12 @@ export default function CalendarPage() {
 
                         {/* Status bar */}
                         <div className={cn("w-1 self-stretch rounded-full flex-shrink-0",
+                          project.status === "tentative" && "bg-amber-400",
                           project.status === "upcoming" && "bg-blue-500",
                           project.status === "filming_done" && "bg-purple-500",
                           project.status === "in_editing" && "bg-amber-500",
-                          project.status === "completed" && "bg-green-500",
+                          project.status === "editing_done" && "bg-teal-500",
+                          project.status === "delivered" && "bg-green-500",
                           project.status === "cancelled" && "bg-red-500",
                         )} />
 
@@ -666,14 +1017,22 @@ export default function CalendarPage() {
                               {pType?.name ?? "Unknown Project"}
                             </span>
                             <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border",
+                              project.status === "tentative" && "border-amber-500/40 border-dashed text-amber-600 dark:text-amber-300",
                               project.status === "upcoming" && "border-blue-500/40 text-blue-600 dark:text-blue-300",
                               project.status === "filming_done" && "border-purple-500/40 text-purple-600 dark:text-purple-300",
                               project.status === "in_editing" && "border-amber-500/40 text-amber-600 dark:text-amber-300",
-                              project.status === "completed" && "border-green-500/40 text-green-600 dark:text-green-300",
+                              project.status === "editing_done" && "border-teal-500/40 text-teal-600 dark:text-teal-300",
+                              project.status === "delivered" && "border-green-500/40 text-green-600 dark:text-green-300",
                               project.status === "cancelled" && "border-red-500/40 text-red-600 dark:text-red-300",
                             )}>
                               {STATUS_LABELS[project.status]}
                             </Badge>
+                            {depositRecentlyPaid(project.depositPaidAt) && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                Deposit Paid
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
@@ -806,11 +1165,22 @@ export default function CalendarPage() {
         )}
       </div>
 
+      {/* Quick-add user (owner-only) */}
+      <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} />
+
       {/* New Project Dialog */}
       <ProjectDialog
         open={newProjectOpen}
         onClose={() => { setNewProjectOpen(false); setSelectedDate(null); }}
         defaultDate={selectedDate ?? undefined}
+      />
+
+      {/* Meeting Dialog */}
+      <MeetingDialog
+        open={meetingOpen}
+        onClose={() => { setMeetingOpen(false); setEditingMeeting(null); }}
+        initialDate={selectedDate}
+        editing={editingMeeting}
       />
 
       {/* Project Detail Sheet */}

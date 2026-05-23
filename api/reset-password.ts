@@ -5,7 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId } from "./_auth.js";
+import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -69,8 +69,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ success: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Reset password error:", err);
-    return res.status(500).json({ error: err.message || "Failed to reset password" });
+    return res.status(500).json({ error: errorMessage(err, "Failed to reset password") });
   }
 }

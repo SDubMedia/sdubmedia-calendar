@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
-import { getProjectBillableHours, getProjectInvoiceAmount } from "./data";
+import { getProjectBillableHours, getProjectSubtotal, getProjectDiscountValue } from "./data";
 
 export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -82,8 +82,11 @@ export function buildLineItems(
   const filtered = projects.filter(p => {
     if (p.clientId !== client.id) return false;
     if (p.date < periodStart || p.date > periodEnd) return false;
-    // Don't invoice upcoming projects (no work done yet)
-    if (p.status === "upcoming") return false;
+    // Don't invoice upcoming or tentative projects (no work done yet)
+    if (p.status === "upcoming" || p.status === "tentative") return false;
+    // Don't invoice cancelled projects — they bill nothing and shouldn't
+    // appear as a line item at all.
+    if (p.status === "cancelled") return false;
     // Don't double-bill projects already on another invoice
     if (invoicedProjectIds.has(p.id)) return false;
     return true;
@@ -96,47 +99,56 @@ export function buildLineItems(
     const locName = locations.find(l => l.id === p.locationId)?.name;
     const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
 
-    const effectiveModel = p.billingModel ?? client.billingModel;
-    if (effectiveModel === "per_project") {
-      const amount = getProjectInvoiceAmount(p, client);
-
-      // Break down into production + post-production if we have crew data
-      const hasCrew = p.crew.length > 0;
-      const hasPost = p.postProduction.length > 0;
-
-      if (hasCrew || hasPost) {
-        if (hasCrew) {
-          const crewHours = p.crew.reduce((s, c) => s + c.hoursWorked, 0);
-
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Production`,
-            quantity: crewHours || 1,
-            unitPrice: hasPost ? Math.round(amount * 0.6 / (crewHours || 1) * 100) / 100 : amount / (crewHours || 1),
-            amount: hasPost ? Math.round(amount * 0.6 * 100) / 100 : amount,
-          });
-        }
-        if (hasPost) {
-          const postHours = p.postProduction.reduce((s, c) => s + c.hoursWorked, 0);
-
-          items.push({
-            projectId: p.id, date: p.date,
-            description: `${projectLabel} — Editing`,
-            quantity: postHours || 1,
-            unitPrice: hasCrew ? Math.round(amount * 0.4 / (postHours || 1) * 100) / 100 : amount / (postHours || 1),
-            amount: hasCrew ? Math.round(amount * 0.4 * 100) / 100 : amount,
-          });
-        }
-      } else {
-        items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
+    // Service bundle pricing wins if the project has selected services.
+    // Each service becomes its own line item with the denormalized label
+    // and price snapshot from when the project was created/edited. This
+    // bypasses both the per_project and hourly branches below.
+    if (p.services && p.services.length > 0) {
+      for (const svc of p.services) {
+        items.push({
+          projectId: p.id,
+          date: p.date,
+          description: svc.label || projectLabel,
+          quantity: 1,
+          unitPrice: Number(svc.price || 0),
+          amount: Number(svc.price || 0),
+        });
       }
+      // Skip the per_project/hourly branches — services define the price.
+      // Discount logic below still applies to the project's total.
+      const projectSubtotal = p.services.reduce((s, x) => s + Number(x.price || 0), 0);
+      const discountValue = getProjectDiscountValue(p, projectSubtotal);
+      if (discountValue > 0) {
+        const discountLabel = p.discountType === "percent"
+          ? `Discount (${Number(p.discountAmount)}% off)`
+          : "Discount";
+        items.push({
+          projectId: p.id,
+          date: p.date,
+          description: `${projectLabel} — ${discountLabel}`,
+          quantity: 1,
+          unitPrice: -discountValue,
+          amount: -discountValue,
+        });
+      }
+      continue;
+    }
+
+    const effectiveModel = p.billingModel ?? client.billingModel;
+    const projectSubtotal = getProjectSubtotal(p, client);
+    if (effectiveModel === "per_project") {
+      // Flat-rate projects show a single line item with the flat amount
+      // — clients booked a flat rate, so they shouldn't see a synthetic
+      // Production/Editing split. Discount (below) still renders as a
+      // separate negative line.
+      const amount = projectSubtotal;
+      items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
       const rate = Number(p.billingRate ?? client.billingRatePerHour ?? 0);
       const { crewBillable, postBillable } = getProjectBillableHours(p, client);
 
       if (p.crew.length > 0 && crewBillable > 0) {
-        const crewRoles = Array.from(new Set(p.crew.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
           description: `${projectLabel} — Production`,
@@ -146,7 +158,6 @@ export function buildLineItems(
       }
 
       if (p.postProduction.length > 0 && postBillable > 0) {
-        const postRoles = Array.from(new Set(p.postProduction.map(c => c.role))).join(", ");
         items.push({
           projectId: p.id, date: p.date,
           description: `${projectLabel} — Editing`,
@@ -164,6 +175,24 @@ export function buildLineItems(
           quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
         });
       }
+    }
+
+    // Apply per-project discount as its own negative line item so the
+    // client sees the markdown explicitly on the invoice. Computed off
+    // the project's pre-discount subtotal (same as the project view).
+    const discountValue = getProjectDiscountValue(p, projectSubtotal);
+    if (discountValue > 0) {
+      const discountLabel = p.discountType === "percent"
+        ? `Discount (${Number(p.discountAmount)}% off)`
+        : "Discount";
+      items.push({
+        projectId: p.id,
+        date: p.date,
+        description: `${projectLabel} — ${discountLabel}`,
+        quantity: 1,
+        unitPrice: -discountValue,
+        amount: -discountValue,
+      });
     }
   }
 
@@ -219,5 +248,7 @@ export function buildInvoice(
       phone: client.phone,
     },
     notes: "",
+    paymentMethods: ["stripe"],
+    viewToken: "",
   };
 }

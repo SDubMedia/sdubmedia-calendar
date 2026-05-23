@@ -7,6 +7,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
+import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { Link } from "wouter";
@@ -63,7 +64,6 @@ export default function DashboardPage() {
     const w = widgetConfig.find(c => c.id === id);
     return w ? w.enabled : true;
   };
-  const widgetOrder = widgetConfig.filter(w => w.enabled).map(w => w.id);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -71,19 +71,19 @@ export default function DashboardPage() {
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
 
-  // Upcoming projects (next 7 days)
+  // Upcoming projects (next 7 days) — includes tentative (agreement sent, deposit pending)
   const upcomingProjects = useMemo(() => {
     return data.projects
-      .filter(p => p.date >= todayStr && p.date <= weekFromNow && p.status === "upcoming")
+      .filter(p => p.date >= todayStr && p.date <= weekFromNow && (p.status === "upcoming" || p.status === "tentative"))
       .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   }, [data.projects, todayStr, weekFromNow]);
 
-  // Projects by status
+  // Projects by status — group tentative with upcoming on the dashboard
   const projectsByStatus = useMemo(() => ({
-    upcoming: data.projects.filter(p => p.status === "upcoming").sort((a, b) => a.date.localeCompare(b.date)),
+    upcoming: data.projects.filter(p => p.status === "upcoming" || p.status === "tentative").sort((a, b) => a.date.localeCompare(b.date)),
     filming_done: data.projects.filter(p => p.status === "filming_done").sort((a, b) => b.date.localeCompare(a.date)),
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
-    completed: data.projects.filter(p => p.status === "completed").sort((a, b) => b.date.localeCompare(a.date)),
+    completed: data.projects.filter(p => p.status === "editing_done" || p.status === "delivered").sort((a, b) => b.date.localeCompare(a.date)),
   }), [data.projects]);
 
   // This month's revenue
@@ -141,7 +141,6 @@ export default function DashboardPage() {
     }
     return counts;
   }, [data.pipelineLeads, data.proposals, pipelineStages]);
-  const totalPipelineActive = Object.values(pipelineCounts).reduce((s, c) => s + c, 0);
 
   // Revenue chart — last 6 months
   const chartData = useMemo(() => {
@@ -166,46 +165,81 @@ export default function DashboardPage() {
     return months;
   }, [data.projects, data.clients, currentYear, currentMonth]);
 
-  // Mileage summary for the current user's crew member
+  // Mileage summary — MUST mirror MileageReportPage's three-source
+  // aggregation exactly so the dashboard total matches the Mileage tab.
+  // Differences that bit us in earlier passes:
+  //   1. Mileage tab counts ONLY p.crew (on-site crew), NOT
+  //      p.postProduction (remote editors don't drive to set).
+  //   2. Distance lookup is keyed by {homeBaseId}|{locationId} with
+  //      a multi-base "pick shortest" fallback — crew members can have
+  //      multiple home bases (Travel Bases).
   const mileageStats = useMemo(() => {
     const crewMemberId = effectiveProfile?.crewMemberId || "";
-    // For owner, find their crew member by matching email
     const ownerCrewId = crewMemberId || data.crewMembers.find(c => c.email === effectiveProfile?.email)?.id || "";
     if (!ownerCrewId) return { monthMiles: 0, yearMiles: 0, tripCount: 0 };
 
-    const distances = data.crewLocationDistances.filter(d => d.crewMemberId === ownerCrewId);
-    const distanceMap = new Map(distances.map(d => [d.locationId, d.distanceMiles]));
+    const crewMember = data.crewMembers.find(c => c.id === ownerCrewId);
+
+    const distanceMap = new Map<string, number>();
+    data.crewLocationDistances
+      .filter(d => d.crewMemberId === ownerCrewId)
+      .forEach(d => distanceMap.set(`${d.homeBaseId}|${d.locationId}`, d.distanceMiles));
 
     let monthMiles = 0;
     let yearMiles = 0;
     let tripCount = 0;
 
+    const addTrip = (date: Date, roundTrip: number) => {
+      if (roundTrip <= 0) return;
+      const isThisYear = date.getFullYear() === currentYear;
+      const isThisMonth = isThisYear && date.getMonth() === currentMonth;
+      if (isThisYear) yearMiles += roundTrip;
+      if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
+    };
+
+    // Source 1: project ON-SITE crew trips (NOT postProduction)
     data.projects.forEach(p => {
-      const d = new Date(p.date + "T00:00:00");
-      const isThisYear = d.getFullYear() === currentYear;
-      const isThisMonth = isThisYear && d.getMonth() === currentMonth;
+      const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
+      if (!crewEntry) return;
 
-      // Check if this crew member is on this project
-      const isOnProject = [...(p.crew || []), ...(p.postProduction || [])]
-        .some(e => e.crewMemberId === ownerCrewId);
-
-      if (isOnProject && p.locationId) {
-        // Use snapshot miles from crew entry first, fall back to cached distance
-        const crewEntry = (p.crew || []).find(e => e.crewMemberId === ownerCrewId);
-        const oneWay = crewEntry?.roundTripMiles
-          ? crewEntry.roundTripMiles / 2
-          : (distanceMap.get(p.locationId) || 0);
-        const roundTrip = oneWay * 2;
-
-        if (roundTrip > 0) {
-          if (isThisYear) yearMiles += roundTrip;
-          if (isThisMonth) { monthMiles += roundTrip; tripCount++; }
+      let oneWay = 0;
+      if (crewEntry.roundTripMiles && crewEntry.roundTripMiles > 0) {
+        oneWay = crewEntry.roundTripMiles / 2;
+      } else if (p.locationId) {
+        if (crewEntry.homeBaseId) {
+          oneWay = distanceMap.get(`${crewEntry.homeBaseId}|${p.locationId}`) || 0;
+        } else {
+          const baseIds = (crewMember?.homeBases || []).map(b => b.id);
+          if (baseIds.length === 0) baseIds.push("primary");
+          let closest = Infinity;
+          baseIds.forEach(baseId => {
+            const d = distanceMap.get(`${baseId}|${p.locationId}`);
+            if (typeof d === "number" && d < closest) closest = d;
+          });
+          oneWay = closest === Infinity ? 0 : closest;
         }
       }
+      addTrip(new Date(p.date + "T00:00:00"), Math.round(oneWay * 2 * 10) / 10);
+    });
+
+    // Source 2: manual one-off trips
+    (data.manualTrips || []).forEach(t => {
+      if (t.crewMemberId !== ownerCrewId) return;
+      addTrip(new Date(t.date + "T00:00:00"), t.roundTripMiles || 0);
+    });
+
+    // Source 3: meetings with computed distance, scoped same way
+    // MileageReportPage scopes them (owner or assigned).
+    (data.meetings || []).forEach(m => {
+      if (typeof m.oneWayMiles !== "number" || m.oneWayMiles <= 0) return;
+      const scopedToMe = m.ownerUserId === effectiveProfile?.id
+        || (Array.isArray(m.assignedUserIds) && !!effectiveProfile?.id && m.assignedUserIds.includes(effectiveProfile.id));
+      if (!scopedToMe) return;
+      addTrip(new Date(m.date + "T00:00:00"), Math.round(m.oneWayMiles * 2 * 10) / 10);
     });
 
     return { monthMiles: Math.round(monthMiles * 10) / 10, yearMiles: Math.round(yearMiles * 10) / 10, tripCount };
-  }, [data.projects, data.crewLocationDistances, data.crewMembers, effectiveProfile, currentYear, currentMonth]);
+  }, [data.projects, data.manualTrips, data.meetings, data.crewLocationDistances, data.crewMembers, effectiveProfile, currentYear, currentMonth]);
 
   return (
     <div className="flex flex-col h-full">
@@ -382,6 +416,11 @@ export default function DashboardPage() {
           </div>
         </div>
         )}
+
+        {/* Activity Feed — recent client interactions across proposals,
+            contracts, payments, replies. Pulls only from existing data; no
+            new fetches. Owners can disable in Settings → Dashboard widgets. */}
+        {isWidgetEnabled("activity") && <ActivityFeed />}
 
         {/* Middle Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

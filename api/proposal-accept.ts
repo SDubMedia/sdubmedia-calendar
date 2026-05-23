@@ -8,6 +8,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { errorMessage, escapeHtml } from "./_auth.js";
+import { generateContractContent } from "./_contractGenerator.js";
+import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
+import { nanoid } from "nanoid";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -27,8 +31,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "verify-payment": return await verifyPayment(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch (err) {
+    return res.status(500).json({ error: errorMessage(err) });
   }
 }
 
@@ -43,13 +47,35 @@ async function getProposal(token: string, res: VercelResponse) {
 
   if (error || !proposal) return res.status(404).json({ error: "Proposal not found" });
   if (proposal.status === "void") return res.status(400).json({ error: "This proposal has been voided" });
+  // Expired-link guard. Owners can optionally set expires_at when sending;
+  // we treat anything past that timestamp as expired so old links can't be
+  // re-used long after the deal cooled. Already-accepted proposals bypass
+  // this so the client can still see what they signed.
+  if (proposal.expires_at && !proposal.accepted_at) {
+    const expired = new Date(proposal.expires_at).getTime() < Date.now();
+    if (expired) {
+      return res.status(410).json({
+        error: "This proposal link has expired. Please contact the sender for a new link.",
+        expired: true,
+      });
+    }
+  }
 
-  // Get org name + branding
+  // Get org name + branding (logo + business info shown on the public
+  // proposal page as a header + footer so the proposal feels branded).
   let orgName = "";
+  let orgLogo = "";
+  let orgBusinessInfo: Record<string, unknown> | null = null;
   let stripeConnected = false;
   if (proposal.org_id) {
-    const { data: org } = await supabase.from("organizations").select("name, stripe_account_id").eq("id", proposal.org_id).single();
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("name, logo_url, business_info, stripe_account_id")
+      .eq("id", proposal.org_id)
+      .single();
     orgName = org?.name || "";
+    orgLogo = org?.logo_url || "";
+    orgBusinessInfo = (org?.business_info as Record<string, unknown>) || null;
     stripeConnected = !!org?.stripe_account_id;
   }
 
@@ -75,6 +101,8 @@ async function getProposal(token: string, res: VercelResponse) {
     ownerSignature: proposal.owner_signature,
     paidAt: proposal.paid_at,
     orgName,
+    orgLogo,
+    orgBusinessInfo,
     stripeConnected,
     alreadyAccepted,
   });
@@ -96,6 +124,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (!proposal) return res.status(404).json({ error: "Proposal not found" });
   if (proposal.accepted_at) return res.status(400).json({ error: "Already accepted" });
   if (proposal.status !== "sent") return res.status(400).json({ error: "Proposal is not available for acceptance" });
+  // Expired-link guard — same logic as the get path so a stale tab can't
+  // bypass by submitting after expiration.
+  if (proposal.expires_at && new Date(proposal.expires_at).getTime() < Date.now()) {
+    return res.status(410).json({ error: "This proposal link has expired. Please contact the sender for a new link." });
+  }
 
   // Add IP address to signature
   const ip = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
@@ -108,13 +141,15 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const now = new Date().toISOString();
 
   // Resolve selected package and milestones
-  const packages = proposal.packages || [];
-  const selectedPkg = selectedPackageId ? packages.find((p: any) => p.id === selectedPackageId) : packages[0] || null;
-  const resolvedMilestones = selectedPkg?.paymentMilestones || [];
+  type Milestone = { dueType: string; type: "percent" | "fixed"; percent?: number; amount?: number; label: string };
+  type Package = { id: string; totalPrice?: number; paymentMilestones?: Milestone[] };
+  const packages: Package[] = proposal.packages || [];
+  const selectedPkg = selectedPackageId ? packages.find(p => p.id === selectedPackageId) : packages[0] || null;
+  const resolvedMilestones: Milestone[] = selectedPkg?.paymentMilestones || [];
   const proposalTotal = selectedPkg?.totalPrice || proposal.total;
 
   // Update proposal
-  const updatePayload: any = {
+  const updatePayload: Record<string, unknown> = {
     client_signature: fullSignature,
     accepted_at: now,
     status: "accepted",
@@ -131,8 +166,49 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (updateError) return res.status(500).json({ error: updateError.message });
   if (count === 0) return res.status(409).json({ error: "Proposal already accepted" });
 
+  // ---------- Phase A: auto-generate draft contract ----------
+  // If the proposal links to a master contract template, render a draft
+  // contract from the master + selected packages and drop it in the owner's
+  // approval queue. Deposit collection moves to contract signing time.
+  // Legacy proposals (no contract_template_id) keep the old immediate-Stripe
+  // flow below for backward compat.
+  if (proposal.contract_template_id) {
+    try {
+      const draftId = await generateDraftContractFromProposal(
+        proposal,
+        selectedPkg,
+        resolvedMilestones,
+        proposalTotal,
+      );
+      // Fire-and-forget owner notification with deep-link to review the draft.
+      // Critical for conversion — without it, owners don't know to act.
+      // Errors don't block the client's success response.
+      const signerName = signature.name || proposal.client_email || "Your client";
+      notifyOwnerContractReady(proposal.org_id, draftId, proposal.title, signerName, proposalTotal)
+        .catch(err => console.error(`[proposal-accept] owner notify failed: ${errorMessage(err)}`));
+      return res.status(200).json({
+        success: true,
+        paymentRequired: false,
+        contractDraftCreated: true,
+        contractDraftId: draftId,
+        message: "We'll review your selections and send your contract for signature within 24 hours.",
+      });
+    } catch (err) {
+      // If contract generation fails, surface to the client but do NOT roll
+      // back the proposal acceptance — the owner can still manually create
+      // a contract from the queue.
+      return res.status(200).json({
+        success: true,
+        paymentRequired: false,
+        contractDraftCreated: false,
+        message: `Acceptance recorded. (Draft contract generation deferred: ${errorMessage(err)})`,
+      });
+    }
+  }
+
+  // ---------- Legacy flow: immediate Stripe Checkout ----------
   // Check if payment required: first via milestones, then legacy paymentConfig
-  const hasAtSigningMilestone = resolvedMilestones.some((m: any) => m.dueType === "at_signing");
+  const hasAtSigningMilestone = resolvedMilestones.some(m => m.dueType === "at_signing");
   const paymentConfig = proposal.payment_config || { option: "none" };
   const needsPayment = hasAtSigningMilestone || paymentConfig.option !== "none";
 
@@ -156,7 +232,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     let paymentAmount = proposalTotal;
     let paymentLabel = "Full Payment";
     if (hasAtSigningMilestone) {
-      const ms = resolvedMilestones.find((m: any) => m.dueType === "at_signing");
+      const ms = resolvedMilestones.find(m => m.dueType === "at_signing")!;
       if (ms.type === "percent") {
         paymentAmount = Math.round(proposalTotal * (ms.percent / 100) * 100) / 100;
         paymentLabel = `${ms.label} (${ms.percent}%)`;
@@ -208,11 +284,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         checkoutUrl: session.url,
         sessionId: session.id,
       });
-    } catch (stripeErr: any) {
+    } catch (stripeErr) {
       return res.status(500).json({
         success: false,
         paymentRequired: true,
-        paymentError: stripeErr.message || "Failed to create payment session",
+        paymentError: errorMessage(stripeErr, "Failed to create payment session"),
       });
     }
   }
@@ -274,3 +350,228 @@ async function notifyOwner(orgId: string, title: string, signerName: string, eve
     html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;"><h2 style="color:#0088ff;">Proposal ${event === "signed" ? "Signed" : "Viewed"}!</h2><p style="color:#1e293b;">${body}</p></div>`,
   });
 }
+
+/**
+ * Notify the owner that a proposal was accepted AND a draft contract is now
+ * waiting in the approval queue. Deep-links to the review page so they can
+ * one-tap into "approve and send" or "edit before sending". This is the
+ * critical conversion-driver email — without it, owners don't know to act
+ * and deals cool off.
+ */
+async function notifyOwnerContractReady(
+  orgId: string,
+  contractId: string,
+  proposalTitle: string,
+  signerName: string,
+  total: number,
+) {
+  if (!orgId) return;
+  const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", orgId).eq("role", "owner");
+  const ownerEmail = profiles?.[0]?.email;
+  if (!ownerEmail) return;
+  const appBase = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
+  const reviewUrl = `${appBase}/contracts/${contractId}/review`;
+  const subject = `${signerName} accepted — contract ready for review`;
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+    <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Proposal accepted ✓</h2>
+    <p style="margin:0 0 16px;color:#64748b;font-size:14px;">${escapeHtml(signerName)} just accepted <strong>${escapeHtml(proposalTitle)}</strong>${total ? ` for $${total.toFixed(2)}` : ""}.</p>
+    <p style="margin:0 0 16px;font-size:14px;">A draft contract has been auto-generated from their selections and is waiting in your approval queue. Review and send for signature in one tap.</p>
+    <p style="margin:24px 0;"><a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#059669;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Review draft contract</a></p>
+    <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">The faster you send, the higher your conversion rate. Most clients sign within hours of receiving the contract email.</p>
+  </body></html>`;
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: ownerEmail,
+    subject,
+    html,
+  });
+}
+
+// ============================================================
+// Phase A — auto-generate draft contract from accepted proposal.
+// ============================================================
+
+interface PartialPackage {
+  id: string;
+  name?: string;
+  description?: string;
+  totalPrice?: number;
+  defaultPrice?: number;
+  discountFromPrice?: number | null;
+  lineItems?: Array<{ description?: string; quantity?: number; unitPrice?: number }>;
+}
+
+
+async function generateDraftContractFromProposal(
+  proposal: Record<string, unknown>,
+  selectedPkg: PartialPackage | null,
+  milestones: PartialMilestone[],
+  total: number,
+): Promise<string> {
+  // 1. Load the master contract template
+  const { data: tpl, error: tplErr } = await supabase
+    .from("contract_templates")
+    .select("*")
+    .eq("id", proposal.contract_template_id)
+    .single();
+  if (tplErr || !tpl) throw new Error("Linked contract template not found");
+
+  // 2. Load org info for vendor merge fields
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, business_info")
+    .eq("id", proposal.org_id)
+    .single();
+  const businessInfo = (org?.business_info as Record<string, string> | undefined) || {};
+
+  // 3. Load client info if linked
+  let clientName = "";
+  let clientEmail = proposal.client_email || "";
+  let clientAddress = "";
+  let clientPhone = "";
+  if (proposal.client_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("company, contact_name, email, phone, address, city, state, zip")
+      .eq("id", proposal.client_id)
+      .single();
+    if (client) {
+      clientName = client.contact_name || client.company || "";
+      clientEmail = client.email || clientEmail;
+      clientPhone = client.phone || "";
+      const addressBits = [client.address, client.city, client.state, client.zip].filter(Boolean);
+      clientAddress = addressBits.join(", ");
+    }
+  }
+
+  // 4. Project info — pull project date/location if a project is linked
+  let eventDate = "";
+  let eventLocation = "";
+  if (proposal.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("date, location_id")
+      .eq("id", proposal.project_id)
+      .single();
+    if (project) {
+      eventDate = project.date || "";
+      if (project.location_id) {
+        const { data: loc } = await supabase
+          .from("locations")
+          .select("name, address, city, state, zip")
+          .eq("id", project.location_id)
+          .single();
+        if (loc) {
+          eventLocation = loc.name || `${loc.address || ""} ${loc.city || ""}`.trim();
+        }
+      }
+    }
+  }
+
+  // 5. Build the input for the renderer
+  const selectedPackages = selectedPkg ? [{
+    id: selectedPkg.id,
+    name: selectedPkg.name || "",
+    description: selectedPkg.description || "",
+    defaultPrice: Number(selectedPkg.defaultPrice ?? selectedPkg.totalPrice ?? 0),
+    totalPrice: Number(selectedPkg.totalPrice ?? selectedPkg.defaultPrice ?? 0),
+    discountFromPrice: selectedPkg.discountFromPrice ?? null,
+    quantity: 1,
+  }] : [];
+
+  // If the template defines payment_schedule blocks, those override the
+  // legacy package-based milestones. Lets the master contract own the
+  // payment terms, which is the new flow Geoff wants.
+  const blockMilestones = extractPaymentScheduleMilestones(tpl.blocks, eventDate, total);
+  const finalMilestones = blockMilestones.length > 0
+    ? blockMilestones
+    : milestones.map(m => ({
+        label: m.label || "",
+        type: m.type || "fixed",
+        percent: m.percent,
+        fixedAmount: m.fixedAmount,
+        amount: m.amount,
+        dueType: m.dueType || "at_signing",
+        dueDays: m.dueDays,
+        dueDate: m.dueDate,
+      }));
+
+  // Shared input for the merge-field generator.
+  const generatorInput = {
+    proposalTitle: proposal.title || "",
+    clientName, clientEmail, clientAddress, clientPhone,
+    vendorName: org?.name || businessInfo.companyName || "",
+    vendorEmail: businessInfo.email || "",
+    vendorAddress: [businessInfo.address, businessInfo.city, businessInfo.state, businessInfo.zip].filter(Boolean).join(", "),
+    vendorPhone: businessInfo.phone || "",
+    vendorSignerName: businessInfo.ownerName || "",
+    eventDate, eventLocation,
+    selectedPackages,
+    totalPrice: total,
+    milestones: finalMilestones,
+  };
+
+  // Single-page legacy: substitute the flat `content` HTML.
+  const renderedHtml = generateContractContent({
+    ...generatorInput,
+    masterTemplateHtml: tpl.content || "",
+  });
+
+  // Multi-page: if the template has pages, walk each one and substitute
+  // tokens against its pre-rendered content. Invoice pages copy as-is —
+  // they auto-render from contract.payment_milestones at view time, no
+  // text content to substitute. Each substituted page goes onto the
+  // contract row so the client sees the full document with real values.
+  const tplPages: Array<{ id: string; type: string; label: string; content?: string; blocks?: unknown[]; sortOrder: number }> = Array.isArray(tpl.pages) ? tpl.pages : [];
+  const contractPages = tplPages.map(p => {
+    if (p.type === "invoice") {
+      // Drop blocks too — the invoice page renders without them.
+      return { ...p, blocks: [], content: "" };
+    }
+    const substituted = generateContractContent({
+      ...generatorInput,
+      masterTemplateHtml: p.content || "",
+    });
+    // Empty `blocks` so the renderer falls through to the substituted
+    // HTML branch and clients see real values, not literal {{tokens}}.
+    return { ...p, blocks: [], content: substituted };
+  });
+
+  // Assign stable IDs to each milestone so the Stripe webhook + payment
+  // reminders cron can address them individually for paidAt stamping.
+  const stampedMilestones = finalMilestones.map((m, i) => ({
+    ...m,
+    id: `ms_${nanoid(6)}_${i}`,
+  }));
+
+  // 6. INSERT the draft contract row
+  const id = `ctr_${Date.now()}_${nanoid(6)}`;
+  const signToken = nanoid(32);
+  const now = new Date().toISOString();
+  const { error: insErr } = await supabase.from("contracts").insert({
+    id,
+    org_id: proposal.org_id,
+    template_id: tpl.id,
+    proposal_id: proposal.id,
+    master_template_version_id: `${tpl.id}@${tpl.updated_at || tpl.created_at}`,
+    client_id: proposal.client_id || null,
+    project_id: proposal.project_id || null,
+    title: proposal.title || tpl.name,
+    content: renderedHtml,
+    status: "draft",
+    client_email: clientEmail,
+    sign_token: signToken,
+    field_values: {},
+    additional_signers: [],
+    payment_milestones: stampedMilestones,
+    pages: contractPages,
+    document_expires_at: null,
+    reminders_enabled: false,
+    firing_log: [],
+    send_back_reason: "",
+    updated_at: now,
+  });
+  if (insErr) throw new Error(insErr.message);
+  return id;
+}
+
