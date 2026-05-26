@@ -23,12 +23,19 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { escapeHtml, errorMessage } from "./_auth.js";
 
+// The Vercel project's service-role key env var is the (historically
+// misspelled) SUPABASE_SERVICE_ROLL_KEY; every other endpoint reads both
+// spellings, so we do too.
+function serviceKey(): string {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
+}
+
 // Lazy-init so importing the pure helpers in tests doesn't trip the
 // "supabaseKey is required" check at module load.
 function getSupabase() {
   return createClient(
     process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    serviceKey()
   );
 }
 
@@ -93,8 +100,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!name) return res.status(400).json({ error: "Please include your name." });
   if (!email || !isEmail(email)) return res.status(400).json({ error: "Please include a valid email." });
 
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("[capture-pipeline-lead] SUPABASE_SERVICE_ROLE_KEY not set");
+  if (!serviceKey()) {
+    console.error("[capture-pipeline-lead] service-role key not set");
     return res.status(500).json({ error: "Lead capture is not configured." });
   }
 
