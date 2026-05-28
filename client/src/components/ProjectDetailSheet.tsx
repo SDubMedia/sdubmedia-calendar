@@ -210,27 +210,34 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   const advanceStatus = async () => {
     const next = NEXT_STATUS[project.status];
-    if (next) {
+    if (!next) return;
+    try {
       await updateProject(project.id, { status: next });
       toast.success(`Status updated to ${STATUS_LABELS[next]}`);
+    } catch (err: any) {
+      // updateProject's .single() throws "Cannot coerce..." when the UPDATE
+      // matches 0 rows (e.g. RLS blocks a staff user from this project).
+      // Surface it instead of letting it escape as an unhandled rejection.
+      toast.error(err.message || "Failed to update status");
+      return;
+    }
 
-      // Sync linked episode status
-      const episodeStatus = PROJECT_TO_EPISODE_STATUS[next];
-      if (episodeStatus) {
-        try {
-          // Find all series and check for linked episodes
-          for (const s of data.series) {
-            const episodes = await fetchEpisodes(s.id);
-            const linked = episodes.find(e => e.projectId === project.id);
-            if (linked) {
-              await updateEpisode(linked.id, { status: episodeStatus });
-              toast.success(`Episode "${linked.title}" → ${episodeStatus}`);
-              break;
-            }
+    // Sync linked episode status
+    const episodeStatus = PROJECT_TO_EPISODE_STATUS[next];
+    if (episodeStatus) {
+      try {
+        // Find all series and check for linked episodes
+        for (const s of data.series) {
+          const episodes = await fetchEpisodes(s.id);
+          const linked = episodes.find(e => e.projectId === project.id);
+          if (linked) {
+            await updateEpisode(linked.id, { status: episodeStatus });
+            toast.success(`Episode "${linked.title}" → ${episodeStatus}`);
+            break;
           }
-        } catch {
-          // Episode sync is best-effort
         }
+      } catch {
+        // Episode sync is best-effort
       }
     }
   };
