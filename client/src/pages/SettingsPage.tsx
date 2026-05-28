@@ -725,16 +725,27 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
                 placeholder="200"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Default deposit (% of total)</Label>
-              <Input
-                type="text" inputMode="decimal"
-                value={businessInfo.defaultDepositPercent || ""}
-                onChange={e => setBusinessInfo(b => ({ ...b, defaultDepositPercent: parseFloat(e.target.value) || 0 }))}
-                className="bg-secondary border-border w-32"
-                placeholder="50"
-              />
-              <p className="text-xs text-muted-foreground">New proposals start with this deposit due at signing, so you never forget a retainer. Leave blank for none.</p>
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-sm">Automatically require a deposit</Label>
+                <Switch
+                  checked={businessInfo.requireDepositOnProposals !== false}
+                  onCheckedChange={v => setBusinessInfo(b => ({ ...b, requireDepositOnProposals: v }))}
+                />
+              </div>
+              {businessInfo.requireDepositOnProposals !== false && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Deposit (% of total)</Label>
+                  <Input
+                    type="text" inputMode="decimal"
+                    value={businessInfo.defaultDepositPercent || ""}
+                    onChange={e => setBusinessInfo(b => ({ ...b, defaultDepositPercent: parseFloat(e.target.value) || 0 }))}
+                    className="bg-secondary border-border w-32"
+                    placeholder="50"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">When on, new proposals start with this deposit due at signing, so you never forget a retainer. Turn it off to skip it.</p>
             </div>
           </CardContent>
         </Card>

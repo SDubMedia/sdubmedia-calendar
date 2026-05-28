@@ -12,6 +12,8 @@ import { nanoid } from "nanoid";
 import type { Organization, PaymentMilestone } from "./types";
 
 export function defaultDepositMilestones(org?: Organization | null): PaymentMilestone[] {
+  // Master switch off → never pre-fill, regardless of percent.
+  if (org?.businessInfo?.requireDepositOnProposals === false) return [];
   const pct = org?.businessInfo?.defaultDepositPercent ?? 0;
   if (!pct || pct <= 0) return [];
   return [

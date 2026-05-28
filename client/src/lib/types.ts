@@ -107,6 +107,9 @@ export interface OrgBusinessInfo {
   // Default deposit percent pre-filled as an at-signing milestone on new
   // blank proposals, so a retainer is never forgotten. 0/undefined = off.
   defaultDepositPercent?: number;
+  // Master switch for the auto-deposit above. Defaults on (undefined ===
+  // enabled); set false to stop pre-filling a deposit regardless of percent.
+  requireDepositOnProposals?: boolean;
 }
 
 export type InvoicePaymentMethod = "stripe" | "venmo";
