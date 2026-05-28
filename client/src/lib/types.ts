@@ -101,6 +101,9 @@ export interface OrgBusinessInfo {
   // Venmo @username (no @ prefix in storage). Used to render a "Pay with
   // Venmo" button on public invoice pages.
   venmoUsername?: string;
+  // Whether website contact-form leads get an automatic acknowledgment
+  // email. Defaults to on (undefined === enabled); only `false` disables it.
+  autoReplyToLeads?: boolean;
 }
 
 export type InvoicePaymentMethod = "stripe" | "venmo";

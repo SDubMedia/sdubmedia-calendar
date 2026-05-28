@@ -164,9 +164,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     notifyOwner(org, { name, email, phone, projectType, eventDateTime, message }).catch(err =>
       console.warn(`[capture-pipeline-lead] owner notify failed: ${errorMessage(err)}`)
     );
-    ackVisitor(org, { name, email }).catch(err =>
-      console.warn(`[capture-pipeline-lead] visitor ack failed: ${errorMessage(err)}`)
-    );
+    // Visitor auto-reply is on by default; the owner can switch it off in
+    // Settings (businessInfo.autoReplyToLeads === false).
+    const autoReplyEnabled =
+      ((org.business_info as { autoReplyToLeads?: boolean } | null)?.autoReplyToLeads) !== false;
+    if (autoReplyEnabled) {
+      ackVisitor(org, { name, email }).catch(err =>
+        console.warn(`[capture-pipeline-lead] visitor ack failed: ${errorMessage(err)}`)
+      );
+    }
 
     return res.status(200).json({ ok: true });
   } catch (err) {

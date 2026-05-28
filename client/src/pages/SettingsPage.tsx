@@ -610,6 +610,16 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
                 <Input value={businessInfo.ein} onChange={e => setBusinessInfo(b => ({ ...b, ein: e.target.value }))} className="bg-secondary border-border" placeholder="XX-XXXXXXX" type="password" autoComplete="off" />
               </div>
             </div>
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
+              <div className="space-y-0.5">
+                <Label className="text-sm">Auto-reply to website leads</Label>
+                <p className="text-xs text-muted-foreground">When someone submits your website contact form, send them an instant "got it, we'll reply within 24 hours" email. Replies come to your business email.</p>
+              </div>
+              <Switch
+                checked={businessInfo.autoReplyToLeads !== false}
+                onCheckedChange={v => setBusinessInfo(b => ({ ...b, autoReplyToLeads: v }))}
+              />
+            </div>
           </CardContent>
         </Card>
 
