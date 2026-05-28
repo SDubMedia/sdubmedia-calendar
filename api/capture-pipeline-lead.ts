@@ -158,10 +158,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: "Could not save your message. Please try again." });
     }
 
-    // Best-effort: email the owner so they get the ping immediately.
-    // A failed notification never fails the capture (the lead is saved).
+    // Best-effort: email the owner so they get the ping immediately, and
+    // auto-acknowledge the visitor so they know the message landed. Neither
+    // failing ever fails the capture (the lead is already saved).
     notifyOwner(org, { name, email, phone, projectType, eventDateTime, message }).catch(err =>
       console.warn(`[capture-pipeline-lead] owner notify failed: ${errorMessage(err)}`)
+    );
+    ackVisitor(org, { name, email }).catch(err =>
+      console.warn(`[capture-pipeline-lead] visitor ack failed: ${errorMessage(err)}`)
     );
 
     return res.status(200).json({ ok: true });
@@ -206,5 +210,35 @@ async function notifyOwner(
     subject: `New website inquiry: ${lead.name}${lead.projectType ? ` — ${lead.projectType}` : ""}`,
     html,
     replyTo: lead.email,
+  });
+}
+
+// Auto-acknowledge the visitor who submitted the form, so they know the
+// message got through and who they'll hear back from. Sent from the org's
+// verified sender with reply-to set to the org's business email, so any
+// reply the visitor sends reaches the contractor directly.
+async function ackVisitor(
+  org: { name?: unknown; business_info?: unknown },
+  lead: { name: string; email: string }
+): Promise<void> {
+  const businessInfo = (org.business_info as { email?: string } | null) || {};
+  const verifiedFrom = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
+  const orgName = (org.name as string) || "the team";
+  const replyTo = businessInfo.email?.trim() || verifiedFrom;
+  const firstName = lead.name.split(/\s+/)[0] || lead.name;
+
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;color:#1e293b;line-height:1.6;">
+    <p style="font-size:15px;">Hi ${escapeHtml(firstName)},</p>
+    <p style="font-size:15px;">Thanks for reaching out to ${escapeHtml(orgName)} — we got your message and we'll be in touch within 24 hours.</p>
+    <p style="font-size:15px;">If anything comes up in the meantime, just reply to this email.</p>
+    <p style="font-size:15px;margin-top:24px;">— ${escapeHtml(orgName)}</p>
+  </body></html>`;
+
+  await getResend().emails.send({
+    from: `${orgName} <${verifiedFrom}>`,
+    to: lead.email,
+    subject: `Thanks for reaching out to ${orgName}`,
+    html,
+    replyTo,
   });
 }
