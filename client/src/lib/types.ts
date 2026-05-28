@@ -104,6 +104,9 @@ export interface OrgBusinessInfo {
   // Whether website contact-form leads get an automatic acknowledgment
   // email. Defaults to on (undefined === enabled); only `false` disables it.
   autoReplyToLeads?: boolean;
+  // Default deposit percent pre-filled as an at-signing milestone on new
+  // blank proposals, so a retainer is never forgotten. 0/undefined = off.
+  defaultDepositPercent?: number;
 }
 
 export type InvoicePaymentMethod = "stripe" | "venmo";

@@ -17,6 +17,7 @@ import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload,
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { defaultDepositMilestones } from "@/lib/proposalDefaults";
 import { getAuthToken, supabase } from "@/lib/supabase";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 import PrereqGate from "@/components/PrereqGate";
@@ -354,7 +355,7 @@ export default function ProposalsPage() {
       pages: [],
       packages: [],
       selectedPackageId: null,
-      paymentMilestones: [],
+      paymentMilestones: defaultDepositMilestones(data.organization),
       sendHistory: [],
       inboundReplies: [],
       expiresAt: null,

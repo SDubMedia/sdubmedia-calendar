@@ -17,6 +17,7 @@ import { Plus, Users, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { defaultDepositMilestones } from "@/lib/proposalDefaults";
 import { getAuthToken } from "@/lib/supabase";
 
 const COLOR_MAP: Record<string, string> = {
@@ -269,7 +270,7 @@ export default function PipelinePage() {
         pages: tpl?.pages || [],
         packages: tpl?.packages || [],
         selectedPackageId: null,
-        paymentMilestones: [],
+        paymentMilestones: defaultDepositMilestones(data.organization),
         sendHistory: [],
         inboundReplies: [],
         expiresAt: null,
