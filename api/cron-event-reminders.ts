@@ -16,6 +16,7 @@ import { Resend } from "resend";
 import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
+import { sendPushToOrg } from "./_apns.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -150,6 +151,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .update({ last_event_reminder_sent_at: new Date().toISOString() })
         .eq("id", p.id);
       sent++;
+
+      // Owner heads-up the day before a shoot. No-ops until APNs creds exist;
+      // shares the once-per-day idempotency above.
+      if (daysUntilEvent === 1) {
+        const who = client.company || client.contact_name || "";
+        sendPushToOrg(p.org_id, {
+          title: "Shoot tomorrow",
+          body: `${projectTypeName}${who ? ` — ${who}` : ""}`,
+          data: { type: "event" },
+        }).catch(err => console.warn(`[event-reminders] push failed: ${errorMessage(err)}`));
+      }
     } catch (err) {
       errors.push(`project=${p.id} err=${errorMessage(err)}`);
     }

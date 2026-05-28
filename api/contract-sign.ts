@@ -8,6 +8,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { escapeHtml, errorMessage, isAllowedUrl } from "./_auth.js";
+import { sendPushToOrg } from "./_apns.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -244,6 +245,13 @@ async function signContract(req: VercelRequest, res: VercelResponse) {
   // Notify owner.
   const { data: fullContract } = await supabase.from("contracts").select("org_id, title, proposal_id").eq("id", contract.id as string).single();
   if (fullContract?.org_id) {
+    // Push the owner: contract signed. No-ops until APNs creds exist.
+    sendPushToOrg(fullContract.org_id as string, {
+      title: "Contract signed",
+      body: `${signature.name || "Someone"} signed ${fullContract.title || "a contract"}`,
+      data: { type: "contract" },
+    }).catch(err => console.warn(`[contract-sign] push failed: ${errorMessage(err)}`));
+
     const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", fullContract.org_id).eq("role", "owner");
     const ownerEmail = profiles?.[0]?.email;
     if (ownerEmail) {

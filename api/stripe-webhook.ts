@@ -33,6 +33,7 @@ import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 import { syncConversionToScout } from "./_scoutSync.js";
+import { sendPushToOrg } from "./_apns.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -334,12 +335,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             paid_date: today,
           }).eq("id", session.metadata.invoiceId);
 
-          const { data: invoice } = await supabase.from("invoices").select("line_items").eq("id", session.metadata.invoiceId).maybeSingle();
+          const { data: invoice } = await supabase.from("invoices").select("line_items, org_id, total, invoice_number").eq("id", session.metadata.invoiceId).maybeSingle();
           if (invoice?.line_items) {
             const projectIds = (invoice.line_items as { projectId?: string }[]).map(li => li.projectId).filter(Boolean);
             for (const pid of projectIds) {
               await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
             }
+          }
+          // Push the owner: invoice paid. No-ops until APNs creds exist.
+          if (invoice?.org_id) {
+            sendPushToOrg(invoice.org_id as string, {
+              title: "Payment received",
+              body: `Invoice ${invoice.invoice_number || ""} — $${Number(invoice.total || 0).toLocaleString("en-US")} paid`.trim(),
+              data: { type: "payment" },
+            }).catch(err => console.warn(`[stripe-webhook] push failed: ${errorMessage(err)}`));
           }
         } else if (session.mode === "payment" && session.metadata?.kind === "delivery_extras") {
           await handleDeliveryExtrasPaid(session);
@@ -375,6 +384,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 payment_milestones: next,
                 updated_at: nowIso,
               }).eq("id", contractId);
+
+              // Push the owner once, on the real first-payment transition.
+              if (!wasAlreadyPaid && contract?.org_id) {
+                sendPushToOrg(contract.org_id as string, {
+                  title: "Payment received",
+                  body: `${contract.title || "Contract"} — payment received`,
+                  data: { type: "payment" },
+                }).catch(err => console.warn(`[stripe-webhook] push failed: ${errorMessage(err)}`));
+              }
 
               // Project-status cascade: when the deposit milestone (the one
               // with dueType: at_signing) gets paidAt stamped for the first
