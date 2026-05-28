@@ -22,6 +22,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { escapeHtml, errorMessage } from "./_auth.js";
+import { sendPushToOrg } from "./_apns.js";
 
 // The Vercel project's service-role key env var is the (historically
 // misspelled) SUPABASE_SERVICE_ROLL_KEY; every other endpoint reads both
@@ -173,6 +174,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.warn(`[capture-pipeline-lead] visitor ack failed: ${errorMessage(err)}`)
       );
     }
+    // Best-effort push to the owner's devices. No-ops until APNs creds exist.
+    sendPushToOrg(orgId, {
+      title: "New lead",
+      body: `${name}${projectType ? ` — ${projectType}` : ""}`,
+      data: { type: "lead" },
+    }).catch(err => console.warn(`[capture-pipeline-lead] push failed: ${errorMessage(err)}`));
 
     return res.status(200).json({ ok: true });
   } catch (err) {
