@@ -549,7 +549,7 @@ export default function BusinessExpensesPage() {
                 </thead>
                 <tbody>
                   {yearExpenses.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No expenses for {year}. Upload a Chase CSV or add manually.</td></tr>
+                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No expenses for {year}. Upload a bank statement PDF (any bank), a Chase CSV, or add manually.</td></tr>
                   ) : yearExpenses.map(e => (
                     <tr key={e.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/30 ${e.category === "Personal" ? "opacity-40" : ""}`}>
                       <td className="px-4 py-2 whitespace-nowrap">
@@ -713,7 +713,7 @@ export default function BusinessExpensesPage() {
         <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Import Chase Statement — {csvRows.length} transactions found
+              Import Statement — {csvRows.length} transactions found
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
