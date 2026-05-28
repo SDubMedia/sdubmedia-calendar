@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem, TravelBase } from "@/lib/types";
 import TravelBasesEditor from "@/components/TravelBasesEditor";
 import ExternalCalendarsCard from "@/components/ExternalCalendarsCard";
+import LeadFormEmbedCard from "@/components/LeadFormEmbedCard";
 import { MapPinned } from "lucide-react";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -622,6 +623,9 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Website lead form embed */}
+        <LeadFormEmbedCard slug={org?.slug} />
 
         {/* Home Bases — multiple driving start points for mileage.
             Sits directly after My Business since the primary base is
