@@ -13,6 +13,7 @@
     { "path": "/api/cron-contract-reminders", "schedule": "0 14 * * *" },
     { "path": "/api/cron-payment-reminders", "schedule": "30 14 * * *" },
     { "path": "/api/cron-lead-followup", "schedule": "0 15 * * *" },
+    { "path": "/api/cron-monthly-recap", "schedule": "0 14 1 * *" },
     { "path": "/api/cron-contract-expiry", "schedule": "0 5 * * *" },
     { "path": "/api/cron-refresh-external-calendars", "schedule": "*/30 * * * *" }
   ]
