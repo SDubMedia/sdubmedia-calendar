@@ -306,13 +306,16 @@ export default function InvoicePublicPage() {
         {!isPaid && (
           <div className="mt-6 space-y-3">
             {showStripe && (
-              <button
-                onClick={handlePayWithStripe}
-                disabled={paying}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-              >
-                {paying ? "Opening Stripe…" : `Pay ${formatMoney(invoice.total)} with Card`}
-              </button>
+              <div>
+                <button
+                  onClick={handlePayWithStripe}
+                  disabled={paying}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                >
+                  {paying ? "Opening Stripe…" : `Pay ${formatMoney(invoice.total)}`}
+                </button>
+                <p className="mt-1.5 text-center text-xs text-muted-foreground">Card, Apple Pay &amp; Google Pay accepted</p>
+              </div>
             )}
             {showVenmo && (
               <a
