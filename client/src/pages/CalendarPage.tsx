@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -50,7 +50,8 @@ function depositRecentlyPaid(iso: string | null | undefined): boolean {
 }
 
 export default function CalendarPage() {
-  const { data, addPersonalEvent } = useApp();
+  const { data, addPersonalEvent, refresh } = useApp();
+  const [resyncing, setResyncing] = useState(false);
   const { effectiveProfile } = useAuth();
   const role = effectiveProfile?.role;
   const isClient = role === "client";
@@ -466,6 +467,21 @@ export default function CalendarPage() {
                 <span className="hidden sm:inline">User</span>
               </Button>
             )}
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setResyncing(true);
+                try { await refresh(); toast.success("Synced"); }
+                catch { toast.error("Sync failed"); }
+                finally { setResyncing(false); }
+              }}
+              disabled={resyncing}
+              className="gap-2 px-3 sm:px-4"
+              title="Re-pull everything from the server"
+            >
+              <RefreshCw className={cn("w-4 h-4", resyncing && "animate-spin")} />
+              <span className="hidden sm:inline">{resyncing ? "Syncing…" : "Sync"}</span>
+            </Button>
             {!isClient && (
               <Button
                 variant="outline"
