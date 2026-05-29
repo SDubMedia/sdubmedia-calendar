@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   type ClientRow = { id: string; company: string };
   type TypeRow = { id: string; name: string };
   type LocationRow = { id: string; name: string; address: string; city: string; state: string };
+  type MeetingRow = { id: string; title: string; date: string; start_time: string | null; end_time: string | null; client_id: string | null; location_text: string | null; meeting_address: string | null; notes: string | null };
 
   // Fetch projects — scoped to org
   let projects: ProjectRow[] = [];
@@ -65,6 +66,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (calType === "all" || calType === "personal") {
     const { data } = await db.from("personal_events").select("*").eq("org_id", callerOrgId).order("date");
     personalEvents = (data as PersonalEventRow[]) || [];
+  }
+
+  // Fetch meetings — scoped to org. Treated as production-side entries so
+  // they show up in the same feed as projects (PocketLife, Google, Apple).
+  let meetings: MeetingRow[] = [];
+  if (calType === "all" || calType === "production") {
+    const { data } = await db.from("meetings").select("id, title, date, start_time, end_time, client_id, location_text, meeting_address, notes").eq("org_id", callerOrgId).order("date");
+    meetings = (data as MeetingRow[]) || [];
   }
 
   // Fetch reference data for project names — scoped to org
@@ -134,6 +143,31 @@ SUMMARY:${esc(e.title || "Event")}`;
     if (e.location) vevent += `\nLOCATION:${esc(e.location)}`;
     if (e.notes) vevent += `\nDESCRIPTION:${esc(e.notes)}`;
     vevent += `\nCATEGORIES:Personal`;
+    vevent += `\nEND:VEVENT`;
+    events.push(vevent);
+  }
+
+  for (const m of meetings) {
+    const clientName = m.client_id ? clients[m.client_id] : "";
+    const summary = clientName ? `${m.title || "Meeting"} - ${clientName}` : (m.title || "Meeting");
+
+    let vevent = `BEGIN:VEVENT
+UID:slate-meeting-${m.id}@sdubmedia.com
+DTSTAMP:${formatICalDate(new Date().toISOString().slice(0, 10), "000000")}
+SUMMARY:${esc(summary)}`;
+
+    if (m.start_time && m.end_time) {
+      vevent += `\nDTSTART:${formatICalDate(m.date, m.start_time)}`;
+      vevent += `\nDTEND:${formatICalDate(m.date, m.end_time)}`;
+    } else {
+      vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(m.date)}`;
+    }
+
+    const where = m.meeting_address || m.location_text || "";
+    if (where) vevent += `\nLOCATION:${esc(where)}`;
+    if (m.notes) vevent += `\nDESCRIPTION:${esc(m.notes)}`;
+    vevent += `\nSTATUS:CONFIRMED`;
+    vevent += `\nCATEGORIES:Meeting`;
     vevent += `\nEND:VEVENT`;
     events.push(vevent);
   }
