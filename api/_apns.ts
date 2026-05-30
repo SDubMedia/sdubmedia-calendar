@@ -85,6 +85,7 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
     ...(payload.data || {}),
   });
 
+  console.log(`[apns] sending to ${tokens.length} token(s) via ${host} for org=${orgId}`);
   const client = http2.connect(host);
   const dead: string[] = [];
   try {
@@ -106,18 +107,30 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
         req.setEncoding("utf8");
         req.on("data", d => { respBody += d; });
         req.on("end", () => {
-          if (status === 200) result.sent++;
-          else if (status === 410 || /BadDeviceToken|Unregistered/.test(respBody)) dead.push(token);
-          else result.errors.push(`token=${token.slice(0, 8)}… status=${status} ${respBody.slice(0, 120)}`);
+          if (status === 200) {
+            result.sent++;
+            console.log(`[apns] OK token=${token.slice(0, 8)}…`);
+          } else if (status === 410 || /BadDeviceToken|Unregistered/.test(respBody)) {
+            dead.push(token);
+            console.warn(`[apns] PRUNE token=${token.slice(0, 8)}… status=${status} ${respBody.slice(0, 200)}`);
+          } else {
+            result.errors.push(`token=${token.slice(0, 8)}… status=${status} ${respBody.slice(0, 120)}`);
+            console.warn(`[apns] FAIL token=${token.slice(0, 8)}… status=${status} ${respBody.slice(0, 200)}`);
+          }
           done();
         });
-        req.on("error", err => { result.errors.push(`token=${token.slice(0, 8)}… ${errorMessage(err)}`); done(); });
+        req.on("error", err => {
+          result.errors.push(`token=${token.slice(0, 8)}… ${errorMessage(err)}`);
+          console.warn(`[apns] ERR token=${token.slice(0, 8)}… ${errorMessage(err)}`);
+          done();
+        });
         req.write(bodyJson);
         req.end();
       }
     });
   } catch (err) {
     result.errors.push(errorMessage(err));
+    console.warn(`[apns] OUTER ${errorMessage(err)}`);
   } finally {
     client.close();
   }
