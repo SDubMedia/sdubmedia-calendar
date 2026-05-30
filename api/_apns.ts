@@ -85,7 +85,6 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
     ...(payload.data || {}),
   });
 
-  console.log(`[apns] sending to ${tokens.length} token(s) via ${host} for org=${orgId}`);
   const client = http2.connect(host);
   const dead: string[] = [];
   try {
@@ -109,7 +108,6 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
         req.on("end", () => {
           if (status === 200) {
             result.sent++;
-            console.log(`[apns] OK token=${token.slice(0, 8)}…`);
           } else if (status === 410 || /BadDeviceToken|Unregistered/.test(respBody)) {
             dead.push(token);
             console.warn(`[apns] PRUNE token=${token.slice(0, 8)}… status=${status} ${respBody.slice(0, 200)}`);
