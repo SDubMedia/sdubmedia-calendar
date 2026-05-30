@@ -77,7 +77,11 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
   const jwt = providerToken();
   const bundleId = process.env.APNS_BUNDLE_ID as string;
   const bodyJson = JSON.stringify({
-    aps: { alert: { title: payload.title, body: payload.body }, sound: "default" },
+    // badge: 1 paints the red bubble on the app icon for any new push.
+    // The app clears it (applicationDidBecomeActive in AppDelegate) when
+    // the user opens Slate, so the bubble stays through "there's
+    // something new" → disappears as soon as you've seen it.
+    aps: { alert: { title: payload.title, body: payload.body }, sound: "default", badge: 1 },
     ...(payload.data || {}),
   });
 
