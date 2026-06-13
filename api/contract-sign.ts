@@ -45,7 +45,7 @@ async function findContractByToken(token: string): Promise<{ contract: Record<st
   // Try primary signer first.
   const primary = await supabase
     .from("contracts")
-    .select("id, title, content, status, client_email, client_signed_at, owner_signed_at, additional_signers")
+    .select("id, title, content, pages, blocks, payment_milestones, status, client_email, client_signed_at, owner_signed_at, additional_signers")
     .eq("sign_token", token)
     .maybeSingle();
   if (primary.data) {
@@ -64,7 +64,7 @@ async function findContractByToken(token: string): Promise<{ contract: Record<st
   // on the array shape `[{ "signToken": token }]` so PostgREST can index it.
   const additional = await supabase
     .from("contracts")
-    .select("id, title, content, status, client_email, client_signed_at, owner_signed_at, additional_signers")
+    .select("id, title, content, pages, blocks, payment_milestones, status, client_email, client_signed_at, owner_signed_at, additional_signers")
     .filter("additional_signers", "cs", JSON.stringify([{ signToken: token }]))
     .maybeSingle();
   if (!additional.data) return null;
