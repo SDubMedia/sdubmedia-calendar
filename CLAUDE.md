@@ -228,6 +228,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't `setLoading(true)` before validation.** In any async submit handler, validate first (canvas exists, required fields filled, etc.), THEN flip the loading flag. We had a stuck-button bug on every signing surface (4 places) where missed validation left the button hung in "signing…" with no recovery.
 - **Don't use `window.location.href = url`.** Use `window.location.assign(url)` — same effect, doesn't trip React's purity/immutability rule.
 - **Don't write narrow useEffect deps without a `// eslint-disable-next-line react-hooks/exhaustive-deps` comment.** Sometimes deps must be narrowed (e.g. only re-fire on id-change, not on every realtime update). When you do that, leave a one-line comment naming the reason — bare disable comments are not OK.
+- **Don't read a freshly-created record back out of `data.*` in the same handler.** AppContext's `add*()`/`create*()` return the full created object, but they update `data.*` via `setRawData` — async, not visible until the next render. So `const x = await addInvoice(...); data.invoices.find(i => i.id === x.id)` returns `undefined` in the same tick. Use the returned object directly. This caused the "send invoice" crash (June 2026): the stale `.find()` returned undefined, `undefined` reached `<InvoicePDF>`, and react-pdf threw `null is not an object (evaluating 'r.document.props')`. Applies to addProject/addContract/addProposal/addClient/etc.
 
 ## Security — Mandatory Rules
 

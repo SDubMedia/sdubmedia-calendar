@@ -16,7 +16,7 @@ import {
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, ProjectStatus, EpisodeStatus } from "@/lib/types";
+import type { Project, ProjectStatus, EpisodeStatus, Invoice } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
@@ -381,7 +381,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // Common save-the-draft path. Returns the persisted Invoice. Generates
   // an invoice number and a view_token (always — even drafts get a token
   // so the "Preview client view" button works without a separate save).
-  const persistInvoice = async (): Promise<{ id: string; invoiceNumber: string; viewToken: string; total: number; clientName: string } | null> => {
+  const persistInvoice = async (): Promise<{ id: string; invoiceNumber: string; viewToken: string; total: number; clientName: string; invoice: Invoice } | null> => {
     if (!client || !invoiceDraft) return null;
     const draft = { ...invoiceDraft };
     draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
@@ -394,6 +394,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       viewToken: created.viewToken,
       total: created.total,
       clientName: created.clientInfo.contactName || created.clientInfo.company || "",
+      invoice: created,
     };
   };
 
@@ -446,8 +447,10 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
       // Generate PDF + send. Pass the public URL so the email can render
       // a "Pay this invoice" CTA in addition to the PDF attachment.
-      const fullInvoice = data.invoices.find(i => i.id === created.id);
-      const blob = await pdf(<InvoicePDF invoice={fullInvoice!} />).toBlob();
+      // Use the invoice persistInvoice already returns — data.invoices state
+      // hasn't refreshed yet this tick, so a .find() here returns undefined
+      // and react-pdf chokes ("r.document.props" null error).
+      const blob = await pdf(<InvoicePDF invoice={created.invoice} />).toBlob();
       const formData = new FormData();
       formData.append("pdf", blob, `${created.invoiceNumber}.pdf`);
       formData.append("invoiceId", created.id);
