@@ -11,6 +11,20 @@ Sentry.init({
   dsn: "https://9fd0ca7c83d4e4b28ab33920b9eb0209@o4511098248888320.ingest.us.sentry.io/4511219409551360",
   environment: import.meta.env.MODE,
   enabled: import.meta.env.PROD,
+  beforeSend(event) {
+    // Drop the noisy, harmless service-worker registration rejection
+    // ("Error: Rejected" from registerSW.js -> ServiceWorkerContainer.register).
+    // It fires when a deploy swaps the SW file while a client is mid-session;
+    // the page keeps working and the PWA re-registers on the next load. Pure
+    // noise — don't alert on it. Targeted by stack frame so real errors pass.
+    const frames = event.exception?.values?.[0]?.stacktrace?.frames || [];
+    const fromSWRegister = frames.some(f =>
+      (f.filename || "").includes("registerSW") ||
+      (f.function || "").includes("ServiceWorkerContainer"),
+    );
+    if (fromSWRegister) return null;
+    return event;
+  },
 });
 
 // After a deploy, old HTML references chunk filenames that no longer exist

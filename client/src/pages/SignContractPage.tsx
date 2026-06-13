@@ -164,6 +164,11 @@ export default function SignContractPage() {
             falls back to the legacy single-page content. */}
         <ContractDocumentBody contract={contract} />
 
+        {/* Any signatures already captured (e.g. the client signed and an
+            additional signer is now viewing). The document itself only has
+            blank signature lines — show the real executed signatures here. */}
+        <ExecutedSignatures contract={contract} />
+
         {/* Signature Section */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Your Signature</h2>
@@ -261,6 +266,43 @@ interface PortalMilestone {
  * for older contracts. Each page rendered as its own paper card with
  * letterhead on top of the first agreement page only.
  */
+/**
+ * Renders the signatures already captured on a contract (client, owner/vendor,
+ * and any additional signers). The contract document itself only carries blank
+ * signature lines, so without this the signed agreement looks unsigned. Light
+ * theme to match the public signing page.
+ */
+function ExecutedSignatures({ contract }: { contract: any }) {
+  const sigs: Array<{ title: string; sig: any }> = [];
+  if (contract?.client_signature) sigs.push({ title: "Client signature", sig: contract.client_signature });
+  if (contract?.owner_signature) sigs.push({ title: "Provider signature", sig: contract.owner_signature });
+  (Array.isArray(contract?.additional_signers) ? contract.additional_signers : []).forEach((s: any) => {
+    if (s?.signature) sigs.push({ title: `${s.name || "Signer"}${s.role ? ` — ${s.role}` : ""}`, sig: s.signature });
+  });
+  if (sigs.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
+      <h2 className="text-lg font-bold text-gray-900 mb-4">Signatures</h2>
+      <div className="space-y-3">
+        {sigs.map((s, i) => (
+          <div key={i} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <p className="text-xs text-gray-500 mb-1">{s.title}</p>
+            {s.sig?.signatureType === "drawn" ? (
+              <img src={s.sig.signatureData} alt={s.title} className="h-12" />
+            ) : (
+              <p className="text-2xl italic text-gray-900" style={{ fontFamily: "cursive" }}>{s.sig?.signatureData}</p>
+            )}
+            <p className="text-[11px] text-gray-400 mt-1">
+              {s.sig?.name}{s.sig?.timestamp ? ` · ${new Date(s.sig.timestamp).toLocaleString()}` : ""}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ContractDocumentBody({ contract }: { contract: any }) {
   const pages: Array<{ id: string; type: string; label: string; content?: string; blocks?: unknown[]; sortOrder: number }> = Array.isArray(contract?.pages) ? contract.pages : [];
 
@@ -457,6 +499,9 @@ function PortalView({ contract, paymentSoftError }: { contract: any; paymentSoft
           </summary>
           <div className="border-t border-gray-100">
             <ContractDocumentBody contract={contract} />
+            <div className="px-4 sm:px-6 pb-6">
+              <ExecutedSignatures contract={contract} />
+            </div>
           </div>
         </details>
 
