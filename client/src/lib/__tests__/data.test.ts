@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   getProjectWorkedHours,
   getProjectCrewCost,
+  getCrewMemberProjectPay,
   getProjectTravelCost,
   getRoleBillingMultiplier,
   getBillableHours,
@@ -143,6 +144,66 @@ describe("getProjectCrewCost", () => {
       editorBilling: { imageCount: 40, perImageRate: 6 } as any,
     });
     expect(getProjectCrewCost(p)).toBe(40 * 6); // imageCount × perImageRate
+  });
+});
+
+// ---- getCrewMemberProjectPay ----
+
+describe("getCrewMemberProjectPay", () => {
+  it("returns 0 when the member isn't on the project", () => {
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 3, payRatePerHour: 100 }],
+    });
+    expect(getCrewMemberProjectPay(p, "c2")).toBe(0);
+  });
+
+  it("sums only that member's crew + post entries (hourly)", () => {
+    const p = makeProject({
+      crew: [
+        { crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 },
+        { crewMemberId: "c2", role: "2nd Videographer", hoursWorked: 2, payRatePerHour: 50 },
+      ],
+      postProduction: [
+        { crewMemberId: "c1", role: "Video Editor", hoursWorked: 4, payRatePerHour: 25 },
+      ],
+    });
+    expect(getCrewMemberProjectPay(p, "c1")).toBe(300 + 100); // 3×100 + 4×25
+    expect(getCrewMemberProjectPay(p, "c2")).toBe(100);       // 2×50
+  });
+
+  it("honors per-entry flat pay (ignores hours × rate)", () => {
+    const p = makeProject({
+      crew: [
+        { crewMemberId: "c2", role: "2nd Videographer", hoursWorked: 200, payRatePerHour: 50, payType: "flat", flatAmount: 200 },
+      ],
+    });
+    expect(getCrewMemberProjectPay(p, "c2")).toBe(200); // flat, NOT 200×50
+  });
+
+  it("uses editorBilling for a Photo Editor", () => {
+    const p = makeProject({
+      postProduction: [{ crewMemberId: "c1", role: "Photo Editor", hoursWorked: 5, payRatePerHour: 20 }],
+      editorBilling: { imageCount: 40, perImageRate: 6 } as any,
+    });
+    expect(getCrewMemberProjectPay(p, "c1")).toBe(240); // 40 × 6
+  });
+
+  it("excludes Travel entries", () => {
+    const p = makeProject({
+      crew: [
+        { crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 },
+        { crewMemberId: "c1", role: "Travel", hoursWorked: 1, payRatePerHour: 50 },
+      ],
+    });
+    expect(getCrewMemberProjectPay(p, "c1")).toBe(300);
+  });
+
+  it("returns 0 for cancelled projects", () => {
+    const p = makeProject({
+      status: "cancelled",
+      crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
+    });
+    expect(getCrewMemberProjectPay(p, "c1")).toBe(0);
   });
 });
 

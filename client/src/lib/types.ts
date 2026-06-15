@@ -593,6 +593,23 @@ export interface ContractorInvoice {
   createdAt: string;
 }
 
+// ---- Crew Payments (owner-logged direct payments, tied to a project) ----
+// Lets the owner record paying a crew member for a specific project WITHOUT
+// waiting on a submitted contractor invoice. Owner-only (RLS). Used to warn
+// against double-paying when a submitted invoice covers the same project.
+export interface CrewPayment {
+  id: string;
+  crewMemberId: string;
+  projectId: string;
+  role?: string;            // role on that project (snapshot, for display)
+  amount: number;
+  paymentMethod: ContractorPaymentMethod;
+  paidAt: string;           // ISO timestamp the payment was made
+  reference?: string;       // optional confirmation # / check #
+  note?: string;
+  createdAt: string;
+}
+
 // ---- Invoices ----
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 
@@ -1380,6 +1397,7 @@ export interface AppData {
   marketingExpenses: MarketingExpense[];
   invoices: Invoice[];
   contractorInvoices: ContractorInvoice[];
+  crewPayments: CrewPayment[];
   crewLocationDistances: CrewLocationDistance[];
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];

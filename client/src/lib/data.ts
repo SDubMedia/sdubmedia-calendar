@@ -159,6 +159,7 @@ export const seedData: AppData = {
   marketingExpenses: [],
   invoices: [],
   contractorInvoices: [],
+  crewPayments: [],
   crewLocationDistances: [],
   manualTrips: [],
   businessExpenses: [],
@@ -202,28 +203,52 @@ export function getProjectWorkedHours(project: Project): { crewHours: number; po
   return { crewHours, postHours, totalHours: crewHours + postHours };
 }
 
+// Pay for a single crew/post entry. Honor per-entry flat pay: when
+// payType === "flat", use flatAmount instead of hoursWorked × payRatePerHour.
+// Lets crew be hourly on one project and flat on another without changing
+// their global rate.
+function crewEntryCost(e: ProjectCrewEntry | ProjectPostEntry): number {
+  if (e.payType === "flat") return Number(e.flatAmount ?? 0);
+  return Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
+}
+
 /**
  * Get total crew cost for a project, using editorBilling for photo editors.
  */
 export function getProjectCrewCost(project: Project): number {
-  // Honor per-entry flat pay. If entry.payType === "flat", use
-  // flatAmount instead of hoursWorked × payRatePerHour. Lets crew
-  // be hourly on one project and flat on another without changing
-  // their global rate.
-  const entryCost = (e: ProjectCrewEntry | ProjectPostEntry): number => {
-    if (e.payType === "flat") return Number(e.flatAmount ?? 0);
-    return Number(e.hoursWorked ?? 0) * Number(e.payRatePerHour ?? 0);
-  };
   const crewCost = (project.crew || []).filter(e => e.role !== "Travel").reduce(
-    (s, e) => s + entryCost(e), 0
+    (s, e) => s + crewEntryCost(e), 0
   );
   const postCost = (project.postProduction || []).filter(e => e.role !== "Travel").reduce((s, e) => {
     if (e.role === "Photo Editor" && project.editorBilling) {
       return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
     }
-    return s + entryCost(e);
+    return s + crewEntryCost(e);
   }, 0);
   return crewCost + postCost;
+}
+
+/**
+ * Pay owed to ONE crew member for ONE project — sums their crew[] and
+ * postProduction[] entries with the same flat/hourly/photo-editor logic as
+ * getProjectCrewCost. Returns 0 for cancelled projects (Slate's "cancelled
+ * bills $0" convention) and 0 if the member isn't on the project. Used to
+ * prefill the "amount owed" when the owner logs a direct payment.
+ */
+export function getCrewMemberProjectPay(project: Project, crewMemberId: string): number {
+  if (project.status === "cancelled") return 0;
+  const crew = (project.crew || [])
+    .filter(e => e.crewMemberId === crewMemberId && e.role !== "Travel")
+    .reduce((s, e) => s + crewEntryCost(e), 0);
+  const post = (project.postProduction || [])
+    .filter(e => e.crewMemberId === crewMemberId && e.role !== "Travel")
+    .reduce((s, e) => {
+      if (e.role === "Photo Editor" && project.editorBilling) {
+        return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
+      }
+      return s + crewEntryCost(e);
+    }, 0);
+  return crew + post;
 }
 
 /** Get total travel cost for a project (Travel role entries only). */

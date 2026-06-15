@@ -11,7 +11,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, FileText, User, CheckCircle2 } from "lucide-react";
+import { Download, FileText, User, CheckCircle2, AlertTriangle } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import ContractorInvoicePDF from "@/components/ContractorInvoicePDF";
 import MarkPaidDialog from "@/components/MarkPaidDialog";
@@ -60,6 +60,22 @@ export default function ContractorInvoicesPage() {
     () => data.contractorInvoices.filter(i => i.status === "sent").reduce((s, i) => s + i.total, 0),
     [data.contractorInvoices],
   );
+
+  // Direct payments the owner already logged, keyed by member+project, so we
+  // can warn when a submitted invoice covers a project that was already paid
+  // directly (avoid double-paying). Owner-only data; empty for partners (RLS).
+  const directlyPaidKeys = useMemo(
+    () => new Set(data.crewPayments.map(p => `${p.crewMemberId}::${p.projectId}`)),
+    [data.crewPayments],
+  );
+  const countDirectlyPaid = (inv: ContractorInvoice): number => {
+    const projectIds = new Set(
+      inv.lineItems
+        .filter(li => directlyPaidKeys.has(`${inv.crewMemberId}::${li.projectId}`))
+        .map(li => li.projectId),
+    );
+    return projectIds.size;
+  };
 
   const getCrew = (id: string) => data.crewMembers.find(c => c.id === id) || null;
 
@@ -189,6 +205,18 @@ export default function ContractorInvoicesPage() {
                       {inv.paymentReference ? ` · ${inv.paymentReference}` : ""}
                     </div>
                   )}
+                  {/* Warn if a project on this invoice was already paid
+                      directly via Staff Payments — don't pay twice. */}
+                  {(() => {
+                    const n = countDirectlyPaid(inv);
+                    if (n === 0) return null;
+                    return (
+                      <div className="text-xs text-amber-300 mt-1 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        Direct payment already logged for {n} project{n !== 1 ? "s" : ""} on this invoice.
+                      </div>
+                    );
+                  })()}
                   {/* Surface contractor's preferred method when there's
                       one set and the invoice hasn't been paid yet — saves
                       the admin from clicking into the staff member to
