@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, AlertTriangle } from "lucide-react";
+import { DollarSign } from "lucide-react";
 import { getCrewMemberProjectPay } from "@/lib/data";
 import type {
   CrewMember, CrewPayment, ContractorPaymentMethod, Project, ProjectType, Location,
@@ -79,12 +79,19 @@ export default function LogCrewPaymentDialog({
 
   const crewMember = crewMembers.find(c => c.id === crewMemberId) || null;
 
-  // Projects this crew member actually worked (on-site or post).
+  // Projects this member has already been paid for (don't offer them again).
+  const paidProjectIds = new Set(
+    crewPayments.filter(cp => cp.crewMemberId === crewMemberId).map(cp => cp.projectId),
+  );
+
+  // Projects this crew member actually worked (on-site or post) and hasn't
+  // been paid for yet — so the dropdown only offers what's still owed.
   const memberProjects = crewMemberId
     ? projects
         .filter(p =>
-          (p.crew || []).some(e => e.crewMemberId === crewMemberId) ||
-          (p.postProduction || []).some(e => e.crewMemberId === crewMemberId))
+          !paidProjectIds.has(p.id) &&
+          ((p.crew || []).some(e => e.crewMemberId === crewMemberId) ||
+           (p.postProduction || []).some(e => e.crewMemberId === crewMemberId)))
         .sort((a, b) => b.date.localeCompare(a.date))
     : [];
 
@@ -125,9 +132,6 @@ export default function LogCrewPaymentDialog({
     if (cm?.preferredPaymentMethod) setMethod(cm.preferredPaymentMethod);
   }
 
-  const alreadyLogged = crewMemberId && projectId
-    ? crewPayments.some(cp => cp.crewMemberId === crewMemberId && cp.projectId === projectId)
-    : false;
 
   const parsedAmount = parseFloat(amount);
   const canSave = !!crewMemberId && !!projectId && !isNaN(parsedAmount) && parsedAmount > 0 && !!paidDate;
@@ -185,20 +189,18 @@ export default function LogCrewPaymentDialog({
               </SelectTrigger>
               <SelectContent className="bg-popover border-border">
                 {memberProjects.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No projects for this member.</div>
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No unpaid projects for this member.</div>
                 ) : memberProjects.map(p => (
                   <SelectItem key={p.id} value={p.id}>{projectLabel(p)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {crewMemberId && memberProjects.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Every project for this member is already logged as paid.
+              </p>
+            )}
           </div>
-
-          {alreadyLogged && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-300 flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>A direct payment is already logged for this person on this project. Logging another will record a second payment.</span>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
