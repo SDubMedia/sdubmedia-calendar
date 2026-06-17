@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign } from "lucide-react";
-import { getCrewMemberProjectPay } from "@/lib/data";
+import { getCrewMemberProjectPay, getCrewProjectPaid, getCrewProjectRemaining } from "@/lib/data";
 import type {
   CrewMember, CrewPayment, ContractorPaymentMethod, Project, ProjectType, Location,
 } from "@/lib/types";
@@ -39,6 +39,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onConfirm: (input: Omit<CrewPayment, "id" | "createdAt">) => Promise<void>;
+  // Optional pre-target — when opened from an outstanding-balance row, jump
+  // straight to that member + project instead of starting blank.
+  initialCrewMemberId?: string;
+  initialProjectId?: string;
 }
 
 function todayLocal(): string {
@@ -50,6 +54,7 @@ function todayLocal(): string {
 
 export default function LogCrewPaymentDialog({
   crewMembers, projects, projectTypes, locations, crewPayments, open, onClose, onConfirm,
+  initialCrewMemberId, initialProjectId,
 }: Props) {
   const [crewMemberId, setCrewMemberId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -65,43 +70,67 @@ export default function LogCrewPaymentDialog({
   const wasOpen = useRef(false);
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setCrewMemberId("");
-      setProjectId("");
-      setAmount("");
-      setMethod("venmo");
+      const cm = initialCrewMemberId || "";
+      const pj = initialCrewMemberId ? (initialProjectId || "") : "";
+      setCrewMemberId(cm);
+      setProjectId(pj);
+      // Pre-fill amount with the remaining balance when a project is targeted.
+      let amt = "";
+      let meth: ContractorPaymentMethod = "venmo";
+      if (cm) {
+        const cmObj = crewMembers.find(c => c.id === cm);
+        if (cmObj?.preferredPaymentMethod) meth = cmObj.preferredPaymentMethod;
+        if (pj) {
+          const p = projects.find(x => x.id === pj);
+          if (p) {
+            const rem = getCrewProjectRemaining(p, cm, crewPayments);
+            amt = rem ? String(Math.round(rem * 100) / 100) : "";
+          }
+        }
+      }
+      setAmount(amt);
+      setMethod(meth);
       setPaidDate(todayLocal());
       setReference("");
       setNote("");
       setSaving(false);
     }
     wasOpen.current = open;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const crewMember = crewMembers.find(c => c.id === crewMemberId) || null;
 
-  // Projects this member has already been paid for (don't offer them again).
-  const paidProjectIds = new Set(
-    crewPayments.filter(cp => cp.crewMemberId === crewMemberId).map(cp => cp.projectId),
-  );
-
-  // Projects this crew member actually worked (on-site or post) and hasn't
-  // been paid for yet — so the dropdown only offers what's still owed.
+  // Projects this crew member worked (on-site or post) that still have a
+  // balance owing — fully-paid projects drop off so you can't over-pay, but
+  // partially-paid ones stay (with their remaining balance) so you can finish
+  // paying them.
   const memberProjects = crewMemberId
     ? projects
         .filter(p =>
-          !paidProjectIds.has(p.id) &&
           ((p.crew || []).some(e => e.crewMemberId === crewMemberId) ||
-           (p.postProduction || []).some(e => e.crewMemberId === crewMemberId)))
+           (p.postProduction || []).some(e => e.crewMemberId === crewMemberId)) &&
+          getCrewProjectRemaining(p, crewMemberId, crewPayments) > 0)
         .sort((a, b) => b.date.localeCompare(a.date))
     : [];
 
-  const selectedProject = memberProjects.find(p => p.id === projectId) || null;
+  const selectedProject = projects.find(p => p.id === projectId) || null;
+  const selectedOwed = selectedProject ? getCrewMemberProjectPay(selectedProject, crewMemberId) : 0;
+  const selectedPaid = selectedProject ? getCrewProjectPaid(crewPayments, crewMemberId, selectedProject.id) : 0;
+  const selectedRemaining = selectedProject ? getCrewProjectRemaining(selectedProject, crewMemberId, crewPayments) : 0;
+
+  const fmt = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const projectLabel = (p: Project): string => {
     const typeName = projectTypes.find(t => t.id === p.projectTypeId)?.name ?? "Project";
     const locName = locations.find(l => l.id === p.locationId)?.name;
     const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    return `${typeName}${locName ? ` · ${locName}` : ""} · ${dateStr}`;
+    const rem = getCrewProjectRemaining(p, crewMemberId, crewPayments);
+    const owed = getCrewMemberProjectPay(p, crewMemberId);
+    // Show remaining when it's a partial (less than full owed), so look-alike
+    // recurring projects are distinguishable and you see what's left.
+    const balTag = rem > 0 && rem < owed ? ` · ${fmt(rem)} left` : "";
+    return `${typeName}${locName ? ` · ${locName}` : ""} · ${dateStr}${balTag}`;
   };
 
   // Role this member held on the selected project (for display/snapshot).
@@ -112,13 +141,13 @@ export default function LogCrewPaymentDialog({
     return post?.role || "";
   };
 
-  // When a project is picked, prefill amount with what they're owed.
+  // When a project is picked, prefill amount with the remaining balance.
   function selectProject(id: string) {
     setProjectId(id);
     const p = memberProjects.find(x => x.id === id);
     if (p) {
-      const owed = getCrewMemberProjectPay(p, crewMemberId);
-      setAmount(owed ? String(owed) : "");
+      const rem = getCrewProjectRemaining(p, crewMemberId, crewPayments);
+      setAmount(rem ? String(Math.round(rem * 100) / 100) : "");
       if (crewMember?.preferredPaymentMethod) setMethod(crewMember.preferredPaymentMethod);
     }
   }
@@ -197,10 +226,18 @@ export default function LogCrewPaymentDialog({
             </Select>
             {crewMemberId && memberProjects.length === 0 && (
               <p className="text-[11px] text-muted-foreground">
-                Every project for this member is already logged as paid.
+                Nothing outstanding — every project for this member is fully paid.
               </p>
             )}
           </div>
+
+          {/* Owed / paid / remaining for the selected project. */}
+          {selectedProject && (
+            <div className="rounded-md border border-border bg-secondary/40 p-2.5 text-xs flex items-center justify-between">
+              <span className="text-muted-foreground">Owed {fmt(selectedOwed)}{selectedPaid > 0 ? ` · paid ${fmt(selectedPaid)}` : ""}</span>
+              <span className="font-semibold text-foreground">{fmt(selectedRemaining)} left</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment } from "./types";
 
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
@@ -249,6 +249,27 @@ export function getCrewMemberProjectPay(project: Project, crewMemberId: string):
       return s + crewEntryCost(e);
     }, 0);
   return crew + post;
+}
+
+/** Total already logged-paid to a crew member for a specific project. */
+export function getCrewProjectPaid(crewPayments: CrewPayment[], crewMemberId: string, projectId: string): number {
+  return crewPayments
+    .filter(p => p.crewMemberId === crewMemberId && p.projectId === projectId)
+    .reduce((s, p) => s + Number(p.amount ?? 0), 0);
+}
+
+/**
+ * Remaining balance owed to a crew member on a project: what they're owed
+ * minus what's already been logged as paid. Never negative. A project is
+ * "fully paid" when this is ~0 (we use a 1-cent epsilon for rounding).
+ */
+export function getCrewProjectRemaining(
+  project: Project, crewMemberId: string, crewPayments: CrewPayment[],
+): number {
+  const owed = getCrewMemberProjectPay(project, crewMemberId);
+  const paid = getCrewProjectPaid(crewPayments, crewMemberId, project.id);
+  const remaining = owed - paid;
+  return remaining < 0.005 ? 0 : remaining;
 }
 
 /** Get total travel cost for a project (Travel role entries only). */

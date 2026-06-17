@@ -99,11 +99,15 @@ export default function StaffDashboardPage() {
       // Crew entries — skip hourly if this person is the photo editor on this project
       p.crew.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
         if (isAlsoPhotoEditor) return; // pay comes from editorBilling
+        // Honor flat pay: when payType==="flat", pay is flatAmount, not
+        // hours × rate. Flat entries don't contribute to the hours stat
+        // (the hours field is often unset/unreliable on flat pay).
+        const isFlat = e.payType === "flat";
         const hours = Number(e.hoursWorked ?? 0);
-        const pay = hours * Number(e.payRatePerHour ?? 0);
-        totalHours += hours;
+        const pay = isFlat ? Number(e.flatAmount ?? 0) : hours * Number(e.payRatePerHour ?? 0);
+        if (!isFlat) totalHours += hours;
         totalPay += pay;
-        breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, unit: "hrs", pay });
+        breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: isFlat ? 0 : hours, unit: isFlat ? "flat" : "hrs", pay });
       });
       // Post-production entries — use editorBilling for photo editors
       p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
@@ -115,11 +119,13 @@ export default function StaffDashboardPage() {
           if (imgs > 0) { totalPay += pay; totalImages += imgs; }
           breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: imgs, unit: "images", pay: isFinalized ? pay : 0 });
         } else {
+          // Honor flat pay here too (post-production, non photo-editor).
+          const isFlat = e.payType === "flat";
           const hours = Number(e.hoursWorked ?? 0);
-          const pay = hours * Number(e.payRatePerHour ?? 0);
-          totalHours += hours;
+          const pay = isFlat ? Number(e.flatAmount ?? 0) : hours * Number(e.payRatePerHour ?? 0);
+          if (!isFlat) totalHours += hours;
           totalPay += pay;
-          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours, unit: "hrs", pay });
+          breakdown.push({ projectId: p.id, date: p.date, typeName: pType?.name ?? "Project", role: e.role, hours: isFlat ? 0 : hours, unit: isFlat ? "flat" : "hrs", pay });
         }
       });
     });
@@ -307,7 +313,7 @@ export default function StaffDashboardPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-foreground">{expandedSection === "hours" ? `${entry.hours} ${entry.unit}` : formatCurrency(entry.pay)}</p>
+                        <p className="text-sm font-semibold text-foreground">{expandedSection === "hours" ? (entry.unit === "flat" ? "Flat rate" : `${entry.hours} ${entry.unit}`) : formatCurrency(entry.pay)}</p>
                       </div>
                     </div>
                   ))}
@@ -396,7 +402,7 @@ export default function StaffDashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-semibold text-foreground">{formatCurrency(entry.pay)}</p>
-                        <p className="text-[10px] text-muted-foreground">{entry.hours} {entry.unit}</p>
+                        <p className="text-[10px] text-muted-foreground">{entry.unit === "flat" ? "Flat rate" : `${entry.hours} ${entry.unit}`}</p>
                       </div>
                     </div>
                   ))}
