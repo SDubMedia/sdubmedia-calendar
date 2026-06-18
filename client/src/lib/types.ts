@@ -483,6 +483,13 @@ export interface Project {
   // even if list prices change later.
   serviceCategoryId?: string | null;
   services?: ProjectServiceSelection[];
+  // Broker billing: when set, this project's invoice goes to billToId
+  // (a broker client) instead of clientId. When null, the payer is resolved
+  // from the client (an agent bills up to their broker) — see getProjectPayerId.
+  billToId?: string | null;
+  // Per-house product/software costs used on this shoot (e.g. Fotello),
+  // snapshotted so profit history stays accurate if catalog prices change.
+  products?: ProjectProductSelection[];
   createdAt: string;
 }
 
@@ -491,6 +498,12 @@ export interface ProjectServiceSelection {
   variantId: string | null;
   label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
   price: number;    // snapshot of the price at the time the project was created/edited
+}
+
+export interface ProjectProductSelection {
+  productId: string;
+  name: string;     // snapshot of the product name
+  cost: number;     // snapshot of the per-house cost
 }
 
 // ============================================================

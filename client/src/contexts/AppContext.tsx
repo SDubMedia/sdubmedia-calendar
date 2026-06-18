@@ -456,6 +456,8 @@ function rowToProject(r: any): Project {
     discountReason: r.discount_reason || "",
     serviceCategoryId: r.service_category_id || null,
     services: Array.isArray(r.services) ? r.services : [],
+    billToId: r.bill_to_id || null,
+    products: Array.isArray(r.products) ? r.products : [],
     createdAt: r.created_at,
   };
 }
@@ -2353,6 +2355,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       discount_reason: p.discountReason || "",
       service_category_id: p.serviceCategoryId || null,
       services: p.services ?? [],
+      bill_to_id: p.billToId ?? null,
+      products: p.products ?? [],
     }).select().single();
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
@@ -2394,6 +2398,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.discountReason !== undefined) patch.discount_reason = p.discountReason;
     if (p.serviceCategoryId !== undefined) patch.service_category_id = p.serviceCategoryId || null;
     if (p.services !== undefined) patch.services = p.services;
+    if (p.billToId !== undefined) patch.bill_to_id = p.billToId ?? null;
+    if (p.products !== undefined) patch.products = p.products;
     // Auto-stamp cancelled_at the first time status flips to "cancelled" if
     // the caller didn't supply one explicitly. Doesn't fire if status is
     // already cancelled or unchanged.

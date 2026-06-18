@@ -15,7 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection } from "@/lib/types";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost } from "@/lib/data";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
@@ -90,6 +91,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // and snapshotted prices. These become invoice line items at save time.
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(project?.serviceCategoryId ?? null);
   const [bundleServices, setBundleServices] = useState<ProjectServiceSelection[]>(project?.services ?? []);
+  // Broker billing: who this shoot bills to, and per-house product costs.
+  const [billToId, setBillToId] = useState<string | null>(project?.billToId ?? null);
+  const [products, setProducts] = useState<ProjectProductSelection[]>(project?.products ?? []);
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -128,6 +132,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setDiscountReason(project?.discountReason ?? "");
       setServiceCategoryId(project?.serviceCategoryId ?? null);
       setBundleServices(project?.services ?? []);
+      setBillToId(project?.billToId ?? null);
+      setProducts(project?.products ?? []);
       setShowNewType(false);
       setNewTypeName("");
       setShowNewEditType(false);
@@ -371,6 +377,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       discountReason: discountReason.trim(),
       serviceCategoryId: serviceCategoryId || null,
       services: bundleServices,
+      billToId: billToId || null,
+      products,
     };
     try {
       if (isEdit && project) {
@@ -1045,6 +1053,99 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <div className="flex justify-between text-base font-semibold pt-1 border-t border-border/50">
                     <span>Project total</span>
                     <span className="tabular-nums text-primary">${total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Broker billing + per-house products + live profit. Bill-to lets a
+              real-estate shoot bill up to the agent's broker (overridable per
+              shoot); products are per-house tool costs (Fotello); profit =
+              revenue − staff pay − product cost. */}
+          {!isLightweight && selectedClient && (() => {
+            const brokers = data.clients.filter(c => c.clientType === "broker");
+            const agentBroker = selectedClient.clientType === "agent" && selectedClient.brokerId
+              ? data.clients.find(c => c.id === selectedClient.brokerId) || null
+              : null;
+            const showBillTo = brokers.length > 0 || !!agentBroker;
+            const activeProducts = data.products.filter(p => p.active);
+            const selectedIds = new Set(products.map(p => p.productId));
+            const toggleProduct = (id: string) => {
+              const prod = data.products.find(p => p.id === id);
+              if (!prod) return;
+              setProducts(prev => prev.some(p => p.productId === id)
+                ? prev.filter(p => p.productId !== id)
+                : [...prev, { productId: prod.id, name: prod.name, cost: prod.unitCost }]);
+            };
+            // Live profit via the real helpers, fed a draft project from current state.
+            const draft = {
+              ...(project ?? {}),
+              clientId, projectTypeId, status,
+              crew: crew.filter(c => c.crewMemberId),
+              postProduction: postProduction.filter(c => c.crewMemberId),
+              editorBilling: project?.editorBilling ?? null,
+              projectRate, billingModel: billingModelOverride,
+              billingRate: billingModelOverride ? billingRateOverride : null,
+              discountType: discountAmount > 0 ? discountType : null,
+              discountAmount: discountAmount > 0 ? discountAmount : 0,
+              serviceCategoryId: serviceCategoryId || null, services: bundleServices,
+              products,
+            } as Project;
+            const revenue = getProjectInvoiceAmount(draft, selectedClient);
+            const staffCost = getProjectCrewCost(draft);
+            const productCost = getProjectProductCost(draft);
+            const profit = revenue - staffCost - productCost;
+            const defaultLabel = agentBroker ? `${agentBroker.company} (default)` : `${selectedClient.company} (default)`;
+            return (
+              <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+                {showBillTo && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Bill to</Label>
+                    <select
+                      value={billToId || ""}
+                      onChange={e => setBillToId(e.target.value || null)}
+                      className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="">{defaultLabel}</option>
+                      {agentBroker && <option value={selectedClient.id}>Bill the agent ({selectedClient.company}) instead</option>}
+                      {brokers.filter(b => b.id !== agentBroker?.id).map(b => (
+                        <option key={b.id} value={b.id}>Bill broker: {b.company}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">Products / software (per house)</Label>
+                  {activeProducts.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground">No products yet — add Fotello etc. in Finance → Products &amp; Software.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {activeProducts.map(p => {
+                        const on = selectedIds.has(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleProduct(p.id)}
+                            className={`px-2.5 py-1.5 rounded-md border text-xs transition-colors ${on ? "bg-primary/15 border-primary/40 text-primary" : "bg-secondary border-border text-muted-foreground hover:text-foreground"}`}
+                          >
+                            {p.name} · ${p.unitCost.toFixed(2)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-border pt-3 space-y-1 text-xs">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Revenue</span><span className="tabular-nums">${revenue.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>− Staff pay</span><span className="tabular-nums">−${staffCost.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>− Products</span><span className="tabular-nums">−${productCost.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-base font-semibold pt-1 border-t border-border/50">
+                    <span>Your profit</span>
+                    <span className={`tabular-nums ${profit >= 0 ? "text-green-400" : "text-red-400"}`}>${profit.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

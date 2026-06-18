@@ -372,6 +372,36 @@ export function getProjectInvoiceAmount(project: Project, client: Client): numbe
 }
 
 /**
+ * Who actually gets billed for this project (broker billing). Priority:
+ *   1. explicit project.billToId (per-shoot override)
+ *   2. if the project's client is an agent → that agent's broker
+ *   3. otherwise the project's own client
+ * Single source of truth for invoice grouping.
+ */
+export function getProjectPayerId(project: Project, clientsById: Record<string, Client>): string {
+  if (project.billToId) return project.billToId;
+  const client = clientsById[project.clientId];
+  if (client?.clientType === "agent" && client.brokerId) return client.brokerId;
+  return project.clientId;
+}
+
+/** Total per-house product/software cost on a project (e.g. Fotello). */
+export function getProjectProductCost(project: Project): number {
+  return (project.products || []).reduce((s, p) => s + Number(p.cost ?? 0), 0);
+}
+
+/**
+ * Per-house profit for a shoot: revenue − staff pay − product cost.
+ * (v1 scope: travel, editing labor, and overhead are intentionally excluded.)
+ * Cancelled projects are $0 revenue/cost via the underlying helpers.
+ */
+export function getProjectProfit(project: Project, client: Client): number {
+  return getProjectInvoiceAmount(project, client)
+    - getProjectCrewCost(project)
+    - getProjectProductCost(project);
+}
+
+/**
  * Calculates total hours worked for a client in a given month.
  */
 export function calcHoursWorked(

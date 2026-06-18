@@ -12,6 +12,9 @@ import {
   getBillableHours,
   getProjectBillableHours,
   getProjectInvoiceAmount,
+  getProjectPayerId,
+  getProjectProductCost,
+  getProjectProfit,
   calcHoursWorked,
 } from "../data";
 import type { Client, Project, ProjectCrewEntry } from "../types";
@@ -528,5 +531,54 @@ describe("cancellation: getProjectBillableHours", () => {
     });
     const result = getProjectBillableHours(p, client);
     expect(result.totalBillable).toBeGreaterThan(0);
+  });
+});
+
+// ---- Broker billing: payer resolution, product cost, profit ----
+
+describe("getProjectPayerId", () => {
+  const broker = makeClient({ id: "broker1", company: "Realty ONE", clientType: "broker" });
+  const agent = makeClient({ id: "agent1", company: "Sarah", clientType: "agent", brokerId: "broker1" });
+  const standard = makeClient({ id: "std1", company: "Acme", clientType: "standard" });
+  const byId: Record<string, Client> = { broker1: broker, agent1: agent, std1: standard };
+
+  it("standard client → bills itself", () => {
+    expect(getProjectPayerId(makeProject({ clientId: "std1" }), byId)).toBe("std1");
+  });
+
+  it("agent → bills up to their broker", () => {
+    expect(getProjectPayerId(makeProject({ clientId: "agent1" }), byId)).toBe("broker1");
+  });
+
+  it("explicit billToId overrides everything", () => {
+    expect(getProjectPayerId(makeProject({ clientId: "agent1", billToId: "std1" }), byId)).toBe("std1");
+  });
+
+  it("agent with no broker set falls back to itself", () => {
+    const orphan = makeClient({ id: "agent2", clientType: "agent", brokerId: null });
+    expect(getProjectPayerId(makeProject({ clientId: "agent2" }), { agent2: orphan })).toBe("agent2");
+  });
+});
+
+describe("getProjectProductCost", () => {
+  it("sums product costs", () => {
+    const p = makeProject({ products: [{ productId: "f", name: "Fotello", cost: 25 }, { productId: "x", name: "X", cost: 10 }] });
+    expect(getProjectProductCost(p)).toBe(35);
+  });
+  it("is 0 with no products", () => {
+    expect(getProjectProductCost(makeProject())).toBe(0);
+  });
+});
+
+describe("getProjectProfit", () => {
+  it("profit = revenue − staff pay − product cost", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 250 });
+    const p = makeProject({
+      status: "editing_done",
+      crew: [{ crewMemberId: "c1", role: "Photographer", hoursWorked: 0, payRatePerHour: 0, payType: "flat", flatAmount: 75 }],
+      products: [{ productId: "f", name: "Fotello", cost: 25 }],
+    });
+    // 250 revenue − 75 staff − 25 product = 150
+    expect(getProjectProfit(p, client)).toBe(150);
   });
 });
