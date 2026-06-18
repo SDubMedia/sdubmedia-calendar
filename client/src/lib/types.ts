@@ -300,6 +300,12 @@ export interface Client {
   // suggestions are grounded in who the client actually is. Optional
   // for back-compat with old rows / fixtures saved before this column.
   brandNotes?: string;
+  // Real-estate broker billing. "broker" = an office that pays for its agents'
+  // shoots; "agent" = belongs to a broker (brokerId) and their shoots can bill
+  // up to that broker; "standard" = a normal client. Optional/defaulted for
+  // back-compat with rows saved before this column.
+  clientType?: "standard" | "broker" | "agent";
+  brokerId?: string | null; // set on agents → their broker client's id
   createdAt: string;
 }
 

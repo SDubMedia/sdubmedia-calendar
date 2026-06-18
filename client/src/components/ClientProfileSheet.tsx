@@ -33,6 +33,8 @@ interface ClientFormData {
   roleBillingMultipliers: RoleBillingMultiplier[];
   partnerSplit: PartnerSplit | null;
   brandNotes: string;
+  clientType: "standard" | "broker" | "agent";
+  brokerId: string | null;
 }
 
 const DEFAULT_PARTNER_SPLIT: PartnerSplit = {
@@ -67,6 +69,8 @@ const emptyForm = (): ClientFormData => ({
   roleBillingMultipliers: [],
   partnerSplit: null,
   brandNotes: "",
+  clientType: "standard",
+  brokerId: null,
 });
 
 interface Props {
@@ -103,6 +107,8 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
         roleBillingMultipliers: client.roleBillingMultipliers || [],
         partnerSplit: client.partnerSplit || null,
         brandNotes: client.brandNotes || "",
+        clientType: client.clientType || "standard",
+        brokerId: client.brokerId || null,
       });
     } else {
       setForm(emptyForm());
@@ -138,6 +144,42 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
             <Label className="text-xs text-muted-foreground">Contact Name</Label>
             <Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Sam Sizemore" />
           </div>
+          {/* Client type — Broker (a real-estate office that pays for its
+              agents' shoots) / Agent (belongs to a broker) / Standard. */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Client Type</Label>
+            <select
+              value={form.clientType}
+              onChange={e => {
+                const t = e.target.value as "standard" | "broker" | "agent";
+                setForm(f => ({ ...f, clientType: t, brokerId: t === "agent" ? f.brokerId : null }));
+              }}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="standard">Standard client</option>
+              <option value="broker">Broker / Brokerage (pays for its agents)</option>
+              <option value="agent">Agent (belongs to a broker)</option>
+            </select>
+          </div>
+          {form.clientType === "agent" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Bills To (Broker)</Label>
+              <select
+                value={form.brokerId || ""}
+                onChange={e => setForm(f => ({ ...f, brokerId: e.target.value || null }))}
+                className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">— Select broker —</option>
+                {data.clients
+                  .filter(c => c.clientType === "broker" && c.id !== client?.id)
+                  .sort((a, b) => a.company.localeCompare(b.company))
+                  .map(b => <option key={b.id} value={b.id}>{b.company}</option>)}
+              </select>
+              {data.clients.filter(c => c.clientType === "broker").length === 0 && (
+                <p className="text-[11px] text-amber-300">No brokers yet — add a client and set its type to "Broker" first.</p>
+              )}
+            </div>
+          )}
 
           {/* Project Types — prominent, at the top for quick setup */}
           <div className="space-y-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
