@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -53,6 +53,9 @@ interface AppContextValue {
   addCrewPayment: (p: Omit<CrewPayment, "id" | "createdAt">) => Promise<CrewPayment>;
   updateCrewPayment: (id: string, p: Partial<CrewPayment>) => Promise<void>;
   deleteCrewPayment: (id: string) => Promise<void>;
+  addProduct: (p: Omit<Product, "id" | "orgId" | "createdAt">) => Promise<Product>;
+  updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   // Series
   addSeries: (s: Omit<Series, "id" | "createdAt">) => Promise<Series>;
   updateSeries: (id: string, s: Partial<Series>) => Promise<void>;
@@ -387,6 +390,18 @@ function rowToCrewPayment(r: any): CrewPayment {
     paidAt: r.paid_at,
     reference: r.reference || undefined,
     note: r.note || undefined,
+    createdAt: r.created_at,
+  };
+}
+
+function rowToProduct(r: any): Product {
+  return {
+    id: r.id,
+    orgId: r.org_id || "",
+    name: r.name || "",
+    unitCost: Number(r.unit_cost ?? 0),
+    active: r.active !== false,
+    sortOrder: Number(r.sort_order ?? 0),
     createdAt: r.created_at,
   };
 }
@@ -777,7 +792,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -889,6 +904,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],
         crewPayments: [],
+        products: [],
         marketingExpenses: [],
         businessExpenses: [],
         pipelineLeads: [],
@@ -926,6 +942,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Owner-only data — never visible to non-owner without clients
         contractorInvoices: [],
         crewPayments: [],
+        products: [],
         marketingExpenses: [],
         businessExpenses: [],
         pipelineLeads: [],
@@ -969,6 +986,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: invoices, error: e7 },
         { data: contractorInvs, error: e7b },
         { data: crewPaymentsData, error: e7cp },
+        { data: productsData, error: e7pr },
         { data: distances, error: _e7c },
         { data: manualTripsData, error: _e7d },
         { data: bizExpenses, error: _e7e },
@@ -1005,6 +1023,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("invoices").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
         supabase.from("crew_payments").select("*").order("paid_at", { ascending: false }),
+        supabase.from("products").select("*").order("sort_order"),
         supabase.from("crew_location_distances").select("*"),
         supabase.from("manual_trips").select("*").order("date", { ascending: false }),
         supabase.from("business_expenses").select("*").order("date", { ascending: false }),
@@ -1032,7 +1051,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e8;
       if (firstError) throw new Error(firstError.message);
 
       setRawData({
@@ -1046,6 +1065,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         invoices: (invoices || []).map(rowToInvoice),
         contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
         crewPayments: (crewPaymentsData || []).map(r => { try { return rowToCrewPayment(r); } catch { return null; } }).filter(Boolean) as CrewPayment[],
+        products: (productsData || []).map(r => { try { return rowToProduct(r); } catch { return null; } }).filter(Boolean) as Product[],
         crewLocationDistances: (distances || []).map(r => { try { return rowToCrewLocationDistance(r); } catch { return null; } }).filter(Boolean) as any[],
         manualTrips: (manualTripsData || []).map(r => { try { return rowToManualTrip(r); } catch { return null; } }).filter(Boolean) as any[],
         businessExpenses: (bizExpenses || []).map(r => { try { return rowToBusinessExpense(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1105,6 +1125,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       invoices: { key: "invoices", convert: rowToInvoice, softDelete: true },
       contractor_invoices: { key: "contractorInvoices", convert: rowToContractorInvoice },
       crew_payments: { key: "crewPayments", convert: rowToCrewPayment },
+      products: { key: "products", convert: rowToProduct },
       crew_location_distances: { key: "crewLocationDistances", convert: rowToCrewLocationDistance },
       manual_trips: { key: "manualTrips", convert: rowToManualTrip },
       business_expenses: { key: "businessExpenses", convert: rowToBusinessExpense },
@@ -2648,6 +2669,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, crewPayments: d.crewPayments.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Products (per-house cost catalog) ----
+  const addProduct = useCallback(async (p: Omit<Product, "id" | "orgId" | "createdAt">): Promise<Product> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("products").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      name: p.name,
+      unit_cost: p.unitCost,
+      active: p.active,
+      sort_order: p.sortOrder,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const product = rowToProduct(row);
+    setRawData(d => ({ ...d, products: [...d.products, product].sort((a, b) => a.sortOrder - b.sortOrder) }));
+    return product;
+  }, [orgId]);
+
+  const updateProduct = useCallback(async (id: string, p: Partial<Product>) => {
+    const patch: any = {};
+    if (p.name !== undefined) patch.name = p.name;
+    if (p.unitCost !== undefined) patch.unit_cost = p.unitCost;
+    if (p.active !== undefined) patch.active = p.active;
+    if (p.sortOrder !== undefined) patch.sort_order = p.sortOrder;
+    const { error } = await supabase.from("products").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, products: d.products.map(x => x.id === id ? { ...x, ...p } : x) }));
+  }, []);
+
+  const deleteProduct = useCallback(async (id: string) => {
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, products: d.products.filter(x => x.id !== id) }));
+  }, []);
+
   // ---- Series ----
   const addSeries = useCallback(async (s: Omit<Series, "id" | "createdAt">): Promise<Series> => {
     const id = nanoid(10);
@@ -2778,6 +2833,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addInvoice, updateInvoice, deleteInvoice,
       addContractorInvoice, updateContractorInvoice, deleteContractorInvoice,
       addCrewPayment, updateCrewPayment, deleteCrewPayment,
+      addProduct, updateProduct, deleteProduct,
       addSeries, updateSeries, deleteSeries,
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,

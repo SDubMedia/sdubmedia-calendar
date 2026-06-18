@@ -160,6 +160,7 @@ export const seedData: AppData = {
   invoices: [],
   contractorInvoices: [],
   crewPayments: [],
+  products: [],
   crewLocationDistances: [],
   manualTrips: [],
   businessExpenses: [],

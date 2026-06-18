@@ -115,6 +115,7 @@ const navStructure: NavEntry[] = [
     { label: "Invoices", href: "/invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Contractor Invoices", href: "/contractor-invoices", icon: Receipt, roles: ["owner", "partner"], feature: "invoicing" },
     { label: "Staff Payments", href: "/staff-payments", icon: DollarSign, roles: ["owner"] },
+    { label: "Products & Software", href: "/products", icon: PackageIcon, roles: ["owner"] },
     { label: "Outstanding Payments", href: "/outstanding-payments", icon: AlertCircle, roles: ["owner", "partner"] },
     { label: "Expenses", href: "/expenses", icon: Receipt, roles: ["owner"], feature: "expenses" },
     { label: "Budget", href: "/marketing-budget", icon: PiggyBank, roles: ["owner", "partner"], feature: "budget" },

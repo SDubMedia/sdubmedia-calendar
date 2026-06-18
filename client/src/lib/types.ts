@@ -628,6 +628,20 @@ export interface CrewPayment {
   createdAt: string;
 }
 
+// ---- Products (per-house software/tool costs, e.g. Fotello) ----
+// A reusable catalog of products/tools that cost money per shoot, so the owner
+// can drop "Fotello $25" onto a project and have it counted against per-house
+// profit. Owner-only (RLS). unitCost is the per-house cost.
+export interface Product {
+  id: string;
+  orgId: string;
+  name: string;
+  unitCost: number;   // $ per house/shoot
+  active: boolean;    // inactive products are hidden from the project picker
+  sortOrder: number;
+  createdAt: string;
+}
+
 // ---- Invoices ----
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 
@@ -1416,6 +1430,7 @@ export interface AppData {
   invoices: Invoice[];
   contractorInvoices: ContractorInvoice[];
   crewPayments: CrewPayment[];
+  products: Product[];
   crewLocationDistances: CrewLocationDistance[];
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];
