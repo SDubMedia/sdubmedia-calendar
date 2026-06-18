@@ -13,17 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pencil } from "lucide-react";
-import type { CrewPayment, ContractorPaymentMethod } from "@/lib/types";
-
-const METHOD_LABELS: Record<ContractorPaymentMethod, string> = {
-  venmo: "Venmo",
-  zelle: "Zelle",
-  check: "Check",
-  cash: "Cash",
-  bank_transfer: "Bank Transfer (ACH)",
-  stripe: "Stripe Transfer",
-  other: "Other",
-};
+import { PAYMENT_METHOD_LABELS as METHOD_LABELS, type CrewPayment, type ContractorPaymentMethod } from "@/lib/types";
 
 interface Props {
   payment: CrewPayment | null;

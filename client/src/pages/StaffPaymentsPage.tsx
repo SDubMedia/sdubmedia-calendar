@@ -21,17 +21,7 @@ import { toast } from "sonner";
 import LogCrewPaymentDialog from "@/components/LogCrewPaymentDialog";
 import EditCrewPaymentDialog from "@/components/EditCrewPaymentDialog";
 import { getCrewMemberProjectPay, getCrewProjectPaid, getCrewProjectRemaining } from "@/lib/data";
-import type { CrewPayment, ContractorPaymentMethod, Project } from "@/lib/types";
-
-const METHOD_LABELS: Record<ContractorPaymentMethod, string> = {
-  venmo: "Venmo",
-  zelle: "Zelle",
-  check: "Check",
-  cash: "Cash",
-  bank_transfer: "Bank Transfer",
-  stripe: "Stripe",
-  other: "Other",
-};
+import { PAYMENT_METHOD_LABELS as METHOD_LABELS, type CrewPayment, type Project } from "@/lib/types";
 
 function formatCurrency(n: number): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -54,8 +44,9 @@ export default function StaffPaymentsPage() {
 
   // The owner's own linked crew member — exclude from "what you owe" (you
   // don't pay yourself). Fall back to email match if no direct link.
+  const ownerEmail = profile?.email?.trim().toLowerCase() || "";
   const ownerCrewId = profile?.crewMemberId
-    || data.crewMembers.find(c => c.email && c.email === profile?.email)?.id
+    || data.crewMembers.find(c => c.email && c.email.trim().toLowerCase() === ownerEmail && ownerEmail !== "")?.id
     || "";
 
   const crewName = (id: string) => data.crewMembers.find(c => c.id === id)?.name || "Unknown";

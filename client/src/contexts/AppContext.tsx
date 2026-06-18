@@ -966,7 +966,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: expenses, error: e6 },
         { data: invoices, error: e7 },
         { data: contractorInvs, error: e7b },
-        { data: crewPaymentsData, error: _e7cp },
+        { data: crewPaymentsData, error: e7cp },
         { data: distances, error: _e7c },
         { data: manualTripsData, error: _e7d },
         { data: bizExpenses, error: _e7e },
@@ -1030,7 +1030,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e8;
       if (firstError) throw new Error(firstError.message);
 
       setRawData({

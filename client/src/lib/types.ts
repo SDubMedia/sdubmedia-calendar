@@ -556,6 +556,18 @@ export type ContractorInvoiceStatus = "draft" | "sent" | "paid";
 // process the payment itself — this is just record-keeping.
 export type ContractorPaymentMethod = "venmo" | "zelle" | "check" | "cash" | "bank_transfer" | "stripe" | "other";
 
+// Display labels for payment methods — single source of truth so the same
+// method reads the same everywhere (log dialog, edit dialog, payment list).
+export const PAYMENT_METHOD_LABELS: Record<ContractorPaymentMethod, string> = {
+  venmo: "Venmo",
+  zelle: "Zelle",
+  check: "Check",
+  cash: "Cash",
+  bank_transfer: "Bank Transfer (ACH)",
+  stripe: "Stripe Transfer",
+  other: "Other",
+};
+
 export interface ContractorInvoiceLineItem {
   projectId: string;
   date: string;

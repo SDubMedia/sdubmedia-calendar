@@ -16,19 +16,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign } from "lucide-react";
 import { getCrewMemberProjectPay, getCrewProjectPaid, getCrewProjectRemaining } from "@/lib/data";
-import type {
-  CrewMember, CrewPayment, ContractorPaymentMethod, Project, ProjectType, Location,
+import {
+  PAYMENT_METHOD_LABELS as METHOD_LABELS,
+  type CrewMember, type CrewPayment, type ContractorPaymentMethod, type Project, type ProjectType, type Location,
 } from "@/lib/types";
-
-const METHOD_LABELS: Record<ContractorPaymentMethod, string> = {
-  venmo: "Venmo",
-  zelle: "Zelle",
-  check: "Check",
-  cash: "Cash",
-  bank_transfer: "Bank Transfer (ACH)",
-  stripe: "Stripe Transfer",
-  other: "Other",
-};
 
 interface Props {
   crewMembers: CrewMember[];
