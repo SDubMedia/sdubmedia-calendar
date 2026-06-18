@@ -388,6 +388,24 @@ describe("buildLineItems — broker roll-up (payer resolution)", () => {
     expect(items[0].description).toContain("Sarah Jones");
   });
 
+  it("includes the property address on broker lines", () => {
+    const items = buildLineItems([houseA], broker, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
+    // loc-1 has address "915 Rep John Lewis Way"
+    expect(items[0].description).toContain("915 Rep John Lewis Way");
+  });
+
+  it("broker invoice notes summarize month, homes, and total", () => {
+    const draft = buildInvoice(broker, [houseA, houseB], projectTypes, locations, [], "2026-04-01", "2026-04-30", null, all);
+    expect(draft.notes).toContain("April 2026");
+    expect(draft.notes).toContain("2 homes");
+    expect(draft.notes).toContain("400");
+  });
+
+  it("non-broker invoice has no auto summary note", () => {
+    const draft = buildInvoice(standard, [makeProject({ id: "sH", clientId: "std1", date: "2026-04-08", status: "editing_done" })], projectTypes, locations, [], "2026-04-01", "2026-04-30", null, all);
+    expect(draft.notes).toBe("");
+  });
+
   it("a bill-to-agent override stays on the agent, not the broker", () => {
     const items = buildLineItems([houseOwnPay], agentA, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
     expect(items.map(li => li.projectId)).toContain("hOwn");

@@ -114,12 +114,20 @@ export function buildLineItems(
     // invoice recipient (which may be the broker).
     const pricingClient = (clientsById && clientsById[p.clientId]) || client;
     const typeName = projectTypes.find(t => t.id === p.projectTypeId)?.name ?? "Project";
-    const locName = locations.find(l => l.id === p.locationId)?.name;
-    // On a broker invoice, prefix each line with the agent's name so the
-    // broker can see whose property each house is.
-    const billedForAgent = (clientsById && p.clientId !== client.id) ? clientsById[p.clientId] : null;
+    const loc = locations.find(l => l.id === p.locationId);
+    const locName = loc?.name;
     const baseLabel = locName ? `${typeName} — ${locName}` : typeName;
-    const projectLabel = billedForAgent ? `${billedForAgent.company} — ${baseLabel}` : baseLabel;
+    // On a broker invoice, each line names the AGENT and the PROPERTY (street
+    // address if we have it, else the location name) so the broker can match
+    // every charge to a specific listing.
+    const billedForAgent = (clientsById && p.clientId !== client.id) ? clientsById[p.clientId] : null;
+    const propLabel = loc
+      ? (loc.address?.trim() ? `${loc.address.trim()}${loc.city ? `, ${loc.city}` : ""}` : (loc.name || ""))
+      : "";
+    const brokerPrefix = billedForAgent
+      ? `${billedForAgent.company}${propLabel ? ` · ${propLabel}` : ""}`
+      : null;
+    const projectLabel = brokerPrefix || baseLabel;
 
     // Service bundle pricing wins if the project has selected services.
     // Each service becomes its own line item with the denormalized label
@@ -131,9 +139,9 @@ export function buildLineItems(
         items.push({
           projectId: p.id,
           date: p.date,
-          // On a broker invoice, prefix the agent's name so the broker knows
-          // whose property each service line belongs to.
-          description: billedForAgent ? `${billedForAgent.company} — ${svcLabel}` : svcLabel,
+          // On a broker invoice: "Agent · 123 Main St · Photos" so the broker
+          // sees who, which property, and what piece on every line.
+          description: brokerPrefix ? `${brokerPrefix} · ${svcLabel}` : svcLabel,
           quantity: 1,
           unitPrice: Number(svc.price || 0),
           amount: Number(svc.price || 0),
@@ -243,6 +251,17 @@ export function buildInvoice(
   const total = subtotal + taxAmount;
   const today = new Date().toISOString().slice(0, 10);
 
+  // Broker invoices get a one-line billing summary (month · homes · total) so
+  // the brokerage sees the bottom line at a glance above the itemization.
+  let notes = "";
+  if (allClients && client.clientType === "broker") {
+    const homes = new Set(lineItems.map(li => li.projectId)).size;
+    const monthLabel = new Date(periodStart + "T00:00:00")
+      .toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const totalStr = "$" + total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    notes = `${monthLabel} — ${homes} home${homes !== 1 ? "s" : ""} shot — total ${totalStr}`;
+  }
+
   return {
     invoiceNumber: generateInvoiceNumber(existingInvoices),
     clientId: client.id,
@@ -273,7 +292,7 @@ export function buildInvoice(
       email: client.email,
       phone: client.phone,
     },
-    notes: "",
+    notes,
     paymentMethods: ["stripe"],
     viewToken: "",
   };
