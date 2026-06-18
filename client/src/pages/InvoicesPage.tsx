@@ -143,7 +143,7 @@ export default function InvoicesPage() {
     if (!selectedClientId || !periodStart || !periodEnd) return [];
     const client = data.clients.find(c => c.id === selectedClientId);
     if (!client) return [];
-    const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization);
+    const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization, data.clients);
     return draft.lineItems;
   }, [selectedClientId, periodStart, periodEnd, data]);
 
@@ -156,7 +156,7 @@ export default function InvoicesPage() {
 
     setCreating(true);
     try {
-      const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization);
+      const draft = buildInvoice(client, data.projects, data.projectTypes, data.locations, data.invoices, periodStart, periodEnd, data.organization, data.clients);
       // Get invoice number from DB to avoid collisions with soft-deleted invoices
       draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
       await addInvoice(draft);

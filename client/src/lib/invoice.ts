@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
-import { getProjectBillableHours, getProjectSubtotal, getProjectDiscountValue } from "./data";
+import { getProjectBillableHours, getProjectSubtotal, getProjectDiscountValue, getProjectPayerId } from "./data";
 
 export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -59,7 +59,16 @@ export async function generateInvoiceNumberFromDB(supabase: any): Promise<string
   return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
 }
 
-/** Build line items from projects in a date range for a client */
+/**
+ * Build line items from projects in a date range for a client.
+ *
+ * When `allClients` is provided, projects are grouped by their RESOLVED PAYER
+ * (getProjectPayerId) rather than their raw clientId — so a broker invoice
+ * gathers every house its agents had billed up to it. Each house is still
+ * priced with its own client's (the agent's) settings, and broker lines are
+ * labeled with the agent's name. When `allClients` is omitted, behavior is
+ * unchanged (match by clientId, price with `client`).
+ */
 export function buildLineItems(
   projects: Project[],
   client: Client,
@@ -68,7 +77,13 @@ export function buildLineItems(
   periodStart: string,
   periodEnd: string,
   existingInvoices?: { lineItems: { projectId: string }[] }[],
+  allClients?: Client[],
 ): InvoiceLineItem[] {
+  const clientsById = allClients
+    ? Object.fromEntries(allClients.map(c => [c.id, c]))
+    : null;
+  const payerOf = (p: Project): string =>
+    clientsById ? getProjectPayerId(p, clientsById) : p.clientId;
   // Collect already-invoiced project IDs to prevent double-billing
   const invoicedProjectIds = new Set<string>();
   if (existingInvoices) {
@@ -80,7 +95,7 @@ export function buildLineItems(
   }
 
   const filtered = projects.filter(p => {
-    if (p.clientId !== client.id) return false;
+    if (payerOf(p) !== client.id) return false;
     if (p.date < periodStart || p.date > periodEnd) return false;
     // Don't invoice upcoming or tentative projects (no work done yet)
     if (p.status === "upcoming" || p.status === "tentative") return false;
@@ -95,9 +110,16 @@ export function buildLineItems(
   const items: InvoiceLineItem[] = [];
 
   for (const p of filtered) {
+    // Price each house with its OWN client (the agent), not necessarily the
+    // invoice recipient (which may be the broker).
+    const pricingClient = (clientsById && clientsById[p.clientId]) || client;
     const typeName = projectTypes.find(t => t.id === p.projectTypeId)?.name ?? "Project";
     const locName = locations.find(l => l.id === p.locationId)?.name;
-    const projectLabel = locName ? `${typeName} — ${locName}` : typeName;
+    // On a broker invoice, prefix each line with the agent's name so the
+    // broker can see whose property each house is.
+    const billedForAgent = (clientsById && p.clientId !== client.id) ? clientsById[p.clientId] : null;
+    const baseLabel = locName ? `${typeName} — ${locName}` : typeName;
+    const projectLabel = billedForAgent ? `${billedForAgent.company} — ${baseLabel}` : baseLabel;
 
     // Service bundle pricing wins if the project has selected services.
     // Each service becomes its own line item with the denormalized label
@@ -105,10 +127,13 @@ export function buildLineItems(
     // bypasses both the per_project and hourly branches below.
     if (p.services && p.services.length > 0) {
       for (const svc of p.services) {
+        const svcLabel = svc.label || projectLabel;
         items.push({
           projectId: p.id,
           date: p.date,
-          description: svc.label || projectLabel,
+          // On a broker invoice, prefix the agent's name so the broker knows
+          // whose property each service line belongs to.
+          description: billedForAgent ? `${billedForAgent.company} — ${svcLabel}` : svcLabel,
           quantity: 1,
           unitPrice: Number(svc.price || 0),
           amount: Number(svc.price || 0),
@@ -134,8 +159,8 @@ export function buildLineItems(
       continue;
     }
 
-    const effectiveModel = p.billingModel ?? client.billingModel;
-    const projectSubtotal = getProjectSubtotal(p, client);
+    const effectiveModel = p.billingModel ?? pricingClient.billingModel;
+    const projectSubtotal = getProjectSubtotal(p, pricingClient);
     if (effectiveModel === "per_project") {
       // Flat-rate projects show a single line item with the flat amount
       // — clients booked a flat rate, so they shouldn't see a synthetic
@@ -145,8 +170,8 @@ export function buildLineItems(
       items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
-      const rate = Number(p.billingRate ?? client.billingRatePerHour ?? 0);
-      const { crewBillable, postBillable } = getProjectBillableHours(p, client);
+      const rate = Number(p.billingRate ?? pricingClient.billingRatePerHour ?? 0);
+      const { crewBillable, postBillable } = getProjectBillableHours(p, pricingClient);
 
       if (p.crew.length > 0 && crewBillable > 0) {
         items.push({
@@ -168,7 +193,7 @@ export function buildLineItems(
 
       // Fallback if no crew/post data
       if (p.crew.length === 0 && p.postProduction.length === 0) {
-        const { totalBillable } = getProjectBillableHours(p, client);
+        const { totalBillable } = getProjectBillableHours(p, pricingClient);
         items.push({
           projectId: p.id, date: p.date,
           description: projectLabel,
@@ -209,8 +234,9 @@ export function buildInvoice(
   periodStart: string,
   periodEnd: string,
   org?: Organization | null,
+  allClients?: Client[],
 ): Omit<Invoice, "id" | "createdAt" | "updatedAt"> {
-  const lineItems = buildLineItems(projects, client, projectTypes, locations, periodStart, periodEnd, existingInvoices as any);
+  const lineItems = buildLineItems(projects, client, projectTypes, locations, periodStart, periodEnd, existingInvoices as any, allClients);
   const subtotal = lineItems.reduce((s, li) => s + li.amount, 0);
   const taxRate = 0;
   const taxAmount = subtotal * taxRate;

@@ -362,3 +362,40 @@ describe("buildLineItems — cancellation exclusion", () => {
     expect(ids).not.toContain("p-upcoming");
   });
 });
+
+describe("buildLineItems — broker roll-up (payer resolution)", () => {
+  const broker = makeClient({ id: "broker1", company: "Realty ONE", clientType: "broker" });
+  const agentA = makeClient({ id: "agentA", company: "Sarah Jones", clientType: "agent", brokerId: "broker1", billingModel: "per_project", perProjectRate: 250 });
+  const agentB = makeClient({ id: "agentB", company: "Tom Lee", clientType: "agent", brokerId: "broker1", billingModel: "per_project", perProjectRate: 250 });
+  const standard = makeClient({ id: "std1", company: "Acme", clientType: "standard" });
+  const all = [broker, agentA, agentB, standard];
+
+  const houseA = makeProject({ id: "hA", clientId: "agentA", date: "2026-04-05", status: "editing_done", crew: [], postProduction: [], services: [{ serviceId: "s", variantId: null, label: "RE — Photo+Video", price: 250 }] });
+  const houseB = makeProject({ id: "hB", clientId: "agentB", date: "2026-04-12", status: "editing_done", crew: [], postProduction: [], services: [{ serviceId: "s", variantId: null, label: "RE — Photos", price: 150 }] });
+  const houseOwnPay = makeProject({ id: "hOwn", clientId: "agentA", billToId: "agentA", date: "2026-04-20", status: "editing_done", crew: [], postProduction: [], services: [{ serviceId: "s", variantId: null, label: "RE — Photos", price: 150 }] });
+
+  it("rolls every agent's broker-billed house onto the broker invoice", () => {
+    const items = buildLineItems([houseA, houseB, houseOwnPay], broker, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
+    const ids = items.map(li => li.projectId);
+    expect(ids).toContain("hA");
+    expect(ids).toContain("hB");
+    expect(ids).not.toContain("hOwn"); // overridden to bill the agent directly
+    expect(items.reduce((s, li) => s + li.amount, 0)).toBe(400);
+  });
+
+  it("labels broker lines with the agent's name", () => {
+    const items = buildLineItems([houseA], broker, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
+    expect(items[0].description).toContain("Sarah Jones");
+  });
+
+  it("a bill-to-agent override stays on the agent, not the broker", () => {
+    const items = buildLineItems([houseOwnPay], agentA, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
+    expect(items.map(li => li.projectId)).toContain("hOwn");
+  });
+
+  it("standard-client invoicing is unchanged when allClients is passed", () => {
+    const stdHouse = makeProject({ id: "sH", clientId: "std1", date: "2026-04-08", status: "editing_done" });
+    const items = buildLineItems([stdHouse], standard, projectTypes, locations, "2026-04-01", "2026-04-30", undefined, all);
+    expect(items.map(li => li.projectId)).toContain("sH");
+  });
+});
