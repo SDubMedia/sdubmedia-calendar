@@ -3,7 +3,7 @@
 // Design: Dark Cinematic Studio | Amber accent on charcoal
 // ============================================================
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/l
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
-import ProjectDialog from "@/components/ProjectDialog";
+import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
 import MeetingDialog, { getMeetingColor } from "@/components/MeetingDialog";
@@ -65,6 +65,10 @@ export default function CalendarPage() {
   const [viewScope, setViewScope] = useState<"month" | "all">("month");
   const [calendarMode, setCalendarMode] = useState<"production" | "personal" | "both">(isFamily ? "personal" : "production");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [resumeProject, setResumeProject] = useState(false);
+  // Whether a half-entered project draft exists (drives the "Resume" button).
+  const [hasDraft, setHasDraft] = useState(false);
+  useEffect(() => { setHasDraft(hasProjectDraft()); }, []);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
@@ -493,9 +497,20 @@ export default function CalendarPage() {
                 <span className="hidden sm:inline">Meeting</span>
               </Button>
             )}
+            {!isClient && hasDraft && (
+              <Button
+                variant="outline"
+                onClick={() => { setResumeProject(true); setNewProjectOpen(true); }}
+                className="gap-2 border-amber-500/40 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 px-3 sm:px-4"
+                title="Resume the project you were entering"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">Resume</span>
+              </Button>
+            )}
             {!isClient && (
               <Button
-                onClick={() => openAddForDate(null)}
+                onClick={() => { setResumeProject(false); openAddForDate(null); }}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 px-3 sm:px-4"
                 title="Add a new project"
               >
@@ -1187,7 +1202,8 @@ export default function CalendarPage() {
       {/* New Project Dialog */}
       <ProjectDialog
         open={newProjectOpen}
-        onClose={() => { setNewProjectOpen(false); setSelectedDate(null); }}
+        resume={resumeProject}
+        onClose={() => { setNewProjectOpen(false); setResumeProject(false); setSelectedDate(null); setHasDraft(hasProjectDraft()); }}
         defaultDate={selectedDate ?? undefined}
       />
 

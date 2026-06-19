@@ -31,6 +31,15 @@ interface Props {
   defaultClientId?: string;
   defaultNotes?: string;
   onCreated?: (project: Project) => void;
+  /** Open restoring the saved draft (the "Resume Project" entry point). */
+  resume?: boolean;
+}
+
+// A half-entered NEW project is stashed here on close so it can be resumed.
+// Device-local, single slot. Cleared on save.
+export const PROJECT_DRAFT_KEY = "slate:projectDraft";
+export function hasProjectDraft(): boolean {
+  try { return !!localStorage.getItem(PROJECT_DRAFT_KEY); } catch { return false; }
 }
 
 const emptyCrewEntry = (): ProjectCrewEntry => ({
@@ -47,7 +56,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
   payRatePerHour: 0,
 });
 
-export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated }: Props) {
+export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated, resume }: Props) {
   const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember } = useApp();
   const isEdit = !!project;
 
@@ -109,6 +118,44 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   useEffect(() => {
     // Only reset form state when dialog transitions from closed → open
     if (open && !wasOpen.current) {
+      // Resume a half-entered project from the saved draft.
+      if (resume && !project) {
+        let d: any = null;
+        try { d = JSON.parse(localStorage.getItem(PROJECT_DRAFT_KEY) || "null"); } catch { /* ignore */ }
+        if (d) {
+          setBrokerSelectId(d.brokerSelectId ?? "");
+          setClientId(d.clientId ?? "");
+          setProjectTypeId(d.projectTypeId ?? "");
+          setLocationId(d.locationId ?? "");
+          setPropertyAddress(d.propertyAddress ?? "");
+          setDate(d.date ?? "");
+          setStartTime(d.startTime ?? "09:00");
+          setEndTime(d.endTime ?? "11:00");
+          setStatus(d.status ?? "upcoming");
+          setCrew(d.crew?.length ? d.crew : [emptyCrewEntry()]);
+          setPostProduction(d.postProduction?.length ? d.postProduction : [emptyPostEntry()]);
+          setEditTypes(d.editTypes ?? []);
+          setNotes(d.notes ?? "");
+          setDeliverableUrl(d.deliverableUrl ?? "");
+          setCancellationReason(d.cancellationReason ?? "");
+          setProjectRate(d.projectRate ?? null);
+          setBillingModelOverride(d.billingModelOverride ?? null);
+          setBillingRateOverride(d.billingRateOverride ?? null);
+          setDiscountType(d.discountType ?? null);
+          setDiscountAmount(d.discountAmount ?? 0);
+          setDiscountReason(d.discountReason ?? "");
+          setServiceCategoryId(d.serviceCategoryId ?? null);
+          setBundleServices(d.bundleServices ?? []);
+          setBillToId(d.billToId ?? null);
+          setProducts(d.products ?? []);
+          setShowNewType(false); setNewTypeName(""); setShowNewEditType(false); setNewEditTypeName("");
+          setShowNewLocation(false); setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
+          setLocationTab("saved"); setShowNewClient(false); setNewClientName("");
+          setShowNewAgent(false); setNewAgentName("");
+          wasOpen.current = open;
+          return;
+        }
+      }
       // If editing a shoot whose client is an agent, enter via that agent's
       // broker so the picker shows broker → agent. New shoots default to the
       // first standard client (brokers/agents are reached via the broker).
@@ -165,7 +212,33 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setNewClientName("");
     }
     wasOpen.current = open;
-  }, [open, project, defaultDate, defaultClientId, data.clients]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, project, defaultDate, defaultClientId, data.clients, resume]);
+
+  // Snapshot the current form for the "Resume Project" draft.
+  const captureDraft = () => ({
+    brokerSelectId, clientId, projectTypeId, locationId, propertyAddress,
+    date, startTime, endTime, status, crew, postProduction, editTypes, notes,
+    deliverableUrl, cancellationReason, projectRate, billingModelOverride,
+    billingRateOverride, discountType, discountAmount, discountReason,
+    serviceCategoryId, bundleServices, billToId, products,
+  });
+  const draftMeaningful = (d: ReturnType<typeof captureDraft>) =>
+    !!(d.projectTypeId || d.brokerSelectId || d.propertyAddress.trim() || d.notes.trim()
+      || d.bundleServices.length || d.products.length || d.deliverableUrl.trim()
+      || d.crew.some(c => c.crewMemberId) || d.postProduction.some(c => c.crewMemberId));
+
+  // Close path used by Cancel / back. For a new project that's been started,
+  // stash the draft so it can be resumed; otherwise leave any existing draft.
+  const handleCloseWithDraft = () => {
+    if (!isEdit) {
+      try {
+        const d = captureDraft();
+        if (draftMeaningful(d)) localStorage.setItem(PROJECT_DRAFT_KEY, JSON.stringify(d));
+      } catch { /* ignore */ }
+    }
+    onClose();
+  };
 
   const toggleEditType = (id: string) => {
     setEditTypes((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -497,6 +570,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         toast.success("Project updated");
       } else {
         const newProject = await addProject(payload);
+        try { localStorage.removeItem(PROJECT_DRAFT_KEY); } catch { /* ignore */ }
         toast.success("Project created");
         if (onCreated) onCreated(newProject);
       }
@@ -528,7 +602,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         <DialogHeader>
           <div className="flex items-center gap-3">
             <button
-              onClick={onClose}
+              onClick={handleCloseWithDraft}
               className="sm:hidden -ml-1 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -1400,7 +1474,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         </div>
 
         <DialogFooter className="sticky bottom-0 bg-card/95 backdrop-blur-sm pt-3 pb-3 -mx-6 px-6 border-t border-border z-10">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={handleCloseWithDraft}>Cancel</Button>
           <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
             {isEdit ? "Save Changes" : "Create Project"}
           </Button>
