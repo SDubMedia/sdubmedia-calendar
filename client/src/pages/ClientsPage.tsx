@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Client } from "@/lib/types";
 import { toast } from "sonner";
+import { formatPhoneDisplay } from "@/lib/utils";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
 
 export default function ClientsPage() {
@@ -78,7 +79,7 @@ export default function ClientsPage() {
                   <div className="text-sm text-muted-foreground">{client.contactName}</div>
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                     {client.phone && (
-                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{client.phone}</span>
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{formatPhoneDisplay(client.phone)}</span>
                     )}
                     {client.email && (
                       <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{client.email}</span>

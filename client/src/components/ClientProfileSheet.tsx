@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneInput } from "@/lib/utils";
 import BrandNotesAssistant from "./BrandNotesAssistant";
 
 interface ClientFormData {
@@ -248,7 +248,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Phone</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-secondary border-border" placeholder="615-000-0000" />
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} inputMode="tel" className="bg-secondary border-border" placeholder="615-000-0000" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Email</Label>

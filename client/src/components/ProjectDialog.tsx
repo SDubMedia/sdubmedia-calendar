@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, getProjectServiceCost } from "@/lib/data";
+import { formatPhoneDisplay } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
@@ -100,6 +101,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [brokerSelectId, setBrokerSelectId] = useState<string>("");
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
+  // Real-estate property address — typed in, saved as a one-time location on
+  // the project (not added to the reusable saved-locations list).
+  const [propertyAddress, setPropertyAddress] = useState("");
 
   const wasOpen = useRef(false);
   useEffect(() => {
@@ -115,6 +119,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setClientId(project?.clientId ?? defaultClientId ?? data.clients.find(c => (c.clientType ?? "standard") === "standard")?.id ?? "");
       setProjectTypeId(project?.projectTypeId ?? "");
       setLocationId(project?.locationId ?? "");
+      // Prefill the RE address field from the project's location (if any).
+      const initLoc = data.locations.find(l => l.id === project?.locationId);
+      setPropertyAddress(initLoc ? (initLoc.address || initLoc.name || "") : "");
       setDate(project?.date ?? defaultDate ?? "");
       setStartTime(project?.startTime ?? "09:00");
       setEndTime(project?.endTime ?? "11:00");
@@ -179,6 +186,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
   // Get the selected client and check if selected type is lightweight
   const selectedClient = useMemo(() => data.clients.find(c => c.id === clientId), [data.clients, clientId]);
+
+  // Real-estate shoot: the selected project type's name matches "real estate".
+  // Drives the streamlined flow (address field, start-time only, auto bundle).
+  const isRealEstate = useMemo(
+    () => /real\s*estate/i.test(data.projectTypes.find(t => t.id === projectTypeId)?.name || ""),
+    [data.projectTypes, projectTypeId],
+  );
   const isLightweight = useMemo(() => data.projectTypes.find(pt => pt.id === projectTypeId)?.lightweight || false, [data.projectTypes, projectTypeId]);
 
   const availableProjectTypes = useMemo(() => {
@@ -212,6 +226,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setBrokerSelectId(v);
       setClientId("");           // wait for an agent
       setShowNewAgent(false);
+      // A broker shoot is a real-estate shoot — auto-select that type so the
+      // bundle + address + start-time-only flow turns on without extra clicks.
+      const reType = data.projectTypes.find(t => /real\s*estate/i.test(t.name));
+      if (reType) handleProjectTypeChange(reType.id);
     } else {
       setBrokerSelectId("");
       handleClientChange(v);     // standard client → it's the project's client
@@ -421,6 +439,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       toast.error("Please fill in client, project type, and date");
       return;
     }
+    if (isRealEstate && !propertyAddress.trim()) {
+      toast.error("Enter the property address");
+      return;
+    }
     // SaaS tier gate: block new project creation when over plan limit.
     // Existing projects (edit path) are always allowed — data preserved on downgrade.
     if (!isEdit) {
@@ -430,8 +452,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         return;
       }
     }
+    // Real-estate: turn the typed address into a one-time location (reusing the
+    // project's existing one if it already has one). End time mirrors start.
+    let finalLocationId = locationId;
+    try {
+      if (isRealEstate) {
+        const addr = propertyAddress.trim();
+        const existingOneTime = data.locations.find(l => l.id === locationId && l.oneTimeUse);
+        if (existingOneTime) {
+          await updateLocation(existingOneTime.id, { name: addr, address: addr });
+          finalLocationId = existingOneTime.id;
+        } else {
+          const loc = await addLocation({ name: addr, address: addr, city: "", state: "", zip: "", oneTimeUse: true });
+          finalLocationId = loc.id;
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save the property address");
+      return;
+    }
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId, projectTypeId, locationId: locationId || "", date, startTime, endTime,
+      clientId, projectTypeId, locationId: finalLocationId || "", date, startTime, endTime: isRealEstate ? startTime : endTime,
       status: isLightweight ? "delivered" : status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
@@ -563,7 +604,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     </Select>
                   )}
                   {selectedClient?.clientType === "agent" && (selectedClient.email || selectedClient.phone) && (
-                    <p className="text-[11px] text-muted-foreground">{[selectedClient.email, selectedClient.phone].filter(Boolean).join(" · ")} · bills to broker</p>
+                    <p className="text-[11px] text-muted-foreground">{[selectedClient.email, formatPhoneDisplay(selectedClient.phone)].filter(Boolean).join(" · ")} · bills to broker</p>
                   )}
                 </div>
               )}
@@ -601,8 +642,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
           </div>
 
-          {/* Row 2: Date + Times */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Row 2: Date + Times. Real-estate shoots show start time only. */}
+          <div className={`grid grid-cols-1 ${isRealEstate ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-4`}>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-secondary border-border" />
@@ -611,17 +652,29 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               <Label className="text-xs text-muted-foreground">Start Time</Label>
               <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="bg-secondary border-border" />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">End Time</Label>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="bg-secondary border-border" />
-            </div>
+            {!isRealEstate && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">End Time</Label>
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="bg-secondary border-border" />
+              </div>
+            )}
           </div>
 
-          {/* Row 3: Location + Status */}
+          {/* Row 3: Location/Address + Status */}
           <div className={`grid grid-cols-1 ${isLightweight ? "" : "sm:grid-cols-2"} gap-4`}>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Location</Label>
-              {showNewLocation ? (
+              <Label className="text-xs text-muted-foreground">{isRealEstate ? "Property Address" : "Location"}</Label>
+              {isRealEstate ? (
+                <>
+                  <Input
+                    value={propertyAddress}
+                    onChange={(e) => setPropertyAddress(e.target.value)}
+                    className="bg-secondary border-border"
+                    placeholder="123 Main St, Nashville, TN"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Saved with this shoot only — not added to your locations list.</p>
+                </>
+              ) : showNewLocation ? (
                 <div className="space-y-2 rounded-md border border-border p-3 bg-secondary/30">
                   <Input value={newLocForm.name} onChange={(e) => setNewLocForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary border-border" placeholder="Location name *" autoFocus />
                   <Input value={newLocForm.address} onChange={(e) => setNewLocForm(f => ({ ...f, address: e.target.value }))} className="bg-secondary border-border" placeholder="Street address *" />
