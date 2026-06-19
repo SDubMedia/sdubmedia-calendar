@@ -142,12 +142,22 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
         </SheetHeader>
         <div className="space-y-5 px-4 sm:px-6 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Company Name *</Label>
-            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Coldwell Banker Southern Realty" />
+            <Label className="text-xs text-muted-foreground">
+              {form.clientType === "agent" ? "Agent Name *" : form.clientType === "broker" ? "Brokerage Name *" : "Company Name *"}
+            </Label>
+            <Input
+              value={form.company}
+              onChange={(e) => setForm({ ...form, company: e.target.value })}
+              className="bg-secondary border-border"
+              placeholder={form.clientType === "agent" ? "e.g. Holly Huddleston" : form.clientType === "broker" ? "e.g. Realty One" : "e.g. Coldwell Banker Southern Realty"}
+            />
+            {form.clientType === "agent" && (
+              <p className="text-[11px] text-muted-foreground">Use the agent's own name here — not the brokerage. They bill up to their broker.</p>
+            )}
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Contact Name</Label>
-            <Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} className="bg-secondary border-border" placeholder="e.g. Sam Sizemore" />
+            <Label className="text-xs text-muted-foreground">{form.clientType === "agent" ? "Contact Name (optional)" : "Contact Name"}</Label>
+            <Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} className="bg-secondary border-border" placeholder={form.clientType === "agent" ? "(usually same as agent name)" : "e.g. Sam Sizemore"} />
           </div>
           {/* Client type — Broker (a real-estate office that pays for its
               agents' shoots) / Agent (belongs to a broker) / Standard. */}

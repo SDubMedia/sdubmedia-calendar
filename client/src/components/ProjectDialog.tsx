@@ -554,7 +554,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                         {data.clients
                           .filter((c) => c.clientType === "agent" && c.brokerId === brokerSelectId)
                           .map((a) => (
-                            <SelectItem key={a.id} value={a.id}>{a.company}{a.contactName ? ` · ${a.contactName}` : ""}</SelectItem>
+                            <SelectItem key={a.id} value={a.id}>{a.company}{a.contactName && a.contactName !== a.company ? ` · ${a.contactName}` : ""}</SelectItem>
                           ))}
                         <SelectItem value="__newagent__" className="text-primary font-medium">
                           <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Agent</span>

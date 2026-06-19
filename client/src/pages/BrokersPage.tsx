@@ -165,7 +165,7 @@ export default function BrokersPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <User className="w-3.5 h-3.5 text-muted-foreground" />
                       <span className="text-sm truncate">{agent.company}</span>
-                      {agent.contactName && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
+                      {agent.contactName && agent.contactName !== agent.company && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
                     </div>
                     <button onClick={() => openEdit(agent)} className="text-muted-foreground hover:text-foreground shrink-0" title="Edit agent"><Pencil className="w-3.5 h-3.5" /></button>
                   </div>
