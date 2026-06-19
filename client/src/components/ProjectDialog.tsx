@@ -94,12 +94,25 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // Broker billing: who this shoot bills to, and per-house product costs.
   const [billToId, setBillToId] = useState<string | null>(project?.billToId ?? null);
   const [products, setProducts] = useState<ProjectProductSelection[]>(project?.products ?? []);
+  // Broker entry: when a broker is chosen as the "client", the shoot is really
+  // for one of their agents — brokerSelectId holds the broker, clientId holds
+  // the chosen agent. Picking the agent auto-bills the broker (payer resolves).
+  const [brokerSelectId, setBrokerSelectId] = useState<string>("");
+  const [showNewAgent, setShowNewAgent] = useState(false);
+  const [newAgentName, setNewAgentName] = useState("");
 
   const wasOpen = useRef(false);
   useEffect(() => {
     // Only reset form state when dialog transitions from closed → open
     if (open && !wasOpen.current) {
-      setClientId(project?.clientId ?? data.clients[0]?.id ?? "");
+      // If editing a shoot whose client is an agent, enter via that agent's
+      // broker so the picker shows broker → agent. New shoots default to the
+      // first standard client (brokers/agents are reached via the broker).
+      const initClient = data.clients.find(c => c.id === (project?.clientId ?? defaultClientId));
+      setBrokerSelectId(initClient?.clientType === "agent" ? (initClient.brokerId ?? "") : "");
+      setShowNewAgent(false);
+      setNewAgentName("");
+      setClientId(project?.clientId ?? defaultClientId ?? data.clients.find(c => (c.clientType ?? "standard") === "standard")?.id ?? "");
       setProjectTypeId(project?.projectTypeId ?? "");
       setLocationId(project?.locationId ?? "");
       setDate(project?.date ?? defaultDate ?? "");
@@ -191,6 +204,48 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     }
   };
 
+  // Top client dropdown lists standard clients + brokers. Picking a broker
+  // doesn't set the project's client — it reveals the agent picker below.
+  const handleClientDropdown = (v: string) => {
+    const c = data.clients.find(x => x.id === v);
+    if (c?.clientType === "broker") {
+      setBrokerSelectId(v);
+      setClientId("");           // wait for an agent
+      setShowNewAgent(false);
+    } else {
+      setBrokerSelectId("");
+      handleClientChange(v);     // standard client → it's the project's client
+    }
+  };
+
+  // Picking an agent sets the project's client to that agent (bill-to resolves
+  // to their broker). Does NOT touch the project type — the owner usually picks
+  // "Real Estate Shoot" before the agent.
+  const handleAgentChange = (agentId: string) => {
+    setClientId(agentId);
+    const agent = data.clients.find(c => c.id === agentId);
+    setProjectRate(agent?.billingModel === "per_project" ? (agent.perProjectRate || 0) : null);
+  };
+
+  const handleSaveNewAgent = async () => {
+    const name = newAgentName.trim();
+    if (!name || !brokerSelectId) return;
+    try {
+      const agent = await addClient({
+        company: name, contactName: "", phone: "", email: "",
+        address: "", city: "", state: "", zip: "",
+        billingModel: "per_project", billingRatePerHour: 0, perProjectRate: 0,
+        projectTypeRates: [], allowedProjectTypeIds: [], defaultProjectTypeId: "",
+        roleBillingMultipliers: [], clientType: "agent", brokerId: brokerSelectId,
+      });
+      setClientId(agent.id);
+      setShowNewAgent(false);
+      setNewAgentName("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add agent");
+    }
+  };
+
   // When project type changes for per_project clients, check for type-specific rate
   const handleProjectTypeChange = (newTypeId: string) => {
     setProjectTypeId(newTypeId);
@@ -201,6 +256,16 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       } else if (!isEdit) {
         setProjectRate(selectedClient.perProjectRate || 0);
       }
+    }
+    // Real-estate shoot: auto-open the matching service bundle and default the
+    // location to a one-time street address (each house is unique).
+    const typeName = data.projectTypes.find(t => t.id === newTypeId)?.name || "";
+    if (/real\s*estate/i.test(typeName)) {
+      if (!serviceCategoryId) {
+        const reCat = data.serviceCategories.find(c => /real\s*estate/i.test(c.name));
+        if (reCat) { setServiceCategoryId(reCat.id); setBundleServices([]); }
+      }
+      setLocationTab("one-time");
     }
   };
 
@@ -229,6 +294,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         defaultProjectTypeId: "",
         roleBillingMultipliers: [],
       });
+      setBrokerSelectId("");
       setClientId(newClient.id);
       setProjectTypeId("");
       setProjectRate(null);
@@ -347,6 +413,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   };
 
   const handleSave = async () => {
+    if (brokerSelectId && !clientId) {
+      toast.error("Select an agent for this broker");
+      return;
+    }
     if (!clientId || !date || !projectTypeId) {
       toast.error("Please fill in client, project type, and date");
       return;
@@ -442,19 +512,60 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   <Button size="sm" variant="ghost" onClick={() => { setShowNewClient(false); setNewClientName(""); }} className="shrink-0 h-9">Cancel</Button>
                 </div>
               ) : (
-                <Select value={clientId} onValueChange={(v) => { if (v === "__new__") { setShowNewClient(true); } else { handleClientChange(v); } }}>
+                <Select value={brokerSelectId || clientId} onValueChange={(v) => { if (v === "__new__") { setShowNewClient(true); } else { handleClientDropdown(v); } }}>
                   <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="Select client" />
+                    <SelectValue placeholder="Select client or broker" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    {data.clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>
-                    ))}
+                    {data.clients
+                      .filter((c) => (c.clientType ?? "standard") !== "agent")
+                      .map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.company}{c.clientType === "broker" ? " (Broker)" : ""}</SelectItem>
+                      ))}
                     <SelectItem value="__new__" className="text-primary font-medium">
                       <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Client</span>
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              )}
+              {/* Agent picker — appears when a broker is chosen above. */}
+              {brokerSelectId && !showNewClient && (
+                <div className="mt-2 space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Agent</Label>
+                  {showNewAgent ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={newAgentName}
+                        onChange={(e) => setNewAgentName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveNewAgent()}
+                        className="bg-secondary border-border"
+                        placeholder="Agent name"
+                        autoFocus
+                      />
+                      <Button size="sm" onClick={handleSaveNewAgent} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setShowNewAgent(false); setNewAgentName(""); }} className="shrink-0 h-9">Cancel</Button>
+                    </div>
+                  ) : (
+                    <Select value={clientId} onValueChange={(v) => { if (v === "__newagent__") { setShowNewAgent(true); } else { handleAgentChange(v); } }}>
+                      <SelectTrigger className="bg-secondary border-border">
+                        <SelectValue placeholder="Select agent" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover border-border">
+                        {data.clients
+                          .filter((c) => c.clientType === "agent" && c.brokerId === brokerSelectId)
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{a.company}{a.contactName ? ` · ${a.contactName}` : ""}</SelectItem>
+                          ))}
+                        <SelectItem value="__newagent__" className="text-primary font-medium">
+                          <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Agent</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {selectedClient?.clientType === "agent" && (selectedClient.email || selectedClient.phone) && (
+                    <p className="text-[11px] text-muted-foreground">{[selectedClient.email, selectedClient.phone].filter(Boolean).join(" · ")} · bills to broker</p>
+                  )}
+                </div>
               )}
             </div>
             <div className="space-y-1.5">
