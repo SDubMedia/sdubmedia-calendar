@@ -39,12 +39,15 @@ export default function ClientsPage() {
   const getProjectCount = (clientId: string) =>
     data.projects.filter((p) => p.clientId === clientId).length;
 
+  // Brokers + their agents live on the dedicated Brokers page, not here.
+  const standardClients = data.clients.filter(c => (c.clientType ?? "standard") === "standard");
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Clients</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data.clients.length} client{data.clients.length !== 1 ? "s" : ""}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{standardClients.length} client{standardClients.length !== 1 ? "s" : ""}</p>
         </div>
         <Button onClick={openAdd} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
           <Plus className="w-4 h-4" /> Add Client
@@ -52,14 +55,14 @@ export default function ClientsPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-6">
-        {data.clients.length === 0 ? (
+        {standardClients.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <Building2 className="w-12 h-12 mb-3 opacity-30" />
             <p className="text-sm">No clients yet. Add your first client.</p>
           </div>
         ) : (
           <div className="grid gap-3">
-            {data.clients.map((client) => (
+            {standardClients.map((client) => (
               <div key={client.id} className="bg-card border border-border rounded-lg p-4 flex items-center gap-4 hover:border-border/80 transition-colors">
                 <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
                   <Building2 className="w-5 h-5 text-primary" />

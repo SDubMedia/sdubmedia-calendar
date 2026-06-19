@@ -26,6 +26,7 @@ const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const ContractorInvoicesPage = lazy(() => import("./pages/ContractorInvoicesPage"));
 const StaffPaymentsPage = lazy(() => import("./pages/StaffPaymentsPage"));
 const ProductsPage = lazy(() => import("./pages/ProductsPage"));
+const BrokersPage = lazy(() => import("./pages/BrokersPage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
 const OutstandingPaymentsPage = lazy(() => import("./pages/OutstandingPaymentsPage"));
 const PipelineAnalyticsPage = lazy(() => import("./pages/PipelineAnalyticsPage"));
@@ -147,6 +148,7 @@ function Router() {
         <Route path="/billing" component={BillingPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/clients" component={ClientsPage} />
+        <Route path="/brokers" component={BrokersPage} />
         <Route path="/staff" component={StaffPage} />
         <Route path="/invoices" component={InvoicesPage} />
         <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />

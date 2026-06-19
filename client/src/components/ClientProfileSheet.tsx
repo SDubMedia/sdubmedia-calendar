@@ -78,9 +78,12 @@ interface Props {
   client: Client | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Pre-set the type/broker for a NEW client (e.g. "Add Broker" / "Add Agent"). */
+  initialClientType?: "standard" | "broker" | "agent";
+  initialBrokerId?: string | null;
 }
 
-export default function ClientProfileSheet({ client, open, onOpenChange }: Props) {
+export default function ClientProfileSheet({ client, open, onOpenChange, initialClientType, initialBrokerId }: Props) {
   const { data, addClient, updateClient } = useApp();
   const [brandAssistantOpen, setBrandAssistantOpen] = useState(false);
   const [form, setForm] = useState<ClientFormData>(emptyForm());
@@ -111,8 +114,10 @@ export default function ClientProfileSheet({ client, open, onOpenChange }: Props
         brokerId: client.brokerId || null,
       });
     } else {
-      setForm(emptyForm());
+      setForm({ ...emptyForm(), clientType: initialClientType ?? "standard", brokerId: initialBrokerId ?? null });
     }
+    // initial* are read only on open for a new client; intentionally not deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, client]);
 
   const handleSave = () => {

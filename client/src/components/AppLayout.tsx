@@ -38,6 +38,7 @@ import {
   Package as PackageIcon,
   AlertCircle,
   DollarSign,
+  Building2,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -99,6 +100,7 @@ const navStructure: NavEntry[] = [
   // Production — owner, partner, client (Series), staff (Series)
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
+    { label: "Brokers", href: "/brokers", icon: Building2, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner"], feature: "contentSeries" },
