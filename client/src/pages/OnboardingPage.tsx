@@ -3,15 +3,16 @@
 // Shown once after first password change
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import type { UserRole } from "@/lib/types";
 import {
   LayoutDashboard, CalendarDays, FileText, Clapperboard,
   Clock, DollarSign, HeartPulse,
   ChevronRight, ChevronLeft, CheckCircle,
-  Building2, Receipt,
+  Building2, Receipt, Home, MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +82,21 @@ const CLIENT_STEPS: OnboardingStep[] = [
     title: "Invoices & Deliverables",
     description: "Access your invoices and final content",
     detail: "View your invoices and payment status. When projects are completed, access your deliverables directly through the app via Google Drive links.",
+  },
+];
+
+const AGENT_STEPS: OnboardingStep[] = [
+  {
+    icon: Home, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
+    title: "My Houses",
+    description: "All your listings in one place",
+    detail: "Every shoot for your listings shows here with its date, time, and address. Tap any house to see the details and what's being shot.",
+  },
+  {
+    icon: MapPin, iconColor: "text-amber-400", iconBg: "bg-amber-500/20",
+    title: "Request a Shoot",
+    description: "Book a new listing in seconds",
+    detail: "Tap 'Request a shoot', enter the property address, pick what you need and an open time, and send it. You'll get confirmation once it's scheduled.",
   },
 ];
 
@@ -166,6 +182,28 @@ export default function OnboardingPage() {
   const role = profile?.role ?? "client";
   const name = profile?.name ?? "";
 
+  // Detect whether this client login is a real-estate AGENT (or broker), so we
+  // show the "I'm an agent" acknowledgment + agent tour instead of the generic
+  // client one. Reads their own client record (no cost data on it).
+  const [clientType, setClientType] = useState<string | null>(null);
+  const [brokerName, setBrokerName] = useState<string>("");
+  useEffect(() => {
+    if (role !== "client" || !profile?.clientIds?.length) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("clients").select("client_type, broker_id").eq("id", profile.clientIds[0]).single();
+      if (cancelled || !data) return;
+      setClientType(data.client_type ?? "standard");
+      if (data.broker_id) {
+        const { data: b } = await supabase.from("clients").select("company").eq("id", data.broker_id).single();
+        if (!cancelled && b) setBrokerName(b.company ?? "");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [role, profile?.clientIds]);
+
+  const isAgent = role === "client" && (clientType === "agent" || clientType === "broker");
+
   // Owner skips the wizard — auto-complete and let the
   // BusinessInfoSetupModal collect identity info from the
   // dashboard. Defaults for billing rate / production type
@@ -174,8 +212,17 @@ export default function OnboardingPage() {
   // Staff gets the welcome + address screen
   if (role === "staff") return <StaffOnboardingWelcome />;
 
-  const steps = getStepsForRole(role);
-  const welcome = getRoleWelcome(role, name);
+  const steps = isAgent ? AGENT_STEPS : getStepsForRole(role);
+  const firstName = name.split(" ")[0] || "there";
+  const welcome = isAgent
+    ? {
+        title: `Welcome, ${firstName}!`,
+        subtitle: clientType === "broker"
+          ? `You're set up as a brokerage on SDub Media. View your agents' shoots and what you're billed.`
+          : `You're set up as an agent${brokerName ? ` with ${brokerName}` : ""}. Here you'll see your listings and request shoots — your brokerage is billed, so you'll never deal with the money.`,
+      }
+    : getRoleWelcome(role, name);
+  const welcomeCta = isAgent ? (clientType === "broker" ? "I'm with the brokerage" : "I'm an agent") : "Show Me Around";
 
   const handleComplete = async () => {
     setCompleting(true);
@@ -227,7 +274,7 @@ export default function OnboardingPage() {
                 onClick={() => setStep(0)}
                 className="px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium flex items-center gap-2 mx-auto"
               >
-                Show Me Around <ChevronRight className="w-4 h-4" />
+                {welcomeCta} <ChevronRight className="w-4 h-4" />
               </button>
             </>
           ) : currentStep ? (

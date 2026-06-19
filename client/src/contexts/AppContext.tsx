@@ -1023,6 +1023,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Client/agent/broker logins read cost-free VIEWS (crew pay, piece cost,
+    // product cost stripped). Routing keys off the REAL session role, not
+    // impersonation — RLS enforces against the actual JWT. Owner/staff/partner
+    // read the raw tables. See migrations/2026-06-19-client-safe-views.sql.
+    const isClient = profile?.role === "client";
     try {
       const [
         { data: clients, error: e1 },
@@ -1069,7 +1074,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("locations").select("*").order("name"),
         supabase.from("project_types").select("*").order("name"),
         supabase.from("edit_types").select("*").order("name"),
-        supabase.from("projects").select("*").order("date"),
+        supabase.from(isClient ? "projects_client" : "projects").select("*").order("date"),
         supabase.from("marketing_expenses").select("*").order("date", { ascending: false }),
         supabase.from("invoices").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
         supabase.from("contractor_invoices").select("*").order("created_at", { ascending: false }),
@@ -1097,8 +1102,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("delivery_selections").select("*").order("created_at"),
         supabase.from("delivery_collections").select("*").order("created_at", { ascending: false }),
         supabase.from("service_categories").select("*").is("deleted_at", null).order("position"),
-        supabase.from("services").select("*").is("deleted_at", null).order("position"),
-        supabase.from("service_variants").select("*").is("deleted_at", null).order("position"),
+        supabase.from(isClient ? "services_client" : "services").select("*").is("deleted_at", null).order("position"),
+        supabase.from(isClient ? "service_variants_client" : "service_variants").select("*").is("deleted_at", null).order("position"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
         supabase.from("shoot_requests").select("*").order("created_at", { ascending: false }),
         supabase.from("availability").select("*"),
@@ -1152,7 +1157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, profile?.role]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
