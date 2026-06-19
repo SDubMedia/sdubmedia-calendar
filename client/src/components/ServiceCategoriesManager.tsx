@@ -93,6 +93,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
   const [addingService, setAddingService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServicePrice, setNewServicePrice] = useState("0");
+  const [newServiceCost, setNewServiceCost] = useState("0");
 
   const services = data.services.filter(s => s.categoryId === category.id);
 
@@ -126,10 +127,12 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
         categoryId: category.id,
         name: sname,
         defaultPrice: Number(newServicePrice) || 0,
+        defaultCost: Number(newServiceCost) || 0,
         position: services.length,
       });
       setNewServiceName("");
       setNewServicePrice("0");
+      setNewServiceCost("0");
       setAddingService(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add service");
@@ -185,18 +188,30 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
                 placeholder="Service name (e.g. Photos)"
                 className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1 text-sm text-muted-foreground" title="Price (what you charge)">
                 <span>$</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={newServicePrice}
                   onChange={(e) => setNewServicePrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                  className="w-20 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="price"
+                  className="w-16 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-sm text-amber-300/80" title="Cost (your payout)">
+                <span>−$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newServiceCost}
+                  onChange={(e) => setNewServiceCost(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="cost"
+                  className="w-16 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <button onClick={handleAddService} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm">Add</button>
-              <button onClick={() => { setAddingService(false); setNewServiceName(""); setNewServicePrice("0"); }} className="px-3 py-1.5 rounded bg-secondary text-muted-foreground text-sm">Cancel</button>
+              <button onClick={() => { setAddingService(false); setNewServiceName(""); setNewServicePrice("0"); setNewServiceCost("0"); }} className="px-3 py-1.5 rounded bg-secondary text-muted-foreground text-sm">Cancel</button>
             </div>
           ) : (
             <button
@@ -217,10 +232,12 @@ function ServiceRow({ service }: { service: Service }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(service.name);
   const [price, setPrice] = useState(String(service.defaultPrice));
+  const [cost, setCost] = useState(String(service.defaultCost ?? 0));
   const [showVariants, setShowVariants] = useState(false);
   const [addingVariant, setAddingVariant] = useState(false);
   const [newVariantLabel, setNewVariantLabel] = useState("");
   const [newVariantPrice, setNewVariantPrice] = useState("0");
+  const [newVariantCost, setNewVariantCost] = useState("0");
 
   const variants = data.serviceVariants.filter(v => v.serviceId === service.id);
 
@@ -228,7 +245,7 @@ function ServiceRow({ service }: { service: Service }) {
     const trimmed = name.trim();
     if (!trimmed) { toast.error("Name required"); return; }
     try {
-      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0 });
+      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0, defaultCost: Number(cost) || 0 });
       setEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
@@ -252,10 +269,12 @@ function ServiceRow({ service }: { service: Service }) {
         serviceId: service.id,
         label,
         price: Number(newVariantPrice) || 0,
+        cost: Number(newVariantCost) || 0,
         position: variants.length,
       });
       setNewVariantLabel("");
       setNewVariantPrice("0");
+      setNewVariantCost("0");
       setAddingVariant(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add variant");
@@ -281,18 +300,28 @@ function ServiceRow({ service }: { service: Service }) {
               onChange={(e) => setName(e.target.value)}
               className="flex-1 min-w-0 basis-full sm:basis-auto bg-background border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1 text-sm text-muted-foreground" title="Price (what you charge)">
               <span>$</span>
               <input
                 type="text"
                 inputMode="decimal"
                 value={price}
                 onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                className="w-20 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-16 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center gap-1 text-sm text-amber-300/80" title="Cost (your payout)">
+              <span>−$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={cost}
+                onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))}
+                className="w-16 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
-            <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
+            <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
           </>
         ) : (
           <>
@@ -339,18 +368,30 @@ function ServiceRow({ service }: { service: Service }) {
                 placeholder="Variant label (e.g. 2,000–3,000 sqft)"
                 className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Price">
                 <span>$</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={newVariantPrice}
                   onChange={(e) => setNewVariantPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                  className="w-16 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="price"
+                  className="w-14 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-xs text-amber-300/80" title="Cost (your payout)">
+                <span>−$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newVariantCost}
+                  onChange={(e) => setNewVariantCost(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="cost"
+                  className="w-14 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <button onClick={handleAddVariant} className="px-2 py-1 rounded bg-primary text-primary-foreground text-xs">Add</button>
-              <button onClick={() => { setAddingVariant(false); setNewVariantLabel(""); setNewVariantPrice("0"); }} className="px-2 py-1 rounded bg-secondary text-muted-foreground text-xs">×</button>
+              <button onClick={() => { setAddingVariant(false); setNewVariantLabel(""); setNewVariantPrice("0"); setNewVariantCost("0"); }} className="px-2 py-1 rounded bg-secondary text-muted-foreground text-xs">×</button>
             </div>
           ) : (
             <button
@@ -371,12 +412,13 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(variant.label);
   const [price, setPrice] = useState(String(variant.price));
+  const [cost, setCost] = useState(String(variant.cost ?? 0));
 
   const handleSave = async () => {
     const trimmed = label.trim();
     if (!trimmed) { toast.error("Label required"); return; }
     try {
-      await updateServiceVariant(variant.id, { label: trimmed, price: Number(price) || 0 });
+      await updateServiceVariant(variant.id, { label: trimmed, price: Number(price) || 0, cost: Number(cost) || 0 });
       setEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
@@ -402,18 +444,28 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
           onChange={(e) => setLabel(e.target.value)}
           className="flex-1 min-w-0 basis-full sm:basis-auto bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Price">
           <span>$</span>
           <input
             type="text"
             inputMode="decimal"
             value={price}
             onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-            className="w-16 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-14 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div className="flex items-center gap-1 text-xs text-amber-300/80" title="Cost (your payout)">
+          <span>−$</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={cost}
+            onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))}
+            className="w-14 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <button onClick={handleSave} className="p-2 text-primary"><Save className="w-3.5 h-3.5" /></button>
-        <button onClick={() => { setEditing(false); setLabel(variant.label); setPrice(String(variant.price)); }} className="p-2 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+        <button onClick={() => { setEditing(false); setLabel(variant.label); setPrice(String(variant.price)); setCost(String(variant.cost ?? 0)); }} className="p-2 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
       </div>
     );
   }
@@ -429,10 +481,13 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
       </button>
       <button
         onClick={() => setEditing(true)}
-        className="shrink-0 text-foreground tabular-nums hover:text-primary py-1"
-        title="Edit price"
+        className="shrink-0 tabular-nums hover:text-primary py-1"
+        title="Price · cost · margin"
       >
-        ${variant.price.toLocaleString()}
+        <span className="text-foreground">${variant.price.toLocaleString()}</span>
+        {(variant.cost ?? 0) > 0 && (
+          <span className="text-muted-foreground"> · −${(variant.cost ?? 0).toLocaleString()} · <span className="text-green-400">${(variant.price - (variant.cost ?? 0)).toLocaleString()}</span></span>
+        )}
       </button>
       <button onClick={() => setEditing(true)} className="shrink-0 p-2 text-muted-foreground hover:text-foreground" title="Edit"><Pencil className="w-3 h-3" /></button>
       <button onClick={handleDelete} className="shrink-0 p-2 text-muted-foreground hover:text-red-400" title="Delete"><Trash2 className="w-3 h-3" /></button>

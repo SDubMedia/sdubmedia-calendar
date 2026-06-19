@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, getProjectServiceCost } from "@/lib/data";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
@@ -1093,7 +1093,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               products,
             } as Project;
             const revenue = getProjectInvoiceAmount(draft, selectedClient);
-            const staffCost = getProjectCrewCost(draft);
+            // Labor = the service pieces' payout when any is set (real-estate
+            // flat-rate), else assigned-crew pay. Matches getProjectProfit.
+            const serviceCost = getProjectServiceCost(draft);
+            const staffCost = serviceCost > 0 ? serviceCost : getProjectCrewCost(draft);
             const productCost = getProjectProductCost(draft);
             const profit = revenue - staffCost - productCost;
             const defaultLabel = agentBroker ? `${agentBroker.company} (default)` : `${selectedClient.company} (default)`;
@@ -1141,7 +1144,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
                 <div className="border-t border-border pt-3 space-y-1 text-xs">
                   <div className="flex justify-between"><span className="text-muted-foreground">Revenue</span><span className="tabular-nums">${revenue.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-muted-foreground"><span>− Staff pay</span><span className="tabular-nums">−${staffCost.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>− Labor{serviceCost > 0 ? " (bundle)" : ""}</span><span className="tabular-nums">−${staffCost.toFixed(2)}</span></div>
                   <div className="flex justify-between text-muted-foreground"><span>− Products</span><span className="tabular-nums">−${productCost.toFixed(2)}</span></div>
                   <div className="flex justify-between text-base font-semibold pt-1 border-t border-border/50">
                     <span>Your profit</span>

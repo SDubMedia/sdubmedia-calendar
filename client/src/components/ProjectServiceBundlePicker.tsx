@@ -49,6 +49,17 @@ function resolvePrice(
   return defaultPrice;
 }
 
+// Resolve your cost (photographer/editor payout) for a service/variant:
+// the variant's cost if it has one, else the service's defaultCost.
+function resolveCost(
+  variantId: string | null,
+  defaultCost: number,
+  variantCost: number | null,
+): number {
+  if (variantId && variantCost !== null) return variantCost;
+  return defaultCost;
+}
+
 export default function ProjectServiceBundlePicker({ clientId, categoryId, services, onChange }: Props) {
   const { data } = useApp();
   const client = data.clients.find(c => c.id === clientId);
@@ -60,6 +71,7 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
   );
 
   const subtotal = services.reduce((s, sel) => s + Number(sel.price || 0), 0);
+  const costTotal = services.reduce((s, sel) => s + Number(sel.cost || 0), 0);
 
   const isSelected = (serviceId: string) => services.some(sel => sel.serviceId === serviceId);
   const getSelection = (serviceId: string) => services.find(sel => sel.serviceId === serviceId);
@@ -89,10 +101,11 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
       svc.defaultPrice,
       defaultVariant ? defaultVariant.price : null,
     );
+    const cost = resolveCost(defaultVariant?.id ?? null, svc.defaultCost ?? 0, defaultVariant ? (defaultVariant.cost ?? 0) : null);
     const label = `${cat?.name ? cat.name + " — " : ""}${svc.name}${defaultVariant ? ` (${defaultVariant.label})` : ""}`;
     onChange(categoryId, [
       ...services,
-      { serviceId, variantId: defaultVariant?.id ?? null, label, price },
+      { serviceId, variantId: defaultVariant?.id ?? null, label, price, cost },
     ]);
   };
 
@@ -108,11 +121,12 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
       svc.defaultPrice,
       variant ? variant.price : null,
     );
+    const cost = resolveCost(newVariantId, svc.defaultCost ?? 0, variant ? (variant.cost ?? 0) : null);
     const label = `${cat?.name ? cat.name + " — " : ""}${svc.name}${variant ? ` (${variant.label})` : ""}`;
     onChange(
       categoryId,
       services.map(sel => sel.serviceId === serviceId
-        ? { ...sel, variantId: newVariantId, label, price }
+        ? { ...sel, variantId: newVariantId, label, price, cost }
         : sel
       ),
     );
@@ -122,6 +136,13 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
     onChange(
       categoryId,
       services.map(sel => sel.serviceId === serviceId ? { ...sel, price: newPrice } : sel),
+    );
+  };
+
+  const handleCostChange = (serviceId: string, newCost: number) => {
+    onChange(
+      categoryId,
+      services.map(sel => sel.serviceId === serviceId ? { ...sel, cost: newCost } : sel),
     );
   };
 
@@ -201,16 +222,29 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
                     ) : (
                       <span className="flex-1 text-xs text-muted-foreground italic">No variants — flat price</span>
                     )}
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Charge (price)">
                       <span>$</span>
                       <input
                         type="text"
                         inputMode="decimal"
                         value={selection?.price ?? 0}
                         onChange={(e) => handlePriceChange(svc.id, Number(e.target.value.replace(/[^0-9.-]/g, "")) || 0)}
-                        className="w-20 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-16 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
+                    <div className="flex items-center gap-1 text-xs text-amber-300/80" title="Your cost (photographer payout)">
+                      <span>−$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={selection?.cost ?? 0}
+                        onChange={(e) => handleCostChange(svc.id, Number(e.target.value.replace(/[^0-9.-]/g, "")) || 0)}
+                        className="w-16 bg-background border border-border rounded px-2 py-1 text-xs text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <span className="text-xs text-green-400 tabular-nums shrink-0" title="Margin on this piece">
+                      ={fmt(Number(selection?.price ?? 0) - Number(selection?.cost ?? 0))}
+                    </span>
                   </div>
                 )}
               </div>
@@ -220,9 +254,23 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
       )}
 
       {services.length > 0 && (
-        <div className="flex items-center justify-between pt-2 border-t border-border">
-          <span className="text-xs text-muted-foreground">Bundle subtotal</span>
-          <span className="text-sm font-semibold text-foreground tabular-nums">{fmt(subtotal)}</span>
+        <div className="space-y-1 pt-2 border-t border-border text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Bundle charge</span>
+            <span className="font-semibold text-foreground tabular-nums">{fmt(subtotal)}</span>
+          </div>
+          {costTotal > 0 && (
+            <>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>− Your cost</span>
+                <span className="tabular-nums">−{fmt(costTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between font-semibold">
+                <span>Bundle margin</span>
+                <span className={`tabular-nums ${subtotal - costTotal >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(subtotal - costTotal)}</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 

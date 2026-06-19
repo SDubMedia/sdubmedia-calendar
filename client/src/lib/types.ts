@@ -497,7 +497,8 @@ export interface ProjectServiceSelection {
   serviceId: string;
   variantId: string | null;
   label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
-  price: number;    // snapshot of the price at the time the project was created/edited
+  price: number;    // snapshot of the price (what the client is charged)
+  cost?: number;    // snapshot of your cost for this piece (photographer payout)
 }
 
 export interface ProjectProductSelection {
@@ -524,6 +525,7 @@ export interface Service {
   categoryId: string;
   name: string;
   defaultPrice: number;    // used when the service has zero variants
+  defaultCost?: number;    // your cost (photographer payout) when no variants
   position: number;
   createdAt: string;
 }
@@ -533,6 +535,7 @@ export interface ServiceVariant {
   serviceId: string;
   label: string;          // e.g. "2,000–3,000 sqft"
   price: number;
+  cost?: number;          // your cost (photographer payout) for this variant
   position: number;
   createdAt: string;
 }

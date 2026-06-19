@@ -14,6 +14,7 @@ import {
   getProjectInvoiceAmount,
   getProjectPayerId,
   getProjectProductCost,
+  getProjectServiceCost,
   getProjectProfit,
   calcHoursWorked,
 } from "../data";
@@ -570,8 +571,22 @@ describe("getProjectProductCost", () => {
   });
 });
 
+describe("getProjectServiceCost", () => {
+  it("sums the cost on each selected service piece", () => {
+    const p = makeProject({ services: [
+      { serviceId: "a", variantId: null, label: "Photos", price: 200, cost: 70 },
+      { serviceId: "b", variantId: null, label: "Video", price: 500, cost: 150 },
+    ] });
+    expect(getProjectServiceCost(p)).toBe(220);
+  });
+  it("is 0 when pieces carry no cost", () => {
+    const p = makeProject({ services: [{ serviceId: "a", variantId: null, label: "Photos", price: 200 }] });
+    expect(getProjectServiceCost(p)).toBe(0);
+  });
+});
+
 describe("getProjectProfit", () => {
-  it("profit = revenue − staff pay − product cost", () => {
+  it("profit = revenue − staff pay − product cost (crew-based)", () => {
     const client = makeClient({ billingModel: "per_project", perProjectRate: 250 });
     const p = makeProject({
       status: "editing_done",
@@ -580,5 +595,19 @@ describe("getProjectProfit", () => {
     });
     // 250 revenue − 75 staff − 25 product = 150
     expect(getProjectProfit(p, client)).toBe(150);
+  });
+
+  it("uses service-piece cost (not crew) when bundle pieces carry a cost", () => {
+    const client = makeClient();
+    const p = makeProject({
+      status: "editing_done",
+      // Revenue from the service price ($200); labor from the piece cost ($70).
+      // A leftover crew entry must be IGNORED (no double-count).
+      crew: [{ crewMemberId: "c1", role: "Photographer", hoursWorked: 5, payRatePerHour: 100 }],
+      services: [{ serviceId: "a", variantId: null, label: "Photos", price: 200, cost: 70 }],
+      products: [{ productId: "f", name: "Fotello", cost: 30 }],
+    });
+    // 200 revenue − 70 piece cost − 30 Fotello = 100 (crew 5×100 ignored)
+    expect(getProjectProfit(p, client)).toBe(100);
   });
 });

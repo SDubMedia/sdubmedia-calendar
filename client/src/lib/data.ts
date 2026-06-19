@@ -344,6 +344,11 @@ export function getProjectBillableHours(project: Project, client: Client): {
 // the "subtotal" displayed in the Edit Project dialog.
 export function getProjectSubtotal(project: Project, client: Client): number {
   if (project.status === "cancelled") return 0;
+  // Service-bundle pricing wins when pieces are selected — the snapshot prices
+  // on the project are the source of truth (same as the invoice builder).
+  if (project.services && project.services.length > 0) {
+    return project.services.reduce((s, x) => s + Number(x.price ?? 0), 0);
+  }
   const effectiveModel = project.billingModel ?? client.billingModel;
   if (effectiveModel === "per_project") {
     if (project.billingRate != null && project.billingRate > 0) return project.billingRate;
@@ -391,13 +396,25 @@ export function getProjectProductCost(project: Project): number {
 }
 
 /**
- * Per-house profit for a shoot: revenue − staff pay − product cost.
- * (v1 scope: travel, editing labor, and overhead are intentionally excluded.)
- * Cancelled projects are $0 revenue/cost via the underlying helpers.
+ * Labor cost baked into the selected service pieces (the photographer/editor
+ * payout snapshotted on each ProjectServiceSelection). 0 when no pieces carry
+ * a cost. For real-estate shoots this replaces manual crew entries.
+ */
+export function getProjectServiceCost(project: Project): number {
+  return (project.services || []).reduce((s, x) => s + Number(x.cost ?? 0), 0);
+}
+
+/**
+ * Per-house profit: revenue − labor − product cost. Labor comes from the
+ * service pieces' costs when any are set (real-estate flat-rate model);
+ * otherwise it falls back to assigned-crew pay. Avoids double-counting.
+ * (v1: travel and overhead are intentionally excluded.) Cancelled = $0.
  */
 export function getProjectProfit(project: Project, client: Client): number {
+  const serviceCost = getProjectServiceCost(project);
+  const labor = serviceCost > 0 ? serviceCost : getProjectCrewCost(project);
   return getProjectInvoiceAmount(project, client)
-    - getProjectCrewCost(project)
+    - labor
     - getProjectProductCost(project);
 }
 
