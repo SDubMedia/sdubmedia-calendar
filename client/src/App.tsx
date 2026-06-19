@@ -26,6 +26,9 @@ const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const ContractorInvoicesPage = lazy(() => import("./pages/ContractorInvoicesPage"));
 const StaffPaymentsPage = lazy(() => import("./pages/StaffPaymentsPage"));
 const ProductsPage = lazy(() => import("./pages/ProductsPage"));
+const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
+const MyHousesPage = lazy(() => import("./pages/MyHousesPage"));
+const ShootRequestsPage = lazy(() => import("./pages/ShootRequestsPage"));
 const BrokersPage = lazy(() => import("./pages/BrokersPage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
 const OutstandingPaymentsPage = lazy(() => import("./pages/OutstandingPaymentsPage"));
@@ -145,6 +148,9 @@ function Router() {
         <Route path="/contractor-invoices" component={ContractorInvoicesPage} />
         {isOwner && <Route path="/staff-payments" component={StaffPaymentsPage} />}
         {isOwner && <Route path="/products" component={ProductsPage} />}
+        <Route path="/availability" component={AvailabilityPage} />
+        <Route path="/my-houses" component={MyHousesPage} />
+        {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
         <Route path="/billing" component={BillingPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/clients" component={ClientsPage} />

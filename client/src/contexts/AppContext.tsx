@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -56,6 +56,12 @@ interface AppContextValue {
   addProduct: (p: Omit<Product, "id" | "orgId" | "createdAt">) => Promise<Product>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  addShootRequest: (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">) => Promise<ShootRequest>;
+  updateShootRequest: (id: string, r: Partial<ShootRequest>) => Promise<void>;
+  deleteShootRequest: (id: string) => Promise<void>;
+  addAvailability: (a: Omit<Availability, "id" | "orgId" | "createdAt">) => Promise<Availability>;
+  updateAvailability: (id: string, a: Partial<Availability>) => Promise<void>;
+  deleteAvailability: (id: string) => Promise<void>;
   // Series
   addSeries: (s: Omit<Series, "id" | "createdAt">) => Promise<Series>;
   updateSeries: (id: string, s: Partial<Series>) => Promise<void>;
@@ -402,6 +408,38 @@ function rowToProduct(r: any): Product {
     unitCost: Number(r.unit_cost ?? 0),
     active: r.active !== false,
     sortOrder: Number(r.sort_order ?? 0),
+    createdAt: r.created_at,
+  };
+}
+
+function rowToShootRequest(r: any): ShootRequest {
+  return {
+    id: r.id,
+    orgId: r.org_id || "",
+    clientId: r.client_id,
+    propertyAddress: r.property_address || "",
+    preferredDate: r.preferred_date || null,
+    preferredTime: r.preferred_time || null,
+    preferredCrewMemberId: r.preferred_crew_member_id || null,
+    notes: r.notes || "",
+    requestedServices: Array.isArray(r.requested_services) ? r.requested_services : [],
+    status: (r.status || "pending") as ShootRequestStatus,
+    projectId: r.project_id || null,
+    ownerResponse: r.owner_response || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToAvailability(r: any): Availability {
+  return {
+    id: r.id,
+    orgId: r.org_id || "",
+    crewMemberId: r.crew_member_id,
+    recurring: r.recurring !== false,
+    weekday: r.weekday === null || r.weekday === undefined ? null : Number(r.weekday),
+    specificDate: r.specific_date || null,
+    startTime: r.start_time || "09:00",
+    endTime: r.end_time || "17:00",
     createdAt: r.created_at,
   };
 }
@@ -796,7 +834,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -837,6 +875,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         proposals: [],
         meetings: staffMeetings,
         deliveries: rawData.deliveries.filter(d => d.projectId && staffProjectIds.has(d.projectId)),
+        // Staff have no shoot-request access (mirrors RLS — no staff policy).
+        // Availability passes through via ...rawData so they can manage their own.
+        shootRequests: [],
       };
     }
 
@@ -905,6 +946,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliverySelections: rawData.deliverySelections.filter(s => allowedDeliveryIds.has(s.deliveryId)),
         deliveryCollections: targetRole === "client" ? rawData.deliveryCollections : [],
         meetings: allowedMeetings,
+        // Agents (client role) keep their own shoot requests; partners see
+        // requests for their assigned clients. Scoped to allowed clients.
+        shootRequests: rawData.shootRequests.filter(r => allowedClientIds.has(r.clientId)),
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],
         crewPayments: [],
@@ -943,6 +987,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliverySelections: [],
         deliveryCollections: [],
         timeEntries: [],
+        shootRequests: [],
         // Owner-only data — never visible to non-owner without clients
         contractorInvoices: [],
         crewPayments: [],
@@ -1016,6 +1061,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: servicesData, error: _e8h },
         { data: serviceVariantsData, error: _e8i },
         { data: orgData, error: _e9 },
+        { data: shootRequestsData, error: e7sr },
+        { data: availabilityData, error: e7av },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1053,9 +1100,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("services").select("*").is("deleted_at", null).order("position"),
         supabase.from("service_variants").select("*").is("deleted_at", null).order("position"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
+        supabase.from("shoot_requests").select("*").order("created_at", { ascending: false }),
+        supabase.from("availability").select("*"),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e8;
       if (firstError) throw new Error(firstError.message);
 
       setRawData({
@@ -1070,6 +1119,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contractorInvoices: (contractorInvs || []).map(rowToContractorInvoice),
         crewPayments: (crewPaymentsData || []).map(r => { try { return rowToCrewPayment(r); } catch { return null; } }).filter(Boolean) as CrewPayment[],
         products: (productsData || []).map(r => { try { return rowToProduct(r); } catch { return null; } }).filter(Boolean) as Product[],
+        shootRequests: (shootRequestsData || []).map(r => { try { return rowToShootRequest(r); } catch { return null; } }).filter(Boolean) as ShootRequest[],
+        availability: (availabilityData || []).map(r => { try { return rowToAvailability(r); } catch { return null; } }).filter(Boolean) as Availability[],
         crewLocationDistances: (distances || []).map(r => { try { return rowToCrewLocationDistance(r); } catch { return null; } }).filter(Boolean) as any[],
         manualTrips: (manualTripsData || []).map(r => { try { return rowToManualTrip(r); } catch { return null; } }).filter(Boolean) as any[],
         businessExpenses: (bizExpenses || []).map(r => { try { return rowToBusinessExpense(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1130,6 +1181,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       contractor_invoices: { key: "contractorInvoices", convert: rowToContractorInvoice },
       crew_payments: { key: "crewPayments", convert: rowToCrewPayment },
       products: { key: "products", convert: rowToProduct },
+      shoot_requests: { key: "shootRequests", convert: rowToShootRequest },
+      availability: { key: "availability", convert: rowToAvailability },
       crew_location_distances: { key: "crewLocationDistances", convert: rowToCrewLocationDistance },
       manual_trips: { key: "manualTrips", convert: rowToManualTrip },
       business_expenses: { key: "businessExpenses", convert: rowToBusinessExpense },
@@ -2713,6 +2766,86 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, products: d.products.filter(x => x.id !== id) }));
   }, []);
 
+  // ---- Shoot Requests (agent-submitted, owner-approved) ----
+  const addShootRequest = useCallback(async (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">): Promise<ShootRequest> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("shoot_requests").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      client_id: r.clientId,
+      property_address: r.propertyAddress,
+      preferred_date: r.preferredDate,
+      preferred_time: r.preferredTime,
+      preferred_crew_member_id: r.preferredCrewMemberId,
+      notes: r.notes,
+      requested_services: r.requestedServices,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const request = rowToShootRequest(row);
+    setRawData(d => ({ ...d, shootRequests: [request, ...d.shootRequests] }));
+    return request;
+  }, [orgId]);
+
+  const updateShootRequest = useCallback(async (id: string, r: Partial<ShootRequest>) => {
+    const patch: any = {};
+    if (r.propertyAddress !== undefined) patch.property_address = r.propertyAddress;
+    if (r.preferredDate !== undefined) patch.preferred_date = r.preferredDate;
+    if (r.preferredTime !== undefined) patch.preferred_time = r.preferredTime;
+    if (r.preferredCrewMemberId !== undefined) patch.preferred_crew_member_id = r.preferredCrewMemberId;
+    if (r.notes !== undefined) patch.notes = r.notes;
+    if (r.requestedServices !== undefined) patch.requested_services = r.requestedServices;
+    if (r.status !== undefined) patch.status = r.status;
+    if (r.projectId !== undefined) patch.project_id = r.projectId;
+    if (r.ownerResponse !== undefined) patch.owner_response = r.ownerResponse;
+    const { error } = await supabase.from("shoot_requests").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, shootRequests: d.shootRequests.map(x => x.id === id ? { ...x, ...r } : x) }));
+  }, []);
+
+  const deleteShootRequest = useCallback(async (id: string) => {
+    const { error } = await supabase.from("shoot_requests").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, shootRequests: d.shootRequests.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Availability (per-shooter open times) ----
+  const addAvailability = useCallback(async (a: Omit<Availability, "id" | "orgId" | "createdAt">): Promise<Availability> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("availability").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      crew_member_id: a.crewMemberId,
+      recurring: a.recurring,
+      weekday: a.recurring ? a.weekday : null,
+      specific_date: a.recurring ? null : a.specificDate,
+      start_time: a.startTime,
+      end_time: a.endTime,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const slot = rowToAvailability(row);
+    setRawData(d => ({ ...d, availability: [...d.availability, slot] }));
+    return slot;
+  }, [orgId]);
+
+  const updateAvailability = useCallback(async (id: string, a: Partial<Availability>) => {
+    const patch: any = {};
+    if (a.crewMemberId !== undefined) patch.crew_member_id = a.crewMemberId;
+    if (a.recurring !== undefined) patch.recurring = a.recurring;
+    if (a.weekday !== undefined) patch.weekday = a.weekday;
+    if (a.specificDate !== undefined) patch.specific_date = a.specificDate;
+    if (a.startTime !== undefined) patch.start_time = a.startTime;
+    if (a.endTime !== undefined) patch.end_time = a.endTime;
+    const { error } = await supabase.from("availability").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, availability: d.availability.map(x => x.id === id ? { ...x, ...a } : x) }));
+  }, []);
+
+  const deleteAvailability = useCallback(async (id: string) => {
+    const { error } = await supabase.from("availability").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, availability: d.availability.filter(x => x.id !== id) }));
+  }, []);
+
   // ---- Series ----
   const addSeries = useCallback(async (s: Omit<Series, "id" | "createdAt">): Promise<Series> => {
     const id = nanoid(10);
@@ -2844,6 +2977,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addContractorInvoice, updateContractorInvoice, deleteContractorInvoice,
       addCrewPayment, updateCrewPayment, deleteCrewPayment,
       addProduct, updateProduct, deleteProduct,
+      addShootRequest, updateShootRequest, deleteShootRequest,
+      addAvailability, updateAvailability, deleteAvailability,
       addSeries, updateSeries, deleteSeries,
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,

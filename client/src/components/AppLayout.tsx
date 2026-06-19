@@ -8,6 +8,9 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   CalendarDays,
+  CalendarClock,
+  Home,
+  Inbox,
   FileText,
   Receipt,
   Users,
@@ -86,6 +89,7 @@ const navStructure: NavEntry[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff", "family"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
+  { label: "My Houses", href: "/my-houses", icon: Home, roles: ["client"] },
 
   // Sales — owner and partner only
   { label: "Sales", icon: TrendingUp, roles: ["owner", "partner"], items: [
@@ -101,6 +105,7 @@ const navStructure: NavEntry[] = [
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Brokers", href: "/brokers", icon: Building2, roles: ["owner", "partner"], feature: "clientManagement" },
+    { label: "Shoot Requests", href: "/shoot-requests", icon: Inbox, roles: ["owner"] },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
     { label: "Series", href: "/series", icon: Clapperboard, roles: ["owner"], feature: "contentSeries" },
@@ -110,6 +115,7 @@ const navStructure: NavEntry[] = [
   // of an expandable section (was tap-Team → tap-Staff, now one tap).
   // Contractor Invoices moved to Finance since it's invoice-related.
   { label: "Staff", href: "/staff", icon: Users2, roles: ["owner", "partner"], feature: "crewManagement" },
+  { label: "Availability", href: "/availability", icon: CalendarClock, roles: ["owner", "staff"] },
 
   // Finance — owner and partner only
   { label: "Finance", icon: Receipt, roles: ["owner", "partner"], items: [

@@ -3,7 +3,79 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability } from "./types";
+
+// ---- Availability → bookable days ------------------------------------------
+// Turns a shooter's availability blocks (recurring weekday + one-off dates) into
+// a list of upcoming open days an agent can request. Booking conflicts are NOT
+// subtracted here (v1) — the owner confirms the real time on approval.
+
+export interface OpenWindow {
+  start: string;            // "09:00"
+  end: string;              // "17:00"
+  crewMemberIds: string[];  // which shooters offer this window
+}
+export interface OpenDay {
+  date: string;             // ISO YYYY-MM-DD
+  weekday: number;          // 0=Sun..6=Sat
+  windows: OpenWindow[];
+}
+
+/** Add `n` days to an ISO date string (timezone-safe, no Date.now). */
+export function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Weekday (0=Sun..6=Sat) for an ISO date, timezone-safe. */
+export function weekdayOf(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+export function getOpenDays(
+  availability: Availability[],
+  opts: { fromDate: string; days: number; crewMemberId?: string | null }
+): OpenDay[] {
+  const scoped = opts.crewMemberId
+    ? availability.filter(a => a.crewMemberId === opts.crewMemberId)
+    : availability;
+  const result: OpenDay[] = [];
+  for (let i = 0; i < opts.days; i++) {
+    const date = addDaysIso(opts.fromDate, i);
+    const wd = weekdayOf(date);
+    const matches = scoped.filter(a =>
+      a.recurring ? a.weekday === wd : a.specificDate === date
+    );
+    if (matches.length === 0) continue;
+    // Merge identical start/end windows, collecting the shooters who offer each.
+    const byWindow = new Map<string, OpenWindow>();
+    for (const a of matches) {
+      const key = `${a.startTime}-${a.endTime}`;
+      const existing = byWindow.get(key);
+      if (existing) {
+        if (!existing.crewMemberIds.includes(a.crewMemberId)) existing.crewMemberIds.push(a.crewMemberId);
+      } else {
+        byWindow.set(key, { start: a.startTime, end: a.endTime, crewMemberIds: [a.crewMemberId] });
+      }
+    }
+    const windows = Array.from(byWindow.values()).sort((x, y) => x.start.localeCompare(y.start));
+    result.push({ date, weekday: wd, windows });
+  }
+  return result;
+}
+
+/** Half-hour start-time options ("09:00", "09:30", …) within [start, end). */
+export function slotTimes(start: string, end: string): string[] {
+  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const out: string[] = [];
+  for (let mins = toMin(start); mins < toMin(end); mins += 30) {
+    out.push(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`);
+  }
+  return out;
+}
 
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
@@ -161,6 +233,8 @@ export const seedData: AppData = {
   contractorInvoices: [],
   crewPayments: [],
   products: [],
+  shootRequests: [],
+  availability: [],
   crewLocationDistances: [],
   manualTrips: [],
   businessExpenses: [],

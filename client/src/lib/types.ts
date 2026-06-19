@@ -658,6 +658,39 @@ export interface Product {
   createdAt: string;
 }
 
+// ---- Shoot Requests (agent-submitted, owner-approved) ----
+export type ShootRequestStatus = "pending" | "scheduled" | "declined";
+
+export interface ShootRequest {
+  id: string;
+  orgId: string;
+  clientId: string;          // the agent's client record (clientType='agent')
+  propertyAddress: string;
+  preferredDate: string | null;
+  preferredTime: string | null;            // "HH:MM" the agent asked for
+  preferredCrewMemberId: string | null;    // optional shooter the agent prefers
+  notes: string;
+  // What pieces the agent asked for — snapshot of catalog price (broker's rate).
+  requestedServices: ProjectServiceSelection[];
+  status: ShootRequestStatus;
+  projectId: string | null;  // set when approved + converted to a real project
+  ownerResponse: string;     // optional note back to the agent (e.g. decline reason)
+  createdAt: string;
+}
+
+// ---- Availability (per shooter open times) ----
+export interface Availability {
+  id: string;
+  orgId: string;
+  crewMemberId: string;        // whose availability (owner or staff, by crew member)
+  recurring: boolean;          // true = repeats weekly on `weekday`; false = one-off `specificDate`
+  weekday: number | null;      // 0=Sun..6=Sat when recurring
+  specificDate: string | null; // ISO date when not recurring
+  startTime: string;           // "09:00"
+  endTime: string;             // "17:00"
+  createdAt: string;
+}
+
 // ---- Invoices ----
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 
@@ -1447,6 +1480,8 @@ export interface AppData {
   contractorInvoices: ContractorInvoice[];
   crewPayments: CrewPayment[];
   products: Product[];
+  shootRequests: ShootRequest[];
+  availability: Availability[];
   crewLocationDistances: CrewLocationDistance[];
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];
