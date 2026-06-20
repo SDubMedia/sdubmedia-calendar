@@ -5,12 +5,13 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
-import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle } from "lucide-react";
+import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import RequestShootDialog from "@/components/RequestShootDialog";
+import InviteAgentDialog from "@/components/InviteAgentDialog";
 
 function fmtDate(iso: string): string {
   if (!iso) return "";
@@ -28,8 +29,13 @@ export default function MyHousesPage() {
   const { data } = useApp();
   const { effectiveProfile } = useAuth();
   const [requestOpen, setRequestOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
+  const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
+  const isBroker = (myClient?.clientType ?? "") === "broker";
+  // Broker's agents (visible via the broker_read_agents policy).
+  const agents = useMemo(() => data.clients.filter(c => c.brokerId === myClientId), [data.clients, myClientId]);
 
   const houses = useMemo(
     () => [...data.projects].sort((a, b) => b.date.localeCompare(a.date)),
@@ -39,20 +45,51 @@ export default function MyHousesPage() {
   const declined = useMemo(() => data.shootRequests.filter(r => r.status === "declined"), [data.shootRequests]);
 
   const locName = (locationId: string) => data.locations.find(l => l.id === locationId)?.name ?? "Address TBD";
+  const agentName = (clientId: string) => data.clients.find(c => c.id === clientId)?.company ?? "";
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>My Houses</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{houses.length} shoot{houses.length !== 1 ? "s" : ""}</p>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{isBroker ? "My Agents" : "My Houses"}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{isBroker ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} · ${houses.length} shoot${houses.length !== 1 ? "s" : ""}` : `${houses.length} shoot${houses.length !== 1 ? "s" : ""}`}</p>
         </div>
-        <Button onClick={() => setRequestOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-          <Plus className="w-4 h-4" /> Request a shoot
-        </Button>
+        {isBroker ? (
+          <Button onClick={() => setInviteOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <UserPlus className="w-4 h-4" /> Invite agent
+          </Button>
+        ) : (
+          <Button onClick={() => setRequestOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <Plus className="w-4 h-4" /> Request a shoot
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto space-y-6">
+        {/* Broker: agent roster */}
+        {isBroker && (
+          <div>
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><User className="w-3 h-3" /> Agents</div>
+            {agents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No agents yet. Invite your first one.</p>
+            ) : (
+              <div className="grid gap-2">
+                {agents.map(a => (
+                  <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">{a.company}</div>
+                      {a.email && <div className="text-xs text-muted-foreground truncate">{a.email}</div>}
+                    </div>
+                    <Badge variant="outline" className="border-border text-muted-foreground flex-shrink-0">
+                      {houses.filter(p => p.clientId === a.id).length} shoots
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Pending requests */}
         {pending.length > 0 && (
           <div>
@@ -97,7 +134,7 @@ export default function MyHousesPage() {
           {houses.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Home className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">No shoots yet. Request your first one.</p>
+              <p className="text-sm">{isBroker ? "No shoots yet for your agents." : "No shoots yet. Request your first one."}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -108,7 +145,7 @@ export default function MyHousesPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-foreground truncate flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0 text-muted-foreground" />{locName(p.locationId)}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDate(p.date)}{p.startTime ? ` · ${fmtTime(p.startTime)}` : ""}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDate(p.date)}{p.startTime ? ` · ${fmtTime(p.startTime)}` : ""}{isBroker && agentName(p.clientId) ? ` · ${agentName(p.clientId)}` : ""}</div>
                   </div>
                   <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{p.status}</Badge>
                 </div>
@@ -119,6 +156,7 @@ export default function MyHousesPage() {
       </div>
 
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
+      <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   );
 }
