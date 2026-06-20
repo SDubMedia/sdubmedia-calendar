@@ -3,23 +3,34 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref } from "./types";
 
-// ---- Availability → bookable days ------------------------------------------
-// Turns a shooter's availability blocks (recurring weekday + one-off dates) into
-// a list of upcoming open days an agent can request. Booking conflicts are NOT
-// subtracted here (v1) — the owner confirms the real time on approval.
+// ---- Availability → bookable slots -----------------------------------------
+// Turns each shooter's availability + operating rules + existing bookings into
+// the concrete start times an agent can request. Per shooter: their available
+// hours (or all-day), minus shoots already on the calendar (padded by their
+// travel buffer), only where a full shoot fits, capped at their max-per-day.
 
-export interface OpenWindow {
-  start: string;            // "09:00"
-  end: string;              // "17:00"
-  crewMemberIds: string[];  // which shooters offer this window
+const SLOT_STEP_MIN = 30;          // grid of candidate start times
+const ALLDAY_START = "07:00";      // an "all day" block spans this window
+const ALLDAY_END = "19:00";
+
+export interface BusyBlock { crewMemberId: string; date: string; start: string; end: string; }
+
+export interface OpenSlot {
+  time: string;             // "09:00" — shoot start
+  crewMemberIds: string[];  // which shooters are free for this start
 }
 export interface OpenDay {
   date: string;             // ISO YYYY-MM-DD
   weekday: number;          // 0=Sun..6=Sat
-  windows: OpenWindow[];
+  slots: OpenSlot[];
 }
+
+const DEFAULT_PREF = { shootMinutes: 60, bufferMinutes: 30, maxPerDay: 0 };
+
+const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const toHHMM = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 
 /** Add `n` days to an ISO date string (timezone-safe, no Date.now). */
 export function addDaysIso(iso: string, n: number): string {
@@ -35,46 +46,69 @@ export function weekdayOf(iso: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
+/** A shooter's [startMin,endMin] availability windows for one date. */
+function windowsFor(availability: Availability[], crewMemberId: string, date: string): [number, number][] {
+  const wd = weekdayOf(date);
+  return availability
+    .filter(a => a.crewMemberId === crewMemberId && (a.recurring ? a.weekday === wd : a.specificDate === date))
+    .map(a => a.allDay ? [toMin(ALLDAY_START), toMin(ALLDAY_END)] : [toMin(a.startTime), toMin(a.endTime)] as [number, number]);
+}
+
+/** Candidate shoot starts for one shooter on one date, honoring their rules. */
+function openStartsFor(
+  availability: Availability[], crewMemberId: string, date: string,
+  busy: BusyBlock[], pref: { shootMinutes: number; bufferMinutes: number; maxPerDay: number }
+): string[] {
+  const windows = windowsFor(availability, crewMemberId, date);
+  if (windows.length === 0) return [];
+  const dayBusy = busy.filter(b => b.crewMemberId === crewMemberId && b.date === date);
+  // Daily cap — already at the max number of shoots for the day.
+  if (pref.maxPerDay > 0 && dayBusy.length >= pref.maxPerDay) return [];
+  const busyRanges = dayBusy.map(b => [toMin(b.start), toMin(b.end)] as [number, number]);
+  const shoot = pref.shootMinutes, buf = pref.bufferMinutes;
+  const out: string[] = [];
+  for (const [ws, we] of windows) {
+    for (let t = ws; t + shoot <= we; t += SLOT_STEP_MIN) {
+      // The shoot [t, t+shoot] needs `buf` minutes clear of every booking.
+      const conflict = busyRanges.some(([bs, be]) => t < be + buf && bs < t + shoot + buf);
+      if (!conflict) out.push(toHHMM(t));
+    }
+  }
+  return out;
+}
+
 export function getOpenDays(
   availability: Availability[],
-  opts: { fromDate: string; days: number; crewMemberId?: string | null }
+  opts: {
+    fromDate: string; days: number;
+    crewMemberId?: string | null;
+    busy?: BusyBlock[];
+    prefs?: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }>;
+  }
 ): OpenDay[] {
-  const scoped = opts.crewMemberId
-    ? availability.filter(a => a.crewMemberId === opts.crewMemberId)
-    : availability;
+  const busy = opts.busy ?? [];
+  const prefs = opts.prefs ?? {};
+  const allCrew = Array.from(new Set(availability.map(a => a.crewMemberId)));
+  const shooters = opts.crewMemberId ? [opts.crewMemberId] : allCrew;
   const result: OpenDay[] = [];
   for (let i = 0; i < opts.days; i++) {
     const date = addDaysIso(opts.fromDate, i);
-    const wd = weekdayOf(date);
-    const matches = scoped.filter(a =>
-      a.recurring ? a.weekday === wd : a.specificDate === date
-    );
-    if (matches.length === 0) continue;
-    // Merge identical start/end windows, collecting the shooters who offer each.
-    const byWindow = new Map<string, OpenWindow>();
-    for (const a of matches) {
-      const key = `${a.startTime}-${a.endTime}`;
-      const existing = byWindow.get(key);
-      if (existing) {
-        if (!existing.crewMemberIds.includes(a.crewMemberId)) existing.crewMemberIds.push(a.crewMemberId);
-      } else {
-        byWindow.set(key, { start: a.startTime, end: a.endTime, crewMemberIds: [a.crewMemberId] });
+    // time -> set of shooters free then
+    const byTime = new Map<string, Set<string>>();
+    for (const cm of shooters) {
+      const pref = prefs[cm] ?? DEFAULT_PREF;
+      for (const t of openStartsFor(availability, cm, date, busy, pref)) {
+        if (!byTime.has(t)) byTime.set(t, new Set());
+        byTime.get(t)!.add(cm);
       }
     }
-    const windows = Array.from(byWindow.values()).sort((x, y) => x.start.localeCompare(y.start));
-    result.push({ date, weekday: wd, windows });
+    if (byTime.size === 0) continue;
+    const slots: OpenSlot[] = Array.from(byTime.entries())
+      .map(([time, set]) => ({ time, crewMemberIds: Array.from(set) }))
+      .sort((a, b) => a.time.localeCompare(b.time));
+    result.push({ date, weekday: weekdayOf(date), slots });
   }
   return result;
-}
-
-/** Half-hour start-time options ("09:00", "09:30", …) within [start, end). */
-export function slotTimes(start: string, end: string): string[] {
-  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-  const out: string[] = [];
-  for (let mins = toMin(start); mins < toMin(end); mins += 30) {
-    out.push(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`);
-  }
-  return out;
 }
 
 // ---- Seed Data (pre-populated from Base44 app) ----
@@ -235,6 +269,7 @@ export const seedData: AppData = {
   products: [],
   shootRequests: [],
   availability: [],
+  shooterPrefs: [],
   crewLocationDistances: [],
   manualTrips: [],
   businessExpenses: [],

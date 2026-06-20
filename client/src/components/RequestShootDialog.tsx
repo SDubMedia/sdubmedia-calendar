@@ -5,14 +5,15 @@
 // optional. Submits a pending request the owner approves later.
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check, MapPin, CalendarClock } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { getOpenDays, slotTimes } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
+import { getOpenDays, type BusyBlock } from "@/lib/data";
 import type { ProjectServiceSelection } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -60,16 +61,36 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
     [data.services, category]
   );
 
+  // Existing bookings (free/busy — times only, no client/address) so open slots
+  // skip times you're already shooting. Fetched fresh when the dialog opens.
+  const [busy, setBusy] = useState<BusyBlock[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const { data: rows } = await supabase.from("shooter_busy").select("crew_member_id, date, start_time, end_time").gte("date", todayIso());
+      if (cancelled || !rows) return;
+      setBusy(rows.map((r: { crew_member_id: string; date: string; start_time: string; end_time: string }) => ({
+        crewMemberId: r.crew_member_id, date: r.date, start: r.start_time, end: r.end_time,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const prefsMap = useMemo(() => {
+    const m: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }> = {};
+    for (const p of data.shooterPrefs) m[p.crewMemberId] = { shootMinutes: p.shootMinutes, bufferMinutes: p.bufferMinutes, maxPerDay: p.maxPerDay };
+    return m;
+  }, [data.shooterPrefs]);
+
   const openDays = useMemo(
-    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null }),
-    [data.availability, shooterId]
+    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null, busy, prefs: prefsMap }),
+    [data.availability, shooterId, busy, prefsMap]
   );
-  const dayWindows = useMemo(() => openDays.find(d => d.date === pickedDate)?.windows ?? [], [openDays, pickedDate]);
-  const timeOptions = useMemo(() => {
-    const set = new Set<string>();
-    dayWindows.forEach(w => slotTimes(w.start, w.end).forEach(t => set.add(t)));
-    return Array.from(set).sort();
-  }, [dayWindows]);
+  const timeOptions = useMemo(
+    () => (openDays.find(d => d.date === pickedDate)?.slots ?? []).map(s => s.time),
+    [openDays, pickedDate]
+  );
 
   const togglePiece = (sel: ProjectServiceSelection) => {
     setPicked(prev => {

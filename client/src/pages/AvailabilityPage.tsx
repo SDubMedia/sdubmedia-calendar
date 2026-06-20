@@ -6,8 +6,8 @@
 // Design: Dark Cinematic Studio
 // ============================================================
 
-import { useMemo, useState } from "react";
-import { CalendarClock, Plus, Trash2, Repeat, CalendarDays } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarClock, Plus, Trash2, Repeat, CalendarDays, Check, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AvailabilityPage() {
-  const { data, addAvailability, deleteAvailability } = useApp();
+  const { data, addAvailability, deleteAvailability, upsertShooterPref } = useApp();
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const myCrewId = effectiveProfile?.crewMemberId || "";
@@ -50,9 +50,35 @@ export default function AvailabilityPage() {
   const [recurring, setRecurring] = useState(true);
   const [weekday, setWeekday] = useState(1); // Monday
   const [specificDate, setSpecificDate] = useState("");
+  const [allDay, setAllDay] = useState(false);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
   const [saving, setSaving] = useState(false);
+
+  // Per-person operating rules (shoot length / travel buffer / daily cap)
+  const [shootMinutes, setShootMinutes] = useState(60);
+  const [bufferMinutes, setBufferMinutes] = useState(30);
+  const [maxPerDay, setMaxPerDay] = useState(0);
+  const [savingPref, setSavingPref] = useState(false);
+  useEffect(() => {
+    const p = data.shooterPrefs.find(x => x.crewMemberId === personId);
+    setShootMinutes(p?.shootMinutes ?? 60);
+    setBufferMinutes(p?.bufferMinutes ?? 30);
+    setMaxPerDay(p?.maxPerDay ?? 0);
+  }, [personId, data.shooterPrefs]);
+
+  const handleSavePrefs = async () => {
+    if (!personId) return;
+    setSavingPref(true);
+    try {
+      await upsertShooterPref({ crewMemberId: personId, shootMinutes, bufferMinutes, maxPerDay });
+      toast.success("Booking rules saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save rules");
+    } finally {
+      setSavingPref(false);
+    }
+  };
 
   const personBlocks = useMemo(
     () => data.availability.filter(a => a.crewMemberId === personId),
@@ -72,7 +98,7 @@ export default function AvailabilityPage() {
   const handleAdd = async () => {
     if (!personId) { toast.error("Pick a person first"); return; }
     if (!recurring && !specificDate) { toast.error("Pick a date for a one-time opening"); return; }
-    if (endTime <= startTime) { toast.error("End time must be after start time"); return; }
+    if (!allDay && endTime <= startTime) { toast.error("End time must be after start time"); return; }
     setSaving(true);
     try {
       await addAvailability({
@@ -80,6 +106,7 @@ export default function AvailabilityPage() {
         recurring,
         weekday: recurring ? weekday : null,
         specificDate: recurring ? null : specificDate,
+        allDay,
         startTime,
         endTime,
       });
@@ -176,20 +203,62 @@ export default function AvailabilityPage() {
             </div>
           )}
 
-          {/* Times */}
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1 min-w-0">
-              <Label className="text-xs text-muted-foreground">From</Label>
-              <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1" />
+          {/* All-day toggle */}
+          <button
+            type="button"
+            onClick={() => setAllDay(v => !v)}
+            className={`w-full flex items-center justify-between h-10 rounded-md border px-3 text-sm mb-3 transition-colors ${allDay ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+          >
+            <span>Available all day</span>
+            <span className={`w-4 h-4 rounded flex items-center justify-center ${allDay ? "bg-primary text-primary-foreground" : "border border-border"}`}>{allDay && <Check className="w-3 h-3" />}</span>
+          </button>
+
+          {/* Times (hidden when all-day) */}
+          {!allDay && (
+            <div className="flex gap-3 mb-4">
+              <div className="flex-1 min-w-0">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1" />
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <Label className="text-xs text-muted-foreground">To</Label>
-              <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1" />
-            </div>
-          </div>
+          )}
 
           <Button onClick={handleAdd} disabled={saving || !personId} className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="w-4 h-4" /> Add opening
+          </Button>
+        </div>
+
+        {/* How I operate — booking rules */}
+        <div className="bg-card border border-border rounded-lg p-4 mb-6">
+          <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5" /> How I operate</div>
+          <p className="text-xs text-muted-foreground mb-3">Open times skip shoots already booked and respect these rules.</p>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">Shoot length</Label>
+              <div className="flex items-center gap-1 mt-1">
+                <Input inputMode="decimal" value={String(shootMinutes)} onChange={e => setShootMinutes(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center" />
+                <span className="text-xs text-muted-foreground">min</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Travel buffer</Label>
+              <div className="flex items-center gap-1 mt-1">
+                <Input inputMode="decimal" value={String(bufferMinutes)} onChange={e => setBufferMinutes(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center" />
+                <span className="text-xs text-muted-foreground">min</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Max / day</Label>
+              <Input inputMode="decimal" value={String(maxPerDay)} onChange={e => setMaxPerDay(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center mt-1" />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mb-3">Travel buffer is held before and after each shoot. Max/day of 0 means no limit.</p>
+          <Button variant="outline" onClick={handleSavePrefs} disabled={savingPref || !personId} className="w-full border-border">
+            {savingPref ? "Saving…" : "Save rules"}
           </Button>
         </div>
 
@@ -209,7 +278,7 @@ export default function AvailabilityPage() {
                     <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-foreground">{WEEKDAYS[a.weekday ?? 0]}</div>
-                        <div className="text-xs text-muted-foreground">{formatTime(a.startTime)} – {formatTime(a.endTime)}</div>
+                        <div className="text-xs text-muted-foreground">{a.allDay ? "All day" : `${formatTime(a.startTime)} – ${formatTime(a.endTime)}`}</div>
                       </div>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => handleDelete(a)}>
                         <Trash2 className="w-3.5 h-3.5" />
@@ -227,7 +296,7 @@ export default function AvailabilityPage() {
                     <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-foreground">{formatDate(a.specificDate ?? "")}</div>
-                        <div className="text-xs text-muted-foreground">{formatTime(a.startTime)} – {formatTime(a.endTime)}</div>
+                        <div className="text-xs text-muted-foreground">{a.allDay ? "All day" : `${formatTime(a.startTime)} – ${formatTime(a.endTime)}`}</div>
                       </div>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => handleDelete(a)}>
                         <Trash2 className="w-3.5 h-3.5" />

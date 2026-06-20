@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -62,6 +62,7 @@ interface AppContextValue {
   addAvailability: (a: Omit<Availability, "id" | "orgId" | "createdAt">) => Promise<Availability>;
   updateAvailability: (id: string, a: Partial<Availability>) => Promise<void>;
   deleteAvailability: (id: string) => Promise<void>;
+  upsertShooterPref: (p: Omit<ShooterPref, "orgId" | "createdAt">) => Promise<void>;
   // Series
   addSeries: (s: Omit<Series, "id" | "createdAt">) => Promise<Series>;
   updateSeries: (id: string, s: Partial<Series>) => Promise<void>;
@@ -438,8 +439,20 @@ function rowToAvailability(r: any): Availability {
     recurring: r.recurring !== false,
     weekday: r.weekday === null || r.weekday === undefined ? null : Number(r.weekday),
     specificDate: r.specific_date || null,
+    allDay: r.all_day === true,
     startTime: r.start_time || "09:00",
     endTime: r.end_time || "17:00",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToShooterPref(r: any): ShooterPref {
+  return {
+    crewMemberId: r.crew_member_id,
+    orgId: r.org_id || "",
+    shootMinutes: Number(r.shoot_minutes ?? 60),
+    bufferMinutes: Number(r.buffer_minutes ?? 30),
+    maxPerDay: Number(r.max_per_day ?? 0),
     createdAt: r.created_at,
   };
 }
@@ -834,7 +847,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1068,6 +1081,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: orgData, error: _e9 },
         { data: shootRequestsData, error: e7sr },
         { data: availabilityData, error: e7av },
+        { data: shooterPrefsData, error: e7sp },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1107,9 +1121,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
         supabase.from("shoot_requests").select("*").order("created_at", { ascending: false }),
         supabase.from("availability").select("*"),
+        supabase.from("shooter_prefs").select("*"),
       ]);
 
-      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e8;
+      const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
       if (firstError) throw new Error(firstError.message);
 
       setRawData({
@@ -1126,6 +1141,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         products: (productsData || []).map(r => { try { return rowToProduct(r); } catch { return null; } }).filter(Boolean) as Product[],
         shootRequests: (shootRequestsData || []).map(r => { try { return rowToShootRequest(r); } catch { return null; } }).filter(Boolean) as ShootRequest[],
         availability: (availabilityData || []).map(r => { try { return rowToAvailability(r); } catch { return null; } }).filter(Boolean) as Availability[],
+        shooterPrefs: (shooterPrefsData || []).map(r => { try { return rowToShooterPref(r); } catch { return null; } }).filter(Boolean) as ShooterPref[],
         crewLocationDistances: (distances || []).map(r => { try { return rowToCrewLocationDistance(r); } catch { return null; } }).filter(Boolean) as any[],
         manualTrips: (manualTripsData || []).map(r => { try { return rowToManualTrip(r); } catch { return null; } }).filter(Boolean) as any[],
         businessExpenses: (bizExpenses || []).map(r => { try { return rowToBusinessExpense(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -2823,6 +2839,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       recurring: a.recurring,
       weekday: a.recurring ? a.weekday : null,
       specific_date: a.recurring ? null : a.specificDate,
+      all_day: a.allDay,
       start_time: a.startTime,
       end_time: a.endTime,
     }).select().single();
@@ -2838,6 +2855,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (a.recurring !== undefined) patch.recurring = a.recurring;
     if (a.weekday !== undefined) patch.weekday = a.weekday;
     if (a.specificDate !== undefined) patch.specific_date = a.specificDate;
+    if (a.allDay !== undefined) patch.all_day = a.allDay;
     if (a.startTime !== undefined) patch.start_time = a.startTime;
     if (a.endTime !== undefined) patch.end_time = a.endTime;
     const { error } = await supabase.from("availability").update(patch).eq("id", id);
@@ -2850,6 +2868,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, availability: d.availability.filter(x => x.id !== id) }));
   }, []);
+
+  // ---- Shooter Prefs (per-person operating rules; PK = crew_member_id) ----
+  const upsertShooterPref = useCallback(async (p: Omit<ShooterPref, "orgId" | "createdAt">) => {
+    const { data: row, error } = await supabase.from("shooter_prefs").upsert({
+      crew_member_id: p.crewMemberId,
+      ...(orgId ? { org_id: orgId } : {}),
+      shoot_minutes: p.shootMinutes,
+      buffer_minutes: p.bufferMinutes,
+      max_per_day: p.maxPerDay,
+    }, { onConflict: "crew_member_id" }).select().single();
+    if (error) throw new Error(error.message);
+    const pref = rowToShooterPref(row);
+    setRawData(d => ({
+      ...d,
+      shooterPrefs: d.shooterPrefs.some(x => x.crewMemberId === pref.crewMemberId)
+        ? d.shooterPrefs.map(x => x.crewMemberId === pref.crewMemberId ? pref : x)
+        : [...d.shooterPrefs, pref],
+    }));
+  }, [orgId]);
 
   // ---- Series ----
   const addSeries = useCallback(async (s: Omit<Series, "id" | "createdAt">): Promise<Series> => {
@@ -2984,6 +3021,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProduct, updateProduct, deleteProduct,
       addShootRequest, updateShootRequest, deleteShootRequest,
       addAvailability, updateAvailability, deleteAvailability,
+      upsertShooterPref,
       addSeries, updateSeries, deleteSeries,
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,

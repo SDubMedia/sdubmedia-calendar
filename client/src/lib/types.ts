@@ -686,8 +686,19 @@ export interface Availability {
   recurring: boolean;          // true = repeats weekly on `weekday`; false = one-off `specificDate`
   weekday: number | null;      // 0=Sun..6=Sat when recurring
   specificDate: string | null; // ISO date when not recurring
+  allDay: boolean;             // available the whole day (ignores start/end)
   startTime: string;           // "09:00"
   endTime: string;             // "17:00"
+  createdAt: string;
+}
+
+// Per-shooter operating rules — how this person wants to be booked.
+export interface ShooterPref {
+  crewMemberId: string;        // PK — whose rules
+  orgId: string;
+  shootMinutes: number;        // how long a shoot blocks off
+  bufferMinutes: number;       // travel time required between shoots
+  maxPerDay: number;           // 0 = unlimited
   createdAt: string;
 }
 
@@ -1482,6 +1493,7 @@ export interface AppData {
   products: Product[];
   shootRequests: ShootRequest[];
   availability: Availability[];
+  shooterPrefs: ShooterPref[];
   crewLocationDistances: CrewLocationDistance[];
   manualTrips: ManualTrip[];
   businessExpenses: BusinessExpense[];
