@@ -30,7 +30,7 @@ function fmtTime(t: string | null): string {
 }
 
 export default function ShootRequestsPage() {
-  const { data, addLocation, addProject, updateShootRequest } = useApp();
+  const { data, addLocation, addProject, updateShootRequest, createReShootGallery } = useApp();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [declineTarget, setDeclineTarget] = useState<ShootRequest | null>(null);
   const [declineNote, setDeclineNote] = useState("");
@@ -101,6 +101,7 @@ export default function ShootRequestsPage() {
         products: [],
       };
       const project = await addProject(payload);
+      try { await createReShootGallery(project.id, req.propertyAddress.trim()); } catch { /* non-fatal */ }
       await updateShootRequest(req.id, { status: "scheduled", projectId: project.id });
       toast.success("Shoot scheduled — it's on your calendar");
     } catch (e) {

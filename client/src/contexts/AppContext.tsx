@@ -130,6 +130,7 @@ interface AppContextValue {
   deleteProposalImage: (id: string) => Promise<void>;
   // Deliveries (galleries)
   addDelivery: (d: Omit<Delivery, "id" | "token" | "hasPassword" | "createdAt" | "updatedAt" | "viewCount" | "downloadCount" | "submittedAt" | "workingAt" | "deliveredAt" | "clientName" | "clientEmail">) => Promise<Delivery>;
+  createReShootGallery: (projectId: string, title: string) => Promise<Delivery | null>;
   updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
   deleteDelivery: (id: string) => Promise<void>;
   setDeliveryStatus: (id: string, status: DeliveryStatus) => Promise<void>;
@@ -923,8 +924,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const endedAt = partnerEndedAtByClient.get(clientId);
         return !!endedAt && dateStr > endedAt;
       };
+      // A client sees their own projects; a BROKER also sees their agents'
+      // shoots (stored under the agent) and anything billed directly to them.
+      const clientById = new Map(rawData.clients.map(c => [c.id, c]));
+      const clientCanSeeProject = (p: Project): boolean => {
+        if (allowedClientIds.has(p.clientId)) return true;
+        if (p.billToId && allowedClientIds.has(p.billToId)) return true;
+        const c = clientById.get(p.clientId);
+        return !!(c?.clientType === "agent" && c.brokerId && allowedClientIds.has(c.brokerId));
+      };
       const allowedProjects = rawData.projects.filter(p =>
-        allowedClientIds.has(p.clientId) && !isPartnerCutoff(p.clientId, p.date)
+        clientCanSeeProject(p) && !isPartnerCutoff(p.clientId, p.date)
       );
       const allowedProjectIds = new Set(allowedProjects.map(p => p.id));
       // Meetings:
@@ -1909,6 +1919,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, deliveries: [delivery, ...d.deliveries] }));
     return delivery;
   }, [orgId]);
+
+  // Auto-create a private (draft) gallery linked to a real-estate shoot, so the
+  // owner always has a place to upload. Skips if one already exists. No-op-safe.
+  const createReShootGallery = useCallback(async (projectId: string, title: string): Promise<Delivery | null> => {
+    return addDelivery({
+      projectId, collectionId: null, title: title || "Real Estate Shoot",
+      coverFileId: null, watermarkText: null, watermarkUseLogo: false, printsEnabled: false,
+      coverLayout: "center", coverFont: "", coverSubtitle: null, coverDate: null,
+      slug: null, requireEmail: false, expiresAt: null,
+      selectionLimit: 0, perExtraPhotoCents: 0, buyAllFlatCents: 0, status: "draft",
+    });
+  }, [addDelivery]);
 
   const updateDelivery = useCallback(async (id: string, d: Partial<Delivery>) => {
     const patch: any = { updated_at: new Date().toISOString() };
@@ -3045,7 +3067,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addMeeting, updateMeeting, deleteMeeting,
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
-      addDelivery, updateDelivery, deleteDelivery, setDeliveryStatus,
+      addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,
       registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       addServiceCategory, updateServiceCategory, deleteServiceCategory,

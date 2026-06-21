@@ -63,12 +63,24 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
   if (!apnsConfigured()) return result;            // dormant until creds exist
   if (!supabaseUrl || !supabaseServiceKey) return result;
 
+  return sendToTokens(await tokensFor("org_id", orgId), payload);
+}
+
+// Send to ONE user's devices (e.g. notify a single agent, not the whole org).
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<SendResult> {
+  if (!apnsConfigured() || !supabaseUrl || !supabaseServiceKey) return { sent: 0, pruned: 0, errors: [] };
+  return sendToTokens(await tokensFor("user_id", userId), payload);
+}
+
+async function tokensFor(col: "org_id" | "user_id", val: string): Promise<string[]> {
+  if (!supabaseUrl || !supabaseServiceKey) return [];
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const { data: rows } = await supabase
-    .from("device_tokens")
-    .select("token")
-    .eq("org_id", orgId);
-  const tokens = (rows as { token: string }[] | null)?.map(r => r.token).filter(Boolean) ?? [];
+  const { data: rows } = await supabase.from("device_tokens").select("token").eq(col, val);
+  return (rows as { token: string }[] | null)?.map(r => r.token).filter(Boolean) ?? [];
+}
+
+async function sendToTokens(tokens: string[], payload: PushPayload): Promise<SendResult> {
+  const result: SendResult = { sent: 0, pruned: 0, errors: [] };
   if (tokens.length === 0) return result;
 
   const host = (process.env.APNS_PRODUCTION ?? "true") === "false"
@@ -134,8 +146,9 @@ export async function sendPushToOrg(orgId: string, payload: PushPayload): Promis
   }
 
   // Prune tokens APNs says are gone so we stop trying them.
-  if (dead.length > 0) {
+  if (dead.length > 0 && supabaseUrl && supabaseServiceKey) {
     try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
       await supabase.from("device_tokens").delete().in("token", dead);
       result.pruned = dead.length;
     } catch { /* best-effort */ }

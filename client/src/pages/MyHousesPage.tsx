@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User, Receipt, CreditCard } from "lucide-react";
+import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User, Receipt, CreditCard, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -48,6 +48,9 @@ export default function MyHousesPage() {
 
   const locName = (locationId: string) => data.locations.find(l => l.id === locationId)?.name ?? "Address TBD";
   const agentName = (clientId: string) => data.clients.find(c => c.id === clientId)?.company ?? "";
+  // A house's gallery is viewable once the owner has DELIVERED it (released).
+  const galleryFor = (projectId: string) => data.deliveries.find(d => d.projectId === projectId && d.status === "delivered");
+  const galleryUrl = (d: { slug: string | null; token: string }) => `${window.location.origin}${d.slug ? `/g/${d.slug}` : `/deliver/${d.token}`}`;
 
   // What the broker owes — every project they can see is one they're the payer
   // for (agents' shoots + anything billed directly to them, e.g. a live event).
@@ -242,6 +245,11 @@ export default function MyHousesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-foreground truncate flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0 text-muted-foreground" />{locName(p.locationId)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDate(p.date)}{p.startTime ? ` · ${fmtTime(p.startTime)}` : ""}{isBroker && agentName(p.clientId) ? ` · ${agentName(p.clientId)}` : ""}</div>
+                    {(() => { const g = galleryFor(p.id); return g ? (
+                      <a href={galleryUrl(g)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                        <ImageIcon className="w-3 h-3" /> View photos
+                      </a>
+                    ) : null; })()}
                   </div>
                   <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{p.status}</Badge>
                 </div>

@@ -135,6 +135,9 @@ export default function DeliverGalleryPage() {
   const [walkthroughStep, setWalkthroughStep] = useState<number | null>(null);
   useEffect(() => {
     if (!delivery || typeof window === "undefined") return;
+    // Download-only galleries (no proofing, e.g. real-estate) skip the
+    // favorites/proofing walkthrough — there's nothing to select.
+    if ((delivery.selectionLimit ?? 0) === 0) return;
     if (localStorage.getItem(`gallery-walkthrough-${token}`) === "done") return;
     // Show welcome card after a short delay so the hero animates in first.
     const t = setTimeout(() => setWalkthroughStep(0), 800);
@@ -590,6 +593,16 @@ export default function DeliverGalleryPage() {
           </div>
         </div>
       </header>
+
+      {/* Download-only galleries (e.g. real-estate): one prominent download-all. */}
+      {!proofingEnabled && (delivery.status === "delivered" || delivery.status === "sent") && files.length > 0 && (
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
+          <button onClick={downloadAll} disabled={zipping} className="inline-flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 disabled:opacity-50">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            {zipping ? "Preparing…" : `Download all ${files.length} photo${files.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
 
       {/* Status / state banners */}
       {(isWorking || delivery.status === "submitted" || delivery.status === "delivered" || (proofingEnabled && delivery.status === "sent")) && (

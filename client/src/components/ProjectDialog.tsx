@@ -57,7 +57,7 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 });
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated, resume }: Props) {
-  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember } = useApp();
+  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -570,6 +570,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         toast.success("Project updated");
       } else {
         const newProject = await addProject(payload);
+        // Real-estate shoots get a private gallery auto-created for uploads.
+        if (isRealEstate) {
+          try { await createReShootGallery(newProject.id, propertyAddress.trim()); } catch { /* non-fatal */ }
+        }
         try { localStorage.removeItem(PROJECT_DRAFT_KEY); } catch { /* ignore */ }
         toast.success("Project created");
         if (onCreated) onCreated(newProject);
