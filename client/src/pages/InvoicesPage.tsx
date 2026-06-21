@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
+import { getProjectPayerId } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { pdf } from "@react-pdf/renderer";
@@ -125,10 +126,14 @@ export default function InvoicesPage() {
   const { bookedClients, otherClients } = useMemo(() => {
     const inPeriod = (date: string) =>
       (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd);
+    // Surface the PAYER, not the project's client. A real-estate shoot is stored
+    // under the agent but billed to their broker — so the broker (the payer) is
+    // who should appear in the "create invoice" picker, not the agent.
+    const clientsById = Object.fromEntries(data.clients.map((c) => [c.id, c]));
     const bookedIds = new Set(
       data.projects
         .filter((p) => inPeriod(p.date))
-        .map((p) => p.clientId)
+        .map((p) => getProjectPayerId(p, clientsById))
     );
     const sortByCompany = (a: { company: string }, b: { company: string }) =>
       a.company.localeCompare(b.company);

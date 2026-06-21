@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus, Invoice } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { pdf } from "@react-pdf/renderer";
@@ -104,6 +104,10 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [generatingPreview, setGeneratingPreview] = useState(false);
 
   const client = data.clients.find((c) => c.id === project.clientId);
+  // Invoices go to the PAYER — for an agent's shoot that's their broker, not the
+  // agent. (Deliverables + reschedule notices still go to `client`, the agent.)
+  const clientsById = Object.fromEntries(data.clients.map((c) => [c.id, c]));
+  const invoiceClient = data.clients.find((c) => c.id === getProjectPayerId(project, clientsById)) ?? client;
   const location = data.locations.find((l) => l.id === project.locationId);
   const pType = data.projectTypes.find((pt) => pt.id === project.projectTypeId);
 
@@ -291,8 +295,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   // Build invoice draft for just this project (one-day period).
   // Pass empty existingInvoices so we always generate line items — we'll warn about duplicates on click.
-  const invoiceDraft = client
-    ? buildInvoice(client, [project], data.projectTypes, data.locations, [], project.date, project.date, data.organization)
+  const invoiceDraft = invoiceClient
+    ? buildInvoice(invoiceClient, [project], data.projectTypes, data.locations, [], project.date, project.date, data.organization, data.clients)
     : null;
 
   // Find any existing invoice that already contains this project
@@ -314,7 +318,13 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       toast.error("No billable hours or flat rate on this project");
       return;
     }
-    setInvoiceEmail(resolvedClientEmail);
+    // Default the recipient to the PAYER (broker for an agent's shoot), falling
+    // back to a login email attached to that payer.
+    setInvoiceEmail(
+      invoiceClient?.email
+      || (invoiceClient ? allProfiles.find(u => u.role === "client" && u.clientIds.includes(invoiceClient.id))?.email || "" : "")
+      || resolvedClientEmail
+    );
     setInvoiceMessage("");
     // Default payment methods: whichever ones are configured on the org.
     // If neither is configured, leave empty — the dialog will show a
@@ -1151,14 +1161,14 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
               </div>
 
-              {client && (
+              {invoiceClient && (
                 <div className="bg-secondary/30 border border-border rounded-md p-3">
                   <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Sending to</div>
                   <div className="text-sm text-foreground font-medium">
-                    {client.contactName || client.company || "Client"}
+                    {invoiceClient.company || invoiceClient.contactName || "Client"}
                   </div>
-                  {client.company && client.contactName && (
-                    <div className="text-xs text-muted-foreground">{client.company}</div>
+                  {invoiceClient.id !== project.clientId && client && (
+                    <div className="text-xs text-muted-foreground">Billed for {client.company} (agent)</div>
                   )}
                 </div>
               )}
@@ -1172,9 +1182,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   placeholder="client@example.com"
                   className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
-                {client && !resolvedClientEmail && (
+                {invoiceClient && !invoiceEmail && (
                   <p className="text-xs text-amber-300/90 mt-1.5">
-                    No email on file for {client.contactName || client.company || "this client"}. Type one above, or add it on the Clients page.
+                    No email on file for {invoiceClient.company || invoiceClient.contactName || "this client"}. Type one above, or add it on the Clients page.
                   </p>
                 )}
               </div>
