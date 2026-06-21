@@ -31,6 +31,7 @@ const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
 const MyHousesPage = lazy(() => import("./pages/MyHousesPage"));
 const ShootRequestsPage = lazy(() => import("./pages/ShootRequestsPage"));
 const BrokersPage = lazy(() => import("./pages/BrokersPage"));
+const RealEstatePage = lazy(() => import("./pages/RealEstatePage"));
 const InvoicesPage = lazy(() => import("./pages/InvoicesPage"));
 const OutstandingPaymentsPage = lazy(() => import("./pages/OutstandingPaymentsPage"));
 const PipelineAnalyticsPage = lazy(() => import("./pages/PipelineAnalyticsPage"));
@@ -157,6 +158,7 @@ function Router() {
         {isOwner && <Route path="/crew-report" component={CrewReportPage} />}
         <Route path="/clients" component={ClientsPage} />
         <Route path="/brokers" component={BrokersPage} />
+        {isOwner && <Route path="/real-estate" component={RealEstatePage} />}
         <Route path="/staff" component={StaffPage} />
         <Route path="/invoices" component={InvoicesPage} />
         <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />

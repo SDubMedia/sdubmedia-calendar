@@ -105,6 +105,7 @@ const navStructure: NavEntry[] = [
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Brokers", href: "/brokers", icon: Building2, roles: ["owner", "partner"], feature: "clientManagement" },
+    { label: "Real Estate", href: "/real-estate", icon: Home, roles: ["owner"] },
     { label: "Shoot Requests", href: "/shoot-requests", icon: Inbox, roles: ["owner"] },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
