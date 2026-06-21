@@ -5,11 +5,23 @@
 // roll-up (homes, revenue, your profit) and a one-tap month-end invoice.
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Plus, Building2, User, Pencil, FileText, ChevronRight } from "lucide-react";
+import { Plus, Building2, User, Pencil, FileText, ChevronRight, Globe, Smartphone, Clock, CircleDashed } from "lucide-react";
+import type { UserProfile } from "@/lib/types";
+
+// Whether a broker/agent has an account, has logged in, and on what surface.
+function PresenceIcon({ clientId, profiles, appUserIds }: { clientId: string; profiles: UserProfile[]; appUserIds: Set<string> }) {
+  const p = profiles.find(x => x.role === "client" && x.clientIds.includes(clientId));
+  let Icon = CircleDashed, color = "text-muted-foreground/40", label = "Not enrolled — no login yet";
+  if (p && p.mustChangePassword) { Icon = Clock; color = "text-amber-500"; label = "Invited — hasn't logged in yet"; }
+  else if (p && appUserIds.has(p.id)) { Icon = Smartphone; color = "text-emerald-500"; label = "Active · iPhone app"; }
+  else if (p) { Icon = Globe; color = "text-emerald-500"; label = "Active · Web"; }
+  return <span title={label} className="inline-flex"><Icon className={`w-3.5 h-3.5 flex-shrink-0 ${color}`} /></span>;
+}
 import { toast } from "sonner";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
@@ -44,6 +56,18 @@ export default function BrokersPage() {
   const [sheetBrokerId, setSheetBrokerId] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+
+  // Presence: which agents/brokers have an account, and whether on the app.
+  const { allProfiles } = useAuth();
+  const [appUserIds, setAppUserIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: rows } = await supabase.from("device_tokens").select("user_id");
+      if (!cancelled && rows) setAppUserIds(new Set((rows as { user_id: string }[]).map(r => r.user_id)));
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const month = useMemo(currentMonthBounds, []);
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -145,6 +169,7 @@ export default function BrokersPage() {
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-primary" />
                     <span className="font-semibold">{broker.company}</span>
+                    <PresenceIcon clientId={broker.id} profiles={allProfiles} appUserIds={appUserIds} />
                     <button onClick={() => openEdit(broker)} className="text-muted-foreground hover:text-foreground" title="Edit broker"><Pencil className="w-3.5 h-3.5" /></button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{agents.length} agent{agents.length !== 1 ? "s" : ""}</div>
@@ -173,6 +198,7 @@ export default function BrokersPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <User className="w-3.5 h-3.5 text-muted-foreground" />
                       <span className="text-sm truncate">{agent.company}</span>
+                      <PresenceIcon clientId={agent.id} profiles={allProfiles} appUserIds={appUserIds} />
                       {agent.contactName && agent.contactName !== agent.company && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
                     </div>
                     <button onClick={() => openEdit(agent)} className="text-muted-foreground hover:text-foreground shrink-0" title="Edit agent"><Pencil className="w-3.5 h-3.5" /></button>
