@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Building2, User, Pencil, FileText, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
+import InviteBrokerDialog from "@/components/InviteBrokerDialog";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase } from "@/lib/supabase";
@@ -42,6 +43,7 @@ export default function BrokersPage() {
   const [sheetType, setSheetType] = useState<"broker" | "agent">("broker");
   const [sheetBrokerId, setSheetBrokerId] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const month = useMemo(currentMonthBounds, []);
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -114,10 +116,16 @@ export default function BrokersPage() {
             Brokerages that pay for their agents' shoots. Bill the broker monthly for all their homes.
           </p>
         </div>
-        <Button onClick={openAddBroker} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-          <Plus className="w-4 h-4" /> Add Broker
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={openAddBroker} className="border-border gap-2">
+            <Plus className="w-4 h-4" /> Add Broker
+          </Button>
+          <Button onClick={() => setInviteOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <Plus className="w-4 h-4" /> Invite Broker
+          </Button>
+        </div>
       </div>
+      <InviteBrokerDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
 
       <div className="flex-1 overflow-auto p-6 space-y-4">
         {brokers.length === 0 ? (

@@ -4,14 +4,16 @@
 // lets them request a new shoot. Agent-safe: no cost/margin, only their own.
 // ============================================================
 
-import { useMemo, useState } from "react";
-import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User, Receipt, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import InviteAgentDialog from "@/components/InviteAgentDialog";
+import { getProjectInvoiceAmount } from "@/lib/data";
+import { toast } from "sonner";
 
 function fmtDate(iso: string): string {
   if (!iso) return "";
@@ -47,6 +49,58 @@ export default function MyHousesPage() {
   const locName = (locationId: string) => data.locations.find(l => l.id === locationId)?.name ?? "Address TBD";
   const agentName = (clientId: string) => data.clients.find(c => c.id === clientId)?.company ?? "";
 
+  // What the broker owes — every project they can see is one they're the payer
+  // for (agents' shoots + anything billed directly to them, e.g. a live event).
+  // Priced like Reports: per-piece price, never cost.
+  const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
+  const now = new Date();
+  const yr = String(now.getFullYear());
+  const ym = `${yr}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const owedFor = (filter: (d: string) => boolean) => {
+    const ps = houses.filter(p => filter(p.date));
+    const total = myClient ? ps.reduce((s, p) => s + getProjectInvoiceAmount(p, clientsById[p.clientId] ?? myClient), 0) : 0;
+    return { total, count: ps.length };
+  };
+  const month = owedFor(d => d.startsWith(ym));
+  const year = owedFor(d => d.startsWith(yr));
+  const money = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+  // Invoices the broker can pay — their own, that you've SENT (not drafts).
+  const myInvoices = useMemo(
+    () => data.invoices.filter(i => i.clientId === myClientId).sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || "")),
+    [data.invoices, myClientId]
+  );
+  const [payingId, setPayingId] = useState<string | null>(null);
+
+  // Bounce-back after a successful Stripe checkout.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("paid") === "1") {
+      toast.success("Payment received — thank you!");
+    }
+  }, []);
+
+  const handlePay = async (invId: string, viewToken: string) => {
+    if (!viewToken) { toast.error("This invoice isn't ready to pay yet — ask for it to be re-sent."); return; }
+    setPayingId(invId);
+    try {
+      const res = await fetch("/api/stripe-payment?action=checkout-by-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: viewToken,
+          successUrl: `${window.location.origin}/my-houses?paid=1`,
+          cancelUrl: `${window.location.origin}/my-houses`,
+        }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't start checkout");
+      window.location.assign(body.url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't start checkout");
+      setPayingId(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
@@ -66,6 +120,48 @@ export default function MyHousesPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto space-y-6">
+        {/* Broker: what you owe */}
+        {isBroker && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">This month</div>
+              <div className="text-2xl font-semibold text-foreground mt-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{money(month.total)}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{month.count} project{month.count !== 1 ? "s" : ""}</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">This year</div>
+              <div className="text-2xl font-semibold text-foreground mt-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{money(year.total)}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{year.count} project{year.count !== 1 ? "s" : ""}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Broker: invoices + pay (only invoices you've sent are payable) */}
+        {isBroker && myInvoices.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><Receipt className="w-3 h-3" /> Invoices</div>
+            <div className="space-y-2">
+              {myInvoices.map(inv => (
+                <div key={inv.id} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">#{inv.invoiceNumber} · {money(inv.total)}</div>
+                    {inv.issueDate && <div className="text-xs text-muted-foreground">{inv.issueDate}</div>}
+                  </div>
+                  {inv.status === "paid" ? (
+                    <Badge className="bg-green-500/15 text-green-600 dark:text-green-300 border-green-500/30 flex-shrink-0">Paid</Badge>
+                  ) : inv.status === "sent" ? (
+                    <Button onClick={() => handlePay(inv.id, inv.viewToken)} disabled={payingId === inv.id} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 flex-shrink-0">
+                      <CreditCard className="w-4 h-4" /> {payingId === inv.id ? "Opening…" : `Pay ${money(inv.total)}`}
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{inv.status}</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Broker: agent roster */}
         {isBroker && (
           <div>

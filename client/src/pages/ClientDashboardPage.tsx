@@ -5,8 +5,9 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { InvoiceStatus, SeriesEpisode } from "@/lib/types";
-import { Link } from "wouter";
+import { Link, Redirect } from "wouter";
 import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,10 @@ function formatDate(d: string): string {
 
 export default function ClientDashboardPage() {
   const { data, fetchEpisodes } = useApp();
+  const { effectiveProfile } = useAuth();
+  // A brokerage account has its own home (agents + what they owe), not the
+  // standard client dashboard. Computed here; redirect happens after all hooks.
+  const isBroker = data.clients.find(c => c.id === (effectiveProfile?.clientIds?.[0] ?? ""))?.clientType === "broker";
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
@@ -112,6 +117,9 @@ export default function ClientDashboardPage() {
     }
     if (data.series.length > 0) loadReviewEpisodes();
   }, [data.series, fetchEpisodes]);
+
+  // Brokerage accounts get their own home, not the standard client dashboard.
+  if (isBroker) return <Redirect to="/my-houses" />;
 
   return (
     <div className="flex flex-col h-full">
