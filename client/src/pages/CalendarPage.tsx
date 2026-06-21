@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -1002,6 +1002,8 @@ export default function CalendarPage() {
                 ) : (
                   filteredProjects.map((project) => {
                     const client = getClient(project.clientId);
+                    // For an agent, surface which brokerage they're with.
+                    const broker = client?.clientType === "agent" && client.brokerId ? getClient(client.brokerId) : null;
                     const location = getLocation(project.locationId);
                     const pType = getProjectType(project.projectTypeId);
                     const totalWorked = getProjectWorkedHours(project).totalHours;
@@ -1065,6 +1067,12 @@ export default function CalendarPage() {
                               </Badge>
                             )}
                           </div>
+                          {broker && (
+                            <div className="flex items-center gap-1 text-xs text-primary mb-0.5">
+                              <Building2 className="w-3 h-3 flex-shrink-0" />
+                              {broker.company}
+                            </div>
+                          )}
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <User className="w-3 h-3" />
