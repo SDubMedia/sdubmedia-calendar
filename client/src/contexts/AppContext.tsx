@@ -476,6 +476,11 @@ function normalizeCrewEntry(c: any) {
     hoursWorked: Number(c.hoursWorked ?? c.hours_worked ?? 0),
     payRatePerHour: Number(c.payRatePerHour ?? c.pay_rate_per_hour ?? 0),
     roundTripMiles: c.roundTripMiles ?? c.round_trip_miles ?? undefined,
+    homeBaseId: c.homeBaseId ?? c.home_base_id ?? undefined,
+    // Preserve flat-pay fields — dropping these reverted flat-rate crew to $0
+    // on every reload (the "crew rate not saving" bug).
+    payType: c.payType ?? c.pay_type ?? undefined,
+    flatAmount: c.flatAmount ?? c.flat_amount ?? undefined,
   };
 }
 
