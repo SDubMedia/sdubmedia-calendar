@@ -108,6 +108,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // agent. (Deliverables + reschedule notices still go to `client`, the agent.)
   const clientsById = Object.fromEntries(data.clients.map((c) => [c.id, c]));
   const invoiceClient = data.clients.find((c) => c.id === getProjectPayerId(project, clientsById)) ?? client;
+  // Flat-rate / service-priced shoots aren't billed by the hour, so the
+  // "retainer hours" summary is meaningless and gets hidden.
+  const isFlatBilled = (project.billingModel ?? client?.billingModel) === "per_project"
+    || (project.projectRate ?? 0) > 0
+    || (project.services?.length ?? 0) > 0;
   const location = data.locations.find((l) => l.id === project.locationId);
   const pType = data.projectTypes.find((pt) => pt.id === project.projectTypeId);
 
@@ -670,8 +675,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             </div>
 
-            {/* Retainer Summary (owner only) */}
-            {isOwner && (
+            {/* Retainer Summary (owner only) — hidden for flat-rate shoots */}
+            {isOwner && !isFlatBilled && (
               <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Retainer Hours</span>
