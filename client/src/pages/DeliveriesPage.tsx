@@ -12,6 +12,7 @@ import PrereqGate from "@/components/PrereqGate";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { getAuthToken } from "@/lib/supabase";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon } from "lucide-react";
 
@@ -544,6 +545,25 @@ function DeliveryDetail({ id }: { id: string }) {
 
   const proofingEnabled = delivery.selectionLimit > 0;
   const project = data.projects.find(p => p.id === delivery.projectId);
+  const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
+  const hasBroker = agentClient?.clientType === "agent" && !!agentClient.brokerId;
+
+  const notifyGallery = async (recipient: "agent" | "broker") => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-gallery-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ deliveryId: id, recipient }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Couldn't notify");
+      if (d.emailed || d.pushed) toast.success(recipient === "broker" ? "Sent the broker the link" : "Notified the agent");
+      else toast.message(`No email on file for the ${recipient} — add one to notify them.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't notify");
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
@@ -625,8 +645,21 @@ function DeliveryDetail({ id }: { id: string }) {
               <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
               <StatusButton current={delivery.status} target="sent" onClick={() => setDeliveryStatus(id, "sent")} label="Send to client" />
               <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
-              <StatusButton current={delivery.status} target="delivered" onClick={() => setDeliveryStatus(id, "delivered")} label="Mark delivered" />
+              <StatusButton current={delivery.status} target="delivered" onClick={async () => { await setDeliveryStatus(id, "delivered"); notifyGallery("agent"); }} label="Mark delivered" />
             </div>
+            {hasBroker && (
+              <div className="mt-3 pt-3 border-t border-white/10">
+                <button
+                  onClick={() => notifyGallery("broker")}
+                  disabled={delivery.status !== "delivered"}
+                  className="text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={delivery.status !== "delivered" ? "Deliver the gallery first" : "Email the brokerage this gallery link"}
+                >
+                  Send the broker the link
+                </button>
+                <p className="text-[10px] text-slate-500 mt-1.5">Delivering notifies the agent automatically. Use this only if the brokerage asks for the link.</p>
+              </div>
+            )}
           </div>
           <ExpiryPanel
             expiresAt={delivery.expiresAt}
