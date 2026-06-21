@@ -132,6 +132,7 @@ const navStructure: NavEntry[] = [
   // Reports
   { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"], feature: "reports" },
+    { label: "Crew Report", href: "/crew-report", icon: Users2, roles: ["owner"] },
     { label: "Pipeline Analytics", href: "/pipeline-analytics", icon: TrendingUp, roles: ["owner"], feature: "reports" },
     { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },

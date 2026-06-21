@@ -18,6 +18,7 @@ const ClientsPage = lazy(() => import("./pages/ClientsPage"));
 const LocationsPage = lazy(() => import("./pages/LocationsPage"));
 const ManagePage = lazy(() => import("./pages/ManagePage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const CrewReportPage = lazy(() => import("./pages/CrewReportPage"));
 const StaffPage = lazy(() => import("./pages/StaffPage"));
 const MarketingBudgetPage = lazy(() => import("./pages/MarketingBudgetPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
@@ -153,6 +154,7 @@ function Router() {
         {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
         <Route path="/billing" component={BillingPage} />
         <Route path="/reports" component={ReportsPage} />
+        {isOwner && <Route path="/crew-report" component={CrewReportPage} />}
         <Route path="/clients" component={ClientsPage} />
         <Route path="/brokers" component={BrokersPage} />
         <Route path="/staff" component={StaffPage} />
