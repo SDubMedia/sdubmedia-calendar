@@ -1477,9 +1477,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           )}
         </div>
 
-        <DialogFooter className="sticky bottom-0 bg-card/95 backdrop-blur-sm pt-3 pb-3 -mx-6 px-6 border-t border-border z-10">
-          <Button variant="ghost" onClick={handleCloseWithDraft}>Cancel</Button>
-          <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">
+        <DialogFooter className="sticky bottom-0 bg-card pt-3 pb-3 -mx-6 px-6 border-t border-border z-10 flex-row items-center gap-3 sm:gap-3">
+          <Button variant="ghost" onClick={handleCloseWithDraft} className="text-muted-foreground hover:text-foreground shrink-0">Cancel</Button>
+          <Button onClick={handleSave} className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
             {isEdit ? "Save Changes" : "Create Project"}
           </Button>
         </DialogFooter>

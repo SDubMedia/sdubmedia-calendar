@@ -757,8 +757,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                           <div className="text-xs text-muted-foreground">{entry.role}</div>
                         </div>
                         <div className="text-right">
-                          <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
-                          <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                          {entry.payType === "flat" ? (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">${Number(entry.flatAmount ?? 0).toFixed(0)}</div>
+                              <div className="text-xs text-muted-foreground">flat</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">{Number(entry.hoursWorked ?? 0).toFixed(2)} hrs</div>
+                              <div className="text-xs text-muted-foreground">${Number(entry.payRatePerHour ?? 0).toFixed(0)}/hr</div>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -831,6 +840,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                               <div className="text-xs text-muted-foreground">
                                 {project.editorBilling!.imageCount} images x ${editorRate}/img
                               </div>
+                            </>
+                          ) : entry.payType === "flat" ? (
+                            <>
+                              <div className="text-sm font-medium tabular-nums">${Number(entry.flatAmount ?? 0).toFixed(0)}</div>
+                              <div className="text-xs text-muted-foreground">flat</div>
                             </>
                           ) : (
                             <>
@@ -1141,7 +1155,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
       {/* Create & Send Invoice dialog */}
       <AlertDialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg">
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg max-h-[90dvh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Create &amp; Send Invoice</AlertDialogTitle>
             <AlertDialogDescription className="text-muted-foreground">
