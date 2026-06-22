@@ -40,9 +40,12 @@ export default function MyHousesPage() {
   const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
   const isBroker = (myClient?.clientType ?? "") === "broker";
   const isAgent = (myClient?.clientType ?? "") === "agent";
+  // Set true once we've confirmed the card with Stripe on return — clears the
+  // booking gate immediately, without waiting on the async webhook.
+  const [cardConfirmed, setCardConfirmed] = useState(false);
   // Agents must keep a card on file before they can request shoots — a fallback
   // if their broker doesn't pay. Brokers are exempt (invoiced monthly).
-  const needsCard = isAgent && !myClient?.cardOnFile;
+  const needsCard = isAgent && !myClient?.cardOnFile && !cardConfirmed;
   // One-time disclosure: agents accept service+card terms, brokers a billing
   // agreement, before booking / inviting. Re-prompts if the terms version bumps.
   const agreed = hasAcceptedAgreement(myClient);
@@ -94,7 +97,18 @@ export default function MyHousesPage() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.get("paid") === "1") toast.success("Payment received — thank you!");
-    if (q.get("card") === "1") toast.success("Card saved — you can request shoots now.");
+    if (q.get("card") === "1") {
+      // Confirm the card with Stripe directly (don't trust webhook timing).
+      (async () => {
+        try {
+          const token = await getAuthToken();
+          const res = await fetch("/api/confirm-card", { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && body.cardOnFile) { setCardConfirmed(true); toast.success("Card saved — you can request shoots now."); }
+          else toast.message("Card setup didn't complete — please try adding your card again.");
+        } catch { toast.message("Couldn't confirm your card — pull to refresh."); }
+      })();
+    }
   }, []);
 
   const handlePay = async (invId: string, viewToken: string) => {
