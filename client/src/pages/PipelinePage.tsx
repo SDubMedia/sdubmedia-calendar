@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Users, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ReShootPipeline from "@/components/ReShootPipeline";
 import { nanoid } from "nanoid";
 import { defaultDepositMilestones } from "@/lib/proposalDefaults";
 import { getAuthToken } from "@/lib/supabase";
@@ -333,7 +334,7 @@ export default function PipelinePage() {
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
         <div>
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            Pipeline
+            Event Pipeline
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">{entries.length} total · {filtered.length} shown</p>
         </div>
@@ -474,6 +475,10 @@ export default function PipelinePage() {
             </tbody>
           </table>
         )}
+        {/* Real Estate shoot pipeline — a second board under the event pipeline */}
+        <div className="border-t border-border px-4 sm:px-6 py-5">
+          <ReShootPipeline heading="Real Estate" />
+        </div>
       </div>
 
       {/* Add Lead Dialog */}

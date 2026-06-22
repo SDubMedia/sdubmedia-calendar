@@ -105,7 +105,6 @@ const navStructure: NavEntry[] = [
   { label: "Production", icon: Clapperboard, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Clients", href: "/clients", icon: Users, roles: ["owner", "partner"], feature: "clientManagement" },
     { label: "Brokers", href: "/brokers", icon: Building2, roles: ["owner", "partner"], feature: "clientManagement" },
-    { label: "Real Estate", href: "/real-estate", icon: Home, roles: ["owner"] },
     { label: "Shoot Requests", href: "/shoot-requests", icon: Inbox, roles: ["owner"] },
     { label: "Client Health", href: "/client-health", icon: HeartPulse, roles: ["owner", "partner"], feature: "clientHealth" },
     { label: "Locations", href: "/locations", icon: MapPin, roles: ["owner"], feature: "locationManagement" },
@@ -134,6 +133,7 @@ const navStructure: NavEntry[] = [
   { label: "Reports", icon: BarChart2, roles: ["owner", "partner", "client", "staff"], items: [
     { label: "Reports", href: "/reports", icon: BarChart2, roles: ["owner", "partner"], feature: "reports" },
     { label: "Crew Report", href: "/crew-report", icon: Users2, roles: ["owner"] },
+    { label: "Real Estate", href: "/real-estate", icon: Home, roles: ["owner"] },
     { label: "Pipeline Analytics", href: "/pipeline-analytics", icon: TrendingUp, roles: ["owner"], feature: "reports" },
     { label: "P&L", href: "/profit-loss", icon: TrendingUp, roles: ["owner", "partner"], feature: "profitLoss" },
     { label: "My Reports", href: "/my-reports", icon: BarChart2, roles: ["client"], feature: "clientPortal" },
