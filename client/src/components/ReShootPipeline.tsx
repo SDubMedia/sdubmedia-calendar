@@ -56,9 +56,11 @@ export default function ReShootPipeline({ heading = "Real Estate" }: { heading?:
   return (
     <div>
       {heading && <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">{heading}</div>}
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      {/* Stacked vertically (like the event pipeline) — one section per stage,
+          full-width cards, no horizontal scroll. */}
+      <div className="space-y-4">
         {STAGES.map(stage => (
-          <div key={stage.id} className="flex-shrink-0 w-56">
+          <div key={stage.id}>
             <div className={`text-xs font-medium text-foreground mb-2 pb-1.5 border-b-2 ${stage.color} flex items-center justify-between`}>
               <span>{stage.label}</span>
               <span className="text-muted-foreground">{byStage[stage.id].length}</span>
@@ -68,13 +70,16 @@ export default function ReShootPipeline({ heading = "Real Estate" }: { heading?:
                 const agent = clientsById[p.clientId];
                 const loc = data.locations.find(l => l.id === p.locationId);
                 return (
-                  <button key={p.id} onClick={() => setSelectedProject(p)} className="w-full text-left bg-card border border-border rounded-lg p-2.5 hover:border-border/80 transition-colors">
-                    <div className="text-xs font-medium text-foreground truncate">{loc?.name || "Address TBD"}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">{agent?.company || ""}{p.date ? ` · ${fmtDate(p.date)}` : ""}</div>
+                  <button key={p.id} onClick={() => setSelectedProject(p)} className="w-full text-left bg-card border border-border rounded-lg p-2.5 hover:border-border/80 transition-colors flex items-center justify-between gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-foreground truncate">{loc?.name || "Address TBD"}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">{agent?.company || ""}</div>
+                    </div>
+                    {p.date && <div className="text-[11px] text-muted-foreground flex-shrink-0">{fmtDate(p.date)}</div>}
                   </button>
                 );
               })}
-              {byStage[stage.id].length === 0 && <div className="text-[11px] text-muted-foreground/50 py-2">—</div>}
+              {byStage[stage.id].length === 0 && <div className="text-[11px] text-muted-foreground/50 py-1">—</div>}
             </div>
           </div>
         ))}

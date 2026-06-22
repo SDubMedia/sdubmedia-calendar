@@ -825,6 +825,10 @@ export default function CalendarPage() {
                   {dateStr && doubleBookedDates.has(dateStr) && (
                     <span title="Double-booked" className="absolute bottom-1 right-1 z-10 inline-flex"><AlertTriangle className="w-3 h-3 text-red-500" /></span>
                   )}
+                  {/* Availability dot — someone's open this day (toggle on) */}
+                  {showAvail && dateStr && availabilityForDate(data.availability, dateStr).length > 0 && (
+                    <span title="Someone's available" className="absolute bottom-1 left-1 z-10 w-2 h-2 rounded-full bg-emerald-500" />
+                  )}
                   {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
