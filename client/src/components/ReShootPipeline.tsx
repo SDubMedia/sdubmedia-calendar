@@ -3,10 +3,10 @@
 // the Real Estate hub and stacked under the Event Pipeline on the Pipeline tab.
 // ============================================================
 
-import { useMemo } from "react";
-import { useLocation } from "wouter";
+import { useMemo, useState } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { getProjectPayerId } from "@/lib/data";
+import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import type { Project, Client } from "@/lib/types";
 
 const STAGES = [
@@ -35,7 +35,7 @@ function fmtDate(iso: string): string {
 
 export default function ReShootPipeline({ heading = "Real Estate" }: { heading?: string }) {
   const { data } = useApp();
-  const [, setLocation] = useLocation();
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])) as Record<string, Client>, [data.clients]);
 
@@ -68,7 +68,7 @@ export default function ReShootPipeline({ heading = "Real Estate" }: { heading?:
                 const agent = clientsById[p.clientId];
                 const loc = data.locations.find(l => l.id === p.locationId);
                 return (
-                  <button key={p.id} onClick={() => setLocation(`/calendar`)} className="w-full text-left bg-card border border-border rounded-lg p-2.5 hover:border-border/80 transition-colors">
+                  <button key={p.id} onClick={() => setSelectedProject(p)} className="w-full text-left bg-card border border-border rounded-lg p-2.5 hover:border-border/80 transition-colors">
                     <div className="text-xs font-medium text-foreground truncate">{loc?.name || "Address TBD"}</div>
                     <div className="text-[11px] text-muted-foreground truncate">{agent?.company || ""}{p.date ? ` · ${fmtDate(p.date)}` : ""}</div>
                   </button>
@@ -79,6 +79,9 @@ export default function ReShootPipeline({ heading = "Real Estate" }: { heading?:
           </div>
         ))}
       </div>
+      {selectedProject && (
+        <ProjectDetailSheet project={selectedProject} onClose={() => setSelectedProject(null)} />
+      )}
     </div>
   );
 }
