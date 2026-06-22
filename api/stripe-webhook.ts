@@ -460,6 +460,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             }
           }
+        } else if (session.mode === "setup" && session.metadata?.kind === "agent_card") {
+          // An agent saved a card on file (setup mode, not charged). Mark the
+          // agent's client record so they're cleared to request shoots, and
+          // stash the brand/last4 for display. We must read the payment method
+          // on the SAME connected account the SetupIntent lives on.
+          const clientId = session.metadata.clientId;
+          if (clientId) {
+            const { data: agent } = await supabase.from("clients").select("org_id").eq("id", clientId).maybeSingle();
+            let brand: string | null = null;
+            let last4: string | null = null;
+            if (agent?.org_id) {
+              const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", agent.org_id).maybeSingle();
+              const acct = org?.stripe_account_id as string | undefined;
+              const siId = typeof session.setup_intent === "string" ? session.setup_intent : session.setup_intent?.id;
+              if (acct && siId) {
+                try {
+                  const si = await stripe.setupIntents.retrieve(siId, { expand: ["payment_method"] }, { stripeAccount: acct });
+                  const pm = si.payment_method as Stripe.PaymentMethod | null;
+                  if (pm?.card) { brand = pm.card.brand; last4 = pm.card.last4; }
+                } catch (err) {
+                  console.warn(`[stripe-webhook] setup_intent fetch failed: ${errorMessage(err)}`);
+                }
+              }
+            }
+            await supabase.from("clients").update({
+              card_on_file: true,
+              card_brand: brand,
+              card_last4: last4,
+            }).eq("id", clientId);
+          }
         }
         break;
       }

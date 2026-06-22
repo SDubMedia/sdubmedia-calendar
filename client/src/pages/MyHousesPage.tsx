@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import InviteAgentDialog from "@/components/InviteAgentDialog";
 import { getProjectInvoiceAmount } from "@/lib/data";
+import { getAuthToken } from "@/lib/supabase";
 import { toast } from "sonner";
 
 function fmtDate(iso: string): string {
@@ -36,6 +37,10 @@ export default function MyHousesPage() {
   const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
   const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
   const isBroker = (myClient?.clientType ?? "") === "broker";
+  const isAgent = (myClient?.clientType ?? "") === "agent";
+  // Agents must keep a card on file before they can request shoots — a fallback
+  // if their broker doesn't pay. Brokers are exempt (invoiced monthly).
+  const needsCard = isAgent && !myClient?.cardOnFile;
   // Broker's agents (visible via the broker_read_agents policy).
   const agents = useMemo(() => data.clients.filter(c => c.brokerId === myClientId), [data.clients, myClientId]);
 
@@ -77,9 +82,9 @@ export default function MyHousesPage() {
 
   // Bounce-back after a successful Stripe checkout.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("paid") === "1") {
-      toast.success("Payment received — thank you!");
-    }
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("paid") === "1") toast.success("Payment received — thank you!");
+    if (q.get("card") === "1") toast.success("Card saved — you can request shoots now.");
   }, []);
 
   const handlePay = async (invId: string, viewToken: string) => {
@@ -104,6 +109,28 @@ export default function MyHousesPage() {
     }
   };
 
+  const [addingCard, setAddingCard] = useState(false);
+  const handleAddCard = async () => {
+    setAddingCard(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/stripe-save-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          successUrl: `${window.location.origin}/my-houses?card=1`,
+          cancelUrl: `${window.location.origin}/my-houses`,
+        }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't start card setup");
+      window.location.assign(body.url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't start card setup");
+      setAddingCard(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
@@ -115,6 +142,10 @@ export default function MyHousesPage() {
           <Button onClick={() => setInviteOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <UserPlus className="w-4 h-4" /> Invite agent
           </Button>
+        ) : needsCard ? (
+          <Button onClick={handleAddCard} disabled={addingCard} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <CreditCard className="w-4 h-4" /> {addingCard ? "Opening…" : "Add a card to book"}
+          </Button>
         ) : (
           <Button onClick={() => setRequestOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <Plus className="w-4 h-4" /> Request a shoot
@@ -123,6 +154,23 @@ export default function MyHousesPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto space-y-6">
+        {/* Agent: card-on-file status / prompt */}
+        {needsCard && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+            <CreditCard className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">Add a card before booking</div>
+              <p className="text-xs text-muted-foreground mt-0.5">We keep a card on file in case your broker doesn't cover a shoot. It's saved, not charged — you'll only be billed if needed.</p>
+            </div>
+          </div>
+        )}
+        {isAgent && myClient?.cardOnFile && (
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <CreditCard className="w-3.5 h-3.5" />
+            Card on file{myClient.cardBrand ? ` — ${myClient.cardBrand}${myClient.cardLast4 ? ` ···· ${myClient.cardLast4}` : ""}` : ""}
+            <button onClick={handleAddCard} disabled={addingCard} className="text-primary hover:underline ml-1">Update</button>
+          </div>
+        )}
         {/* Broker: what you owe */}
         {isBroker && (
           <div className="grid grid-cols-2 gap-3">

@@ -306,6 +306,11 @@ export interface Client {
   // back-compat with rows saved before this column.
   clientType?: "standard" | "broker" | "agent";
   brokerId?: string | null; // set on agents → their broker client's id
+  // Agent card-on-file (saved, not charged — a fallback if a broker doesn't pay).
+  stripeCustomerId?: string | null;
+  cardOnFile?: boolean;
+  cardBrand?: string | null;
+  cardLast4?: string | null;
   createdAt: string;
 }
 
