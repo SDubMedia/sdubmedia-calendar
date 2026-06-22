@@ -111,6 +111,67 @@ export function getOpenDays(
   return result;
 }
 
+// ---- Calendar overlay: who's available + schedule conflicts ----------------
+
+export interface DayAvailability { crewMemberId: string; windows: { start: string; end: string }[]; }
+
+/** Each crew member's open windows on a given date (for the calendar overlay). */
+export function availabilityForDate(availability: Availability[], date: string): DayAvailability[] {
+  const crew = Array.from(new Set(availability.map(a => a.crewMemberId)));
+  const out: DayAvailability[] = [];
+  for (const cm of crew) {
+    const w = windowsFor(availability, cm, date);
+    if (w.length) out.push({ crewMemberId: cm, windows: w.map(([s, e]) => ({ start: toHHMM(s), end: toHHMM(e) })) });
+  }
+  return out;
+}
+
+export type ConflictType = "double" | "outside" | "buffer" | "cap";
+export interface ShootConflict { projectId: string; crewMemberId: string; type: ConflictType; gapMin?: number; }
+
+/** Schedule conflicts among a day's shoots, per assigned person: double-booked
+ *  (overlap), outside their availability, too tight a turnaround (< buffer), or
+ *  over their daily cap. */
+export function conflictsForDate(
+  projects: Project[],
+  availability: Availability[],
+  prefs: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }>,
+  date: string,
+): ShootConflict[] {
+  const shoots = projects.filter(p => p.date === date && p.status !== "cancelled");
+  const byCrew = new Map<string, { id: string; start: number; end: number }[]>();
+  for (const p of shoots) {
+    const members = new Set([...(p.crew || []), ...(p.postProduction || [])].map(c => c.crewMemberId).filter(Boolean));
+    const start = toMin(p.startTime || "00:00");
+    const end = Math.max(toMin(p.endTime || p.startTime || "00:00"), start);
+    for (const m of Array.from(members)) {
+      if (!byCrew.has(m)) byCrew.set(m, []);
+      byCrew.get(m)!.push({ id: p.id, start, end });
+    }
+  }
+  const out: ShootConflict[] = [];
+  for (const [m, listRaw] of Array.from(byCrew.entries())) {
+    const list = listRaw.sort((a, b) => a.start - b.start);
+    const pref = prefs[m] ?? DEFAULT_PREF;
+    if (pref.maxPerDay > 0 && list.length > pref.maxPerDay) {
+      out.push({ projectId: list[list.length - 1].id, crewMemberId: m, type: "cap" });
+    }
+    const windows = windowsFor(availability, m, date);
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (windows.length > 0 && !windows.some(([ws, we]) => a.start >= ws && a.end <= we)) {
+        out.push({ projectId: a.id, crewMemberId: m, type: "outside" });
+      }
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        if (a.end > b.start) out.push({ projectId: b.id, crewMemberId: m, type: "double" });
+        else if (pref.bufferMinutes > 0 && b.start - a.end < pref.bufferMinutes) out.push({ projectId: b.id, crewMemberId: m, type: "buffer", gapMin: b.start - a.end });
+      }
+    }
+  }
+  return out;
+}
+
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
 

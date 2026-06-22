@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -12,7 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, conflictsForDate, availabilityForDate } from "@/lib/data";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
@@ -49,6 +49,20 @@ function depositRecentlyPaid(iso: string | null | undefined): boolean {
   return ageMs >= 0 && ageMs <= DEPOSIT_PAID_PILL_DAYS * 24 * 60 * 60 * 1000;
 }
 
+function hm12(t: string): string {
+  const [h, m] = (t || "").split(":").map(Number);
+  if (Number.isNaN(h)) return t;
+  const ap = h >= 12 ? "p" : "a";
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")}${ap}`;
+}
+
+const CONFLICT_LABEL: Record<string, string> = {
+  double: "Double-booked",
+  outside: "Outside their hours",
+  buffer: "Too tight a turnaround",
+  cap: "Over their daily limit",
+};
+
 export default function CalendarPage() {
   const { data, addPersonalEvent, refresh } = useApp();
   const [resyncing, setResyncing] = useState(false);
@@ -77,7 +91,27 @@ export default function CalendarPage() {
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [addUserOpen, setAddUserOpen] = useState(false);
+  const [showAvail, setShowAvail] = useState(false);
   const isOwner = role === "owner";
+
+  // Availability + conflicts overlay (owner + staff only).
+  const canSeeAvail = role === "owner" || role === "staff";
+  const prefsMap = useMemo(() => {
+    const m: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }> = {};
+    for (const p of data.shooterPrefs) m[p.crewMemberId] = { shootMinutes: p.shootMinutes, bufferMinutes: p.bufferMinutes, maxPerDay: p.maxPerDay };
+    return m;
+  }, [data.shooterPrefs]);
+  // Days in view that have a hard double-booking (always flagged on the grid).
+  const doubleBookedDates = useMemo(() => {
+    if (!canSeeAvail) return new Set<string>();
+    const dates = new Set<string>();
+    for (const d of Array.from(new Set(data.projects.map(p => p.date)))) {
+      if (conflictsForDate(data.projects, data.availability, prefsMap, d).some(c => c.type === "double")) dates.add(d);
+    }
+    return dates;
+  }, [canSeeAvail, data.projects, data.availability, prefsMap]);
+  const dayConflicts = useMemo(() => (canSeeAvail && selectedDate) ? conflictsForDate(data.projects, data.availability, prefsMap, selectedDate) : [], [canSeeAvail, selectedDate, data.projects, data.availability, prefsMap]);
+  const dayAvailability = useMemo(() => (canSeeAvail && selectedDate) ? availabilityForDate(data.availability, selectedDate) : [], [canSeeAvail, selectedDate, data.availability]);
 
   // Bulk-apply template to multiple dates
   const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
@@ -560,6 +594,22 @@ export default function CalendarPage() {
           </button>
         </div>}
 
+        {/* Availability overlay toggle (owner + staff) */}
+        {canSeeAvail && (
+          <button
+            onClick={() => setShowAvail(v => !v)}
+            className={cn(
+              "mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors w-fit",
+              showAvail
+                ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                : "text-muted-foreground hover:text-foreground border-border bg-background/50"
+            )}
+          >
+            <CalendarClock className="w-3.5 h-3.5" />
+            {showAvail ? "Availability: on" : "Show availability"}
+          </button>
+        )}
+
         {/* Filters box — applies to both projects and meetings on the grid */}
         {!isClient && !isFamily && (
           <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
@@ -771,6 +821,10 @@ export default function CalendarPage() {
                   onPointerLeave={cancelLongPress}
                   onPointerCancel={cancelLongPress}
                 >
+                  {/* Double-booking warning (always shown for owner/staff) */}
+                  {dateStr && doubleBookedDates.has(dateStr) && (
+                    <span title="Double-booked" className="absolute bottom-1 right-1 z-10 inline-flex"><AlertTriangle className="w-3 h-3 text-red-500" /></span>
+                  )}
                   {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
@@ -993,6 +1047,21 @@ export default function CalendarPage() {
                 </div>
               </div>}
 
+              {/* Who's available this day (availability toggle on) */}
+              {showAvail && selectedDate && dayAvailability.length > 0 && (
+                <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                  <div className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-medium mb-1.5 flex items-center gap-1.5"><CalendarClock className="w-3 h-3" /> Available this day</div>
+                  <div className="space-y-1">
+                    {dayAvailability.map(a => (
+                      <div key={a.crewMemberId} className="text-xs flex items-center gap-2">
+                        <span className="font-medium text-foreground">{_getCrewMember(a.crewMemberId)?.name ?? "—"}</span>
+                        <span className="text-muted-foreground">{a.windows.map(w => `${hm12(w.start)}–${hm12(w.end)}`).join(", ")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Project list */}
               <div className="divide-y divide-border">
                 {filteredProjects.length === 0 ? (
@@ -1004,6 +1073,7 @@ export default function CalendarPage() {
                     const client = getClient(project.clientId);
                     // For an agent, surface which brokerage they're with.
                     const broker = client?.clientType === "agent" && client.brokerId ? getClient(client.brokerId) : null;
+                    const conflict = dayConflicts.find(c => c.projectId === project.id);
                     const location = getLocation(project.locationId);
                     const pType = getProjectType(project.projectTypeId);
                     const totalWorked = getProjectWorkedHours(project).totalHours;
@@ -1071,6 +1141,14 @@ export default function CalendarPage() {
                             <div className="flex items-center gap-1 text-xs text-primary mb-0.5">
                               <Building2 className="w-3 h-3 flex-shrink-0" />
                               {broker.company}
+                            </div>
+                          )}
+                          {conflict && (
+                            <div className={cn("flex items-center gap-1 text-xs mb-0.5", conflict.type === "double" ? "text-red-500" : "text-amber-600 dark:text-amber-400")}>
+                              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                              {CONFLICT_LABEL[conflict.type]}
+                              {_getCrewMember(conflict.crewMemberId)?.name ? ` · ${_getCrewMember(conflict.crewMemberId)!.name}` : ""}
+                              {conflict.type === "buffer" && conflict.gapMin != null ? ` (${conflict.gapMin} min gap)` : ""}
                             </div>
                           )}
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
