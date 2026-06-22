@@ -191,6 +191,8 @@ function rowToClient(r: any): Client {
     cardOnFile: r.card_on_file === true,
     cardBrand: r.card_brand || null,
     cardLast4: r.card_last4 || null,
+    agreementAcceptedAt: r.agreement_accepted_at || null,
+    agreementVersion: r.agreement_version || null,
     createdAt: r.created_at,
   };
 }

@@ -311,6 +311,9 @@ export interface Client {
   cardOnFile?: boolean;
   cardBrand?: string | null;
   cardLast4?: string | null;
+  // One-time disclosure/agreement (agent service+card auth, or broker billing).
+  agreementAcceptedAt?: string | null;
+  agreementVersion?: string | null;
   createdAt: string;
 }
 

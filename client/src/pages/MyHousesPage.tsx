@@ -14,6 +14,8 @@ import RequestShootDialog from "@/components/RequestShootDialog";
 import InviteAgentDialog from "@/components/InviteAgentDialog";
 import { getProjectInvoiceAmount } from "@/lib/data";
 import { getAuthToken } from "@/lib/supabase";
+import { hasAcceptedAgreement } from "@/lib/agreements";
+import AgreementDialog from "@/components/AgreementDialog";
 import { toast } from "sonner";
 
 function fmtDate(iso: string): string {
@@ -41,6 +43,10 @@ export default function MyHousesPage() {
   // Agents must keep a card on file before they can request shoots — a fallback
   // if their broker doesn't pay. Brokers are exempt (invoiced monthly).
   const needsCard = isAgent && !myClient?.cardOnFile;
+  // One-time disclosure: agents accept service+card terms, brokers a billing
+  // agreement, before booking / inviting. Re-prompts if the terms version bumps.
+  const agreed = hasAcceptedAgreement(myClient);
+  const needsAgreement = (isAgent || isBroker) && !agreed;
   // Broker's agents (visible via the broker_read_agents policy).
   const agents = useMemo(() => data.clients.filter(c => c.brokerId === myClientId), [data.clients, myClientId]);
 
@@ -131,6 +137,15 @@ export default function MyHousesPage() {
     }
   };
 
+  // Agreement gate. Agents fold it into the card step; brokers accept standalone.
+  const [agreementOpen, setAgreementOpen] = useState(false);
+  const [agreementNext, setAgreementNext] = useState<"card" | "invite" | null>(null);
+  const openAgreement = (next: "card" | "invite" | null) => { setAgreementNext(next); setAgreementOpen(true); };
+  // Agent taps "Add a card to book": agree first (if needed), then Stripe.
+  const startCardFlow = () => { if (needsAgreement) openAgreement("card"); else handleAddCard(); };
+  // Broker taps "Invite agent": agree first (if needed), then invite.
+  const startInvite = () => { if (needsAgreement) openAgreement("invite"); else setInviteOpen(true); };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
@@ -139,12 +154,16 @@ export default function MyHousesPage() {
           <p className="text-sm text-muted-foreground mt-0.5">{isBroker ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} · ${houses.length} shoot${houses.length !== 1 ? "s" : ""}` : `${houses.length} shoot${houses.length !== 1 ? "s" : ""}`}</p>
         </div>
         {isBroker ? (
-          <Button onClick={() => setInviteOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+          <Button onClick={startInvite} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <UserPlus className="w-4 h-4" /> Invite agent
           </Button>
         ) : needsCard ? (
-          <Button onClick={handleAddCard} disabled={addingCard} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+          <Button onClick={startCardFlow} disabled={addingCard} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <CreditCard className="w-4 h-4" /> {addingCard ? "Opening…" : "Add a card to book"}
+          </Button>
+        ) : needsAgreement ? (
+          <Button onClick={() => openAgreement(null)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <CreditCard className="w-4 h-4" /> Review agreement to book
           </Button>
         ) : (
           <Button onClick={() => setRequestOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
@@ -154,6 +173,16 @@ export default function MyHousesPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto space-y-6">
+        {/* Broker: one-time billing agreement prompt */}
+        {isBroker && needsAgreement && (
+          <button onClick={() => openAgreement(null)} className="w-full text-left bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3 hover:bg-amber-500/15 transition-colors">
+            <CreditCard className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">Review the billing agreement</div>
+              <p className="text-xs text-muted-foreground mt-0.5">A quick one-time agreement covering how your agents' shoots are billed to your brokerage. Tap to read and accept.</p>
+            </div>
+          </button>
+        )}
         {/* Agent: card-on-file status / prompt */}
         {needsCard && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
@@ -309,6 +338,13 @@ export default function MyHousesPage() {
 
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
       <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <AgreementDialog
+        open={agreementOpen}
+        onClose={() => setAgreementOpen(false)}
+        kind={isBroker ? "broker" : "agent"}
+        agreeLabel={agreementNext === "card" ? "Agree & add card" : "Agree"}
+        onAccepted={() => { if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); }}
+      />
     </div>
   );
 }
