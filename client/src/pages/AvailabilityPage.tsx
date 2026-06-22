@@ -147,7 +147,7 @@ export default function AvailabilityPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 max-w-2xl w-full mx-auto">
         {/* Person picker — owner only */}
         {isOwner && crewMembers.length > 0 && (
           <div className="mb-5">
@@ -215,7 +215,7 @@ export default function AvailabilityPage() {
 
           {/* Times (hidden when all-day) */}
           {!allDay && (
-            <div className="flex gap-3 mb-4">
+            <div className="flex gap-4 mb-4">
               <div className="flex-1 min-w-0">
                 <Label className="text-xs text-muted-foreground">From</Label>
                 <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1" />
