@@ -3,7 +3,7 @@
 // Reused by ClientsPage and ProjectDetailSheet
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, Film, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -88,6 +88,14 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
   const [brandAssistantOpen, setBrandAssistantOpen] = useState(false);
   const [form, setForm] = useState<ClientFormData>(emptyForm());
 
+  // The Real Estate project type — agents only book real-estate shoots, so they
+  // default to it (and their order menu is the live Real Estate service bundle,
+  // shared by every agent — see RequestShootDialog).
+  const reType = useMemo(
+    () => data.projectTypes.find(pt => /real\s*estate/i.test(pt.name)) ?? null,
+    [data.projectTypes]
+  );
+
   // Hydrate form when sheet opens or client changes
   useEffect(() => {
     if (!open) return;
@@ -114,7 +122,14 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
         brokerId: client.brokerId || null,
       });
     } else {
-      setForm({ ...emptyForm(), clientType: initialClientType ?? "standard", brokerId: initialBrokerId ?? null });
+      const isAgent = initialClientType === "agent";
+      setForm({
+        ...emptyForm(),
+        clientType: initialClientType ?? "standard",
+        brokerId: initialBrokerId ?? null,
+        allowedProjectTypeIds: isAgent && reType ? [reType.id] : [],
+        defaultProjectTypeId: isAgent && reType ? reType.id : "",
+      });
     }
     // initial* are read only on open for a new client; intentionally not deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,7 +182,14 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
               value={form.clientType}
               onChange={e => {
                 const t = e.target.value as "standard" | "broker" | "agent";
-                setForm(f => ({ ...f, clientType: t, brokerId: t === "agent" ? f.brokerId : null }));
+                setForm(f => ({
+                  ...f,
+                  clientType: t,
+                  brokerId: t === "agent" ? f.brokerId : null,
+                  // Agents are locked to Real Estate; clear the forced default when leaving.
+                  allowedProjectTypeIds: t === "agent" && reType ? [reType.id] : f.allowedProjectTypeIds,
+                  defaultProjectTypeId: t === "agent" && reType ? reType.id : f.defaultProjectTypeId,
+                }));
               }}
               className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
@@ -202,6 +224,22 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
               <Film className="w-4 h-4 text-primary" />
               <Label className="text-xs font-semibold text-foreground uppercase tracking-wider">Project Types</Label>
             </div>
+            {form.clientType === "agent" ? (
+              <>
+                <p className="text-[10px] text-muted-foreground">
+                  Agents book real-estate shoots. Their order menu is the Real Estate service bundle — anything you add to it under Manage → Services shows up for every agent automatically.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="px-2.5 py-1 rounded text-xs border-2 bg-primary/20 border-primary text-primary">
+                    {reType?.name ?? "Real Estate"}
+                  </span>
+                </div>
+                {!reType && (
+                  <p className="text-[11px] text-amber-300">No "Real Estate" project type found — add one under Manage so agents are scoped to it.</p>
+                )}
+              </>
+            ) : (
+              <>
             <p className="text-[10px] text-muted-foreground">
               Click to toggle which project types this client uses. Leave empty to allow all types.
             </p>
@@ -242,6 +280,8 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
                     ))}
                 </select>
               </div>
+            )}
+              </>
             )}
           </div>
 
