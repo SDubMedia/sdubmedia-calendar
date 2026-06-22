@@ -46,7 +46,11 @@ export default function MyHousesPage() {
   // One-time disclosure: agents accept service+card terms, brokers a billing
   // agreement, before booking / inviting. Re-prompts if the terms version bumps.
   const agreed = hasAcceptedAgreement(myClient);
-  const needsAgreement = (isAgent || isBroker) && !agreed;
+  // `justAccepted` hides the gate the instant they agree — the accept endpoint
+  // writes the DB, but a client-role session may not get the realtime echo of
+  // its own clients row until reload, so don't wait on it.
+  const [justAccepted, setJustAccepted] = useState(false);
+  const needsAgreement = (isAgent || isBroker) && !agreed && !justAccepted;
   // Broker's agents (visible via the broker_read_agents policy).
   const agents = useMemo(() => data.clients.filter(c => c.brokerId === myClientId), [data.clients, myClientId]);
 
@@ -343,7 +347,7 @@ export default function MyHousesPage() {
         onClose={() => setAgreementOpen(false)}
         kind={isBroker ? "broker" : "agent"}
         agreeLabel={agreementNext === "card" ? "Agree & add card" : "Agree"}
-        onAccepted={() => { if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); }}
+        onAccepted={() => { setJustAccepted(true); if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); }}
       />
     </div>
   );
