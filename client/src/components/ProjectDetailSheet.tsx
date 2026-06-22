@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
@@ -108,6 +108,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // agent. (Deliverables + reschedule notices still go to `client`, the agent.)
   const clientsById = Object.fromEntries(data.clients.map((c) => [c.id, c]));
   const invoiceClient = data.clients.find((c) => c.id === getProjectPayerId(project, clientsById)) ?? client;
+  // For an agent's shoot, which brokerage they're under (shown without opening Edit).
+  const agentBroker = client?.clientType === "agent" && client.brokerId ? clientsById[client.brokerId] : null;
   // Flat-rate / service-priced shoots aren't billed by the hour, so the
   // "retainer hours" summary is meaningless and gets hidden.
   const isFlatBilled = (project.billingModel ?? client?.billingModel) === "per_project"
@@ -654,6 +656,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   <div className="text-sm font-medium truncate">—</div>
                 )}
                 {client?.contactName && <div className="text-xs text-muted-foreground">{client.contactName}</div>}
+                {agentBroker && <div className="text-xs text-primary flex items-center gap-1 mt-0.5"><Building2 className="w-3 h-3 flex-shrink-0" />{agentBroker.company}</div>}
               </div>
               <div className="bg-secondary rounded-lg p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
