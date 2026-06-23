@@ -151,7 +151,9 @@ function Router() {
         {isOwner && <Route path="/staff-payments" component={StaffPaymentsPage} />}
         {isOwner && <Route path="/products" component={ProductsPage} />}
         <Route path="/availability" component={AvailabilityPage} />
-        <Route path="/my-houses" component={MyHousesPage} />
+        {/* My Listings is the agent/broker (client-role) home. Owners who land
+            here are sent to the request queue; everyone else to the calendar. */}
+        <Route path="/my-houses">{() => role === "client" ? <MyHousesPage /> : <Redirect to={isOwner ? "/shoot-requests" : "/calendar"} />}</Route>
         {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
         <Route path="/billing" component={BillingPage} />
         <Route path="/reports" component={ReportsPage} />

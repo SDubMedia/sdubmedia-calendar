@@ -4,7 +4,8 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2, CalendarClock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2, CalendarClock, Inbox } from "lucide-react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -67,6 +68,7 @@ export default function CalendarPage() {
   const { data, addPersonalEvent, refresh } = useApp();
   const [resyncing, setResyncing] = useState(false);
   const { effectiveProfile } = useAuth();
+  const [, navigate] = useLocation();
   const role = effectiveProfile?.role;
   const isClient = role === "client";
   const isFamily = role === "family";
@@ -112,6 +114,15 @@ export default function CalendarPage() {
   }, [canSeeAvail, data.projects, data.availability, prefsMap]);
   const dayConflicts = useMemo(() => (canSeeAvail && selectedDate) ? conflictsForDate(data.projects, data.availability, prefsMap, selectedDate) : [], [canSeeAvail, selectedDate, data.projects, data.availability, prefsMap]);
   const dayAvailability = useMemo(() => (canSeeAvail && selectedDate) ? availabilityForDate(data.availability, selectedDate) : [], [canSeeAvail, selectedDate, data.availability]);
+
+  // Pending shoot requests on the calendar (owner): a "Request" marker on the
+  // day, tap-through to approve in the queue.
+  const pendingRequests = useMemo(
+    () => isOwner ? data.shootRequests.filter(r => r.status === "pending" && r.preferredDate) : [],
+    [isOwner, data.shootRequests]
+  );
+  const requestDates = useMemo(() => new Set(pendingRequests.map(r => r.preferredDate as string)), [pendingRequests]);
+  const dayRequests = useMemo(() => selectedDate ? pendingRequests.filter(r => r.preferredDate === selectedDate) : [], [pendingRequests, selectedDate]);
 
   // Bulk-apply template to multiple dates
   const [bulkTemplate, setBulkTemplate] = useState<PersonalEventTemplate | null>(null);
@@ -829,6 +840,10 @@ export default function CalendarPage() {
                   {showAvail && dateStr && availabilityForDate(data.availability, dateStr).length > 0 && (
                     <span title="Someone's available" className="absolute bottom-1 left-1 z-10 w-2 h-2 rounded-full bg-emerald-500" />
                   )}
+                  {/* Pending shoot request on this day (owner) */}
+                  {dateStr && requestDates.has(dateStr) && (
+                    <span title="Shoot request" className="absolute top-1 right-1 z-10 inline-flex"><Inbox className="w-3 h-3 text-amber-500" /></span>
+                  )}
                   {/* Day number + hours overlay */}
                   <div className="flex items-start justify-between mb-1">
                     <span className={cn(
@@ -1050,6 +1065,21 @@ export default function CalendarPage() {
                 ))}
                 </div>
               </div>}
+
+              {/* Pending shoot requests this day (owner) — tap to approve */}
+              {dayRequests.length > 0 && (
+                <button onClick={() => navigate("/shoot-requests")} className="w-full mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-left hover:bg-amber-500/10 transition-colors">
+                  <div className="text-[11px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-medium mb-1.5 flex items-center gap-1.5"><Inbox className="w-3 h-3" /> {dayRequests.length} shoot request{dayRequests.length > 1 ? "s" : ""} — tap to review</div>
+                  <div className="space-y-1">
+                    {dayRequests.map(r => (
+                      <div key={r.id} className="text-xs flex items-center gap-2 min-w-0">
+                        <span className="font-medium text-foreground truncate">{r.propertyAddress}</span>
+                        {r.preferredTime && <span className="text-muted-foreground flex-shrink-0">{hm12(r.preferredTime)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              )}
 
               {/* Who's available this day (availability toggle on) */}
               {showAvail && selectedDate && dayAvailability.length > 0 && (

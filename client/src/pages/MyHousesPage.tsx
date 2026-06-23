@@ -168,7 +168,7 @@ export default function MyHousesPage() {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{isBroker ? "My Agents" : "My Houses"}</h1>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{isBroker ? "My Agents" : "My Listings"}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{isBroker ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} · ${houses.length} shoot${houses.length !== 1 ? "s" : ""}` : `${houses.length} shoot${houses.length !== 1 ? "s" : ""}`}</p>
         </div>
         {isBroker ? (

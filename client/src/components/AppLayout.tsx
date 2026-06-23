@@ -89,7 +89,7 @@ const navStructure: NavEntry[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["owner", "partner", "client", "staff"] },
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff", "family"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
-  { label: "My Houses", href: "/my-houses", icon: Home, roles: ["client"] },
+  { label: "My Listings", href: "/my-houses", icon: Home, roles: ["client"] },
 
   // Sales — owner and partner only
   { label: "Sales", icon: TrendingUp, roles: ["owner", "partner"], items: [

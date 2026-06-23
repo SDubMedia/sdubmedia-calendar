@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
@@ -65,7 +65,7 @@ interface Props {
 }
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery } = useApp();
   const [, setLocation] = useLocation();
   const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
@@ -115,6 +115,10 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const isFlatBilled = (project.billingModel ?? client?.billingModel) === "per_project"
     || (project.projectRate ?? 0) > 0
     || (project.services?.length ?? 0) > 0;
+  // Real-estate shoots get a photo gallery the owner uploads to + delivers.
+  const isReShoot = client?.clientType === "agent" || !!agentBroker || (project.services?.length ?? 0) > 0;
+  const projectGallery = data.deliveries.find(d => d.projectId === project.id);
+  const [creatingGallery, setCreatingGallery] = useState(false);
   const location = data.locations.find((l) => l.id === project.locationId);
   const pType = data.projectTypes.find((pt) => pt.id === project.projectTypeId);
 
@@ -250,6 +254,22 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       } catch {
         // Episode sync is best-effort
       }
+    }
+  };
+
+  // Open the shoot's photo gallery (upload → deliver), creating it on demand if
+  // one doesn't exist yet. Lands on the delivery's upload screen.
+  const openOrCreateGallery = async () => {
+    if (projectGallery) { onClose(); setLocation(`/deliveries/${projectGallery.id}`); return; }
+    setCreatingGallery(true);
+    try {
+      const g = await createReShootGallery(project.id, location?.name || client?.company || "Real Estate Shoot");
+      onClose();
+      if (g) setLocation(`/deliveries/${g.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create the gallery");
+    } finally {
+      setCreatingGallery(false);
     }
   };
 
@@ -936,6 +956,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   </Button>
                 );
               })()}
+              {isOwner && isReShoot && (
+                <Button
+                  variant="outline"
+                  onClick={openOrCreateGallery}
+                  disabled={creatingGallery}
+                  className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  {creatingGallery ? "Creating…" : projectGallery ? "Open photo gallery" : "Create photo gallery"}
+                </Button>
+              )}
               {isOwner && (
                 <Button
                   variant="outline"

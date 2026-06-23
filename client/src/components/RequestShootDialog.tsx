@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check, MapPin, CalendarClock } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { supabase } from "@/lib/supabase";
+import { supabase, getAuthToken } from "@/lib/supabase";
 import { getOpenDays, type BusyBlock } from "@/lib/data";
 import type { ProjectServiceSelection } from "@/lib/types";
 import { toast } from "sonner";
@@ -116,7 +116,7 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
     if (!pickedDate || !pickedTime) { toast.error("Pick a date and time"); return; }
     setSaving(true);
     try {
-      await addShootRequest({
+      const created = await addShootRequest({
         clientId,
         propertyAddress: address.trim(),
         preferredDate: pickedDate,
@@ -125,6 +125,18 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
         notes: notes.trim(),
         requestedServices: selections,
       });
+      // Notify the owner(s): bell + email + push. Best-effort — the request is
+      // already saved, so don't fail the submit if the notify call hiccups.
+      try {
+        const token = await getAuthToken();
+        await fetch("/api/notify-shoot-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ requestId: created.id }),
+        });
+      } catch (notifyErr) {
+        console.warn("notify-shoot-request failed (request still saved):", notifyErr);
+      }
       toast.success("Shoot requested — you'll get confirmation once it's scheduled");
       reset();
       onClose();
