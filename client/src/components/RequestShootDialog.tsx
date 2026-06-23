@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Check, MapPin, CalendarClock } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { supabase, getAuthToken } from "@/lib/supabase";
-import { getOpenDays, type BusyBlock } from "@/lib/data";
+import { getOpenDays, shootDurationMinFor, type BusyBlock } from "@/lib/data";
 import type { ProjectServiceSelection, ShootRequest } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -102,9 +102,33 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
     return m;
   }, [data.shooterPrefs]);
 
+  // Other PENDING requests also occupy slots — so two agents can't be offered
+  // the same time. A request with a preferred shooter blocks that shooter; an
+  // "any photographer" request blocks the slot for everyone while it's pending.
+  const pendingBusy = useMemo(() => {
+    const addMin = (t: string, mins: number) => {
+      const [h, m] = (t || "0:0").split(":").map(Number);
+      const total = Math.min(h * 60 + m + mins, 23 * 60 + 59);
+      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    };
+    const out: BusyBlock[] = [];
+    for (const r of data.shootRequests) {
+      if (r.status !== "pending" || !r.preferredDate || !r.preferredTime) continue;
+      if (editRequest && r.id === editRequest.id) continue; // don't block the request being edited
+      const end = addMin(r.preferredTime, shootDurationMinFor(r.preferredCrewMemberId, data.shooterPrefs));
+      if (r.preferredCrewMemberId) {
+        out.push({ crewMemberId: r.preferredCrewMemberId, date: r.preferredDate, start: r.preferredTime, end });
+      } else {
+        for (const c of data.crewMembers) out.push({ crewMemberId: c.id, date: r.preferredDate, start: r.preferredTime, end });
+      }
+    }
+    return out;
+  }, [data.shootRequests, data.shooterPrefs, data.crewMembers, editRequest]);
+  const allBusy = useMemo(() => [...busy, ...pendingBusy], [busy, pendingBusy]);
+
   const openDays = useMemo(
-    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null, busy, prefs: prefsMap }),
-    [data.availability, shooterId, busy, prefsMap]
+    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap }),
+    [data.availability, shooterId, allBusy, prefsMap]
   );
   const timeOptions = useMemo(
     () => (openDays.find(d => d.date === pickedDate)?.slots ?? []).map(s => s.time),
