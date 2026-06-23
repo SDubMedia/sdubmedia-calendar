@@ -200,7 +200,7 @@ export default function AvailabilityPage() {
         )}
 
         {/* Add a block */}
-        <div className="bg-card border border-border rounded-lg p-4 mb-6">
+        <div className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
           <div className="text-sm font-medium text-foreground mb-3">Add an opening</div>
 
           {/* Repeat vs one-time */}
@@ -245,7 +245,7 @@ export default function AvailabilityPage() {
           ) : (
             <div className="mb-3">
               <Label className="text-xs text-muted-foreground">Dates</Label>
-              <div className="mt-1 rounded-md border border-border bg-background flex justify-center">
+              <div className="mt-1 rounded-md border border-border bg-background flex justify-center overflow-x-auto">
                 <Calendar
                   mode="multiple"
                   selected={specificDates}
@@ -296,7 +296,7 @@ export default function AvailabilityPage() {
         </div>
 
         {/* How I operate — booking rules */}
-        <div className="bg-card border border-border rounded-lg p-4 mb-6">
+        <div className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
           <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5" /> How I operate</div>
           <p className="text-xs text-muted-foreground mb-3">Open times skip shoots already booked and respect these rules.</p>
           <div className="grid grid-cols-3 gap-3 mb-4">
