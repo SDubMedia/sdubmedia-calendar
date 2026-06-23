@@ -4,7 +4,7 @@
 // Billing Model: Hourly — crew entries track hours worked + pay rate per hour
 // ============================================================
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, getProjectServiceCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, getProjectServiceCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { formatPhoneDisplay } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
@@ -40,6 +40,13 @@ interface Props {
 export const PROJECT_DRAFT_KEY = "slate:projectDraft";
 export function hasProjectDraft(): boolean {
   try { return !!localStorage.getItem(PROJECT_DRAFT_KEY); } catch { return false; }
+}
+
+// Add minutes to "HH:MM", clamped to the same day.
+function addMinutesT(t: string, mins: number): string {
+  const [h, m] = (t || "0:0").split(":").map(Number);
+  const total = Math.min(h * 60 + m + mins, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 const emptyCrewEntry = (): ProjectCrewEntry => ({
@@ -267,6 +274,21 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     [data.projectTypes, projectTypeId],
   );
   const isLightweight = useMemo(() => data.projectTypes.find(pt => pt.id === projectTypeId)?.lightweight || false, [data.projectTypes, projectTypeId]);
+
+  // Availability of each crew member for THIS shoot's date/time, shown in the
+  // assign-crew picker (available / busy / off). End mirrors start for RE.
+  const crewPrefsMap = useMemo(() => {
+    const m: Record<string, { bufferMinutes: number }> = {};
+    for (const p of data.shooterPrefs) m[p.crewMemberId] = { bufferMinutes: p.bufferMinutes };
+    return m;
+  }, [data.shooterPrefs]);
+  const crewStatus = useCallback((crewMemberId: string) => {
+    if (!date || !startTime) return null;
+    const end = isRealEstate ? addMinutesT(startTime, shootDurationMinFor(crewMemberId, data.shooterPrefs)) : (endTime || startTime);
+    return getCrewShootStatus(crewMemberId, date, startTime, end, data.projects, data.availability, crewPrefsMap, project?.id);
+     
+  }, [date, startTime, endTime, isRealEstate, data.projects, data.availability, data.shooterPrefs, crewPrefsMap, project?.id]);
+  const STATUS_TAG: Record<string, string> = { available: " · ✓ free", busy: " · busy", off: " · off" };
 
   const availableProjectTypes = useMemo(() => {
     if (selectedClient?.allowedProjectTypeIds?.length) {
@@ -544,8 +566,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       toast.error(err.message || "Failed to save the property address");
       return;
     }
+    // Real-estate shoots block start + the assigned shooter's length (shoot +
+    // travel buffer, default 90 min) instead of a 0-minute 9:00–9:00 window.
+    const reCrewId = crew.find((c) => c.crewMemberId)?.crewMemberId;
+    const reEnd = startTime ? addMinutesT(startTime, shootDurationMinFor(reCrewId, data.shooterPrefs)) : startTime;
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId, projectTypeId, locationId: finalLocationId || "", date, startTime, endTime: isRealEstate ? startTime : endTime,
+      clientId, projectTypeId, locationId: finalLocationId || "", date, startTime, endTime: isRealEstate ? reEnd : endTime,
       status: isLightweight ? "delivered" : status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
@@ -986,9 +1012,16 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
                       <SelectItem value="__new_crew__" className="text-primary font-medium">+ New crew member…</SelectItem>
-                      {data.crewMembers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
+                      {data.crewMembers.map((c) => {
+                        const st = crewStatus(c.id);
+                        return (
+                          <SelectItem key={c.id} value={c.id}>
+                            <span className={st === "available" ? "text-emerald-500" : st === "busy" ? "text-amber-500" : st === "off" ? "text-muted-foreground" : ""}>
+                              {c.name}{st ? STATUS_TAG[st] : ""}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   <Select

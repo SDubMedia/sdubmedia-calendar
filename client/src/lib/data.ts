@@ -172,6 +172,38 @@ export function conflictsForDate(
   return out;
 }
 
+/** The calendar block length (minutes) for a shooter: their shoot length +
+ *  travel buffer, or 90 (1.5 hrs) if they have no preferences set. */
+export function shootDurationMinFor(crewMemberId: string | null | undefined, prefs: ShooterPref[]): number {
+  const p = prefs.find(x => x.crewMemberId === crewMemberId);
+  return p ? p.shootMinutes + p.bufferMinutes : 90;
+}
+
+export type CrewShootStatus = "available" | "busy" | "off";
+
+/** Is a crew member free for a shoot at [date, start–end]? "off" = no availability
+ *  window covers it; "busy" = already booked (within their buffer) on that date;
+ *  "available" = open. Excludes the project being edited. */
+export function getCrewShootStatus(
+  crewMemberId: string, date: string, start: string, end: string,
+  projects: Project[], availability: Availability[],
+  prefs: Record<string, { bufferMinutes: number }>,
+  excludeProjectId?: string,
+): CrewShootStatus {
+  const s = toMin(start), e = Math.max(toMin(end || start), toMin(start));
+  const windows = windowsFor(availability, crewMemberId, date);
+  if (windows.length === 0 || !windows.some(([ws, we]) => s >= ws && e <= we)) return "off";
+  const buf = prefs[crewMemberId]?.bufferMinutes ?? 0;
+  for (const p of projects) {
+    if (p.id === excludeProjectId || p.date !== date || p.status === "cancelled") continue;
+    const assigned = [...(p.crew || []), ...(p.postProduction || [])].some(c => c.crewMemberId === crewMemberId);
+    if (!assigned) continue;
+    const ps = toMin(p.startTime || "00:00"), pe = Math.max(toMin(p.endTime || p.startTime || "00:00"), ps);
+    if (s < pe + buf && ps < e + buf) return "busy";
+  }
+  return "available";
+}
+
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
 
