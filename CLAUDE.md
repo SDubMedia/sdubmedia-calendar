@@ -127,6 +127,20 @@ The global `supabase` client in `client/src/lib/supabase.ts` is **not yet typed*
 6. **Never use `USING (true)`** — this makes the table publicly accessible to anyone
 7. Check for leftover permissive policies from initial table creation (Supabase sometimes adds default "allow all" policies)
 
+**Client-safe views — rebuild after ANY column add to `projects`/`services`/`service_variants`.**
+Client-role users (agents/brokers) don't read these tables directly — they read the
+SECURITY-style views `projects_client` / `services_client` / `service_variants_client`
+(see `migrations/2026-06-19-client-safe-views.sql` and its rebuilds). Those views
+enumerate columns from `information_schema` **at build time**, so a column you add later
+is invisible to agents until the view is rebuilt — the new field silently reads as
+`null`/`undefined` on the client side even though it's correct in the base table. We got
+burned by this June 2026: `projects.on_the_way_at` was added but `projects_client` wasn't
+rebuilt, so the agent's "photographer on the way" lock never showed. **After adding a
+non-sensitive column to `projects`, re-run the latest `projects_client` rebuild block**
+(copy the most recent `CREATE OR REPLACE VIEW public.projects_client …` DO-block migration
+into a new dated file and run it). Keep sensitive columns (pay/cost) scrubbed in the
+`CASE` like the existing crew/services/products branches.
+
 **JSONB columns**: Always provide a default in the CREATE TABLE statement (e.g., `DEFAULT '[]'`). Never assume JSONB columns are non-null in application code.
 
 **Migrations**: Always create a `.sql` file in `migrations/`. Never modify tables by hand without a matching migration file. User runs migrations manually in Supabase SQL Editor.
