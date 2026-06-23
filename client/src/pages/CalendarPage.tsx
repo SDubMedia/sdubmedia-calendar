@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, conflictsForDate, availabilityForDate } from "@/lib/data";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
+import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
 import PersonalEventDialog, { getEventColor } from "@/components/PersonalEventDialog";
 import MeetingDialog, { getMeetingColor } from "@/components/MeetingDialog";
 import PersonalTemplatesSheet from "@/components/PersonalTemplatesSheet";
@@ -69,6 +70,7 @@ export default function CalendarPage() {
   const [resyncing, setResyncing] = useState(false);
   const { effectiveProfile } = useAuth();
   const [, navigate] = useLocation();
+  const [availEdit, setAvailEdit] = useState<{ crewMemberId: string; name: string } | null>(null);
   const role = effectiveProfile?.role;
   const isClient = role === "client";
   const isFamily = role === "family";
@@ -1087,12 +1089,13 @@ export default function CalendarPage() {
                   <div className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-medium mb-1.5 flex items-center gap-1.5"><CalendarClock className="w-3 h-3" /> Available this day</div>
                   <div className="space-y-1">
                     {dayAvailability.map(a => (
-                      <div key={a.crewMemberId} className="text-xs flex items-center gap-2">
-                        <span className="font-medium text-foreground">{_getCrewMember(a.crewMemberId)?.name ?? "—"}</span>
+                      <button key={a.crewMemberId} onClick={() => setAvailEdit({ crewMemberId: a.crewMemberId, name: _getCrewMember(a.crewMemberId)?.name ?? "—" })} className="w-full text-left text-xs flex items-center gap-2 hover:opacity-80">
+                        <span className="font-medium text-foreground underline decoration-dotted underline-offset-2">{_getCrewMember(a.crewMemberId)?.name ?? "—"}</span>
                         <span className="text-muted-foreground">{a.windows.map(w => `${hm12(w.start)}–${hm12(w.end)}`).join(", ")}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">Tap a name to edit or remove their availability.</p>
                 </div>
               )}
 
@@ -1318,6 +1321,11 @@ export default function CalendarPage() {
 
       {/* Quick-add user (owner-only) */}
       <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} />
+
+      {/* Edit/delete a person's availability straight from the calendar */}
+      {availEdit && selectedDate && (
+        <AvailabilityDayEditor open={!!availEdit} onClose={() => setAvailEdit(null)} crewMemberId={availEdit.crewMemberId} crewMemberName={availEdit.name} date={selectedDate} />
+      )}
 
       {/* New Project Dialog */}
       <ProjectDialog
