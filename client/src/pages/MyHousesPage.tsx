@@ -31,10 +31,19 @@ function fmtTime(t: string): string {
 }
 
 export default function MyHousesPage() {
-  const { data } = useApp();
+  const { data, deleteShootRequest } = useApp();
   const { effectiveProfile } = useAuth();
   const [requestOpen, setRequestOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<import("@/lib/types").ShootRequest | null>(null);
+  // Broker drill-in: when set, the scheduled list shows only this agent's shoots.
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+
+  const cancelRequest = async (id: string) => {
+    if (!window.confirm("Cancel this shoot request? This can't be undone.")) return;
+    try { await deleteShootRequest(id); toast.success("Request cancelled"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't cancel"); }
+  };
 
   const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
   const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
@@ -60,6 +69,11 @@ export default function MyHousesPage() {
   const houses = useMemo(
     () => [...data.projects].sort((a, b) => b.date.localeCompare(a.date)),
     [data.projects]
+  );
+  // Scheduled list respects the broker's agent drill-in; totals stay all-agents.
+  const shownHouses = useMemo(
+    () => (isBroker && selectedAgentId) ? houses.filter(p => p.clientId === selectedAgentId) : houses,
+    [houses, isBroker, selectedAgentId]
   );
   const pending = useMemo(() => data.shootRequests.filter(r => r.status === "pending"), [data.shootRequests]);
   const declined = useMemo(() => data.shootRequests.filter(r => r.status === "declined"), [data.shootRequests]);
@@ -267,9 +281,14 @@ export default function MyHousesPage() {
             {agents.length === 0 ? (
               <p className="text-sm text-muted-foreground">No agents yet. Invite your first one.</p>
             ) : (
+              <>
               <div className="grid gap-2">
                 {agents.map(a => (
-                  <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center justify-between gap-3">
+                  <button
+                    key={a.id}
+                    onClick={() => setSelectedAgentId(id => id === a.id ? null : a.id)}
+                    className={`w-full text-left bg-card border rounded-lg p-3 flex items-center justify-between gap-3 transition-colors ${selectedAgentId === a.id ? "border-primary" : "border-border hover:border-border/70"}`}
+                  >
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">{a.company}</div>
                       {a.email && <div className="text-xs text-muted-foreground truncate">{a.email}</div>}
@@ -277,9 +296,13 @@ export default function MyHousesPage() {
                     <Badge variant="outline" className="border-border text-muted-foreground flex-shrink-0">
                       {houses.filter(p => p.clientId === a.id).length} shoots
                     </Badge>
-                  </div>
+                  </button>
                 ))}
               </div>
+              {selectedAgentId && (
+                <button onClick={() => setSelectedAgentId(null)} className="text-xs text-primary hover:underline mt-2">← Show all agents' shoots</button>
+              )}
+              </>
             )}
           </div>
         )}
@@ -298,6 +321,11 @@ export default function MyHousesPage() {
                       <div className="text-xs text-muted-foreground mt-0.5">{r.requestedServices.map(s => s.label).join(", ")}</div>
                     </div>
                     <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30 flex-shrink-0">Pending</Badge>
+                  </div>
+                  {/* Agent can change or cancel while it's still pending. */}
+                  <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border">
+                    <button onClick={() => setEditTarget(r)} className="text-xs text-primary hover:underline">Change</button>
+                    <button onClick={() => cancelRequest(r.id)} className="text-xs text-destructive hover:underline">Cancel request</button>
                   </div>
                 </div>
               ))}
@@ -322,17 +350,17 @@ export default function MyHousesPage() {
 
         {/* Scheduled houses */}
         <div>
-          {(pending.length > 0 || declined.length > 0) && houses.length > 0 && (
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> Scheduled</div>
+          {(pending.length > 0 || declined.length > 0 || selectedAgentId) && shownHouses.length > 0 && (
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> Scheduled{selectedAgentId ? ` · ${agentName(selectedAgentId)}` : ""}</div>
           )}
-          {houses.length === 0 ? (
+          {shownHouses.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Home className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">{isBroker ? "No shoots yet for your agents." : "No shoots yet. Request your first one."}</p>
+              <p className="text-sm">{isBroker ? (selectedAgentId ? "No shoots yet for this agent." : "No shoots yet for your agents.") : "No shoots yet. Request your first one."}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {houses.map(p => (
+              {shownHouses.map(p => (
                 <div key={p.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
                     <Home className="w-5 h-5 text-primary" />
@@ -355,6 +383,7 @@ export default function MyHousesPage() {
       </div>
 
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
+      <RequestShootDialog open={!!editTarget} onClose={() => setEditTarget(null)} clientId={myClientId} editRequest={editTarget} />
       <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <AgreementDialog
         open={agreementOpen}

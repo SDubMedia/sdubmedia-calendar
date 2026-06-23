@@ -5,7 +5,7 @@
 // optional. Submits a pending request the owner approves later.
 // ============================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Check, MapPin, CalendarClock } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { getOpenDays, type BusyBlock } from "@/lib/data";
-import type { ProjectServiceSelection } from "@/lib/types";
+import type { ProjectServiceSelection, ShootRequest } from "@/lib/types";
 import { toast } from "sonner";
 
 function todayIso(): string {
@@ -36,10 +36,11 @@ interface Props {
   open: boolean;
   onClose: () => void;
   clientId: string;   // the agent's own client record
+  editRequest?: ShootRequest | null; // when set, edit this pending request instead of creating
 }
 
-export default function RequestShootDialog({ open, onClose, clientId }: Props) {
-  const { data, addShootRequest } = useApp();
+export default function RequestShootDialog({ open, onClose, clientId, editRequest }: Props) {
+  const { data, addShootRequest, updateShootRequest } = useApp();
 
   const [address, setAddress] = useState("");
   // selected pieces keyed by serviceId -> chosen ProjectServiceSelection
@@ -49,6 +50,24 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
   const [pickedTime, setPickedTime] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Prefill when opening in edit mode (only re-runs on open / target change).
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      wasOpen.current = true;
+      if (editRequest) {
+        setAddress(editRequest.propertyAddress || "");
+        setPicked(Object.fromEntries((editRequest.requestedServices || []).map(s => [s.serviceId, s])));
+        setShooterId(editRequest.preferredCrewMemberId || "");
+        setPickedDate(editRequest.preferredDate || "");
+        setPickedTime(editRequest.preferredTime || "");
+        setNotes(editRequest.notes || "");
+      }
+    } else if (!open) {
+      wasOpen.current = false;
+    }
+  }, [open, editRequest]);
 
   // Default to the Real Estate category; agents book real-estate shoots.
   const category = useMemo(() => {
@@ -116,6 +135,21 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
     if (!pickedDate || !pickedTime) { toast.error("Pick a date and time"); return; }
     setSaving(true);
     try {
+      if (editRequest) {
+        // Edit an existing pending request — no re-notify (owner already knows).
+        await updateShootRequest(editRequest.id, {
+          propertyAddress: address.trim(),
+          preferredDate: pickedDate,
+          preferredTime: pickedTime,
+          preferredCrewMemberId: shooterId || null,
+          notes: notes.trim(),
+          requestedServices: selections,
+        });
+        toast.success("Request updated");
+        reset();
+        onClose();
+        return;
+      }
       const created = await addShootRequest({
         clientId,
         propertyAddress: address.trim(),
@@ -151,7 +185,7 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Request a shoot</DialogTitle>
+          <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{editRequest ? "Edit request" : "Request a shoot"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5">
@@ -250,7 +284,7 @@ export default function RequestShootDialog({ open, onClose, clientId }: Props) {
         <DialogFooter className="mt-2">
           <Button variant="ghost" onClick={onClose} className="text-muted-foreground">Cancel</Button>
           <Button onClick={handleSubmit} disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
-            {saving ? "Sending…" : "Send request"}
+            {saving ? "Saving…" : editRequest ? "Save changes" : "Send request"}
           </Button>
         </DialogFooter>
       </DialogContent>
