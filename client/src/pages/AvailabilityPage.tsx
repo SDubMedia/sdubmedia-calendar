@@ -17,6 +17,7 @@ import type { Availability } from "@/lib/types";
 import { toast } from "sonner";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function formatTime(t: string): string {
   // "09:00" -> "9:00 AM"
@@ -48,7 +49,8 @@ export default function AvailabilityPage() {
 
   // Add-block form
   const [recurring, setRecurring] = useState(true);
-  const [weekday, setWeekday] = useState(1); // Monday
+  const [weekdays, setWeekdays] = useState<number[]>([1]); // Monday; multiple allowed
+  const toggleWeekday = (i: number) => setWeekdays(w => w.includes(i) ? w.filter(d => d !== i) : [...w, i].sort((a, b) => a - b));
   const [specificDate, setSpecificDate] = useState("");
   const [allDay, setAllDay] = useState(false);
   const [startTime, setStartTime] = useState("09:00");
@@ -97,21 +99,38 @@ export default function AvailabilityPage() {
 
   const handleAdd = async () => {
     if (!personId) { toast.error("Pick a person first"); return; }
+    if (recurring && weekdays.length === 0) { toast.error("Pick at least one day"); return; }
     if (!recurring && !specificDate) { toast.error("Pick a date for a one-time opening"); return; }
     if (!allDay && endTime <= startTime) { toast.error("End time must be after start time"); return; }
     setSaving(true);
     try {
-      await addAvailability({
-        crewMemberId: personId,
-        recurring,
-        weekday: recurring ? weekday : null,
-        specificDate: recurring ? null : specificDate,
-        allDay,
-        startTime,
-        endTime,
-      });
-      toast.success("Availability added");
-      setSpecificDate("");
+      if (recurring) {
+        // One opening per selected day, same hours.
+        for (const wd of weekdays) {
+          await addAvailability({
+            crewMemberId: personId,
+            recurring: true,
+            weekday: wd,
+            specificDate: null,
+            allDay,
+            startTime,
+            endTime,
+          });
+        }
+        toast.success(weekdays.length > 1 ? `Added ${weekdays.length} days` : "Availability added");
+      } else {
+        await addAvailability({
+          crewMemberId: personId,
+          recurring: false,
+          weekday: null,
+          specificDate,
+          allDay,
+          startTime,
+          endTime,
+        });
+        toast.success("Availability added");
+        setSpecificDate("");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't save availability");
     } finally {
@@ -187,14 +206,23 @@ export default function AvailabilityPage() {
           {/* Day or date */}
           {recurring ? (
             <div className="mb-3">
-              <Label className="text-xs text-muted-foreground">Day of week</Label>
-              <select
-                value={weekday}
-                onChange={e => setWeekday(Number(e.target.value))}
-                className="mt-1 w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-              >
-                {WEEKDAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
-              </select>
+              <Label className="text-xs text-muted-foreground">Days of week</Label>
+              <div className="mt-1 grid grid-cols-7 gap-1.5">
+                {WEEKDAYS_SHORT.map((d, i) => {
+                  const on = weekdays.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => toggleWeekday(i)}
+                      className={`h-10 rounded-md border text-xs font-medium transition-colors ${on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">Tap each day you're open — same hours apply to all of them.</p>
             </div>
           ) : (
             <div className="mb-3">
