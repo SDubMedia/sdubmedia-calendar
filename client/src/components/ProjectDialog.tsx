@@ -49,6 +49,25 @@ function addMinutesT(t: string, mins: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
+// 15-min time options as a styled <select> — native <input type="time"> overflows
+// its column on iOS. Include the current value if off-grid so it still shows.
+function fmtTime12(t: string): string {
+  const [hStr, m] = (t || "").split(":");
+  const h = Number(hStr);
+  if (Number.isNaN(h)) return t || "";
+  return `${h % 12 === 0 ? 12 : h % 12}:${m ?? "00"} ${h >= 12 ? "PM" : "AM"}`;
+}
+const TIME_OPTIONS = Array.from({ length: (24 * 60) / 15 }, (_, i) => {
+  const mins = i * 15;
+  const value = `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  return { value, label: fmtTime12(value) };
+});
+function timeOptionsWith(current: string) {
+  return TIME_OPTIONS.some(o => o.value === current) || !current
+    ? TIME_OPTIONS
+    : [{ value: current, label: fmtTime12(current) }, ...TIME_OPTIONS];
+}
+
 const emptyCrewEntry = (): ProjectCrewEntry => ({
   crewMemberId: "",
   role: "",
@@ -751,20 +770,26 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
           </div>
 
-          {/* Row 2: Date + Times. Real-estate shoots show start time only. */}
+          {/* Row 2: Date + Times. Real-estate shoots show start time only. Time
+              uses styled selects (native time inputs overflow on iOS); min-w-0
+              lets the grid columns shrink so nothing bleeds past the edge. */}
           <div className={`grid grid-cols-1 ${isRealEstate ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-4`}>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-secondary border-border" />
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-secondary border-border w-full min-w-0" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0">
               <Label className="text-xs text-muted-foreground">Start Time</Label>
-              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="bg-secondary border-border" />
+              <select value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+                {timeOptionsWith(startTime).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
             </div>
             {!isRealEstate && (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <Label className="text-xs text-muted-foreground">End Time</Label>
-                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="bg-secondary border-border" />
+                <select value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+                  {timeOptionsWith(endTime).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
             )}
           </div>
