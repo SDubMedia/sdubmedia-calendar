@@ -322,11 +322,16 @@ export default function AvailabilityPage() {
             </div>
           </div>
           <div className="mb-3">
-            <Label className="text-xs text-muted-foreground">Hold back / day (min)</Label>
-            <div className="flex items-center gap-2">
-              <Input inputMode="decimal" value={String(fakeBusyMinutes)} onChange={e => setFakeBusyMinutes(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center mt-1 w-24" />
-              <span className="text-[11px] text-muted-foreground mt-1">blocks this much/day in what agents see — you look busier. 0 = off.</span>
-            </div>
+            <Label className="text-xs text-muted-foreground">Look busier to agents</Label>
+            <select value={String(fakeBusyMinutes)} onChange={e => setFakeBusyMinutes(Number(e.target.value))} className="mt-1 w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+              <option value="0">Off — show all my open times</option>
+              <option value="30">Block 30 minutes a day</option>
+              <option value="60">Block 1 hour a day</option>
+              <option value="90">Block 1.5 hours a day</option>
+              <option value="120">Block 2 hours a day</option>
+              <option value="180">Block 3 hours a day</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground mt-1">Hides this much time each day in what agents see, so you look more in demand. Your real calendar isn't affected.</p>
           </div>
           <p className="text-[11px] text-muted-foreground mb-3">Travel buffer is held before and after each shoot. Max/day of 0 means no limit.</p>
           <Button variant="outline" onClick={handleSavePrefs} disabled={savingPref || !personId} className="w-full border-border">
