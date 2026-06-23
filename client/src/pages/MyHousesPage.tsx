@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User, Receipt, CreditCard, Image as ImageIcon } from "lucide-react";
+import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, User, Receipt, CreditCard, Image as ImageIcon, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
@@ -190,6 +190,8 @@ export default function MyHousesPage() {
   // Agreement gate. Agents fold it into the card step; brokers accept standalone.
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [agreementNext, setAgreementNext] = useState<"card" | "invite" | null>(null);
+  // Read-only "view terms anytime" — separate from the accept flow above.
+  const [viewTermsOpen, setViewTermsOpen] = useState(false);
   const openAgreement = (next: "card" | "invite" | null) => { setAgreementNext(next); setAgreementOpen(true); };
   // Agent taps "Add a card to book": agree first (if needed), then Stripe.
   const startCardFlow = () => { if (needsAgreement) openAgreement("card"); else handleAddCard(); };
@@ -405,6 +407,13 @@ export default function MyHousesPage() {
             </div>
           )}
         </div>
+
+        {/* View the terms anytime (the one-time agreement they accepted) */}
+        {(isAgent || isBroker) && (
+          <button onClick={() => setViewTermsOpen(true)} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" /> View {isBroker ? "billing agreement" : "booking & payment terms"}
+          </button>
+        )}
       </div>
 
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
@@ -417,6 +426,7 @@ export default function MyHousesPage() {
         agreeLabel={agreementNext === "card" ? "Agree & add card" : "Agree"}
         onAccepted={() => { setJustAccepted(true); if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); }}
       />
+      <AgreementDialog open={viewTermsOpen} onClose={() => setViewTermsOpen(false)} kind={isBroker ? "broker" : "agent"} readOnly />
     </div>
   );
 }

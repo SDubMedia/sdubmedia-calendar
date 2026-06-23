@@ -45,6 +45,16 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const [pickedDate, setPickedDate] = useState("");
   const [pickedTime, setPickedTime] = useState("");
   const [monthOffset, setMonthOffset] = useState(0); // booking calendar navigation
+  const touchX = useRef<number | null>(null);
+  // Swipe left = next month, swipe right = previous (not below the current month).
+  const onTouchStart = (e: React.TouchEvent) => { touchX.current = e.touches[0].clientX; };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    touchX.current = null;
+    if (dx <= -40) setMonthOffset(o => o + 1);
+    else if (dx >= 40) setMonthOffset(o => Math.max(0, o - 1));
+  };
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -298,8 +308,9 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                 {data.crewMembers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
-            {/* Month calendar: green = a day you can book, red = unavailable. */}
-            <div className="mt-2 rounded-lg border border-border p-2">
+            {/* Month calendar: green = a day you can book, red = unavailable.
+                Swipe left/right (or use the arrows) to page month to month. */}
+            <div className="mt-2 rounded-lg border border-border p-2 select-none" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
               <div className="flex items-center justify-between mb-1.5">
                 <button type="button" onClick={() => setMonthOffset(o => Math.max(0, o - 1))} disabled={monthOffset === 0} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
                 <span className="text-xs font-medium text-foreground">{monthGrid.label}</span>
