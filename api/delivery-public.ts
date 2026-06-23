@@ -212,6 +212,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       selectionLimit: delivery.selection_limit,
+      downloadOnly: (delivery as unknown as { download_only?: boolean }).download_only === true,
       perExtraPhotoCents: delivery.per_extra_photo_cents,
       buyAllFlatCents: delivery.buy_all_flat_cents,
       submittedAt: delivery.submitted_at,

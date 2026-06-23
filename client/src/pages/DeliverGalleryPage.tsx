@@ -46,6 +46,7 @@ interface DeliveryInfo {
   printsEnabled: boolean;
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
   selectionLimit: number;
+  downloadOnly?: boolean;
   perExtraPhotoCents: number;
   buyAllFlatCents: number;
   submittedAt: string | null;
@@ -135,9 +136,9 @@ export default function DeliverGalleryPage() {
   const [walkthroughStep, setWalkthroughStep] = useState<number | null>(null);
   useEffect(() => {
     if (!delivery || typeof window === "undefined") return;
-    // Download-only galleries (no proofing, e.g. real-estate) skip the
-    // favorites/proofing walkthrough — there's nothing to select.
-    if ((delivery.selectionLimit ?? 0) === 0) return;
+    // Download-only galleries (real-estate) skip the favorites/proofing
+    // walkthrough — there's nothing to select.
+    if (delivery.downloadOnly || (delivery.selectionLimit ?? 0) === 0) return;
     if (localStorage.getItem(`gallery-walkthrough-${token}`) === "done") return;
     // Show welcome card after a short delay so the hero animates in first.
     const t = setTimeout(() => setWalkthroughStep(0), 800);
@@ -254,7 +255,7 @@ export default function DeliverGalleryPage() {
 
   const isLocked = delivery?.status === "submitted" || delivery?.status === "working" || delivery?.status === "delivered";
   const isWorking = delivery?.status === "working" || delivery?.status === "delivered";
-  const proofingEnabled = (delivery?.selectionLimit ?? 0) > 0;
+  const proofingEnabled = !delivery?.downloadOnly && (delivery?.selectionLimit ?? 0) > 0;
   const overage = Math.max(0, picked.size - (delivery?.selectionLimit ?? 0));
   const perExtraCents = delivery?.perExtraPhotoCents ?? 0;
   const flatCents = delivery?.buyAllFlatCents ?? 0;
@@ -520,7 +521,8 @@ export default function DeliverGalleryPage() {
 
 
   const cover = delivery.coverLayout || "center";
-  const layoutHasHero = cover !== "minimal" && coverUrl;
+  // Real-estate galleries open straight to the photos — no cover screen at all.
+  const layoutHasHero = !delivery.downloadOnly && cover !== "minimal" && coverUrl;
 
   return (
     <div className="min-h-screen bg-white text-black">
@@ -539,7 +541,7 @@ export default function DeliverGalleryPage() {
           date={delivery.coverDate}
           fontValue={delivery.coverFont || ""}
         />
-      ) : (
+      ) : delivery.downloadOnly ? null : (
         // Minimal layout: typography-only on white
         <section className="text-center py-20 sm:py-28 px-6 border-b border-slate-200">
           <h1 className="text-black" style={{

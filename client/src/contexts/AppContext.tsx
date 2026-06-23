@@ -790,6 +790,7 @@ function rowToDelivery(r: any): Delivery {
     hasPassword: !!r.password_hash,
     expiresAt: r.expires_at || null,
     selectionLimit: Number(r.selection_limit ?? 0),
+    downloadOnly: r.download_only === true,
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
     buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
     status: (r.status || "draft") as DeliveryStatus,
@@ -1917,7 +1918,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cover_subtitle: d.coverSubtitle,
       cover_date: d.coverDate,
       token, expires_at: d.expiresAt,
-      selection_limit: d.selectionLimit, per_extra_photo_cents: d.perExtraPhotoCents,
+      selection_limit: d.selectionLimit, download_only: d.downloadOnly ?? false, per_extra_photo_cents: d.perExtraPhotoCents,
       buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
       updated_at: now,
     }).select().single();
@@ -1935,7 +1936,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       coverFileId: null, watermarkText: null, watermarkUseLogo: false, printsEnabled: false,
       coverLayout: "center", coverFont: "", coverSubtitle: null, coverDate: null,
       slug: null, requireEmail: false, expiresAt: null,
-      selectionLimit: 0, perExtraPhotoCents: 0, buyAllFlatCents: 0, status: "draft",
+      selectionLimit: 0, downloadOnly: true, perExtraPhotoCents: 0, buyAllFlatCents: 0, status: "draft",
     });
   }, [addDelivery]);
 
@@ -1956,6 +1957,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.projectId !== undefined) patch.project_id = d.projectId;
     if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
     if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
+    if (d.downloadOnly !== undefined) patch.download_only = d.downloadOnly;
     if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
     if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;
     if (d.status !== undefined) patch.status = d.status;

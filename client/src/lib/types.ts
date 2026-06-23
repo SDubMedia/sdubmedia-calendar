@@ -1470,6 +1470,7 @@ export interface Delivery {
 
   // Proofing config
   selectionLimit: number;        // 0 disables proofing entirely
+  downloadOnly?: boolean;        // real-estate: no cover/walkthrough/proofing, just Download All
   perExtraPhotoCents: number;    // 0 = no per-photo upsell
   buyAllFlatCents: number;       // 0 = no flat unlock-all option
 

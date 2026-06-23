@@ -54,6 +54,32 @@ function DeliveriesList() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const galleries = data.deliveries;
+  // Real-estate galleries (download-only) are listed in their own section.
+  const reGalleries = galleries.filter(d => d.downloadOnly);
+  const clientGalleries = galleries.filter(d => !d.downloadOnly);
+
+  const renderGalleryCard = (d: typeof galleries[number]) => {
+    const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
+    const pickCount = data.deliverySelections.filter(s => s.deliveryId === d.id).length;
+    const project = data.projects.find(p => p.id === d.projectId);
+    return (
+      <Link key={d.id} href={`/deliveries/${d.id}`}>
+        <a className="block rounded-xl border border-white/10 bg-white/[0.02] hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <h3 className="text-base font-semibold text-white truncate">{d.title || "Untitled"}</h3>
+            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider border ${statusColor(d.status)}`}>{statusLabel(d.status)}</span>
+          </div>
+          {project && <p className="text-xs text-slate-500 mb-2">{projectLabel(project, data.clients)}</p>}
+          <div className="flex items-center gap-4 text-xs text-slate-400">
+            <span>{fileCount} photo{fileCount === 1 ? "" : "s"}</span>
+            {d.selectionLimit > 0 && <span>{pickCount} pick{pickCount === 1 ? "" : "s"}</span>}
+            {d.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Locked</span>}
+          </div>
+          {d.clientName && <p className="text-xs text-slate-500 mt-2">Submitted by {d.clientName}</p>}
+        </a>
+      </Link>
+    );
+  };
 
   // Total storage usage across all galleries in this org — the API
   // enforces the 200GB cap server-side; this just surfaces it so
@@ -130,29 +156,23 @@ function DeliveriesList() {
           </PrereqGate>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {galleries.map((d) => {
-            const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
-            const pickCount = data.deliverySelections.filter(s => s.deliveryId === d.id).length;
-            const project = data.projects.find(p => p.id === d.projectId);
-            return (
-              <Link key={d.id} href={`/deliveries/${d.id}`}>
-                <a className="block rounded-xl border border-white/10 bg-white/[0.02] hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <h3 className="text-base font-semibold text-white truncate">{d.title || "Untitled"}</h3>
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider border ${statusColor(d.status)}`}>{statusLabel(d.status)}</span>
-                  </div>
-                  {project && <p className="text-xs text-slate-500 mb-2">{projectLabel(project, data.clients)}</p>}
-                  <div className="flex items-center gap-4 text-xs text-slate-400">
-                    <span>{fileCount} photo{fileCount === 1 ? "" : "s"}</span>
-                    {d.selectionLimit > 0 && <span>{pickCount} pick{pickCount === 1 ? "" : "s"}</span>}
-                    {d.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Locked</span>}
-                  </div>
-                  {d.clientName && <p className="text-xs text-slate-500 mt-2">Submitted by {d.clientName}</p>}
-                </a>
-              </Link>
-            );
-          })}
+        <div className="space-y-8">
+          {reGalleries.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Real Estate ({reGalleries.length})</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reGalleries.map(renderGalleryCard)}
+              </div>
+            </div>
+          )}
+          {clientGalleries.length > 0 && (
+            <div>
+              {reGalleries.length > 0 && <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Client Galleries ({clientGalleries.length})</h2>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {clientGalleries.map(renderGalleryCard)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
