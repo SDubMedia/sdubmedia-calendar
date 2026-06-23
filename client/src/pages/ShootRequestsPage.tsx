@@ -28,6 +28,12 @@ function fmtTime(t: string | null): string {
   const ampm = h >= 12 ? "PM" : "AM"; const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${m} ${ampm}`;
 }
+// Add minutes to "HH:MM", clamped to the same day (23:59 max).
+function addMinutes(t: string, mins: number): string {
+  const [h, m] = (t || "0:0").split(":").map(Number);
+  const total = Math.min(h * 60 + m + mins, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 export default function ShootRequestsPage() {
   const { data, addLocation, addProject, updateShootRequest, createReShootGallery } = useApp();
@@ -73,13 +79,21 @@ export default function ShootRequestsPage() {
         ? [{ crewMemberId: req.preferredCrewMemberId, role: "Photographer", hoursWorked: 0, payRatePerHour: 0 }]
         : [];
 
+      // Block the calendar for the shoot length + travel buffer (how the shooter
+      // operates) — defaults to 90 min (1.5 hrs) if no preference is set. The
+      // request only carries a start time; without this the shoot was 9:00–9:00.
+      const pref = data.shooterPrefs.find(p => p.crewMemberId === req.preferredCrewMemberId);
+      const durationMin = pref ? pref.shootMinutes + pref.bufferMinutes : 90;
+      const startTime = req.preferredTime ?? "";
+      const endTime = startTime ? addMinutes(startTime, durationMin) : "";
+
       const payload: Omit<Project, "id" | "createdAt"> = {
         clientId: req.clientId,
         projectTypeId: reType?.id ?? "",
         locationId: loc.id,
         date: req.preferredDate ?? "",
-        startTime: req.preferredTime ?? "",
-        endTime: req.preferredTime ?? "",
+        startTime,
+        endTime,
         status: "upcoming",
         crew,
         postProduction: [],
@@ -101,7 +115,15 @@ export default function ShootRequestsPage() {
         products: [],
       };
       const project = await addProject(payload);
-      try { await createReShootGallery(project.id, req.propertyAddress.trim()); } catch { /* non-fatal */ }
+      // Auto-create the delivery gallery so the owner can upload + deliver. Don't
+      // swallow failures — the shoot is still scheduled, but tell the owner the
+      // gallery needs creating manually rather than hiding it.
+      try {
+        await createReShootGallery(project.id, req.propertyAddress.trim());
+      } catch (gErr) {
+        console.error("createReShootGallery failed on approve:", gErr);
+        toast.warning("Shoot scheduled, but the photo gallery didn't auto-create — make one from the project.");
+      }
       await updateShootRequest(req.id, { status: "scheduled", projectId: project.id });
       toast.success("Shoot scheduled — it's on your calendar");
     } catch (e) {
