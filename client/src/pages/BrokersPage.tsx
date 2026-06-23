@@ -27,7 +27,7 @@ import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
-import { supabase } from "@/lib/supabase";
+import { supabase, getAuthToken } from "@/lib/supabase";
 import type { Client } from "@/lib/types";
 
 function fmt(n: number): string {
@@ -71,6 +71,30 @@ export default function BrokersPage() {
 
   const month = useMemo(currentMonthBounds, []);
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
+
+  // Does this agent already have a login? (drives Invite vs Resend password)
+  const agentHasLogin = (agentId: string) => allProfiles.some(p => p.role === "client" && p.clientIds.includes(agentId));
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const inviteOrResend = async (agentId: string) => {
+    setInvitingId(agentId);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/invite-or-resend-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ agentClientId: agentId }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't send");
+      const verb = body.action === "resent" ? "New password sent" : "Invite sent";
+      if (body.emailed === false && body.tempPassword) toast.success(`${verb} — email didn't send, temp password: ${body.tempPassword}`);
+      else toast.success(verb);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send");
+    } finally {
+      setInvitingId(null);
+    }
+  };
 
   const brokers = useMemo(
     () => data.clients.filter(c => c.clientType === "broker").sort((a, b) => a.company.localeCompare(b.company)),
@@ -201,7 +225,12 @@ export default function BrokersPage() {
                       <PresenceIcon clientId={agent.id} profiles={allProfiles} appUserIds={appUserIds} />
                       {agent.contactName && agent.contactName !== agent.company && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
                     </div>
-                    <button onClick={() => openEdit(agent)} className="text-muted-foreground hover:text-foreground shrink-0" title="Edit agent"><Pencil className="w-3.5 h-3.5" /></button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => inviteOrResend(agent.id)} disabled={invitingId === agent.id} className="text-xs text-primary hover:underline disabled:opacity-50">
+                        {invitingId === agent.id ? "Sending…" : agentHasLogin(agent.id) ? "Resend password" : "Invite"}
+                      </button>
+                      <button onClick={() => openEdit(agent)} className="text-muted-foreground hover:text-foreground" title="Edit agent"><Pencil className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
                 ))}
                 <button onClick={() => openAddAgent(broker.id)} className="w-full px-4 py-2.5 text-xs text-primary hover:bg-primary/5 flex items-center gap-1.5">
