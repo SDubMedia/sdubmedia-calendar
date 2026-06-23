@@ -30,6 +30,15 @@ function formatTime(t: string): string {
   return `${h12}:${m ?? "00"} ${ampm}`;
 }
 
+// 15-minute time options as styled <select> values — a native <input type="time">
+// overflows its box on iOS WebKit; a select fits full-width like every other
+// field in this form.
+const TIME_OPTIONS = Array.from({ length: (24 * 60) / 15 }, (_, i) => {
+  const mins = i * 15;
+  const value = `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  return { value, label: formatTime(value) };
+});
+
 function formatDate(iso: string): string {
   if (!iso) return "";
   const [y, mo, d] = iso.split("-").map(Number);
@@ -262,17 +271,21 @@ export default function AvailabilityPage() {
             <span className={`w-4 h-4 rounded flex items-center justify-center ${allDay ? "bg-primary text-primary-foreground" : "border border-border"}`}>{allDay && <Check className="w-3 h-3" />}</span>
           </button>
 
-          {/* Times (hidden when all-day) — stacked so the native time fields
-              never overflow the card on narrow screens. */}
+          {/* Times (hidden when all-day) — styled selects (a native time input
+              overflows its box on iOS); same full-width fit as the other fields. */}
           {!allDay && (
-            <div className="space-y-3 mb-4">
+            <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="min-w-0">
                 <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 w-full" />
+                <select value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+                  {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
               <div className="min-w-0">
                 <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 w-full" />
+                <select value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+                  {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
             </div>
           )}
