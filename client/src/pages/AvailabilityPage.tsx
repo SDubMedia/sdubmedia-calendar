@@ -11,6 +11,7 @@ import { CalendarClock, Plus, Trash2, Repeat, CalendarDays, Check, Settings2 } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Availability } from "@/lib/types";
@@ -36,6 +37,11 @@ function formatDate(iso: string): string {
   return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
+// Local yyyy-mm-dd (avoids the UTC shift that toISOString() introduces).
+function toIsoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function AvailabilityPage() {
   const { data, addAvailability, deleteAvailability, upsertShooterPref } = useApp();
   const { effectiveProfile } = useAuth();
@@ -51,7 +57,7 @@ export default function AvailabilityPage() {
   const [recurring, setRecurring] = useState(true);
   const [weekdays, setWeekdays] = useState<number[]>([1]); // Monday; multiple allowed
   const toggleWeekday = (i: number) => setWeekdays(w => w.includes(i) ? w.filter(d => d !== i) : [...w, i].sort((a, b) => a - b));
-  const [specificDate, setSpecificDate] = useState("");
+  const [specificDates, setSpecificDates] = useState<Date[]>([]); // one-time: multiple dates, one time window
   const [allDay, setAllDay] = useState(false);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
@@ -100,7 +106,7 @@ export default function AvailabilityPage() {
   const handleAdd = async () => {
     if (!personId) { toast.error("Pick a person first"); return; }
     if (recurring && weekdays.length === 0) { toast.error("Pick at least one day"); return; }
-    if (!recurring && !specificDate) { toast.error("Pick a date for a one-time opening"); return; }
+    if (!recurring && specificDates.length === 0) { toast.error("Pick at least one date"); return; }
     if (!allDay && endTime <= startTime) { toast.error("End time must be after start time"); return; }
     setSaving(true);
     try {
@@ -119,17 +125,20 @@ export default function AvailabilityPage() {
         }
         toast.success(weekdays.length > 1 ? `Added ${weekdays.length} days` : "Availability added");
       } else {
-        await addAvailability({
-          crewMemberId: personId,
-          recurring: false,
-          weekday: null,
-          specificDate,
-          allDay,
-          startTime,
-          endTime,
-        });
-        toast.success("Availability added");
-        setSpecificDate("");
+        // One opening per selected date, same hours.
+        for (const d of specificDates) {
+          await addAvailability({
+            crewMemberId: personId,
+            recurring: false,
+            weekday: null,
+            specificDate: toIsoLocal(d),
+            allDay,
+            startTime,
+            endTime,
+          });
+        }
+        toast.success(specificDates.length > 1 ? `Added ${specificDates.length} dates` : "Availability added");
+        setSpecificDates([]);
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't save availability");
@@ -226,8 +235,20 @@ export default function AvailabilityPage() {
             </div>
           ) : (
             <div className="mb-3">
-              <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" value={specificDate} onChange={e => setSpecificDate(e.target.value)} className="mt-1" />
+              <Label className="text-xs text-muted-foreground">Dates</Label>
+              <div className="mt-1 rounded-md border border-border bg-background flex justify-center">
+                <Calendar
+                  mode="multiple"
+                  selected={specificDates}
+                  onSelect={(d) => setSpecificDates(d ?? [])}
+                  disabled={{ before: new Date() }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {specificDates.length > 0
+                  ? `${specificDates.length} date${specificDates.length > 1 ? "s" : ""} selected — same hours apply to all.`
+                  : "Tap each date you're open — same hours apply to all of them."}
+              </p>
             </div>
           )}
 
@@ -241,16 +262,17 @@ export default function AvailabilityPage() {
             <span className={`w-4 h-4 rounded flex items-center justify-center ${allDay ? "bg-primary text-primary-foreground" : "border border-border"}`}>{allDay && <Check className="w-3 h-3" />}</span>
           </button>
 
-          {/* Times (hidden when all-day) */}
+          {/* Times (hidden when all-day) — stacked so the native time fields
+              never overflow the card on narrow screens. */}
           {!allDay && (
-            <div className="flex gap-4 mb-4">
-              <div className="flex-1 min-w-0">
+            <div className="space-y-3 mb-4">
+              <div className="min-w-0">
                 <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1" />
+                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 w-full" />
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0">
                 <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1" />
+                <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 w-full" />
               </div>
             </div>
           )}
