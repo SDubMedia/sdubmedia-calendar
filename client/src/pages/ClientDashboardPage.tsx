@@ -7,8 +7,10 @@ import { useMemo, useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { InvoiceStatus, SeriesEpisode } from "@/lib/types";
-import { Link, Redirect } from "wouter";
-import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard } from "lucide-react";
+import { Link, Redirect, useLocation } from "wouter";
+import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus } from "lucide-react";
+import RequestShootDialog from "@/components/RequestShootDialog";
+import { hasAcceptedAgreement } from "@/lib/agreements";
 import { cn } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -47,7 +49,16 @@ export default function ClientDashboardPage() {
   const { effectiveProfile } = useAuth();
   // A brokerage account has its own home (agents + what they owe), not the
   // standard client dashboard. Computed here; redirect happens after all hooks.
-  const isBroker = data.clients.find(c => c.id === (effectiveProfile?.clientIds?.[0] ?? ""))?.clientType === "broker";
+  const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
+  const myClient = data.clients.find(c => c.id === myClientId);
+  const isBroker = myClient?.clientType === "broker";
+  // Agents book straight from here. If they still need a card/agreement, send
+  // them to My Listings where that gate lives; otherwise open the request.
+  const isAgent = myClient?.clientType === "agent";
+  const bookingGated = isAgent && (!myClient?.cardOnFile || !hasAcceptedAgreement(myClient));
+  const [, navigate] = useLocation();
+  const [requestOpen, setRequestOpen] = useState(false);
+  const startBooking = () => { if (bookingGated) navigate("/my-houses"); else setRequestOpen(true); };
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
@@ -131,6 +142,13 @@ export default function ClientDashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+        {/* Agents: book a shoot right from the home screen */}
+        {isAgent && (
+          <button onClick={startBooking} className="w-full bg-primary text-primary-foreground rounded-lg px-5 py-4 flex items-center justify-between gap-3 hover:bg-primary/90 transition-colors">
+            <span className="flex items-center gap-2 font-semibold"><Plus className="w-5 h-5" /> Request a shoot</span>
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        )}
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard icon={CalendarDays} iconColor="text-blue-400" iconBg="bg-blue-500/20"
@@ -368,6 +386,8 @@ export default function ClientDashboardPage() {
           </div>
         </div>
       </div>
+
+      {isAgent && <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Check, MapPin, CalendarClock } from "lucide-react";
+import { Check, MapPin, CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { getOpenDays, shootDurationMinFor, fakeBusyBlocksFor, addDaysIso, type BusyBlock } from "@/lib/data";
@@ -26,10 +26,6 @@ function fmtTime(t: string): string {
   const h = Number(hs); if (Number.isNaN(h)) return t;
   const ampm = h >= 12 ? "PM" : "AM"; const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${m} ${ampm}`;
-}
-function fmtDay(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 interface Props {
@@ -48,6 +44,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const [shooterId, setShooterId] = useState("");        // "" = any
   const [pickedDate, setPickedDate] = useState("");
   const [pickedTime, setPickedTime] = useState("");
+  const [monthOffset, setMonthOffset] = useState(0); // booking calendar navigation
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -130,7 +127,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
     const out: BusyBlock[] = [];
     const withFake = data.shooterPrefs.filter(p => (p.fakeBusyMinutes ?? 0) > 0);
     if (withFake.length === 0) return out;
-    for (let i = 0; i < 21; i++) {
+    for (let i = 0; i < 60; i++) {
       const d = addDaysIso(todayIso(), i);
       for (const p of withFake) out.push(...fakeBusyBlocksFor(p.crewMemberId, d, data.availability, p.fakeBusyMinutes));
     }
@@ -139,13 +136,30 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const allBusy = useMemo(() => [...busy, ...pendingBusy, ...fakeBusy], [busy, pendingBusy, fakeBusy]);
 
   const openDays = useMemo(
-    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap }),
+    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 60, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap }),
     [data.availability, shooterId, allBusy, prefsMap]
   );
   const timeOptions = useMemo(
     () => (openDays.find(d => d.date === pickedDate)?.slots ?? []).map(s => s.time),
     [openDays, pickedDate]
   );
+
+  // Booking calendar: which days have an open slot (green/bookable).
+  const bookableDates = useMemo(() => new Set(openDays.map(d => d.date)), [openDays]);
+  // The month being shown (today + monthOffset), as a full Sun–Sat grid.
+  const monthGrid = useMemo(() => {
+    const base = new Date();
+    base.setDate(1);
+    base.setMonth(base.getMonth() + monthOffset);
+    const year = base.getFullYear(), month = base.getMonth();
+    const label = base.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const lead = new Date(year, month, 1).getDay();
+    const days = new Date(year, month + 1, 0).getDate();
+    const cells: (string | null)[] = Array.from({ length: lead }, () => null);
+    for (let d = 1; d <= days; d++) cells.push(`${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return { label, cells };
+  }, [monthOffset]);
 
   const togglePiece = (sel: ProjectServiceSelection) => {
     setPicked(prev => {
@@ -284,29 +298,52 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                 {data.crewMembers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
-            {openDays.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">No open times posted right now. Add a note below and we'll reach out.</p>
-            ) : (
-              <>
-                <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-                  {openDays.map(d => (
-                    <button key={d.date} type="button" onClick={() => { setPickedDate(d.date); setPickedTime(""); }}
-                      className={`flex-shrink-0 px-3 py-2 rounded-md border text-xs transition-colors ${pickedDate === d.date ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
-                      {fmtDay(d.date)}
+            {/* Month calendar: green = a day you can book, red = unavailable. */}
+            <div className="mt-2 rounded-lg border border-border p-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <button type="button" onClick={() => setMonthOffset(o => Math.max(0, o - 1))} disabled={monthOffset === 0} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-xs font-medium text-foreground">{monthGrid.label}</span>
+                <button type="button" onClick={() => setMonthOffset(o => o + 1)} className="p-1 text-muted-foreground hover:text-foreground"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={i} className="text-[10px] text-muted-foreground/60 py-0.5">{d}</div>)}
+                {monthGrid.cells.map((dateStr, i) => {
+                  if (!dateStr) return <div key={i} />;
+                  const isPast = dateStr < todayIso();
+                  const bookable = !isPast && bookableDates.has(dateStr);
+                  const sel = pickedDate === dateStr;
+                  const dayNum = Number(dateStr.slice(8));
+                  return (
+                    <button key={i} type="button" disabled={!bookable} onClick={() => { setPickedDate(dateStr); setPickedTime(""); }}
+                      className={`h-8 rounded-md text-xs transition-colors ${
+                        sel ? "bg-primary text-primary-foreground font-semibold"
+                        : bookable ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/25"
+                        : isPast ? "text-muted-foreground/30"
+                        : "bg-red-500/10 text-red-400/70"}`}
+                      title={bookable ? "Available" : isPast ? "" : "Unavailable"}>
+                      {dayNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500/30" /> Open</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-500/20" /> Unavailable</span>
+              </div>
+            </div>
+            {pickedDate && (
+              timeOptions.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {timeOptions.map(t => (
+                    <button key={t} type="button" onClick={() => setPickedTime(t)}
+                      className={`px-2.5 py-1.5 rounded-md border text-xs transition-colors ${pickedTime === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
+                      {fmtTime(t)}
                     </button>
                   ))}
                 </div>
-                {pickedDate && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {timeOptions.map(t => (
-                      <button key={t} type="button" onClick={() => setPickedTime(t)}
-                        className={`px-2.5 py-1.5 rounded-md border text-xs transition-colors ${pickedTime === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
-                        {fmtTime(t)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">No open times that day — pick another, or add a note below.</p>
+              )
             )}
           </div>
 

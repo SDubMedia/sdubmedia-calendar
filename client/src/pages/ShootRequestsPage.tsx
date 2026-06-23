@@ -13,8 +13,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import type { ShootRequest, Project, ProjectServiceSelection } from "@/lib/types";
 import { toast } from "sonner";
+
+// Clear the bell notification tied to this request (link ?req=<id>) so handling
+// it auto-dismisses without the owner clicking the bell.
+async function clearRequestNotification(userId: string | undefined, requestId: string) {
+  if (!userId) return;
+  try { await supabase.from("notifications").update({ read: true }).eq("user_id", userId).like("link", `%req=${requestId}%`); }
+  catch { /* best-effort — the bell will catch up on next load */ }
+}
 
 function fmtDate(iso: string): string {
   if (!iso) return "Any date";
@@ -37,6 +47,7 @@ function addMinutes(t: string, mins: number): string {
 
 export default function ShootRequestsPage() {
   const { data, addLocation, addProject, updateShootRequest, createReShootGallery } = useApp();
+  const { profile } = useAuth();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [declineTarget, setDeclineTarget] = useState<ShootRequest | null>(null);
   const [declineNote, setDeclineNote] = useState("");
@@ -125,6 +136,7 @@ export default function ShootRequestsPage() {
         toast.warning("Shoot scheduled, but the photo gallery didn't auto-create — make one from the project.");
       }
       await updateShootRequest(req.id, { status: "scheduled", projectId: project.id });
+      await clearRequestNotification(profile?.id, req.id);
       toast.success("Shoot scheduled — it's on your calendar");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't approve the request");
@@ -138,6 +150,7 @@ export default function ShootRequestsPage() {
     setBusyId(declineTarget.id);
     try {
       await updateShootRequest(declineTarget.id, { status: "declined", ownerResponse: declineNote.trim() });
+      await clearRequestNotification(profile?.id, declineTarget.id);
       toast.success("Request declined");
       setDeclineTarget(null);
       setDeclineNote("");

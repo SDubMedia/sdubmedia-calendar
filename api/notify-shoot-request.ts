@@ -67,7 +67,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type: "shoot_request",
         title: `${agentName} requested a shoot`,
         message: `${addr} · ${when}`,
-        link: "/shoot-requests",
+        // ?req=<id> lets the approve/decline flow clear THIS notification only.
+        link: `/shoot-requests?req=${reqRow.id}`,
       });
     }
 
