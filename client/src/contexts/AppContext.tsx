@@ -514,6 +514,7 @@ function rowToProject(r: any): Project {
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
     depositPaidAt: r.deposit_paid_at || null,
+    onTheWayAt: r.on_the_way_at || null,
     discountType: (r.discount_type as "percent" | "fixed" | null) || null,
     discountAmount: r.discount_amount != null ? Number(r.discount_amount) : 0,
     discountReason: r.discount_reason || "",
@@ -2504,6 +2505,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
     if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;
+    if (p.onTheWayAt !== undefined) patch.on_the_way_at = p.onTheWayAt;
     if (p.discountType !== undefined) patch.discount_type = p.discountType;
     if (p.discountAmount !== undefined) patch.discount_amount = p.discountAmount;
     if (p.discountReason !== undefined) patch.discount_reason = p.discountReason;

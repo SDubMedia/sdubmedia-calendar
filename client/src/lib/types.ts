@@ -477,6 +477,7 @@ export interface Project {
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
   depositPaidAt?: string | null; // ISO timestamp stamped when at_signing milestone paid → flips tentative to upcoming
+  onTheWayAt?: string | null; // ISO timestamp the assigned shooter marked "on my way" (locks agent edit/cancel)
   // Per-project discount applied to the billable amount when this
   // project hits an invoice. % off (discountType="percent") subtracts
   // discountAmount as a percentage of subtotal; $ off subtracts the

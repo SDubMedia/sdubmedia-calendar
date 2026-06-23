@@ -45,6 +45,24 @@ export default function MyHousesPage() {
     catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't cancel"); }
   };
 
+  // Cancel an APPROVED shoot — allowed until the photographer is on the way.
+  const cancelShoot = async (projectId: string) => {
+    if (!window.confirm("Cancel this scheduled shoot? This can't be undone.")) return;
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/agent-cancel-shoot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ projectId }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't cancel");
+      toast.success("Shoot cancelled");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't cancel");
+    }
+  };
+
   const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
   const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
   const isBroker = (myClient?.clientType ?? "") === "broker";
@@ -373,6 +391,13 @@ export default function MyHousesPage() {
                         <ImageIcon className="w-3 h-3" /> View photos
                       </a>
                     ) : null; })()}
+                    {/* Photographer on the way → locked; otherwise agent can cancel. */}
+                    {isAgent && p.onTheWayAt && (
+                      <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Photographer on the way</div>
+                    )}
+                    {isAgent && !p.onTheWayAt && (p.status === "upcoming" || p.status === "tentative") && (
+                      <button onClick={() => cancelShoot(p.id)} className="mt-1 text-xs text-destructive hover:underline">Cancel shoot</button>
+                    )}
                   </div>
                   <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{p.status}</Badge>
                 </div>

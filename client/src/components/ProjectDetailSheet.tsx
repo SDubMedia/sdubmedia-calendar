@@ -119,6 +119,40 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const isReShoot = client?.clientType === "agent" || !!agentBroker || (project.services?.length ?? 0) > 0;
   const projectGallery = data.deliveries.find(d => d.projectId === project.id);
   const [creatingGallery, setCreatingGallery] = useState(false);
+
+  // Photographer "on my way": the assigned shooter (or owner) can check in within
+  // an hour of the start; it notifies the agent and locks their edit/cancel.
+  const myCrewId = effectiveProfile?.crewMemberId || "";
+  const isAssignedShooter = !!myCrewId && (project.crew || []).some(c => c.crewMemberId === myCrewId);
+  const shootStartMs = (() => {
+    if (!project.date || !project.startTime) return null;
+    const [y, m, d] = project.date.split("-").map(Number);
+    const [hh, mm] = project.startTime.split(":").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
+  })();
+  const nowMs = Date.now();
+  const canCheckIn = (isOwner || isAssignedShooter) && !project.onTheWayAt && project.status !== "cancelled"
+    && shootStartMs !== null && nowMs >= shootStartMs - 60 * 60 * 1000 && nowMs <= shootStartMs + 4 * 60 * 60 * 1000;
+  const [markingOnWay, setMarkingOnWay] = useState(false);
+  const markOnTheWay = async () => {
+    setMarkingOnWay(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-on-the-way", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't send");
+      await updateProject(project.id, { onTheWayAt: body.onTheWayAt });
+      toast.success(body.emailed || body.pushed ? "Agent notified you're on the way" : "Marked on the way (no agent contact on file)");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't mark on the way");
+    } finally {
+      setMarkingOnWay(false);
+    }
+  };
   const location = data.locations.find((l) => l.id === project.locationId);
   const pType = data.projectTypes.find((pt) => pt.id === project.projectTypeId);
 
@@ -956,6 +990,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   </Button>
                 );
               })()}
+              {canCheckIn && (
+                <Button onClick={markOnTheWay} disabled={markingOnWay} className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
+                  <Car className="w-4 h-4" />
+                  {markingOnWay ? "Notifying…" : "I'm on my way — notify agent"}
+                </Button>
+              )}
+              {project.onTheWayAt && (
+                <div className="w-full text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5 py-1">
+                  <Car className="w-3.5 h-3.5" /> Agent notified you're on the way
+                </div>
+              )}
               {isOwner && isReShoot && (
                 <Button
                   variant="outline"
