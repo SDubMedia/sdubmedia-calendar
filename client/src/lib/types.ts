@@ -708,6 +708,7 @@ export interface ShooterPref {
   shootMinutes: number;        // how long a shoot blocks off
   bufferMinutes: number;       // travel time required between shoots
   maxPerDay: number;           // 0 = unlimited
+  fakeBusyMinutes: number;     // hold back N min/day in the agent booking view (0 = off)
   createdAt: string;
 }
 

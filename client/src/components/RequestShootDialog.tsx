@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Check, MapPin, CalendarClock } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { supabase, getAuthToken } from "@/lib/supabase";
-import { getOpenDays, shootDurationMinFor, type BusyBlock } from "@/lib/data";
+import { getOpenDays, shootDurationMinFor, fakeBusyBlocksFor, addDaysIso, type BusyBlock } from "@/lib/data";
 import type { ProjectServiceSelection, ShootRequest } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -124,7 +124,19 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
     }
     return out;
   }, [data.shootRequests, data.shooterPrefs, data.crewMembers, editRequest]);
-  const allBusy = useMemo(() => [...busy, ...pendingBusy], [busy, pendingBusy]);
+  // "Fake it till you make it" — synthetic holds that make shooters look busier
+  // to agents (per-staff fakeBusyMinutes). Agent-view only; never the real calendar.
+  const fakeBusy = useMemo(() => {
+    const out: BusyBlock[] = [];
+    const withFake = data.shooterPrefs.filter(p => (p.fakeBusyMinutes ?? 0) > 0);
+    if (withFake.length === 0) return out;
+    for (let i = 0; i < 21; i++) {
+      const d = addDaysIso(todayIso(), i);
+      for (const p of withFake) out.push(...fakeBusyBlocksFor(p.crewMemberId, d, data.availability, p.fakeBusyMinutes));
+    }
+    return out;
+  }, [data.shooterPrefs, data.availability]);
+  const allBusy = useMemo(() => [...busy, ...pendingBusy, ...fakeBusy], [busy, pendingBusy, fakeBusy]);
 
   const openDays = useMemo(
     () => getOpenDays(data.availability, { fromDate: todayIso(), days: 21, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap }),

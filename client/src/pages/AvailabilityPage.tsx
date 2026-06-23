@@ -76,19 +76,21 @@ export default function AvailabilityPage() {
   const [shootMinutes, setShootMinutes] = useState(60);
   const [bufferMinutes, setBufferMinutes] = useState(30);
   const [maxPerDay, setMaxPerDay] = useState(0);
+  const [fakeBusyMinutes, setFakeBusyMinutes] = useState(0);
   const [savingPref, setSavingPref] = useState(false);
   useEffect(() => {
     const p = data.shooterPrefs.find(x => x.crewMemberId === personId);
     setShootMinutes(p?.shootMinutes ?? 60);
     setBufferMinutes(p?.bufferMinutes ?? 30);
     setMaxPerDay(p?.maxPerDay ?? 0);
+    setFakeBusyMinutes(p?.fakeBusyMinutes ?? 0);
   }, [personId, data.shooterPrefs]);
 
   const handleSavePrefs = async () => {
     if (!personId) return;
     setSavingPref(true);
     try {
-      await upsertShooterPref({ crewMemberId: personId, shootMinutes, bufferMinutes, maxPerDay });
+      await upsertShooterPref({ crewMemberId: personId, shootMinutes, bufferMinutes, maxPerDay, fakeBusyMinutes });
       toast.success("Booking rules saved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't save rules");
@@ -317,6 +319,13 @@ export default function AvailabilityPage() {
             <div>
               <Label className="text-xs text-muted-foreground">Max / day</Label>
               <Input inputMode="decimal" value={String(maxPerDay)} onChange={e => setMaxPerDay(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center mt-1" />
+            </div>
+          </div>
+          <div className="mb-3">
+            <Label className="text-xs text-muted-foreground">Hold back / day (min)</Label>
+            <div className="flex items-center gap-2">
+              <Input inputMode="decimal" value={String(fakeBusyMinutes)} onChange={e => setFakeBusyMinutes(Number(e.target.value.replace(/\D/g, "")) || 0)} className="text-center mt-1 w-24" />
+              <span className="text-[11px] text-muted-foreground mt-1">blocks this much/day in what agents see — you look busier. 0 = off.</span>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mb-3">Travel buffer is held before and after each shoot. Max/day of 0 means no limit.</p>

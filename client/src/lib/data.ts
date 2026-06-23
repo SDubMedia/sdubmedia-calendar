@@ -204,6 +204,28 @@ export function getCrewShootStatus(
   return "available";
 }
 
+/** "Fake it till you make it" — a synthetic busy block per available day that
+ *  holds back `fakeBusyMinutes` of a shooter's time in the AGENT booking view,
+ *  so they look more in demand. The start is pseudo-random but stable per
+ *  (crew, date) so it doesn't flicker. Returns [] when off or the window's too
+ *  short. Never touches the real calendar — only fed into the open-slot engine. */
+export function fakeBusyBlocksFor(crewMemberId: string, date: string, availability: Availability[], fakeBusyMinutes: number): BusyBlock[] {
+  if (!fakeBusyMinutes || fakeBusyMinutes <= 0) return [];
+  const windows = windowsFor(availability, crewMemberId, date);
+  // Stable hash of crew+date → deterministic "random" slot.
+  let h = 2166136261;
+  const s = `${crewMemberId}|${date}`;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const seed = Math.abs(h);
+  for (const [ws, we] of windows) {
+    if (we - ws < fakeBusyMinutes) continue; // window can't hold the block
+    const slots = Math.floor((we - ws - fakeBusyMinutes) / 30) + 1; // 30-min grid starts
+    const start = ws + (seed % slots) * 30;
+    return [{ crewMemberId, date, start: toHHMM(start), end: toHHMM(start + fakeBusyMinutes) }];
+  }
+  return [];
+}
+
 // ---- Seed Data (pre-populated from Base44 app) ----
 // NOTE: This is only used for localStorage fallback; Supabase is the primary data source.
 

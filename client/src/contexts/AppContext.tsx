@@ -460,6 +460,7 @@ function rowToShooterPref(r: any): ShooterPref {
     shootMinutes: Number(r.shoot_minutes ?? 60),
     bufferMinutes: Number(r.buffer_minutes ?? 30),
     maxPerDay: Number(r.max_per_day ?? 0),
+    fakeBusyMinutes: Number(r.fake_busy_minutes ?? 0),
     createdAt: r.created_at,
   };
 }
@@ -2914,6 +2915,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       shoot_minutes: p.shootMinutes,
       buffer_minutes: p.bufferMinutes,
       max_per_day: p.maxPerDay,
+      fake_busy_minutes: p.fakeBusyMinutes,
     }, { onConflict: "crew_member_id" }).select().single();
     if (error) throw new Error(error.message);
     const pref = rowToShooterPref(row);
