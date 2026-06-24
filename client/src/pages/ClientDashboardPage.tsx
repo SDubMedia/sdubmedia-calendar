@@ -6,10 +6,11 @@
 import { useMemo, useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { InvoiceStatus, SeriesEpisode } from "@/lib/types";
+import type { InvoiceStatus, SeriesEpisode, Project } from "@/lib/types";
 import { Link, Redirect, useLocation } from "wouter";
 import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus } from "lucide-react";
 import RequestShootDialog from "@/components/RequestShootDialog";
+import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { hasAcceptedAgreement } from "@/lib/agreements";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ export default function ClientDashboardPage() {
   const bookingGated = isAgent && (!myClient?.cardOnFile || !hasAcceptedAgreement(myClient));
   const [, navigate] = useLocation();
   const [requestOpen, setRequestOpen] = useState(false);
+  const [detailProject, setDetailProject] = useState<Project | null>(null);
   const startBooking = () => { if (bookingGated) navigate("/my-houses"); else setRequestOpen(true); };
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -210,7 +212,7 @@ export default function ClientDashboardPage() {
                   const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                   const loc = data.locations.find(l => l.id === p.locationId);
                   return (
-                    <div key={p.id} className="px-4 py-3">
+                    <div key={p.id} onClick={() => setDetailProject(p)} className="px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors">
                       <div className="flex items-start justify-between">
                         <div>
                           <span className="text-sm font-medium text-foreground">{pType?.name ?? "Project"}</span>
@@ -219,7 +221,7 @@ export default function ClientDashboardPage() {
                             {loc && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{loc.name}</span>}
                           </div>
                           {p.deliverableUrl && (
-                            <a href={p.deliverableUrl} target="_blank" rel="noopener noreferrer"
+                            <a href={p.deliverableUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 mt-1 text-xs text-primary hover:text-primary/80">
                               View Deliverables
                             </a>
@@ -376,7 +378,7 @@ export default function ClientDashboardPage() {
                   const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                   const loc = data.locations.find(l => l.id === p.locationId);
                   return (
-                    <div key={p.id} className="px-4 py-3">
+                    <div key={p.id} onClick={() => setDetailProject(p)} className="px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors">
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
@@ -456,6 +458,7 @@ export default function ClientDashboardPage() {
       </div>
 
       {isAgent && <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />}
+      {detailProject && <ProjectDetailSheet project={detailProject} onClose={() => setDetailProject(null)} />}
     </div>
   );
 }
