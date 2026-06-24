@@ -48,7 +48,7 @@ function currentMonthBounds(): { start: string; end: string; label: string } {
 }
 
 export default function BrokersPage() {
-  const { data, addInvoice } = useApp();
+  const { data, addInvoice, updateClient } = useApp();
   const [, setLocation] = useLocation();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetClient, setSheetClient] = useState<Client | null>(null);
@@ -75,6 +75,21 @@ export default function BrokersPage() {
   // Does this agent already have a login? (drives Invite vs Resend password)
   const agentHasLogin = (agentId: string) => allProfiles.some(p => p.role === "client" && p.clientIds.includes(agentId));
   const [invitingId, setInvitingId] = useState<string | null>(null);
+  // Inline "link an existing client to this broker" picker, per broker.
+  const [linkOpenBroker, setLinkOpenBroker] = useState<string | null>(null);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const linkAgentToBroker = async (clientId: string, brokerId: string) => {
+    setLinkingId(clientId);
+    try {
+      await updateClient(clientId, { clientType: "agent", brokerId });
+      toast.success("Agent linked to broker");
+      setLinkOpenBroker(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't link agent");
+    } finally {
+      setLinkingId(null);
+    }
+  };
   const inviteOrResend = async (agentId: string) => {
     setInvitingId(agentId);
     try {
@@ -236,6 +251,29 @@ export default function BrokersPage() {
                 <button onClick={() => openAddAgent(broker.id)} className="w-full px-4 py-2.5 text-xs text-primary hover:bg-primary/5 flex items-center gap-1.5">
                   <Plus className="w-3.5 h-3.5" /> Add agent to {broker.company} <ChevronRight className="w-3 h-3 ml-auto opacity-50" />
                 </button>
+                {/* Link an EXISTING client/agent to this broker (vs. creating new). */}
+                {linkOpenBroker === broker.id ? (
+                  <div className="px-4 py-2.5 border-t border-border/40 flex items-center gap-2">
+                    <select
+                      autoFocus
+                      defaultValue=""
+                      disabled={!!linkingId}
+                      onChange={(e) => { if (e.target.value) linkAgentToBroker(e.target.value, broker.id); }}
+                      className="flex-1 min-w-0 h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                    >
+                      <option value="" disabled>Pick an existing client to link…</option>
+                      {data.clients
+                        .filter(c => c.clientType !== "broker" && c.brokerId !== broker.id && c.id !== broker.id)
+                        .sort((a, b) => a.company.localeCompare(b.company))
+                        .map(c => <option key={c.id} value={c.id}>{c.company}{c.brokerId ? " (currently under another broker)" : ""}</option>)}
+                    </select>
+                    <button onClick={() => setLinkOpenBroker(null)} className="text-xs text-muted-foreground hover:text-foreground px-2">Cancel</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setLinkOpenBroker(broker.id)} className="w-full px-4 py-2.5 text-xs text-muted-foreground hover:bg-white/5 flex items-center gap-1.5 border-t border-border/40">
+                    <User className="w-3.5 h-3.5" /> Link an existing client to {broker.company}
+                  </button>
+                )}
               </div>
             </div>
           );
