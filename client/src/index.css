@@ -485,3 +485,10 @@
     padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Keep a slide-over sheet's close (X) button below the iOS status bar / notch so
+   it stays tappable. The close is the direct-child button of the sheet content;
+   on desktop env() is 0 so it's unchanged. */
+[data-slot="sheet-content"] > button {
+  top: max(0.75rem, env(safe-area-inset-top));
+}

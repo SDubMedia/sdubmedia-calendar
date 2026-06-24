@@ -62,7 +62,12 @@ export default function NotificationBell() {
 
   const handleClick = (n: AppNotification) => {
     markRead(n.id);
-    if (n.link) setLocation(n.link);
+    if (n.link) {
+      // Absolute links (e.g. a delivered gallery) open in a new tab; in-app
+      // paths route normally.
+      if (/^https?:\/\//i.test(n.link)) window.open(n.link, "_blank", "noopener");
+      else setLocation(n.link);
+    }
     setOpen(false);
   };
 

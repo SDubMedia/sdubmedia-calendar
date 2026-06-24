@@ -632,7 +632,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   return (
     <>
       <Sheet open={true} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent className="w-full sm:w-[720px] sm:max-w-[720px] bg-card border-border text-foreground overflow-y-auto overflow-x-hidden max-h-[100dvh]">
+        <SheetContent className="w-full sm:w-[720px] sm:max-w-[720px] bg-card border-border text-foreground overflow-y-auto overflow-x-hidden max-h-[100dvh]" style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))", paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
           <SheetHeader className="pb-4">
             <div className="flex items-start justify-between">
               <div>
@@ -790,6 +790,14 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                     </div>
                   ))}
                 </div>
+                {/* Agent: who pays for these pieces. */}
+                {isClient && (
+                  agentBroker ? (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><Building2 className="w-3 h-3 shrink-0" /> Billed to {agentBroker.company} — you won't be charged.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Billed to your card on file.</p>
+                  )
+                )}
               </div>
             )}
 
