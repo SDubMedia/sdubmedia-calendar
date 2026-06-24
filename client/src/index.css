@@ -470,3 +470,18 @@
     page-break-inside: avoid;
   }
 }
+
+/* App-wide bottom breathing room (mobile): give scrollable views extra space
+   below the last item so it isn't pinned to the bottom edge — you can scroll it
+   up into an easier tap zone instead of reaching the very bottom of the screen.
+   Two page patterns: those that scroll inside an inner `flex-1 overflow-auto`
+   under a full-height root, and those that let <main> scroll a growing page. */
+@media (max-width: 767px) {
+  main > .h-full > .overflow-auto,
+  main > .h-full > .overflow-y-auto {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  main > :not(.h-full) {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
