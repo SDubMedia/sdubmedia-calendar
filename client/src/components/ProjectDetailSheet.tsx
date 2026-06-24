@@ -684,6 +684,44 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             )}
 
+            {/* Agent status banner — the lifecycle at a glance, with a hero
+                "view photos" action once the gallery is delivered. */}
+            {isClient && project.status !== "cancelled" && (() => {
+              const galleryReady = projectGallery?.status === "delivered";
+              const editing = project.status === "filming_done" || project.status === "in_editing" || project.status === "editing_done";
+              const dateStr = project.date ? new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
+              if (galleryReady) {
+                return (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600 dark:text-emerald-300"><ImageIcon className="w-4 h-4" /> Your photos are ready</div>
+                    <a href={`/deliver/${projectGallery!.token}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full bg-emerald-600 text-white rounded-md py-2.5 text-sm font-medium hover:bg-emerald-700 transition-colors">
+                      <ImageIcon className="w-4 h-4" /> View &amp; download photos
+                    </a>
+                  </div>
+                );
+              }
+              if (project.onTheWayAt) {
+                return (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-300">
+                    <Car className="w-4 h-4 shrink-0" /> Your photographer is on the way
+                  </div>
+                );
+              }
+              if (editing) {
+                return (
+                  <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-300">
+                    <Film className="w-4 h-4 shrink-0" /> Shot — your photos are being edited. We'll let you know when they're ready.
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-300">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" /> Confirmed{dateStr ? ` — ${dateStr}` : ""}
+                </div>
+              );
+            })()}
+
             {/* Date, Time, Client, Location */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-secondary rounded-lg p-3 space-y-1">

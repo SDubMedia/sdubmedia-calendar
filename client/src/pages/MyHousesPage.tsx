@@ -268,8 +268,10 @@ export default function MyHousesPage() {
           </div>
         )}
 
-        {/* Broker: invoices + pay (only invoices you've sent are payable) */}
-        {isBroker && myInvoices.length > 0 && (
+        {/* Invoices + pay — for a broker (their agents' shoots) or a self-paying
+            agent (their own shoots). Broker-covered agents have no own invoices
+            here, so they see nothing. Paid rows link to a receipt. */}
+        {myInvoices.length > 0 && (
           <div>
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><Receipt className="w-3 h-3" /> Invoices</div>
             <div className="space-y-2">
@@ -280,7 +282,13 @@ export default function MyHousesPage() {
                     {inv.issueDate && <div className="text-xs text-muted-foreground">{inv.issueDate}</div>}
                   </div>
                   {inv.status === "paid" ? (
-                    <Badge className="bg-green-500/15 text-green-600 dark:text-green-300 border-green-500/30 flex-shrink-0">Paid</Badge>
+                    inv.viewToken ? (
+                      <a href={`/invoice/${inv.viewToken}`} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                        <Badge className="bg-green-500/15 text-green-600 dark:text-green-300 border-green-500/30 cursor-pointer">Paid · Receipt</Badge>
+                      </a>
+                    ) : (
+                      <Badge className="bg-green-500/15 text-green-600 dark:text-green-300 border-green-500/30 flex-shrink-0">Paid</Badge>
+                    )
                   ) : inv.status === "sent" ? (
                     <Button onClick={() => handlePay(inv.id, inv.viewToken)} disabled={payingId === inv.id} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 flex-shrink-0">
                       <CreditCard className="w-4 h-4" /> {payingId === inv.id ? "Opening…" : `Pay ${money(inv.total)}`}

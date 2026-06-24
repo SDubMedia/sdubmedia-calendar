@@ -10,6 +10,7 @@ import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, escapeHtml, isAllowedUrl, errorMessage } from "./_auth.js";
 import { sendPushToUser } from "./_apns.js";
+import { randomUUID } from "crypto";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -90,6 +91,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const r = await sendPushToUser(targetUserId, { title: "Your photos are ready", body: `${delivery.title || "Your listing"} — tap to view & download`, data: { url: galleryUrl } });
         pushed = r.sent;
       } catch (e) { console.error("Gallery-ready push failed:", e); }
+      // In-app bell for the agent too, so it's there even if push is off.
+      try {
+        await supabase.from("notifications").insert({
+          id: randomUUID(),
+          user_id: targetUserId,
+          type: "gallery_ready",
+          title: "Your photos are ready",
+          message: delivery.title || "Your listing",
+          link: galleryUrl,
+        });
+      } catch (e) { console.error("Gallery-ready bell failed:", e); }
     }
 
     return res.status(200).json({ ok: true, emailed, pushed, toEmail: toEmail || null });
