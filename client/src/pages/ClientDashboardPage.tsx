@@ -8,7 +8,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { InvoiceStatus, SeriesEpisode, Project } from "@/lib/types";
 import { Link, Redirect, useLocation } from "wouter";
-import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus } from "lucide-react";
+import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus, Building2, CreditCard } from "lucide-react";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { hasAcceptedAgreement } from "@/lib/agreements";
@@ -173,6 +173,20 @@ export default function ClientDashboardPage() {
             <span className="flex items-center gap-2 font-semibold"><Plus className="w-5 h-5" /> Request a shoot</span>
             <ArrowRight className="w-5 h-5" />
           </button>
+        )}
+        {/* Agents: who's paying — broker coverage or self-pay, at a glance. */}
+        {isAgent && (
+          coveredByBroker ? (
+            <div className="flex items-center gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+              <Building2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span className="text-sm text-foreground">Your broker <span className="font-medium">{brokerName}</span> pays for your shoots — nothing comes out of your pocket.</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-3">
+              <CreditCard className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-foreground">You pay for your own shoots — billed to your card on file.</span>
+            </div>
+          )
         )}
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
