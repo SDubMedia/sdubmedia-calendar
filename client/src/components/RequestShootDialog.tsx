@@ -45,6 +45,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const [pickedDate, setPickedDate] = useState("");
   const [pickedTime, setPickedTime] = useState("");
   const [monthOffset, setMonthOffset] = useState(0); // booking calendar navigation
+  const [agentWillMeet, setAgentWillMeet] = useState(false);
   const touchX = useRef<number | null>(null);
   // Swipe left = next month, swipe right = previous (not below the current month).
   const onTouchStart = (e: React.TouchEvent) => { touchX.current = e.touches[0].clientX; };
@@ -69,6 +70,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
         setShooterId(editRequest.preferredCrewMemberId || "");
         setPickedDate(editRequest.preferredDate || "");
         setPickedTime(editRequest.preferredTime || "");
+        setAgentWillMeet(!!editRequest.agentWillMeet);
         setNotes(editRequest.notes || "");
       }
     } else if (!open) {
@@ -186,7 +188,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const total = selections.reduce((s, x) => s + Number(x.price || 0), 0);
 
   const reset = () => {
-    setAddress(""); setPicked({}); setShooterId(""); setPickedDate(""); setPickedTime(""); setNotes("");
+    setAddress(""); setPicked({}); setShooterId(""); setPickedDate(""); setPickedTime(""); setAgentWillMeet(false); setNotes("");
   };
 
   const handleSubmit = async () => {
@@ -202,6 +204,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
           preferredDate: pickedDate,
           preferredTime: pickedTime,
           preferredCrewMemberId: shooterId || null,
+          agentWillMeet,
           notes: notes.trim(),
           requestedServices: selections,
         });
@@ -216,6 +219,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
         preferredDate: pickedDate,
         preferredTime: pickedTime,
         preferredCrewMemberId: shooterId || null,
+        agentWillMeet,
         notes: notes.trim(),
         requestedServices: selections,
       });
@@ -358,9 +362,20 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
             )}
           </div>
 
+          {/* Access: will the agent meet on-site? */}
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agentWillMeet}
+              onChange={e => setAgentWillMeet(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-primary flex-shrink-0"
+            />
+            <span className="text-sm text-foreground">I'll meet the photographer at the property</span>
+          </label>
+
           {/* Notes */}
           <div>
-            <Label className="text-xs text-muted-foreground">Anything else? (optional)</Label>
+            <Label className="text-xs text-muted-foreground">Gate code / lockbox / anything else? (optional)</Label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Gate code, lockbox, special requests…" className="mt-1" />
           </div>
         </div>

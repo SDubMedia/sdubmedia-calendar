@@ -113,7 +113,7 @@ export default function ShootRequestsPage() {
         billingModel: null,
         billingRate: null,
         editTypes: [],
-        notes: req.notes,
+        notes: [req.agentWillMeet ? "Agent will meet on-site." : "", req.notes].filter(Boolean).join(" "),
         deliverableUrl: "",
         cancellationReason: "",
         cancelledAt: null,
@@ -197,6 +197,12 @@ export default function ShootRequestsPage() {
                     ))}
                     <span className="px-2 py-0.5 rounded bg-primary/10 text-xs text-primary font-medium">Total ${total.toFixed(0)}</span>
                   </div>
+                  <p className="text-xs mb-2 flex items-center gap-1.5">
+                    <User className="w-3 h-3 flex-shrink-0" />
+                    {req.agentWillMeet
+                      ? <span className="text-emerald-400 font-medium">Agent will meet on-site</span>
+                      : <span className="text-muted-foreground">Lockbox / gate-code access (agent not meeting)</span>}
+                  </p>
                   {req.notes && <p className="text-xs text-muted-foreground mb-3 italic">"{req.notes}"</p>}
                   <div className="flex gap-2">
                     <Button onClick={() => handleApprove(req)} disabled={busyId === req.id} className="flex-1 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">

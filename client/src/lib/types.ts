@@ -678,6 +678,7 @@ export interface ShootRequest {
   preferredDate: string | null;
   preferredTime: string | null;            // "HH:MM" the agent asked for
   preferredCrewMemberId: string | null;    // optional shooter the agent prefers
+  agentWillMeet: boolean;                   // agent will meet the photographer on-site (vs. lockbox/gate-code access)
   notes: string;
   // What pieces the agent asked for — snapshot of catalog price (broker's rate).
   requestedServices: ProjectServiceSelection[];

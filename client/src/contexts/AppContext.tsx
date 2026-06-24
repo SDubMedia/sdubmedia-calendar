@@ -429,6 +429,7 @@ function rowToShootRequest(r: any): ShootRequest {
     preferredDate: r.preferred_date || null,
     preferredTime: r.preferred_time || null,
     preferredCrewMemberId: r.preferred_crew_member_id || null,
+    agentWillMeet: !!r.agent_will_meet,
     notes: r.notes || "",
     requestedServices: Array.isArray(r.requested_services) ? r.requested_services : [],
     status: (r.status || "pending") as ShootRequestStatus,
@@ -2836,6 +2837,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       preferred_date: r.preferredDate,
       preferred_time: r.preferredTime,
       preferred_crew_member_id: r.preferredCrewMemberId,
+      agent_will_meet: r.agentWillMeet ?? false,
       notes: r.notes,
       requested_services: r.requestedServices,
     }).select().single();
@@ -2851,6 +2853,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (r.preferredDate !== undefined) patch.preferred_date = r.preferredDate;
     if (r.preferredTime !== undefined) patch.preferred_time = r.preferredTime;
     if (r.preferredCrewMemberId !== undefined) patch.preferred_crew_member_id = r.preferredCrewMemberId;
+    if (r.agentWillMeet !== undefined) patch.agent_will_meet = r.agentWillMeet;
     if (r.notes !== undefined) patch.notes = r.notes;
     if (r.requestedServices !== undefined) patch.requested_services = r.requestedServices;
     if (r.status !== undefined) patch.status = r.status;
