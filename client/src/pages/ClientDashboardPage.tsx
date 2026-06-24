@@ -11,6 +11,7 @@ import { Link, Redirect, useLocation } from "wouter";
 import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus } from "lucide-react";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import { hasAcceptedAgreement } from "@/lib/agreements";
+import { getProjectInvoiceAmount } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -55,6 +56,11 @@ export default function ClientDashboardPage() {
   // Agents book straight from here. If they still need a card/agreement, send
   // them to My Listings where that gate lives; otherwise open the request.
   const isAgent = myClient?.clientType === "agent";
+  // An agent whose brokerage covers them: their shoots bill to the broker, so
+  // they should see a statement of what was shot — never a balance to pay.
+  const broker = isAgent && myClient?.brokerId ? data.clients.find(c => c.id === myClient.brokerId) : null;
+  const coveredByBroker = !!broker;
+  const brokerName = broker?.company ?? "your brokerage";
   const bookingGated = isAgent && (!myClient?.cardOnFile || !hasAcceptedAgreement(myClient));
   const [, navigate] = useLocation();
   const [requestOpen, setRequestOpen] = useState(false);
@@ -87,6 +93,17 @@ export default function ClientDashboardPage() {
       .filter(inv => inv.status === "draft" || inv.status === "sent")
       .reduce((sum, inv) => sum + inv.total, 0);
   }, [data.invoices]);
+
+  // Broker-covered agent: a statement of their own shoots (date · property ·
+  // price). Built from their own projects, so no other agent's data is exposed.
+  const myBilledShoots = useMemo(() => {
+    if (!coveredByBroker || !myClient) return [];
+    return data.projects
+      .map(p => ({ p, amt: getProjectInvoiceAmount(p, myClient) }))
+      .filter(x => x.amt > 0)
+      .sort((a, b) => b.p.date.localeCompare(a.p.date));
+  }, [coveredByBroker, myClient, data.projects]);
+  const myShootsBilled = useMemo(() => myBilledShoots.reduce((s, x) => s + x.amt, 0), [myBilledShoots]);
 
   // Upcoming projects (next 30 days)
   const upcomingProjects = useMemo(() => {
@@ -164,7 +181,9 @@ export default function ClientDashboardPage() {
             onClick={() => setExpandedSection(expandedSection === "completed" ? null : "completed")}
             active={expandedSection === "completed"} />
           <MetricCard icon={FileText} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
-            label="Outstanding" value={formatCurrency(outstandingAmount)} sub="Unpaid invoices"
+            label={coveredByBroker ? "Billed to broker" : "Outstanding"}
+            value={formatCurrency(coveredByBroker ? myShootsBilled : outstandingAmount)}
+            sub={coveredByBroker ? `Paid by ${brokerName}` : "Unpaid invoices"}
             onClick={() => setExpandedSection(expandedSection === "outstanding" ? null : "outstanding")}
             active={expandedSection === "outstanding"} />
         </div>
@@ -210,36 +229,62 @@ export default function ClientDashboardPage() {
           </div>
         )}
 
-        {/* Outstanding Invoices Expanded */}
+        {/* Outstanding / Broker statement Expanded */}
         {expandedSection === "outstanding" && (
           <div className="bg-card border border-border rounded-lg">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Outstanding Invoices
+                {coveredByBroker ? "Billed to Your Brokerage" : "Outstanding Invoices"}
               </h3>
             </div>
-            <div className="divide-y divide-border max-h-80 overflow-auto">
-              {data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").length === 0 ? (
-                <div className="p-6 text-center text-sm text-muted-foreground">No outstanding invoices</div>
-              ) : (
-                data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").map(inv => (
-                  <div key={inv.id} className="px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">{inv.invoiceNumber}</span>
-                        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", INVOICE_STATUS_COLORS[inv.status])}>
-                          {inv.status}
-                        </span>
+            {coveredByBroker ? (
+              <>
+                <div className="px-4 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" /> Covered by {brokerName} — nothing is due from you.
+                </div>
+                <div className="divide-y divide-border max-h-80 overflow-auto">
+                  {myBilledShoots.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">No shoots billed yet</div>
+                  ) : (
+                    myBilledShoots.map(({ p, amt }) => {
+                      const loc = data.locations.find(l => l.id === p.locationId);
+                      return (
+                        <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium text-foreground truncate block">{loc?.name ?? "Shoot"}</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">{formatDate(p.date)}</p>
+                          </div>
+                          <span className="text-sm font-semibold text-foreground shrink-0">{formatCurrency(amt)}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="divide-y divide-border max-h-80 overflow-auto">
+                {data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">No outstanding invoices</div>
+                ) : (
+                  data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").map(inv => (
+                    <div key={inv.id} className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">{inv.invoiceNumber}</span>
+                          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", INVOICE_STATUS_COLORS[inv.status])}>
+                            {inv.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
-                      </p>
+                      <span className="text-sm font-semibold text-foreground">{formatCurrency(inv.total)}</span>
                     </div>
-                    <span className="text-sm font-semibold text-foreground">{formatCurrency(inv.total)}</span>
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -341,9 +386,14 @@ export default function ClientDashboardPage() {
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Invoices
+                {coveredByBroker ? "Billing" : "Invoices"}
               </h3>
             </div>
+            {coveredByBroker ? (
+              <div className="p-4 text-sm text-muted-foreground">
+                Your shoots are billed to <span className="text-foreground font-medium">{brokerName}</span>. You won't get a bill or owe anything for them.
+              </div>
+            ) : (
             <div className="divide-y divide-border">
               {recentInvoices.length === 0 ? (
                 <div className="p-6 text-center text-sm text-muted-foreground">No invoices yet</div>
@@ -366,6 +416,7 @@ export default function ClientDashboardPage() {
                 ))
               )}
             </div>
+            )}
           </div>
         </div>
 
