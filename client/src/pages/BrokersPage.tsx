@@ -173,14 +173,14 @@ export default function BrokersPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-border bg-card/50">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Brokers</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Brokerages that pay for their agents' shoots. Bill the broker monthly for all their homes.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           <Button variant="outline" onClick={openAddBroker} className="border-border gap-2">
             <Plus className="w-4 h-4" /> Add Broker
           </Button>
