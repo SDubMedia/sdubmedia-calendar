@@ -120,8 +120,6 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const isFlatBilled = (project.billingModel ?? client?.billingModel) === "per_project"
     || (project.projectRate ?? 0) > 0
     || (project.services?.length ?? 0) > 0;
-  // Real-estate shoots get a photo gallery the owner uploads to + delivers.
-  const isReShoot = client?.clientType === "agent" || !!agentBroker || (project.services?.length ?? 0) > 0;
   const projectGallery = data.deliveries.find(d => d.projectId === project.id);
   const [creatingGallery, setCreatingGallery] = useState(false);
 
@@ -1108,15 +1106,14 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   <Car className="w-3.5 h-3.5" /> Agent notified you're on the way
                 </div>
               )}
-              {isOwner && isReShoot && (
+              {isOwner && (
                 <Button
-                  variant="outline"
                   onClick={openOrCreateGallery}
                   disabled={creatingGallery}
-                  className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10"
+                  className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   <ImageIcon className="w-4 h-4" />
-                  {creatingGallery ? "Creating…" : projectGallery ? "Open photo gallery" : "Create photo gallery"}
+                  {creatingGallery ? "Creating…" : projectGallery ? "Open gallery to deliver photos" : "Upload & deliver photos"}
                 </Button>
               )}
               {isOwner && (
