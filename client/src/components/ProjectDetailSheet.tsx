@@ -39,6 +39,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+function fmtDur(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return [h ? `${h} hr` : "", m ? `${m} min` : ""].filter(Boolean).join(" ") || "0 min";
+}
+
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   tentative: "Tentative",
   upcoming: "Upcoming",
@@ -732,6 +737,43 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             </div>
 
+            {/* What's included — the booked service pieces (all roles). */}
+            {(project.services?.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                  <Camera className="w-3.5 h-3.5" /> What's included
+                </div>
+                <div className="space-y-1.5">
+                  {project.services!.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 bg-secondary rounded-md px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{s.label}</div>
+                        {(s.durationMinutes ?? 0) > 0 && <div className="text-xs text-muted-foreground">{fmtDur(s.durationMinutes!)} on-site</div>}
+                      </div>
+                      <div className="text-sm font-medium tabular-nums shrink-0">${Number(s.price || 0).toFixed(0)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Products / software (owner only — these carry internal cost). */}
+            {isOwner && (project.products?.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                  <Film className="w-3.5 h-3.5" /> Products
+                </div>
+                <div className="space-y-1.5">
+                  {project.products!.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 bg-secondary rounded-md px-3 py-2">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-sm text-muted-foreground tabular-nums shrink-0">${Number(p.cost || 0).toFixed(0)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Retainer Summary (owner only) — hidden for flat-rate shoots */}
             {isOwner && !isFlatBilled && (
               <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
@@ -948,19 +990,35 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             )}
 
-            {/* Deliverables */}
-            {project.deliverableUrl && (
+            {/* Deliverables — photo gallery and/or an external link. */}
+            {(project.deliverableUrl || projectGallery) && (
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Deliverables</div>
-                <a
-                  href={project.deliverableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4 shrink-0" />
-                  View Deliverables
-                </a>
+                {projectGallery && (
+                  <a
+                    href={`/deliver/${projectGallery.token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <ImageIcon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{projectGallery.title || "Photo gallery"}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0 capitalize">{projectGallery.status}</span>
+                  </a>
+                )}
+                {project.deliverableUrl && (
+                  <a
+                    href={project.deliverableUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4 shrink-0" />
+                    View Deliverables
+                  </a>
+                )}
               </div>
             )}
 
