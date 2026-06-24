@@ -21,10 +21,10 @@ export default function LoginPage() {
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [recents, setRecents] = useState<RecentAccount[]>(() => getRecentAccounts());
-  // Start on the sign-in form (empty fields) so iOS Face ID / password autofill
-  // can offer a saved login, instead of defaulting to a possibly-stale recent
-  // account. Recents stay one tap away via "Back to recent accounts".
-  const [showForm, setShowForm] = useState<boolean>(true);
+  // Show the saved "recent accounts" picker first when there are any, so you
+  // can see and choose between your accounts. Picking one focuses the password
+  // field so iOS offers that account's saved login + Face ID.
+  const [showForm, setShowForm] = useState<boolean>(() => getRecentAccounts().length === 0);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   function pickAccount(acct: RecentAccount) {

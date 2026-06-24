@@ -186,6 +186,11 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
 
   const selections = Object.values(picked);
   const total = selections.reduce((s, x) => s + Number(x.price || 0), 0);
+  // If this agent is covered by a broker, reassure them at booking time that
+  // the brokerage is billed — not them.
+  const agentClient = data.clients.find(c => c.id === clientId);
+  const payingBroker = agentClient?.clientType === "agent" && agentClient.brokerId
+    ? data.clients.find(c => c.id === agentClient.brokerId) : null;
 
   const reset = () => {
     setAddress(""); setPicked({}); setShooterId(""); setPickedDate(""); setPickedTime(""); setAgentWillMeet(false); setNotes("");
@@ -300,6 +305,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
               })}
             </div>
             {selections.length > 0 && <div className="mt-2 text-right text-sm text-foreground">Total: <span className="font-semibold">${total.toFixed(0)}</span></div>}
+            {payingBroker && <p className="mt-1 text-right text-xs text-emerald-400">{payingBroker.company} is billed for this — you won't be charged.</p>}
           </div>
 
           {/* Time */}
