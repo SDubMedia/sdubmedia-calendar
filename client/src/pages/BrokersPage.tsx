@@ -235,12 +235,12 @@ export default function BrokersPage() {
                   <div className="px-4 py-3 text-xs text-muted-foreground">No agents yet.</div>
                 ) : agents.map(agent => (
                   <div key={agent.id} className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-border/40 last:border-b-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <User className="w-3.5 h-3.5 text-muted-foreground" />
+                    <button onClick={() => openEdit(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="Open agent profile">
+                      <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <span className="text-sm truncate">{agent.company}</span>
                       <PresenceIcon clientId={agent.id} profiles={allProfiles} appUserIds={appUserIds} />
                       {agent.contactName && agent.contactName !== agent.company && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
-                    </div>
+                    </button>
                     <div className="flex items-center gap-2 shrink-0">
                       <button onClick={() => inviteOrResend(agent.id)} disabled={invitingId === agent.id} className="text-xs text-primary hover:underline disabled:opacity-50">
                         {invitingId === agent.id ? "Sending…" : agentHasLogin(agent.id) ? "Resend password" : "Invite"}
