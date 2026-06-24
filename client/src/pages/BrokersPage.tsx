@@ -77,6 +77,7 @@ export default function BrokersPage() {
   const [invitingId, setInvitingId] = useState<string | null>(null);
   // Inline "link an existing client to this broker" picker, per broker.
   const [linkOpenBroker, setLinkOpenBroker] = useState<string | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const linkAgentToBroker = async (clientId: string, brokerId: string) => {
     setLinkingId(clientId);
@@ -251,27 +252,48 @@ export default function BrokersPage() {
                 <button onClick={() => openAddAgent(broker.id)} className="w-full px-4 py-2.5 text-xs text-primary hover:bg-primary/5 flex items-center gap-1.5">
                   <Plus className="w-3.5 h-3.5" /> Add agent to {broker.company} <ChevronRight className="w-3 h-3 ml-auto opacity-50" />
                 </button>
-                {/* Link an EXISTING client/agent to this broker (vs. creating new). */}
+                {/* Link an EXISTING agent to this broker (vs. creating new). */}
                 {linkOpenBroker === broker.id ? (
-                  <div className="px-4 py-2.5 border-t border-border/40 flex items-center gap-2">
-                    <select
-                      autoFocus
-                      defaultValue=""
-                      disabled={!!linkingId}
-                      onChange={(e) => { if (e.target.value) linkAgentToBroker(e.target.value, broker.id); }}
-                      className="flex-1 min-w-0 h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                    >
-                      <option value="" disabled>Pick an existing client to link…</option>
-                      {data.clients
-                        .filter(c => c.clientType !== "broker" && c.brokerId !== broker.id && c.id !== broker.id)
+                  <div className="px-4 py-2.5 border-t border-border/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={linkSearch}
+                        onChange={(e) => setLinkSearch(e.target.value)}
+                        placeholder="Search an agent by name or email…"
+                        className="flex-1 min-w-0 h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      />
+                      <button onClick={() => { setLinkOpenBroker(null); setLinkSearch(""); }} className="text-xs text-muted-foreground hover:text-foreground px-2">Cancel</button>
+                    </div>
+                    {(() => {
+                      const q = linkSearch.trim().toLowerCase();
+                      const matches = data.clients
+                        .filter(c => c.clientType === "agent" && c.brokerId !== broker.id && c.id !== broker.id)
+                        .filter(c => !q || c.company.toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q) || (c.contactName || "").toLowerCase().includes(q))
                         .sort((a, b) => a.company.localeCompare(b.company))
-                        .map(c => <option key={c.id} value={c.id}>{c.company}{c.brokerId ? " (currently under another broker)" : ""}</option>)}
-                    </select>
-                    <button onClick={() => setLinkOpenBroker(null)} className="text-xs text-muted-foreground hover:text-foreground px-2">Cancel</button>
+                        .slice(0, 30);
+                      return (
+                        <div className="max-h-56 overflow-auto rounded-md border border-border divide-y divide-border/40">
+                          {matches.length === 0 ? (
+                            <div className="px-3 py-3 text-xs text-muted-foreground">No unassigned agents found. (Only existing agents show here — use "Add agent" to create a new one.)</div>
+                          ) : matches.map(c => (
+                            <button
+                              key={c.id}
+                              disabled={!!linkingId}
+                              onClick={() => { linkAgentToBroker(c.id, broker.id); setLinkSearch(""); }}
+                              className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-white/5 disabled:opacity-50"
+                            >
+                              <div className="truncate">{c.company}{c.brokerId ? <span className="text-amber-300/80"> · under another broker</span> : ""}</div>
+                              {c.email && <div className="text-xs text-muted-foreground truncate">{c.email}</div>}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
-                  <button onClick={() => setLinkOpenBroker(broker.id)} className="w-full px-4 py-2.5 text-xs text-muted-foreground hover:bg-white/5 flex items-center gap-1.5 border-t border-border/40">
-                    <User className="w-3.5 h-3.5" /> Link an existing client to {broker.company}
+                  <button onClick={() => { setLinkOpenBroker(broker.id); setLinkSearch(""); }} className="w-full px-4 py-2.5 text-xs text-muted-foreground hover:bg-white/5 flex items-center gap-1.5 border-t border-border/40">
+                    <User className="w-3.5 h-3.5" /> Link an existing agent to {broker.company}
                   </button>
                 )}
               </div>
