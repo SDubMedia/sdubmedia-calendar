@@ -287,10 +287,13 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                   const on = picked[svc.id]?.variantId === null && !!picked[svc.id];
                   return (
                     <button key={svc.id} type="button" onClick={() => togglePiece(sel)}
-                      className={`w-full flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-sm transition-colors ${on ? "border-primary bg-primary/10" : "border-border hover:border-border/80"}`}>
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${on ? "bg-primary text-primary-foreground" : "border border-border"}`}>{on && <Check className="w-3 h-3" />}</span>
-                        <span className="truncate text-foreground">{svc.name}</span>
+                      className={`w-full flex items-start justify-between gap-2 rounded-md border px-3 py-2.5 text-sm text-left transition-colors ${on ? "border-primary bg-primary/10" : "border-border hover:border-border/80"}`}>
+                      <span className="flex items-start gap-2 min-w-0">
+                        <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ${on ? "bg-primary text-primary-foreground" : "border border-border"}`}>{on && <Check className="w-3 h-3" />}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-foreground">{svc.name}</span>
+                          {svc.description && <span className="block text-xs text-muted-foreground mt-0.5 whitespace-normal">{svc.description}</span>}
+                        </span>
                       </span>
                       <span className="text-muted-foreground flex-shrink-0">${svc.defaultPrice.toFixed(0)}</span>
                     </button>
@@ -298,7 +301,9 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                 }
                 return (
                   <div key={svc.id} className="rounded-md border border-border p-2.5">
-                    <div className="text-sm text-foreground mb-1.5">{svc.name}</div>
+                    <div className="text-sm text-foreground">{svc.name}</div>
+                    {svc.description && <div className="text-xs text-muted-foreground mt-0.5 mb-1.5">{svc.description}</div>}
+                    {!svc.description && <div className="mb-1.5" />}
                     <div className="flex flex-wrap gap-1.5">
                       {variants.map(v => {
                         const sel: ProjectServiceSelection = { serviceId: svc.id, variantId: v.id, label: `${svc.name} — ${v.label}`, price: v.price, durationMinutes: (v.durationMinutes || svc.durationMinutes) ?? 0 };

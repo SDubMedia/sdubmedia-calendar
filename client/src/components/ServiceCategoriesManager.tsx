@@ -248,6 +248,7 @@ function ServiceRow({ service }: { service: Service }) {
   const [price, setPrice] = useState(String(service.defaultPrice));
   const [cost, setCost] = useState(String(service.defaultCost ?? 0));
   const [duration, setDuration] = useState(String(service.durationMinutes ?? 0));
+  const [description, setDescription] = useState(service.description ?? "");
   const [showVariants, setShowVariants] = useState(false);
   const [addingVariant, setAddingVariant] = useState(false);
   const [newVariantLabel, setNewVariantLabel] = useState("");
@@ -261,7 +262,7 @@ function ServiceRow({ service }: { service: Service }) {
     const trimmed = name.trim();
     if (!trimmed) { toast.error("Name required"); return; }
     try {
-      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0, defaultCost: Number(cost) || 0, durationMinutes: Number(duration) || 0 });
+      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0, defaultCost: Number(cost) || 0, durationMinutes: Number(duration) || 0, description: description.trim() });
       setEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
@@ -318,6 +319,13 @@ function ServiceRow({ service }: { service: Service }) {
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              placeholder="What the agent gets (shown when they book) — e.g. 25–40 edited photos, interior + exterior"
+              className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            />
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground uppercase tracking-wide" title="Price (what you charge)">
                 Price
@@ -343,7 +351,7 @@ function ServiceRow({ service }: { service: Service }) {
               </label>
               <div className="flex items-center gap-1 ml-auto">
                 <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
-                <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setDuration(String(service.durationMinutes ?? 0)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
+                <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setDuration(String(service.durationMinutes ?? 0)); setDescription(service.description ?? ""); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
               </div>
             </div>
           </div>
@@ -376,6 +384,10 @@ function ServiceRow({ service }: { service: Service }) {
           </>
         )}
       </div>
+
+      {!editing && service.description && (
+        <div className="px-3 pb-2 pl-9 text-xs text-muted-foreground">{service.description}</div>
+      )}
 
       {(showVariants || variants.length === 0) && (
         <div className="px-3 pb-2 pl-9 space-y-1.5">

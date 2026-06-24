@@ -537,6 +537,7 @@ export interface Service {
   defaultPrice: number;    // used when the service has zero variants
   defaultCost?: number;    // your cost (photographer payout) when no variants
   durationMinutes?: number; // on-site minutes this piece takes (0 = use shooter default)
+  description?: string;    // agent-facing note: what they get with this selection
   position: number;
   createdAt: string;
 }

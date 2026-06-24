@@ -744,6 +744,7 @@ function rowToService(r: any): Service {
     defaultPrice: Number(r.default_price ?? 0),
     defaultCost: Number(r.default_cost ?? 0),
     durationMinutes: Number(r.duration_minutes ?? 0),
+    description: r.description || "",
     position: Number(r.position ?? 0),
     createdAt: r.created_at,
   };
@@ -2148,7 +2149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, ...(orgId ? { org_id: orgId } : {}),
       category_id: s.categoryId, name: s.name,
       default_price: s.defaultPrice ?? 0, default_cost: s.defaultCost ?? 0,
-      duration_minutes: s.durationMinutes ?? 0, position: s.position ?? 0,
+      duration_minutes: s.durationMinutes ?? 0, description: s.description ?? "", position: s.position ?? 0,
       updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw new Error(error.message);
@@ -2163,6 +2164,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.defaultPrice !== undefined) patch.default_price = s.defaultPrice;
     if (s.defaultCost !== undefined) patch.default_cost = s.defaultCost;
     if (s.durationMinutes !== undefined) patch.duration_minutes = s.durationMinutes;
+    if (s.description !== undefined) patch.description = s.description;
     if (s.position !== undefined) patch.position = s.position;
     if (s.categoryId !== undefined) patch.category_id = s.categoryId;
     const { error } = await supabase.from("services").update(patch).eq("id", id);
