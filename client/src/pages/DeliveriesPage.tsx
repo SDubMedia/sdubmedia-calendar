@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
+import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
+import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon } from "lucide-react";
 
@@ -310,8 +312,11 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited, addInvoice } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Declared up here (before any early return) to keep hook order stable.
+  const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
+  const [charging, setCharging] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -568,6 +573,40 @@ function DeliveryDetail({ id }: { id: string }) {
   const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
   const hasBroker = agentClient?.clientType === "agent" && !!agentClient.brokerId;
 
+  // Self-pay charge on delivery: when the shoot's payer resolves to an agent
+  // (no broker covering it) who has a card on file, the owner can charge that
+  // card right when they deliver the photos. Their agreement authorizes it.
+  const payer = project ? clientsById[getProjectPayerId(project, clientsById)] : null;
+  const canChargeOnDelivery = !!project && payer?.clientType === "agent" && !!payer.cardOnFile && !project.paidDate;
+  const chargeAmount = (project && payer) ? getProjectInvoiceAmount(project, payer) : 0;
+
+  // Build a one-shoot invoice billed to the agent, then charge their saved card
+  // off-session. On a decline the invoice stays unpaid so it can be sent instead.
+  const chargeOnDelivery = async () => {
+    if (!project || !payer) return;
+    setCharging(true);
+    try {
+      const draft = buildInvoice(payer, [project], data.projectTypes, data.locations, [], project.date, project.date, data.organization, data.clients);
+      if (!draft.lineItems.length || !(draft.total > 0)) { toast.error("Nothing to charge on this shoot"); return; }
+      draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
+      draft.viewToken = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+      const created = await addInvoice(draft);
+      const token = await getAuthToken();
+      const res = await fetch("/api/charge-agent-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ invoiceId: created.id }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't charge the card");
+      toast.success(`Charged${body.last4 ? ` ···· ${body.last4}` : ""} $${chargeAmount.toFixed(2)} — invoice marked paid`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't charge — invoice saved, send it to collect", { description: "Send the payment link from Invoices." });
+    } finally {
+      setCharging(false);
+    }
+  };
+
   const notifyGallery = async (recipient: "agent" | "broker") => {
     try {
       const token = await getAuthToken();
@@ -665,7 +704,13 @@ function DeliveryDetail({ id }: { id: string }) {
               <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
               <StatusButton current={delivery.status} target="sent" onClick={() => setDeliveryStatus(id, "sent")} label="Send to client" />
               <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
-              <StatusButton current={delivery.status} target="delivered" onClick={async () => { await setDeliveryStatus(id, "delivered"); notifyGallery("agent"); }} label="Mark delivered" />
+              <StatusButton current={delivery.status} target="delivered" onClick={async () => {
+                await setDeliveryStatus(id, "delivered");
+                notifyGallery("agent");
+                if (canChargeOnDelivery && !charging && window.confirm(`Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`)) {
+                  await chargeOnDelivery();
+                }
+              }} label="Mark delivered" />
             </div>
             {hasBroker && (
               <div className="mt-3 pt-3 border-t border-white/10">
