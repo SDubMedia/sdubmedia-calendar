@@ -281,7 +281,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Search + Notifications + Timer */}
         <div className="px-3 pt-3 flex items-center gap-2">
-          <div className="flex-1"><GlobalSearch /></div>
+          {canGoBack && (
+            <button onClick={() => window.history.back()} aria-label="Back" className="text-muted-foreground hover:text-foreground p-1.5 -ml-1 flex-shrink-0 rounded hover:bg-white/5">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div className="flex-1 min-w-0"><GlobalSearch /></div>
           <NotificationBell />
         </div>
         <div className="px-3 pt-2">
