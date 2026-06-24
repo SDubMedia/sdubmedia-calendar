@@ -995,18 +995,29 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Deliverables</div>
                 {projectGallery && (
-                  <a
-                    href={`/deliver/${projectGallery.token}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <ImageIcon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{projectGallery.title || "Photo gallery"}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground shrink-0 capitalize">{projectGallery.status}</span>
-                  </a>
+                  projectGallery.status === "delivered" ? (
+                    <a
+                      href={`/deliver/${projectGallery.token}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3 transition-colors"
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <ImageIcon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{projectGallery.title || "Photo gallery"}</span>
+                      </span>
+                      <span className="text-xs text-emerald-300 shrink-0">View</span>
+                    </a>
+                  ) : (
+                    // Not delivered yet — show it's coming, but not a dead link.
+                    <div className="flex items-center justify-between gap-2 text-sm bg-secondary border border-border rounded-md p-3">
+                      <span className="flex items-center gap-2 min-w-0 text-muted-foreground">
+                        <ImageIcon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{projectGallery.title || "Photo gallery"}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0">{isOwner ? "Not delivered yet" : "Photos in progress"}</span>
+                    </div>
+                  )
                 )}
                 {project.deliverableUrl && (
                   <a
