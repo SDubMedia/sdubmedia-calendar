@@ -29,8 +29,11 @@ export default function LoginPage() {
 
   function pickAccount(acct: RecentAccount) {
     setEmail(acct.email);
+    setPassword("");          // clear any password typed for a different account
     setShowForm(true);
     setMode("signin");
+    // Focus the password field so iOS surfaces this account's saved login (and
+    // Face ID) for the prefilled email. iOS still needs one tap to confirm.
     setTimeout(() => passwordRef.current?.focus(), 50);
   }
 
