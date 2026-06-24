@@ -20,6 +20,7 @@ import {
   Film,
   Clapperboard,
   ChevronRight,
+  ChevronLeft,
   BarChart2,
   PiggyBank,
   Shield,
@@ -159,6 +160,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data } = useApp();
   const orgName = data.organization?.name || "Slate";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Track in-app navigation depth so the mobile header can show a Back button
+  // once there's somewhere to go back to (e.g. return to a gallery you left).
+  const [navDepth, setNavDepth] = useState(0);
+  useEffect(() => { setNavDepth(d => d + 1); }, [location]);
+  const canGoBack = navDepth > 1;
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isOwner = profile?.role === "owner";
@@ -434,19 +440,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar — extra top padding for status bar/notch */}
         <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-sidebar flex-shrink-0 print:hidden" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-          <Link href="/">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-                <Film className="w-4 h-4 text-primary-foreground" />
+          <div className="flex items-center gap-1 min-w-0">
+            {canGoBack && (
+              <button
+                onClick={() => { setMobileMenuOpen(false); window.history.back(); }}
+                className="text-muted-foreground hover:text-foreground p-2 -ml-2 flex-shrink-0"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            <Link href="/">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
+                  <Film className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    {orgName}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">{profile?.name || "SDub Media"}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                  {orgName}
-                </p>
-                <p className="text-xs text-muted-foreground">{profile?.name || "SDub Media"}</p>
-              </div>
-            </div>
-          </Link>
+            </Link>
+          </div>
           <div className="flex items-center gap-1">
             <TimerWidget />
             <NotificationBell />
