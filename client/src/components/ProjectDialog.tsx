@@ -307,7 +307,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     return getCrewShootStatus(crewMemberId, date, startTime, end, data.projects, data.availability, crewPrefsMap, project?.id);
      
   }, [date, startTime, endTime, isRealEstate, data.projects, data.availability, data.shooterPrefs, crewPrefsMap, project?.id]);
-  const STATUS_TAG: Record<string, string> = { available: " · ✓ free", busy: " · busy", off: " · off" };
+  const STATUS_TAG: Record<string, string> = { available: " · ✓ available", busy: " · busy", off: " · off" };
 
   const availableProjectTypes = useMemo(() => {
     if (selectedClient?.allowedProjectTypeIds?.length) {
