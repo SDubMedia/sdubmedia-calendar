@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addDaysIso, weekdayOf, getOpenDays, type BusyBlock } from "../data";
+import { addDaysIso, weekdayOf, getOpenDays, onsiteMinutesForSelections, type BusyBlock } from "../data";
 import type { Availability } from "../types";
 
 function avail(partial: Partial<Availability>): Availability {
@@ -98,5 +98,26 @@ describe("getOpenDays — bookings, buffer, cap", () => {
     const blocks = [avail({ crewMemberId: "crew1", weekday: wd, startTime: "09:00", endTime: "10:00" }), avail({ crewMemberId: "crew2", weekday: wd, startTime: "09:00", endTime: "10:00" })];
     const days = getOpenDays(blocks, { fromDate: from, days: 1 });
     expect(days[0].slots[0].crewMemberIds.sort()).toEqual(["crew1", "crew2"]);
+  });
+
+  it("shootMinutesOverride sizes the prospective shoot from the products picked", () => {
+    const win = [avail({ weekday: wd, startTime: "09:00", endTime: "11:00" })];
+    // No override → default 60 → 9:00, 9:30, 10:00. Override 120 (photo+video) → only 9:00 fits a 2h window.
+    const photoOnly = getOpenDays(win, { fromDate: from, days: 1, crewMemberId: "crew1", shootMinutesOverride: 60, prefs: { crew1: { shootMinutes: 60, bufferMinutes: 0, maxPerDay: 0 } } });
+    const photoVideo = getOpenDays(win, { fromDate: from, days: 1, crewMemberId: "crew1", shootMinutesOverride: 120, prefs: { crew1: { shootMinutes: 60, bufferMinutes: 0, maxPerDay: 0 } } });
+    expect(times(photoOnly)).toEqual(["09:00", "09:30", "10:00"]);
+    expect(times(photoVideo)).toEqual(["09:00"]);
+  });
+});
+
+describe("onsiteMinutesForSelections", () => {
+  it("sums the picked pieces' durations", () => {
+    expect(onsiteMinutesForSelections([{ durationMinutes: 60 }, { durationMinutes: 60 }], 90)).toBe(120);
+  });
+  it("falls back to the shooter length when no piece carries a duration", () => {
+    expect(onsiteMinutesForSelections([{ durationMinutes: 0 }, {}], 75)).toBe(75);
+  });
+  it("ignores the fallback once any piece has a duration", () => {
+    expect(onsiteMinutesForSelections([{ durationMinutes: 45 }, { durationMinutes: 0 }], 90)).toBe(45);
   });
 });

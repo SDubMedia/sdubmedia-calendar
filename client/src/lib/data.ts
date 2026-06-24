@@ -54,10 +54,13 @@ function windowsFor(availability: Availability[], crewMemberId: string, date: st
     .map(a => a.allDay ? [toMin(ALLDAY_START), toMin(ALLDAY_END)] : [toMin(a.startTime), toMin(a.endTime)] as [number, number]);
 }
 
-/** Candidate shoot starts for one shooter on one date, honoring their rules. */
+/** Candidate shoot starts for one shooter on one date, honoring their rules.
+ *  `shootOverride` (minutes) sizes the prospective shoot from the products the
+ *  agent picked, instead of the shooter's flat default; buffer is unchanged. */
 function openStartsFor(
   availability: Availability[], crewMemberId: string, date: string,
-  busy: BusyBlock[], pref: { shootMinutes: number; bufferMinutes: number; maxPerDay: number }
+  busy: BusyBlock[], pref: { shootMinutes: number; bufferMinutes: number; maxPerDay: number },
+  shootOverride?: number
 ): string[] {
   const windows = windowsFor(availability, crewMemberId, date);
   if (windows.length === 0) return [];
@@ -65,7 +68,7 @@ function openStartsFor(
   // Daily cap — already at the max number of shoots for the day.
   if (pref.maxPerDay > 0 && dayBusy.length >= pref.maxPerDay) return [];
   const busyRanges = dayBusy.map(b => [toMin(b.start), toMin(b.end)] as [number, number]);
-  const shoot = pref.shootMinutes, buf = pref.bufferMinutes;
+  const shoot = (shootOverride && shootOverride > 0) ? shootOverride : pref.shootMinutes, buf = pref.bufferMinutes;
   const out: string[] = [];
   for (const [ws, we] of windows) {
     for (let t = ws; t + shoot <= we; t += SLOT_STEP_MIN) {
@@ -84,6 +87,8 @@ export function getOpenDays(
     crewMemberId?: string | null;
     busy?: BusyBlock[];
     prefs?: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }>;
+    /** On-site minutes of the shoot being booked (sum of picked products). */
+    shootMinutesOverride?: number;
   }
 ): OpenDay[] {
   const busy = opts.busy ?? [];
@@ -97,7 +102,7 @@ export function getOpenDays(
     const byTime = new Map<string, Set<string>>();
     for (const cm of shooters) {
       const pref = prefs[cm] ?? DEFAULT_PREF;
-      for (const t of openStartsFor(availability, cm, date, busy, pref)) {
+      for (const t of openStartsFor(availability, cm, date, busy, pref, opts.shootMinutesOverride)) {
         if (!byTime.has(t)) byTime.set(t, new Set());
         byTime.get(t)!.add(cm);
       }
@@ -177,6 +182,24 @@ export function conflictsForDate(
 export function shootDurationMinFor(crewMemberId: string | null | undefined, prefs: ShooterPref[]): number {
   const p = prefs.find(x => x.crewMemberId === crewMemberId);
   return p ? p.shootMinutes + p.bufferMinutes : 90;
+}
+
+/** On-site shoot length (minutes) from the products picked — the sum of each
+ *  piece's durationMinutes. This is the agent-facing appointment length; travel
+ *  buffer is reserved separately by the slot engine, not added here. Falls back
+ *  to the shooter's flat shoot length when no piece carries a duration yet. */
+export function onsiteMinutesForSelections(
+  selections: { durationMinutes?: number }[],
+  fallbackMinutes: number
+): number {
+  const sum = selections.reduce((s, x) => s + (Number(x.durationMinutes) || 0), 0);
+  return sum > 0 ? sum : fallbackMinutes;
+}
+
+/** A shooter's on-site shoot length only (no buffer), for the fallback above. */
+export function shootOnsiteMinFor(crewMemberId: string | null | undefined, prefs: ShooterPref[]): number {
+  const p = prefs.find(x => x.crewMemberId === crewMemberId);
+  return p ? p.shootMinutes : 60;
 }
 
 export type CrewShootStatus = "available" | "busy" | "off";

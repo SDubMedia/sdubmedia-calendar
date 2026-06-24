@@ -508,6 +508,7 @@ export interface ProjectServiceSelection {
   label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
   price: number;    // snapshot of the price (what the client is charged)
   cost?: number;    // snapshot of your cost for this piece (photographer payout)
+  durationMinutes?: number; // snapshot of on-site minutes this piece takes (sums across pieces)
 }
 
 export interface ProjectProductSelection {
@@ -535,6 +536,7 @@ export interface Service {
   name: string;
   defaultPrice: number;    // used when the service has zero variants
   defaultCost?: number;    // your cost (photographer payout) when no variants
+  durationMinutes?: number; // on-site minutes this piece takes (0 = use shooter default)
   position: number;
   createdAt: string;
 }
@@ -545,6 +547,7 @@ export interface ServiceVariant {
   label: string;          // e.g. "2,000–3,000 sqft"
   price: number;
   cost?: number;          // your cost (photographer payout) for this variant
+  durationMinutes?: number; // on-site minutes for this variant (0 = use service/shooter default)
   position: number;
   createdAt: string;
 }

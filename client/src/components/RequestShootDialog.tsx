@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Check, MapPin, CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { supabase, getAuthToken } from "@/lib/supabase";
-import { getOpenDays, shootDurationMinFor, fakeBusyBlocksFor, addDaysIso, type BusyBlock } from "@/lib/data";
+import { getOpenDays, onsiteMinutesForSelections, shootOnsiteMinFor, fakeBusyBlocksFor, addDaysIso, type BusyBlock } from "@/lib/data";
 import type { ProjectServiceSelection, ShootRequest } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -26,6 +26,10 @@ function fmtTime(t: string): string {
   const h = Number(hs); if (Number.isNaN(h)) return t;
   const ampm = h >= 12 ? "PM" : "AM"; const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${m} ${ampm}`;
+}
+function fmtDur(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return [h ? `${h} hr` : "", m ? `${m} min` : ""].filter(Boolean).join(" ") || "0 min";
 }
 
 interface Props {
@@ -124,7 +128,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
     for (const r of data.shootRequests) {
       if (r.status !== "pending" || !r.preferredDate || !r.preferredTime) continue;
       if (editRequest && r.id === editRequest.id) continue; // don't block the request being edited
-      const end = addMin(r.preferredTime, shootDurationMinFor(r.preferredCrewMemberId, data.shooterPrefs));
+      const end = addMin(r.preferredTime, onsiteMinutesForSelections(r.requestedServices, shootOnsiteMinFor(r.preferredCrewMemberId, data.shooterPrefs)));
       if (r.preferredCrewMemberId) {
         out.push({ crewMemberId: r.preferredCrewMemberId, date: r.preferredDate, start: r.preferredTime, end });
       } else {
@@ -147,9 +151,16 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   }, [data.shooterPrefs, data.availability]);
   const allBusy = useMemo(() => [...busy, ...pendingBusy, ...fakeBusy], [busy, pendingBusy, fakeBusy]);
 
+  // On-site length of the shoot being booked = sum of the picked pieces'
+  // durations (falls back to the shooter's flat shoot length until durations
+  // are set). Sizes the open slots so a longer booking needs a longer window.
+  const onsiteMin = useMemo(
+    () => onsiteMinutesForSelections(Object.values(picked), shootOnsiteMinFor(shooterId || null, data.shooterPrefs)),
+    [picked, shooterId, data.shooterPrefs]
+  );
   const openDays = useMemo(
-    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 60, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap }),
-    [data.availability, shooterId, allBusy, prefsMap]
+    () => getOpenDays(data.availability, { fromDate: todayIso(), days: 60, crewMemberId: shooterId || null, busy: allBusy, prefs: prefsMap, shootMinutesOverride: onsiteMin }),
+    [data.availability, shooterId, allBusy, prefsMap, onsiteMin]
   );
   const timeOptions = useMemo(
     () => (openDays.find(d => d.date === pickedDate)?.slots ?? []).map(s => s.time),
@@ -272,7 +283,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
               {services.map(svc => {
                 const variants = data.serviceVariants.filter(v => v.serviceId === svc.id).sort((a, b) => a.position - b.position);
                 if (variants.length === 0) {
-                  const sel: ProjectServiceSelection = { serviceId: svc.id, variantId: null, label: svc.name, price: svc.defaultPrice };
+                  const sel: ProjectServiceSelection = { serviceId: svc.id, variantId: null, label: svc.name, price: svc.defaultPrice, durationMinutes: svc.durationMinutes ?? 0 };
                   const on = picked[svc.id]?.variantId === null && !!picked[svc.id];
                   return (
                     <button key={svc.id} type="button" onClick={() => togglePiece(sel)}
@@ -290,7 +301,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                     <div className="text-sm text-foreground mb-1.5">{svc.name}</div>
                     <div className="flex flex-wrap gap-1.5">
                       {variants.map(v => {
-                        const sel: ProjectServiceSelection = { serviceId: svc.id, variantId: v.id, label: `${svc.name} — ${v.label}`, price: v.price };
+                        const sel: ProjectServiceSelection = { serviceId: svc.id, variantId: v.id, label: `${svc.name} — ${v.label}`, price: v.price, durationMinutes: (v.durationMinutes || svc.durationMinutes) ?? 0 };
                         const on = picked[svc.id]?.variantId === v.id;
                         return (
                           <button key={v.id} type="button" onClick={() => togglePiece(sel)}
@@ -305,6 +316,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
               })}
             </div>
             {selections.length > 0 && <div className="mt-2 text-right text-sm text-foreground">Total: <span className="font-semibold">${total.toFixed(0)}</span></div>}
+            {selections.length > 0 && <p className="mt-0.5 text-right text-[11px] text-muted-foreground">About {fmtDur(onsiteMin)} on-site</p>}
             {payingBroker && <p className="mt-1 text-right text-xs text-emerald-400">{payingBroker.company} is billed for this — you won't be charged.</p>}
           </div>
 

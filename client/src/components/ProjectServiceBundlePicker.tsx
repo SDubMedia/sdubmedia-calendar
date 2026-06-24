@@ -60,6 +60,11 @@ function resolveCost(
   return defaultCost;
 }
 
+// On-site minutes for a piece: the variant's duration if set, else the service's.
+function resolveDuration(variantDuration: number | null, serviceDuration: number): number {
+  return (variantDuration && variantDuration > 0) ? variantDuration : serviceDuration;
+}
+
 export default function ProjectServiceBundlePicker({ clientId, categoryId, services, onChange }: Props) {
   const { data } = useApp();
   const client = data.clients.find(c => c.id === clientId);
@@ -102,10 +107,11 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
       defaultVariant ? defaultVariant.price : null,
     );
     const cost = resolveCost(defaultVariant?.id ?? null, svc.defaultCost ?? 0, defaultVariant ? (defaultVariant.cost ?? 0) : null);
+    const durationMinutes = resolveDuration(defaultVariant ? (defaultVariant.durationMinutes ?? 0) : null, svc.durationMinutes ?? 0);
     const label = `${cat?.name ? cat.name + " — " : ""}${svc.name}${defaultVariant ? ` (${defaultVariant.label})` : ""}`;
     onChange(categoryId, [
       ...services,
-      { serviceId, variantId: defaultVariant?.id ?? null, label, price, cost },
+      { serviceId, variantId: defaultVariant?.id ?? null, label, price, cost, durationMinutes },
     ]);
   };
 
@@ -122,11 +128,12 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
       variant ? variant.price : null,
     );
     const cost = resolveCost(newVariantId, svc.defaultCost ?? 0, variant ? (variant.cost ?? 0) : null);
+    const durationMinutes = resolveDuration(variant ? (variant.durationMinutes ?? 0) : null, svc.durationMinutes ?? 0);
     const label = `${cat?.name ? cat.name + " — " : ""}${svc.name}${variant ? ` (${variant.label})` : ""}`;
     onChange(
       categoryId,
       services.map(sel => sel.serviceId === serviceId
-        ? { ...sel, variantId: newVariantId, label, price, cost }
+        ? { ...sel, variantId: newVariantId, label, price, cost, durationMinutes }
         : sel
       ),
     );

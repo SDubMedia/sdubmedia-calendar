@@ -743,6 +743,7 @@ function rowToService(r: any): Service {
     name: r.name || "",
     defaultPrice: Number(r.default_price ?? 0),
     defaultCost: Number(r.default_cost ?? 0),
+    durationMinutes: Number(r.duration_minutes ?? 0),
     position: Number(r.position ?? 0),
     createdAt: r.created_at,
   };
@@ -755,6 +756,7 @@ function rowToServiceVariant(r: any): ServiceVariant {
     label: r.label || "",
     price: Number(r.price ?? 0),
     cost: Number(r.cost ?? 0),
+    durationMinutes: Number(r.duration_minutes ?? 0),
     position: Number(r.position ?? 0),
     createdAt: r.created_at,
   };
@@ -2140,7 +2142,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("services").insert({
       id, ...(orgId ? { org_id: orgId } : {}),
       category_id: s.categoryId, name: s.name,
-      default_price: s.defaultPrice ?? 0, default_cost: s.defaultCost ?? 0, position: s.position ?? 0,
+      default_price: s.defaultPrice ?? 0, default_cost: s.defaultCost ?? 0,
+      duration_minutes: s.durationMinutes ?? 0, position: s.position ?? 0,
       updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw new Error(error.message);
@@ -2154,6 +2157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.name !== undefined) patch.name = s.name;
     if (s.defaultPrice !== undefined) patch.default_price = s.defaultPrice;
     if (s.defaultCost !== undefined) patch.default_cost = s.defaultCost;
+    if (s.durationMinutes !== undefined) patch.duration_minutes = s.durationMinutes;
     if (s.position !== undefined) patch.position = s.position;
     if (s.categoryId !== undefined) patch.category_id = s.categoryId;
     const { error } = await supabase.from("services").update(patch).eq("id", id);
@@ -2176,7 +2180,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { data: row, error } = await supabase.from("service_variants").insert({
       id, ...(orgId ? { org_id: orgId } : {}),
       service_id: v.serviceId, label: v.label,
-      price: v.price ?? 0, cost: v.cost ?? 0, position: v.position ?? 0,
+      price: v.price ?? 0, cost: v.cost ?? 0,
+      duration_minutes: v.durationMinutes ?? 0, position: v.position ?? 0,
       updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw new Error(error.message);
@@ -2190,6 +2195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (v.label !== undefined) patch.label = v.label;
     if (v.price !== undefined) patch.price = v.price;
     if (v.cost !== undefined) patch.cost = v.cost;
+    if (v.durationMinutes !== undefined) patch.duration_minutes = v.durationMinutes;
     if (v.position !== undefined) patch.position = v.position;
     if (v.serviceId !== undefined) patch.service_id = v.serviceId;
     const { error } = await supabase.from("service_variants").update(patch).eq("id", id);

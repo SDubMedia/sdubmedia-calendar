@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { onsiteMinutesForSelections, shootOnsiteMinFor } from "@/lib/data";
 import type { ShootRequest, Project, ProjectServiceSelection } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -90,13 +91,13 @@ export default function ShootRequestsPage() {
         ? [{ crewMemberId: req.preferredCrewMemberId, role: "Photographer", hoursWorked: 0, payRatePerHour: 0 }]
         : [];
 
-      // Block the calendar for the shoot length + travel buffer (how the shooter
-      // operates) — defaults to 90 min (1.5 hrs) if no preference is set. The
+      // On-site appointment length = sum of the requested pieces' durations
+      // (falls back to the shooter's flat shoot length). Travel buffer is held
+      // separately by the slot engine, not added to the visible window. The
       // request only carries a start time; without this the shoot was 9:00–9:00.
-      const pref = data.shooterPrefs.find(p => p.crewMemberId === req.preferredCrewMemberId);
-      const durationMin = pref ? pref.shootMinutes + pref.bufferMinutes : 90;
+      const onsiteMin = onsiteMinutesForSelections(req.requestedServices, shootOnsiteMinFor(req.preferredCrewMemberId, data.shooterPrefs));
       const startTime = req.preferredTime ?? "";
-      const endTime = startTime ? addMinutes(startTime, durationMin) : "";
+      const endTime = startTime ? addMinutes(startTime, onsiteMin) : "";
 
       const payload: Omit<Project, "id" | "createdAt"> = {
         clientId: req.clientId,
