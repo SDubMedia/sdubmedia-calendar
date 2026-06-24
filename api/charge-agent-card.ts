@@ -53,39 +53,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!org?.stripe_account_id) return res.status(400).json({ error: "Payments aren't set up for this account" });
     const acct = org.stripe_account_id as string;
 
-    // Newest saved card on the connected account.
+    // All saved cards, newest first. We try them in order so that if a recently
+    // added card fails (declined, empty prepaid, needs 3DS), an older still-valid
+    // card on file is used automatically — replacing a card with a bad one can
+    // never strand the charge or "lose" the working card.
     const pms = await stripe.paymentMethods.list(
-      { customer: agent.stripe_customer_id as string, type: "card", limit: 1 },
+      { customer: agent.stripe_customer_id as string, type: "card", limit: 10 },
       { stripeAccount: acct }
     );
-    const pm = pms.data[0];
-    if (!pm) return res.status(400).json({ error: "No saved card found for this agent" });
+    if (pms.data.length === 0) return res.status(400).json({ error: "No saved card found for this agent" });
 
-    // Off-session charge on the connected account.
-    let intent: Stripe.PaymentIntent;
-    try {
-      intent = await stripe.paymentIntents.create(
-        {
-          amount: Math.round(Number(invoice.total) * 100),
-          currency: "usd",
-          customer: agent.stripe_customer_id as string,
-          payment_method: pm.id,
-          off_session: true,
-          confirm: true,
-          metadata: { invoiceId: invoice.id, kind: "agent_card_charge", clientId: agent.id },
-        },
-        { stripeAccount: acct }
-      );
-    } catch (err) {
-      // Card needs the agent present (3DS), declined, etc. Surface it so the
-      // owner can fall back to a payment link instead of silently failing.
-      const se = err as Stripe.errors.StripeError;
-      const declineMsg = se?.message || "The card couldn't be charged";
-      return res.status(402).json({ error: declineMsg, needsPaymentLink: true });
+    const amount = Math.round(Number(invoice.total) * 100);
+    let intent: Stripe.PaymentIntent | null = null;
+    let chargedLast4: string | null = null;
+    let lastErr = "The card couldn't be charged";
+    for (const pm of pms.data) {
+      try {
+        const pi = await stripe.paymentIntents.create(
+          {
+            amount,
+            currency: "usd",
+            customer: agent.stripe_customer_id as string,
+            payment_method: pm.id,
+            off_session: true,
+            confirm: true,
+            metadata: { invoiceId: invoice.id, kind: "agent_card_charge", clientId: agent.id },
+          },
+          { stripeAccount: acct }
+        );
+        if (pi.status === "succeeded") { intent = pi; chargedLast4 = pm.card?.last4 ?? null; break; }
+        lastErr = `Charge ${pi.status.replace(/_/g, " ")}`;
+      } catch (err) {
+        // Declined / needs the agent present (3DS) — remember it and try the
+        // next saved card. A declined off-session intent never captures funds.
+        lastErr = (err as Stripe.errors.StripeError)?.message || lastErr;
+      }
     }
 
-    if (intent.status !== "succeeded") {
-      return res.status(402).json({ error: `Charge ${intent.status.replace(/_/g, " ")} — try a payment link instead`, needsPaymentLink: true });
+    if (!intent) {
+      return res.status(402).json({ error: `${lastErr} — try a payment link instead`, needsPaymentLink: true });
     }
 
     // Mark the invoice paid + stamp its linked projects (mirrors stripe-payment).
@@ -98,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await supabase.from("projects").update({ paid_date: today }).eq("id", pid);
     }
 
-    return res.status(200).json({ ok: true, amount: Number(invoice.total), last4: pm.card?.last4 ?? null });
+    return res.status(200).json({ ok: true, amount: Number(invoice.total), last4: chargedLast4 });
   } catch (err) {
     console.error("charge-agent-card error:", err);
     return res.status(500).json({ error: errorMessage(err, "Couldn't charge the card") });
