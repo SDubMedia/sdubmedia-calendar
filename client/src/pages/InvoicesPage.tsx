@@ -65,6 +65,31 @@ export default function InvoicesPage() {
   const [creatingPaymentLink, setCreatingPaymentLink] = useState<string | null>(null);
   const [paymentLinks, setPaymentLinks] = useState<Record<string, string>>({});
   const [testimonialOpen, setTestimonialOpen] = useState(false);
+  const [chargingId, setChargingId] = useState<string | null>(null);
+
+  // Charge an agent's saved card off-session (broker didn't cover the shoot).
+  async function chargeCardOnFile(invoiceId: string) {
+    const inv = data.invoices.find(i => i.id === invoiceId);
+    const agent = inv ? data.clients.find(c => c.id === inv.clientId) : null;
+    if (!agent) return;
+    if (!window.confirm(`Charge ${agent.company || agent.contactName}'s card on file ${inv ? `$${inv.total.toFixed(2)}` : ""}? Their agreement authorizes this for shoots the broker didn't cover.`)) return;
+    setChargingId(invoiceId);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/charge-agent-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ invoiceId }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Couldn't charge the card");
+      toast.success(`Charged${result.last4 ? ` ···· ${result.last4}` : ""} — invoice marked paid`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't charge the card");
+    } finally {
+      setChargingId(null);
+    }
+  }
 
   async function createPaymentLink(invoiceId: string) {
     const orgId = data.organization?.id;
@@ -646,6 +671,21 @@ export default function InvoicesPage() {
                       >
                         <CreditCard className="w-3.5 h-3.5" />
                         {creatingPaymentLink === inv.id ? "Creating..." : "Payment Link"}
+                      </button>
+                    )}
+                    {/* Agent invoice with a saved card → charge it directly */}
+                    {(inv.status === "draft" || inv.status === "sent") && (() => {
+                      const payer = data.clients.find(c => c.id === inv.clientId);
+                      return payer?.clientType === "agent" && payer.cardOnFile;
+                    })() && (
+                      <button
+                        onClick={() => chargeCardOnFile(inv.id)}
+                        disabled={chargingId === inv.id}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 transition-colors"
+                        title="Charge the agent's card on file (broker didn't cover this)"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        {chargingId === inv.id ? "Charging…" : "Charge Card"}
                       </button>
                     )}
                     {paymentLinks[inv.id] && (

@@ -11,7 +11,7 @@ import { Link, Redirect, useLocation } from "wouter";
 import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus } from "lucide-react";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import { hasAcceptedAgreement } from "@/lib/agreements";
-import { getProjectInvoiceAmount } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -94,16 +94,22 @@ export default function ClientDashboardPage() {
       .reduce((sum, inv) => sum + inv.total, 0);
   }, [data.invoices]);
 
-  // Broker-covered agent: a statement of their own shoots (date · property ·
-  // price). Built from their own projects, so no other agent's data is exposed.
+  // Broker-covered agent: a statement of the shoots their broker actually pays
+  // (date · property · price). A shoot re-pointed to the agent (Bill to = agent)
+  // is excluded here — it bills to them, so it shows as a real balance instead.
+  const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
   const myBilledShoots = useMemo(() => {
-    if (!coveredByBroker || !myClient) return [];
+    if (!coveredByBroker || !myClient || !broker) return [];
     return data.projects
+      .filter(p => getProjectPayerId(p, clientsById) === broker.id)
       .map(p => ({ p, amt: getProjectInvoiceAmount(p, myClient) }))
       .filter(x => x.amt > 0)
       .sort((a, b) => b.p.date.localeCompare(a.p.date));
-  }, [coveredByBroker, myClient, data.projects]);
+  }, [coveredByBroker, myClient, broker, data.projects, clientsById]);
   const myShootsBilled = useMemo(() => myBilledShoots.reduce((s, x) => s + x.amt, 0), [myBilledShoots]);
+  // "What you owe" = invoices billed to the agent themselves (self-pay agents,
+  // or shoots a broker declined and you re-pointed to the agent). Honest for all.
+  const showOwe = !coveredByBroker || outstandingAmount > 0;
 
   // Upcoming projects (next 30 days)
   const upcomingProjects = useMemo(() => {
@@ -181,9 +187,9 @@ export default function ClientDashboardPage() {
             onClick={() => setExpandedSection(expandedSection === "completed" ? null : "completed")}
             active={expandedSection === "completed"} />
           <MetricCard icon={FileText} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
-            label={coveredByBroker ? "Billed to broker" : "Outstanding"}
-            value={formatCurrency(coveredByBroker ? myShootsBilled : outstandingAmount)}
-            sub={coveredByBroker ? `Paid by ${brokerName}` : "Unpaid invoices"}
+            label={!showOwe ? "Billed to broker" : "Outstanding"}
+            value={formatCurrency(!showOwe ? myShootsBilled : outstandingAmount)}
+            sub={!showOwe ? `Paid by ${brokerName}` : (coveredByBroker ? "Due from you" : "Unpaid invoices")}
             onClick={() => setExpandedSection(expandedSection === "outstanding" ? null : "outstanding")}
             active={expandedSection === "outstanding"} />
         </div>
@@ -229,18 +235,52 @@ export default function ClientDashboardPage() {
           </div>
         )}
 
-        {/* Outstanding / Broker statement Expanded */}
+        {/* Billing expanded: what you owe (if any) + broker-covered statement */}
         {expandedSection === "outstanding" && (
-          <div className="bg-card border border-border rounded-lg">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {coveredByBroker ? "Billed to Your Brokerage" : "Outstanding Invoices"}
-              </h3>
-            </div>
-            {coveredByBroker ? (
-              <>
+          <div className="space-y-3">
+            {/* What you owe — your own invoices (self-pay, or shoots re-pointed to you) */}
+            {showOwe && (
+              <div className="bg-card border border-border rounded-lg">
+                <div className="px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    Outstanding Invoices
+                  </h3>
+                  {coveredByBroker && <p className="text-xs text-muted-foreground mt-0.5">Shoots your brokerage didn't cover — due from you.</p>}
+                </div>
+                <div className="divide-y divide-border max-h-80 overflow-auto">
+                  {data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">No outstanding invoices</div>
+                  ) : (
+                    data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").map(inv => (
+                      <div key={inv.id} className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">{inv.invoiceNumber}</span>
+                            <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", INVOICE_STATUS_COLORS[inv.status])}>
+                              {inv.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">{formatCurrency(inv.total)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Broker-covered statement — informational, no balance */}
+            {coveredByBroker && (
+              <div className="bg-card border border-border rounded-lg">
+                <div className="px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    Billed to Your Brokerage
+                  </h3>
+                </div>
                 <div className="px-4 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 shrink-0" /> Covered by {brokerName} — nothing is due from you.
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" /> Covered by {brokerName} — nothing is due from you for these.
                 </div>
                 <div className="divide-y divide-border max-h-80 overflow-auto">
                   {myBilledShoots.length === 0 ? (
@@ -260,29 +300,6 @@ export default function ClientDashboardPage() {
                     })
                   )}
                 </div>
-              </>
-            ) : (
-              <div className="divide-y divide-border max-h-80 overflow-auto">
-                {data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").length === 0 ? (
-                  <div className="p-6 text-center text-sm text-muted-foreground">No outstanding invoices</div>
-                ) : (
-                  data.invoices.filter(inv => inv.status === "draft" || inv.status === "sent").map(inv => (
-                    <div key={inv.id} className="px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">{inv.invoiceNumber}</span>
-                          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border", INVOICE_STATUS_COLORS[inv.status])}>
-                            {inv.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
-                        </p>
-                      </div>
-                      <span className="text-sm font-semibold text-foreground">{formatCurrency(inv.total)}</span>
-                    </div>
-                  ))
-                )}
               </div>
             )}
           </div>
@@ -386,10 +403,10 @@ export default function ClientDashboardPage() {
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {coveredByBroker ? "Billing" : "Invoices"}
+                {coveredByBroker && outstandingAmount === 0 ? "Billing" : "Invoices"}
               </h3>
             </div>
-            {coveredByBroker ? (
+            {coveredByBroker && outstandingAmount === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">
                 Your shoots are billed to <span className="text-foreground font-medium">{brokerName}</span>. You won't get a bill or owe anything for them.
               </div>
