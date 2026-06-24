@@ -607,6 +607,17 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   };
 
+  // One-tap deliver: mark delivered, notify the agent, and (for a self-pay
+  // agent with a card) offer to charge. Used by the prominent Photos-tab button
+  // and the granular Status control.
+  const deliverToAgent = async () => {
+    await setDeliveryStatus(id, "delivered");
+    notifyGallery("agent");
+    if (canChargeOnDelivery && !charging && window.confirm(`Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`)) {
+      await chargeOnDelivery();
+    }
+  };
+
   const notifyGallery = async (recipient: "agent" | "broker") => {
     try {
       const token = await getAuthToken();
@@ -665,6 +676,24 @@ function DeliveryDetail({ id }: { id: string }) {
 
       {activeTab === "photos" && (
         <>
+          {/* One-tap deliver, right where the photos are. */}
+          <div className="mb-6">
+            {delivery.status === "delivered" ? (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-emerald-300 flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Delivered — the agent has been notified</span>
+                <button onClick={() => notifyGallery("agent")} className="text-xs px-3 py-1.5 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/10 whitespace-nowrap">Re-notify</button>
+              </div>
+            ) : (
+              <button
+                onClick={deliverToAgent}
+                disabled={files.length === 0 || charging}
+                className="w-full bg-emerald-600 text-white rounded-lg py-3 px-4 font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ImageIcon className="w-5 h-5 shrink-0" />
+                {files.length === 0 ? "Upload photos, then deliver" : `Deliver ${files.length} photo${files.length === 1 ? "" : "s"} to ${agentClient?.company || "the agent"}`}
+              </button>
+            )}
+          </div>
           {/* Stats compact strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm">
             <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
@@ -704,13 +733,7 @@ function DeliveryDetail({ id }: { id: string }) {
               <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
               <StatusButton current={delivery.status} target="sent" onClick={() => setDeliveryStatus(id, "sent")} label="Send to client" />
               <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
-              <StatusButton current={delivery.status} target="delivered" onClick={async () => {
-                await setDeliveryStatus(id, "delivered");
-                notifyGallery("agent");
-                if (canChargeOnDelivery && !charging && window.confirm(`Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`)) {
-                  await chargeOnDelivery();
-                }
-              }} label="Mark delivered" />
+              <StatusButton current={delivery.status} target="delivered" onClick={deliverToAgent} label="Mark delivered" />
             </div>
             {hasBroker && (
               <div className="mt-3 pt-3 border-t border-white/10">
