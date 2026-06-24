@@ -21,7 +21,10 @@ export default function LoginPage() {
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [recents, setRecents] = useState<RecentAccount[]>(() => getRecentAccounts());
-  const [showForm, setShowForm] = useState<boolean>(() => getRecentAccounts().length === 0);
+  // Start on the sign-in form (empty fields) so iOS Face ID / password autofill
+  // can offer a saved login, instead of defaulting to a possibly-stale recent
+  // account. Recents stay one tap away via "Back to recent accounts".
+  const [showForm, setShowForm] = useState<boolean>(true);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   function pickAccount(acct: RecentAccount) {
@@ -363,10 +366,12 @@ export default function LoginPage() {
                   <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">Email</label>
                   <input
                     type="email"
+                    name="username"
+                    id="username"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    autoComplete="email"
+                    autoComplete={mode === "signup" ? "email" : "username"}
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500/50 transition-colors"
                   />
                 </div>
@@ -375,6 +380,8 @@ export default function LoginPage() {
                   <input
                     ref={passwordRef}
                     type="password"
+                    name="password"
+                    id="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder={mode === "signup" ? "Create a password (min 6 chars)" : "Enter your password"}

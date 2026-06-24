@@ -6,6 +6,12 @@
     { "source": "/api/:path*", "destination": "/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ],
   "crons": [
     { "path": "/api/daily-summary", "schedule": "0 11 * * *" },
     { "path": "/api/cleanup-orphans", "schedule": "0 4 * * *" },
