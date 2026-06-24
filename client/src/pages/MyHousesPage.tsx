@@ -16,6 +16,8 @@ import { getProjectInvoiceAmount } from "@/lib/data";
 import { getAuthToken } from "@/lib/supabase";
 import { hasAcceptedAgreement } from "@/lib/agreements";
 import AgreementDialog from "@/components/AgreementDialog";
+import ProjectDetailSheet from "@/components/ProjectDetailSheet";
+import type { Project } from "@/lib/types";
 import { toast } from "sonner";
 
 function fmtDate(iso: string): string {
@@ -192,6 +194,7 @@ export default function MyHousesPage() {
   const [agreementNext, setAgreementNext] = useState<"card" | "invite" | null>(null);
   // Read-only "view terms anytime" — separate from the accept flow above.
   const [viewTermsOpen, setViewTermsOpen] = useState(false);
+  const [detailProject, setDetailProject] = useState<Project | null>(null);
   const openAgreement = (next: "card" | "invite" | null) => { setAgreementNext(next); setAgreementOpen(true); };
   // Agent taps "Add a card to book": agree first (if needed), then Stripe.
   const startCardFlow = () => { if (needsAgreement) openAgreement("card"); else handleAddCard(); };
@@ -389,7 +392,7 @@ export default function MyHousesPage() {
           ) : (
             <div className="space-y-2">
               {shownHouses.map(p => (
-                <div key={p.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
+                <div key={p.id} onClick={() => setDetailProject(p)} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-primary/40 transition-colors">
                   <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
                     <Home className="w-5 h-5 text-primary" />
                   </div>
@@ -397,7 +400,7 @@ export default function MyHousesPage() {
                     <div className="text-sm font-medium text-foreground truncate flex items-center gap-1"><MapPin className="w-3 h-3 flex-shrink-0 text-muted-foreground" />{locName(p.locationId)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Clock className="w-3 h-3" />{fmtDate(p.date)}{p.startTime ? ` · ${fmtTime(p.startTime)}` : ""}{isBroker && agentName(p.clientId) ? ` · ${agentName(p.clientId)}` : ""}</div>
                     {(() => { const g = galleryFor(p.id); return g ? (
-                      <a href={galleryUrl(g)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                      <a href={galleryUrl(g)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
                         <ImageIcon className="w-3 h-3" /> View photos
                       </a>
                     ) : null; })()}
@@ -406,7 +409,7 @@ export default function MyHousesPage() {
                       <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Photographer on the way</div>
                     )}
                     {isAgent && !p.onTheWayAt && (p.status === "upcoming" || p.status === "tentative") && (
-                      <button onClick={() => cancelShoot(p.id)} className="mt-1 text-xs text-destructive hover:underline">Cancel shoot</button>
+                      <button onClick={(e) => { e.stopPropagation(); cancelShoot(p.id); }} className="mt-1 text-xs text-destructive hover:underline">Cancel shoot</button>
                     )}
                   </div>
                   <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{p.status}</Badge>
@@ -424,6 +427,7 @@ export default function MyHousesPage() {
         )}
       </div>
 
+      {detailProject && <ProjectDetailSheet project={detailProject} onClose={() => setDetailProject(null)} />}
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
       <RequestShootDialog open={!!editTarget} onClose={() => setEditTarget(null)} clientId={myClientId} editRequest={editTarget} />
       <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />

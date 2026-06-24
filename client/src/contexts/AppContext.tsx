@@ -970,7 +970,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const allowedDeliveryIds = new Set(allowedDeliveries.map(d => d.id));
       return {
         ...rawData,
-        clients: rawData.clients.filter(c => allowedClientIds.has(c.id)),
+        // A broker also keeps their agents' client records (so the agent list +
+        // names resolve) — mirrors the broker_read_agents RLS policy.
+        clients: rawData.clients.filter(c =>
+          allowedClientIds.has(c.id)
+          || (c.clientType === "agent" && !!c.brokerId && allowedClientIds.has(c.brokerId))
+        ),
         projects: allowedProjects,
         invoices: rawData.invoices.filter(i =>
           allowedClientIds.has(i.clientId) && !isPartnerCutoff(i.clientId, i.issueDate)

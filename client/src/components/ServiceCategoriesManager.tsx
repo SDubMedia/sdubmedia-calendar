@@ -310,47 +310,43 @@ function ServiceRow({ service }: { service: Service }) {
           <span className="w-3.5 h-3.5 shrink-0" />
         )}
         {editing ? (
-          <>
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
             <input
               type="text"
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="flex-1 min-w-0 basis-full sm:basis-auto bg-background border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <div className="flex items-center gap-1 text-sm text-muted-foreground" title="Price (what you charge)">
-              <span>$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={price}
-                onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                className="w-16 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground uppercase tracking-wide" title="Price (what you charge)">
+                Price
+                <span className="flex items-center gap-1 text-sm text-foreground"><span className="text-muted-foreground">$</span>
+                  <input type="text" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                    className="w-20 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary" />
+                </span>
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-amber-300/80 uppercase tracking-wide" title="Cost (your payout)">
+                Cost
+                <span className="flex items-center gap-1 text-sm text-foreground"><span className="text-amber-300/80">−$</span>
+                  <input type="text" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))}
+                    className="w-20 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary" />
+                </span>
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-sky-300/80 uppercase tracking-wide" title="On-site time (minutes)">
+                Time
+                <span className="flex items-center gap-1 text-sm text-foreground">
+                  <input type="text" inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/[^0-9]/g, ""))}
+                    className="w-16 bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary" />
+                  <span className="text-xs text-muted-foreground">min</span>
+                </span>
+              </label>
+              <div className="flex items-center gap-1 ml-auto">
+                <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
+                <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setDuration(String(service.durationMinutes ?? 0)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
+              </div>
             </div>
-            <div className="flex items-center gap-1 text-sm text-amber-300/80" title="Cost (your payout)">
-              <span>−$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={cost}
-                onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ""))}
-                className="w-16 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div className="flex items-center gap-1 text-sm text-sky-300/80" title="On-site time (minutes)">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value.replace(/[^0-9]/g, ""))}
-                className="w-14 bg-background border border-border rounded px-2 py-1 text-sm text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span className="text-xs">min</span>
-            </div>
-            <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
-            <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setDuration(String(service.durationMinutes ?? 0)); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
-          </>
+          </div>
         ) : (
           <>
             <button
