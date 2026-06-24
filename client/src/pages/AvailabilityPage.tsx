@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Plus, Trash2, Repeat, CalendarDays, Check, Settings2 } from "lucide-react";
+import { CalendarClock, Plus, Trash2, Repeat, CalendarDays, Check, Settings2, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,8 +51,76 @@ function toIsoLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// One availability block in the list — view its hours, edit them inline, or
+// delete. Edit changes the times/all-day; to change the day, delete + re-add.
+function BlockRow({ label, block, onSave, onDelete }: {
+  label: string;
+  block: Availability;
+  onSave: (id: string, patch: Partial<Availability>) => Promise<void>;
+  onDelete: (a: Availability) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [allDay, setAllDay] = useState(block.allDay);
+  const [startTime, setStartTime] = useState(block.startTime);
+  const [endTime, setEndTime] = useState(block.endTime);
+  const [saving, setSaving] = useState(false);
+
+  const begin = () => { setAllDay(block.allDay); setStartTime(block.startTime); setEndTime(block.endTime); setEditing(true); };
+  const save = async () => {
+    if (!allDay && endTime <= startTime) { toast.error("End time must be after start time"); return; }
+    setSaving(true);
+    try { await onSave(block.id, { allDay, startTime, endTime }); setEditing(false); toast.success("Updated"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't update"); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-3">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">{label}</div>
+          {!editing && <div className="text-xs text-muted-foreground">{block.allDay ? "All day" : `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`}</div>}
+        </div>
+        {!editing ? (
+          <>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground flex-shrink-0" onClick={begin}>
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => onDelete(block)}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setEditing(false)}><X className="w-3.5 h-3.5" /></Button>
+            <Button size="icon" className="h-8 w-8 bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving} onClick={save}><Check className="w-3.5 h-3.5" /></Button>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div className="mt-2 space-y-2">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+            All day
+          </label>
+          {!allDay && (
+            <div className="grid grid-cols-2 gap-2">
+              <select value={startTime} onChange={e => setStartTime(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground min-w-0">
+                {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <select value={endTime} onChange={e => setEndTime(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground min-w-0">
+                {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AvailabilityPage() {
-  const { data, addAvailability, deleteAvailability, upsertShooterPref } = useApp();
+  const { data, addAvailability, updateAvailability, deleteAvailability, upsertShooterPref } = useApp();
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const myCrewId = effectiveProfile?.crewMemberId || "";
@@ -352,15 +420,7 @@ export default function AvailabilityPage() {
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><Repeat className="w-3 h-3" /> Weekly</div>
                 <div className="space-y-2">
                   {recurringBlocks.map(a => (
-                    <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground">{WEEKDAYS[a.weekday ?? 0]}</div>
-                        <div className="text-xs text-muted-foreground">{a.allDay ? "All day" : `${formatTime(a.startTime)} – ${formatTime(a.endTime)}`}</div>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => handleDelete(a)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+                    <BlockRow key={a.id} label={WEEKDAYS[a.weekday ?? 0]} block={a} onSave={updateAvailability} onDelete={handleDelete} />
                   ))}
                 </div>
               </div>
@@ -370,15 +430,7 @@ export default function AvailabilityPage() {
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><CalendarDays className="w-3 h-3" /> One-time</div>
                 <div className="space-y-2">
                   {oneOffBlocks.map(a => (
-                    <div key={a.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground">{formatDate(a.specificDate ?? "")}</div>
-                        <div className="text-xs text-muted-foreground">{a.allDay ? "All day" : `${formatTime(a.startTime)} – ${formatTime(a.endTime)}`}</div>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0" onClick={() => handleDelete(a)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+                    <BlockRow key={a.id} label={formatDate(a.specificDate ?? "")} block={a} onSave={updateAvailability} onDelete={handleDelete} />
                   ))}
                 </div>
               </div>
