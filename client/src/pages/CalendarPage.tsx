@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, conflictsForDate, availabilityForDate } from "@/lib/data";
+import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
@@ -84,6 +84,10 @@ export default function CalendarPage() {
   const [calendarMode, setCalendarMode] = useState<"production" | "personal" | "both">(isFamily ? "personal" : "production");
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [resumeProject, setResumeProject] = useState(false);
+  // Booking into an open availability slot: the tapped slot's start time + shooter,
+  // pre-filled into ProjectDialog.
+  const [bookStartTime, setBookStartTime] = useState<string | null>(null);
+  const [bookCrewMemberId, setBookCrewMemberId] = useState<string | null>(null);
   // Whether a half-entered project draft exists (drives the "Resume" button).
   const [hasDraft, setHasDraft] = useState(false);
   useEffect(() => { setHasDraft(hasProjectDraft()); }, []);
@@ -116,6 +120,29 @@ export default function CalendarPage() {
   }, [canSeeAvail, data.projects, data.availability, prefsMap]);
   const dayConflicts = useMemo(() => (canSeeAvail && selectedDate) ? conflictsForDate(data.projects, data.availability, prefsMap, selectedDate) : [], [canSeeAvail, selectedDate, data.projects, data.availability, prefsMap]);
   const dayAvailability = useMemo(() => (canSeeAvail && selectedDate) ? availabilityForDate(data.availability, selectedDate) : [], [canSeeAvail, selectedDate, data.availability]);
+
+  // Owner-only: each available shooter's genuinely-open start times for the
+  // selected day (their hours minus shoots already booked, padded by buffers),
+  // so the owner can tap a time to book a shoot straight into that slot. Busy
+  // blocks come from the loaded projects' crew (the owner has them all) — no
+  // need for the async shooter_busy view the agent flow uses.
+  const openSlotsByShooter = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    if (!isOwner || !selectedDate) return out;
+    const busy = data.projects
+      .filter(p => p.date === selectedDate && p.status !== "cancelled")
+      .flatMap(p => {
+        const ids = Array.from(new Set((p.crew ?? []).map(c => c.crewMemberId).filter(Boolean)));
+        return ids.map(cm => ({ crewMemberId: cm, date: p.date, start: p.startTime, end: p.endTime || p.startTime }));
+      });
+    const day = getOpenDays(data.availability, { fromDate: selectedDate, days: 1, busy, prefs: prefsMap })[0];
+    if (day) {
+      for (const slot of day.slots) {
+        for (const cm of slot.crewMemberIds) (out[cm] ??= []).push(slot.time);
+      }
+    }
+    return out;
+  }, [isOwner, selectedDate, data.projects, data.availability, prefsMap]);
 
   // Pending shoot requests on the calendar (owner): a "Request" marker on the
   // day, tap-through to approve in the queue.
@@ -1087,15 +1114,33 @@ export default function CalendarPage() {
               {showAvail && selectedDate && dayAvailability.length > 0 && (
                 <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
                   <div className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-medium mb-1.5 flex items-center gap-1.5"><CalendarClock className="w-3 h-3" /> Available this day</div>
-                  <div className="space-y-1">
-                    {dayAvailability.map(a => (
-                      <button key={a.crewMemberId} onClick={() => setAvailEdit({ crewMemberId: a.crewMemberId, name: _getCrewMember(a.crewMemberId)?.name ?? "—" })} className="w-full text-left text-xs flex items-center gap-2 hover:opacity-80">
-                        <span className="font-medium text-foreground underline decoration-dotted underline-offset-2">{_getCrewMember(a.crewMemberId)?.name ?? "—"}</span>
-                        <span className="text-muted-foreground">{a.windows.map(w => `${hm12(w.start)}–${hm12(w.end)}`).join(", ")}</span>
-                      </button>
-                    ))}
+                  <div className="space-y-2">
+                    {dayAvailability.map(a => {
+                      const openTimes = isOwner ? (openSlotsByShooter[a.crewMemberId] ?? []) : [];
+                      return (
+                        <div key={a.crewMemberId} className="space-y-1 min-w-0">
+                          <button onClick={() => setAvailEdit({ crewMemberId: a.crewMemberId, name: _getCrewMember(a.crewMemberId)?.name ?? "—" })} className="w-full text-left text-xs flex items-center gap-2 hover:opacity-80">
+                            <span className="font-medium text-foreground underline decoration-dotted underline-offset-2">{_getCrewMember(a.crewMemberId)?.name ?? "—"}</span>
+                            <span className="text-muted-foreground">{a.windows.map(w => `${hm12(w.start)}–${hm12(w.end)}`).join(", ")}</span>
+                          </button>
+                          {openTimes.length > 0 && (
+                            <div className="flex flex-wrap gap-1 min-w-0">
+                              {openTimes.map(t => (
+                                <button
+                                  key={t}
+                                  onClick={() => { setBookCrewMemberId(a.crewMemberId); setBookStartTime(t); setNewProjectOpen(true); }}
+                                  className="px-2 py-0.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium hover:bg-emerald-500/20 transition-colors"
+                                >
+                                  {hm12(t)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">Tap a name to edit or remove their availability.</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1.5">{isOwner ? "Tap a time to book a shoot into that slot, or a name to edit availability." : "Tap a name to edit or remove their availability."}</p>
                 </div>
               )}
 
@@ -1331,8 +1376,10 @@ export default function CalendarPage() {
       <ProjectDialog
         open={newProjectOpen}
         resume={resumeProject}
-        onClose={() => { setNewProjectOpen(false); setResumeProject(false); setSelectedDate(null); setHasDraft(hasProjectDraft()); }}
+        onClose={() => { setNewProjectOpen(false); setResumeProject(false); setSelectedDate(null); setBookStartTime(null); setBookCrewMemberId(null); setHasDraft(hasProjectDraft()); }}
         defaultDate={selectedDate ?? undefined}
+        defaultStartTime={bookStartTime ?? undefined}
+        defaultCrewMemberId={bookCrewMemberId ?? undefined}
       />
 
       {/* Meeting Dialog */}
