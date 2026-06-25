@@ -33,7 +33,7 @@ function fmtTime(t: string): string {
 }
 
 export default function MyHousesPage() {
-  const { data, deleteShootRequest } = useApp();
+  const { data, deleteShootRequest, refresh } = useApp();
   const { effectiveProfile } = useAuth();
   const [requestOpen, setRequestOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -441,7 +441,7 @@ export default function MyHousesPage() {
       {detailProject && <ProjectDetailSheet project={detailProject} onClose={() => setDetailProject(null)} />}
       <RequestShootDialog open={requestOpen} onClose={() => setRequestOpen(false)} clientId={myClientId} />
       <RequestShootDialog open={!!editTarget} onClose={() => setEditTarget(null)} clientId={myClientId} editRequest={editTarget} />
-      <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <InviteAgentDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onInvited={() => { void refresh(); }} />
       <AgreementDialog
         open={agreementOpen}
         onClose={() => setAgreementOpen(false)}
