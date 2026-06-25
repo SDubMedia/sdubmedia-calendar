@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import { showInviteCredentials } from "@/lib/inviteCredentials";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
+import AgentQuickView from "@/components/AgentQuickView";
+import ProjectDialog from "@/components/ProjectDialog";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
@@ -57,6 +59,10 @@ export default function BrokersPage() {
   const [sheetBrokerId, setSheetBrokerId] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  // Tap an agent's name → pull them up (their shoots + a Book button).
+  const [quickAgent, setQuickAgent] = useState<Client | null>(null);
+  // Booking dialog pre-filled for an agent (broker + RE flow auto-resolved).
+  const [bookingAgentId, setBookingAgentId] = useState<string | null>(null);
 
   // Presence: which agents/brokers have an account, and whether on the app.
   const { allProfiles } = useAuth();
@@ -243,7 +249,7 @@ export default function BrokersPage() {
                   <div className="px-4 py-3 text-xs text-muted-foreground">No agents yet.</div>
                 ) : agents.map(agent => (
                   <div key={agent.id} className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-border/40 last:border-b-0">
-                    <button onClick={() => openEdit(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="Open agent profile">
+                    <button onClick={() => setQuickAgent(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="View shoots & book a shoot">
                       <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <span className="text-sm truncate">{agent.company}</span>
                       <PresenceIcon clientId={agent.id} profiles={allProfiles} appUserIds={appUserIds} />
@@ -328,7 +334,7 @@ export default function BrokersPage() {
             </div>
             {unassignedAgents.map(agent => (
               <div key={agent.id} className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-border/40 last:border-b-0">
-                <button onClick={() => openEdit(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="Open agent profile">
+                <button onClick={() => setQuickAgent(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="View shoots & book a shoot">
                   <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="text-sm truncate">{agent.company}</span>
                   {agent.email && <span className="text-xs text-muted-foreground truncate">· {agent.email}</span>}
@@ -354,6 +360,20 @@ export default function BrokersPage() {
         onOpenChange={setSheetOpen}
         initialClientType={sheetClient ? undefined : sheetType}
         initialBrokerId={sheetClient ? undefined : sheetBrokerId}
+      />
+
+      {/* Tap an agent's name → their shoots + a one-tap Book */}
+      <AgentQuickView
+        agent={quickAgent}
+        onClose={() => setQuickAgent(null)}
+        onBook={(id) => { setQuickAgent(null); setBookingAgentId(id); }}
+      />
+
+      {/* Booking dialog, pre-filled for the chosen agent */}
+      <ProjectDialog
+        open={!!bookingAgentId}
+        defaultClientId={bookingAgentId ?? undefined}
+        onClose={() => setBookingAgentId(null)}
       />
     </div>
   );
