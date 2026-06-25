@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
 import { toast } from "sonner";
+import { showInviteCredentials } from "@/lib/inviteCredentials";
 
 interface Props {
   open: boolean;
@@ -39,11 +40,8 @@ export default function InviteAgentDialog({ open, onClose, onInvited }: Props) {
       });
       const data = await res.json().catch(() => ({ error: "Failed" }));
       if (!res.ok) throw new Error(data.error || "Couldn't invite the agent");
-      if (data.emailed === false && data.tempPassword) {
-        toast.success(`Agent added. Email didn't send — temp password: ${data.tempPassword}`);
-      } else {
-        toast.success("Agent invited — they'll get an email to log in");
-      }
+      if (data.tempPassword) showInviteCredentials("Agent invited", data.tempPassword, data.emailed !== false);
+      else toast.success("Agent invited — they'll get an email to log in");
       reset();
       onInvited?.();
       onClose();

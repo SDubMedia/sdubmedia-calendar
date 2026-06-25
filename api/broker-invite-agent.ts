@@ -134,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    return res.status(200).json({ ok: true, emailed: true });
+    return res.status(200).json({ ok: true, emailed: true, tempPassword });
   } catch (err) {
     console.error("Broker invite agent error:", err);
     return res.status(500).json({ error: errorMessage(err, "Failed to invite agent") });

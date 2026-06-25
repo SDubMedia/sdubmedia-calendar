@@ -98,7 +98,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         </div>`;
       try {
         await resend.emails.send({ from: `Slate <${FROM_EMAIL}>`, to: agentEmail, subject: action === "invited" ? `You're set up to book shoots` : `Your Slate password was reset`, html });
-        return res.status(200).json({ ok: true, action, emailed: true });
+        return res.status(200).json({ ok: true, action, emailed: true, tempPassword });
       } catch (e) {
         console.error("invite/resend email failed:", e);
         return res.status(200).json({ ok: true, action, emailed: false, tempPassword });

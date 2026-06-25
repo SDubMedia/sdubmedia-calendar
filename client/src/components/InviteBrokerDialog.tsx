@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
 import { toast } from "sonner";
+import { showInviteCredentials } from "@/lib/inviteCredentials";
 
 function genPassword(): string {
   return "Br" + Math.random().toString(36).slice(2, 10) + "7a";
@@ -67,11 +68,7 @@ export default function InviteBrokerDialog({ open, onClose }: Props) {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ userId, tempPassword }),
       });
-      if (!res.ok) {
-        toast.success(`Broker created. Email didn't send — temp password: ${tempPassword}`);
-      } else {
-        toast.success("Broker invited — they'll get an email to log in");
-      }
+      showInviteCredentials("Broker invited", tempPassword, res.ok);
       reset();
       onClose();
     } catch (e) {

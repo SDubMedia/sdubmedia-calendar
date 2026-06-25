@@ -23,6 +23,7 @@ function PresenceIcon({ clientId, profiles, appUserIds }: { clientId: string; pr
   return <span title={label} className="inline-flex"><Icon className={`w-3.5 h-3.5 flex-shrink-0 ${color}`} /></span>;
 }
 import { toast } from "sonner";
+import { showInviteCredentials } from "@/lib/inviteCredentials";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
@@ -102,9 +103,8 @@ export default function BrokersPage() {
       });
       const body = await res.json().catch(() => ({ error: "Failed" }));
       if (!res.ok) throw new Error(body.error || "Couldn't send");
-      const verb = body.action === "resent" ? "New password sent" : "Invite sent";
-      if (body.emailed === false && body.tempPassword) toast.success(`${verb} — email didn't send, temp password: ${body.tempPassword}`);
-      else toast.success(verb);
+      if (body.tempPassword) showInviteCredentials(body.action === "resent" ? "New password ready" : "Agent invited", body.tempPassword, body.emailed !== false);
+      else toast.success(body.action === "resent" ? "New password sent" : "Invite sent");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send");
     } finally {
