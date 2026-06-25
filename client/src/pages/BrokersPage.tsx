@@ -80,14 +80,15 @@ export default function BrokersPage() {
   const [linkOpenBroker, setLinkOpenBroker] = useState<string | null>(null);
   const [linkSearch, setLinkSearch] = useState("");
   const [linkingId, setLinkingId] = useState<string | null>(null);
-  const linkAgentToBroker = async (clientId: string, brokerId: string) => {
+  // Assign (brokerId set), reassign (different brokerId), or unassign (null).
+  const setAgentBroker = async (clientId: string, brokerId: string | null) => {
     setLinkingId(clientId);
     try {
       await updateClient(clientId, { clientType: "agent", brokerId });
-      toast.success("Agent linked to broker");
+      toast.success(brokerId ? "Agent assigned to broker" : "Agent unassigned");
       setLinkOpenBroker(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't link agent");
+      toast.error(e instanceof Error ? e.message : "Couldn't update agent");
     } finally {
       setLinkingId(null);
     }
@@ -124,6 +125,13 @@ export default function BrokersPage() {
     for (const k of Object.keys(map)) map[k].sort((a, b) => a.company.localeCompare(b.company));
     return map;
   }, [data.clients]);
+
+  // Agents linked to no broker — shown in their own section so they stay
+  // visible and can be assigned (otherwise unassigning would hide them).
+  const unassignedAgents = useMemo(
+    () => data.clients.filter(c => c.clientType === "agent" && !c.brokerId).sort((a, b) => a.company.localeCompare(b.company)),
+    [data.clients],
+  );
 
   // This month's billable houses for each broker (payer-resolved, not cancelled/upcoming).
   const rollupByBroker = useMemo(() => {
@@ -242,6 +250,16 @@ export default function BrokersPage() {
                       {agent.contactName && agent.contactName !== agent.company && <span className="text-xs text-muted-foreground truncate">· {agent.contactName}</span>}
                     </button>
                     <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={agent.brokerId || ""}
+                        onChange={(e) => setAgentBroker(agent.id, e.target.value || null)}
+                        disabled={linkingId === agent.id}
+                        title="Move to another broker, or unassign"
+                        className="text-xs bg-background border border-border rounded px-1.5 py-1 text-foreground max-w-[7.5rem] shrink-0 disabled:opacity-50"
+                      >
+                        {brokers.map(b => <option key={b.id} value={b.id}>{b.company}</option>)}
+                        <option value="">Unassign</option>
+                      </select>
                       <button onClick={() => inviteOrResend(agent.id)} disabled={invitingId === agent.id} className="text-xs text-primary hover:underline disabled:opacity-50">
                         {invitingId === agent.id ? "Sending…" : agentHasLogin(agent.id) ? "Resend password" : "Invite"}
                       </button>
@@ -280,7 +298,7 @@ export default function BrokersPage() {
                             <button
                               key={c.id}
                               disabled={!!linkingId}
-                              onClick={() => { linkAgentToBroker(c.id, broker.id); setLinkSearch(""); }}
+                              onClick={() => { setAgentBroker(c.id, broker.id); setLinkSearch(""); }}
                               className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-white/5 disabled:opacity-50"
                             >
                               <div className="truncate">{c.company}{c.brokerId ? <span className="text-amber-300/80"> · under another broker</span> : ""}</div>
@@ -300,6 +318,34 @@ export default function BrokersPage() {
             </div>
           );
         })}
+
+        {unassignedAgents.length > 0 && (
+          <div className="bg-card border border-amber-500/30 rounded-lg overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center gap-2 flex-wrap">
+              <User className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-semibold">Unassigned agents</span>
+              <span className="text-xs text-muted-foreground">— not linked to any broker; pick one to assign</span>
+            </div>
+            {unassignedAgents.map(agent => (
+              <div key={agent.id} className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-border/40 last:border-b-0">
+                <button onClick={() => openEdit(agent)} className="flex items-center gap-2 min-w-0 text-left hover:text-primary transition-colors" title="Open agent profile">
+                  <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm truncate">{agent.company}</span>
+                  {agent.email && <span className="text-xs text-muted-foreground truncate">· {agent.email}</span>}
+                </button>
+                <select
+                  value=""
+                  disabled={linkingId === agent.id}
+                  onChange={(e) => { if (e.target.value) setAgentBroker(agent.id, e.target.value); }}
+                  className="text-xs bg-background border border-border rounded px-2 py-1 text-foreground shrink-0 max-w-[10rem] disabled:opacity-50"
+                >
+                  <option value="">Assign to broker…</option>
+                  {brokers.map(b => <option key={b.id} value={b.id}>{b.company}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <ClientProfileSheet
