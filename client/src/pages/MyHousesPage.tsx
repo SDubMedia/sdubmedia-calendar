@@ -65,8 +65,19 @@ export default function MyHousesPage() {
     }
   };
 
-  const myClientId = effectiveProfile?.clientIds?.[0] ?? "";
-  const myClient = useMemo(() => data.clients.find(c => c.id === myClientId), [data.clients, myClientId]);
+  // Resolve which of the login's attached client records is "me" — prefer the
+  // broker record, then the agent record, then whatever's first. Choosing by
+  // *type* (not just clientIds[0]) keeps a login with more than one attached
+  // record from resolving to the wrong one — the bug that silently hid a
+  // broker's agents when their login carried a stale extra client id.
+  const myClient = useMemo(() => {
+    const ids = effectiveProfile?.clientIds ?? [];
+    const mine = data.clients.filter(c => ids.includes(c.id));
+    return mine.find(c => c.clientType === "broker")
+      ?? mine.find(c => c.clientType === "agent")
+      ?? mine[0];
+  }, [data.clients, effectiveProfile?.clientIds]);
+  const myClientId = myClient?.id ?? "";
   const isBroker = (myClient?.clientType ?? "") === "broker";
   const isAgent = (myClient?.clientType ?? "") === "agent";
   // Set true once we've confirmed the card with Stripe on return — clears the
