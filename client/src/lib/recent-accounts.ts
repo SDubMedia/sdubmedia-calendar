@@ -10,6 +10,8 @@ export interface RecentAccount {
   displayName?: string;
   orgName?: string;
   role?: string;
+  /** Friendly role for display — "Broker"/"Agent" for client logins, else the role. */
+  accountType?: string;
   lastUsedAt: number;
 }
 
@@ -47,6 +49,7 @@ export function rememberAccount(email: string, fields: Partial<Omit<RecentAccoun
     displayName: fields.displayName ?? existing[idx]?.displayName,
     orgName: fields.orgName ?? existing[idx]?.orgName,
     role: fields.role ?? existing[idx]?.role,
+    accountType: fields.accountType ?? existing[idx]?.accountType,
     lastUsedAt: Date.now(),
   };
   if (idx >= 0) existing[idx] = merged;

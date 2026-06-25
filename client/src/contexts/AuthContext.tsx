@@ -79,10 +79,23 @@ async function rememberAccountFromSession(email: string | null | undefined, prof
       // Non-fatal — card just won't show org name.
     }
   }
+  // For a client login, resolve whether they're a broker or an agent so the
+  // account switcher can label them correctly (both have the auth role "client").
+  let accountType: string | undefined = profile?.role ? profile.role[0].toUpperCase() + profile.role.slice(1) : undefined;
+  if (profile?.role === "client" && profile.clientIds?.[0]) {
+    try {
+      const { data: c } = await supabase.from("clients").select("client_type").eq("id", profile.clientIds[0]).single();
+      const t = c?.client_type;
+      accountType = t === "broker" ? "Broker" : t === "agent" ? "Agent" : "Client";
+    } catch {
+      // Non-fatal — fall back to the role label.
+    }
+  }
   rememberAccount(email, {
     displayName: profile?.name,
     orgName,
     role: profile?.role,
+    accountType,
   });
 }
 

@@ -305,9 +305,9 @@ export default function LoginPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white truncate">{acct.email}</p>
-                      {(acct.orgName || acct.role) && (
+                      {(acct.orgName || acct.accountType || acct.role) && (
                         <p className="text-[11px] text-zinc-400 truncate">
-                          {[acct.orgName, acct.role].filter(Boolean).join(" · ")}
+                          {[acct.orgName, acct.accountType ?? acct.role].filter(Boolean).join(" · ")}
                         </p>
                       )}
                     </div>
