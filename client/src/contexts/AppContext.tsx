@@ -1159,6 +1159,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("shooter_prefs").select("*"),
       ]);
 
+      // TEMP DIAG — broker agent visibility (remove after diagnosis)
+      try {
+        const s = (await supabase.auth.getSession())?.data?.session;
+        console.log("[SLATE DIAG]",
+          "profileId:", profile?.id, "profileRole:", profile?.role,
+          "| sessionUserId:", s?.user?.id, "sessionEmail:", s?.user?.email,
+          "| clientsCount:", (clients || []).length,
+          "| clientsRows:", (clients || []).map((c: any) => `${c.company}/${c.client_type}/${c.broker_id || "-"}`),
+          "| e1:", e1?.message || null);
+      } catch (dErr) { console.log("[SLATE DIAG] error", dErr); }
+
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
       if (firstError) throw new Error(firstError.message);
 
