@@ -30,6 +30,10 @@ interface Props {
   defaultDate?: string;
   defaultClientId?: string;
   defaultNotes?: string;
+  /** Pre-fill the start time (e.g. booking into an open calendar slot). */
+  defaultStartTime?: string;
+  /** Pre-assign a shooter to the first crew row (e.g. the slot's free shooter). */
+  defaultCrewMemberId?: string;
   onCreated?: (project: Project) => void;
   /** Open restoring the saved draft (the "Resume Project" entry point). */
   resume?: boolean;
@@ -82,7 +86,12 @@ const emptyPostEntry = (): ProjectPostEntry => ({
   payRatePerHour: 0,
 });
 
-export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, onCreated, resume }: Props) {
+// First crew row for a NEW project — pre-assigned to a shooter when booking into
+// an open calendar slot, otherwise blank.
+const initialCrew = (crewMemberId?: string): ProjectCrewEntry[] =>
+  [crewMemberId ? { ...emptyCrewEntry(), crewMemberId, role: "Photographer" } : emptyCrewEntry()];
+
+export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
   const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery } = useApp();
   const isEdit = !!project;
 
@@ -90,10 +99,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [projectTypeId, setProjectTypeId] = useState(project?.projectTypeId ?? "");
   const [locationId, setLocationId] = useState(project?.locationId ?? "");
   const [date, setDate] = useState(project?.date ?? defaultDate ?? "");
-  const [startTime, setStartTime] = useState(project?.startTime ?? "09:00");
+  const [startTime, setStartTime] = useState(project?.startTime ?? defaultStartTime ?? "09:00");
   const [endTime, setEndTime] = useState(project?.endTime ?? "11:00");
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "upcoming");
-  const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew ?? [emptyCrewEntry()]);
+  const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId));
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
   const [editTypes, setEditTypes] = useState<string[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
@@ -186,20 +195,26 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       // broker so the picker shows broker → agent. New shoots default to the
       // first standard client (brokers/agents are reached via the broker).
       const initClient = data.clients.find(c => c.id === (project?.clientId ?? defaultClientId));
+      // Booking for an agent (e.g. clicking an agent on the Brokers page): enter
+      // via their broker and turn on the real-estate flow (RE type + bundle +
+      // one-time address), same as picking a broker from the client dropdown.
+      const bookingAgent = !project && initClient?.clientType === "agent";
+      const reType = bookingAgent ? data.projectTypes.find(t => /real\s*estate/i.test(t.name)) : undefined;
+      const reCat = bookingAgent ? data.serviceCategories.find(c => /real\s*estate/i.test(c.name)) : undefined;
       setBrokerSelectId(initClient?.clientType === "agent" ? (initClient.brokerId ?? "") : "");
       setShowNewAgent(false);
       setNewAgentName("");
       setClientId(project?.clientId ?? defaultClientId ?? data.clients.find(c => (c.clientType ?? "standard") === "standard")?.id ?? "");
-      setProjectTypeId(project?.projectTypeId ?? "");
+      setProjectTypeId(project?.projectTypeId ?? reType?.id ?? "");
       setLocationId(project?.locationId ?? "");
       // Prefill the RE address field from the project's location (if any).
       const initLoc = data.locations.find(l => l.id === project?.locationId);
       setPropertyAddress(initLoc ? (initLoc.address || initLoc.name || "") : "");
       setDate(project?.date ?? defaultDate ?? "");
-      setStartTime(project?.startTime ?? "09:00");
+      setStartTime(project?.startTime ?? defaultStartTime ?? "09:00");
       setEndTime(project?.endTime ?? "11:00");
       setStatus(project?.status ?? "upcoming");
-      setCrew(project?.crew?.length ? project.crew : [emptyCrewEntry()]);
+      setCrew(project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId));
       setPostProduction(project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]);
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
@@ -223,7 +238,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setDiscountType(project?.discountType ?? null);
       setDiscountAmount(project?.discountAmount ?? 0);
       setDiscountReason(project?.discountReason ?? "");
-      setServiceCategoryId(project?.serviceCategoryId ?? null);
+      setServiceCategoryId(project?.serviceCategoryId ?? reCat?.id ?? null);
       setBundleServices(project?.services ?? []);
       setBillToId(project?.billToId ?? null);
       setProducts(project?.products ?? []);
@@ -233,13 +248,13 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setNewEditTypeName("");
       setShowNewLocation(false);
       setNewLocForm({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
-      setLocationTab("saved");
+      setLocationTab(bookingAgent ? "one-time" : "saved");
       setShowNewClient(false);
       setNewClientName("");
     }
     wasOpen.current = open;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, project, defaultDate, defaultClientId, data.clients, resume]);
+  }, [open, project, defaultDate, defaultClientId, defaultStartTime, defaultCrewMemberId, data.clients, resume]);
 
   // Snapshot the current form for the "Resume Project" draft.
   const captureDraft = () => ({
