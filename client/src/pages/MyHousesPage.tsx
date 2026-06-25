@@ -309,8 +309,6 @@ export default function MyHousesPage() {
         {isBroker && (
           <div>
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5"><User className="w-3 h-3" /> Agents</div>
-            {/* TEMP DEBUG — remove after diagnosing broker agent visibility */}
-            <p className="text-[10px] text-amber-400 mb-2 break-all">debug: clients={data.clients.length} · myId={myClientId} · agents={agents.length} · types=[{data.clients.map(c => `${c.company}:${c.clientType ?? "?"}:${c.brokerId ?? "-"}`).join(" | ")}]</p>
             {agents.length === 0 ? (
               <p className="text-sm text-muted-foreground">No agents yet. Invite your first one.</p>
             ) : (

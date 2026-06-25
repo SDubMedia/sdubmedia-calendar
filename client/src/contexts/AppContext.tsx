@@ -1066,7 +1066,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [rawData, impersonateUserId, allProfiles, effectiveProfile]);
   const [error, setError] = useState<string | null>(null);
 
+  const lastFetchAtRef = useRef(0);
   const fetchAll = useCallback(async () => {
+    lastFetchAtRef.current = Date.now();
     setLoading(true);
     setError(null);
     // Client/agent/broker logins read cost-free VIEWS (crew pay, piece cost,
@@ -1206,9 +1208,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [orgId, profile?.role]);
+  // profile?.id is included so switching between two same-role accounts
+  // (e.g. one client/broker login to another) re-pulls data for the new
+  // user — role alone wouldn't change, leaving the previous user's data.
+  }, [orgId, profile?.role, profile?.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Re-fetch when the user returns to the app (tab focus / page becomes
+  // visible) so data that became newly visible while they were away — e.g.
+  // an owner linking an agent to this broker — appears without a manual
+  // reload. Throttled so rapid focus toggles don't hammer the database.
+  useEffect(() => {
+    const maybeRefetch = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastFetchAtRef.current < 3000) return;
+      fetchAll();
+    };
+    window.addEventListener("focus", maybeRefetch);
+    document.addEventListener("visibilitychange", maybeRefetch);
+    return () => {
+      window.removeEventListener("focus", maybeRefetch);
+      document.removeEventListener("visibilitychange", maybeRefetch);
+    };
+  }, [fetchAll]);
 
   // ---- Supabase Realtime — sync changes from other users ----
   const channelRef = useRef<RealtimeChannel | null>(null);
