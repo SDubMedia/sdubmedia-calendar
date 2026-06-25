@@ -64,15 +64,31 @@ export function useScopedData() {
 
     // Client: filter to their own projects/invoices/proposals/contracts
     if (role === "client" && clientIds.length > 0) {
+      const allowed = new Set(clientIds);
+      const clientById = new Map(data.clients.map(c => [c.id, c]));
       return {
         ...data,
-        projects: data.projects.filter(p => clientIds.includes(p.clientId)),
-        clients: data.clients.filter(c => clientIds.includes(c.id)),
-        invoices: data.invoices.filter(inv => clientIds.includes(inv.clientId)),
-        proposals: data.proposals.filter(prop => clientIds.includes(prop.clientId)),
-        contracts: data.contracts.filter(con => clientIds.includes(con.clientId)),
-        series: data.series.filter(s => clientIds.includes(s.clientId)),
-        pipelineLeads: data.pipelineLeads.filter(l => l.clientId && clientIds.includes(l.clientId)),
+        // A broker (client_type='broker') also sees their agents — agent
+        // records are linked by broker_id, not by being in the login's
+        // clientIds — and those agents' shoots (stored under the agent) and
+        // anything billed to the broker. Mirrors the broker_read_agents RLS
+        // policy + the AppContext impersonation scoping. Without the agent
+        // branch here, brokers saw zero agents even though the fetch returned
+        // them.
+        projects: data.projects.filter(p => {
+          if (allowed.has(p.clientId)) return true;
+          if (p.billToId && allowed.has(p.billToId)) return true;
+          const c = clientById.get(p.clientId);
+          return !!(c && c.clientType === "agent" && c.brokerId && allowed.has(c.brokerId));
+        }),
+        clients: data.clients.filter(c =>
+          allowed.has(c.id) || (c.clientType === "agent" && !!c.brokerId && allowed.has(c.brokerId))
+        ),
+        invoices: data.invoices.filter(inv => allowed.has(inv.clientId)),
+        proposals: data.proposals.filter(prop => allowed.has(prop.clientId)),
+        contracts: data.contracts.filter(con => allowed.has(con.clientId)),
+        series: data.series.filter(s => allowed.has(s.clientId)),
+        pipelineLeads: data.pipelineLeads.filter(l => l.clientId && allowed.has(l.clientId)),
       };
     }
 
