@@ -170,6 +170,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isOwner = profile?.role === "owner";
   const role = effectiveProfile?.role ?? "client";
   const isRealOwner = profile?.role === "owner";
+  // A broker logs in as a client role; their "My Listings" page is really their
+  // agents roster, so relabel that nav item to "My Agents" for them.
+  const isBrokerUser = (data.clients.find(c => effectiveProfile?.clientIds?.includes(c.id))?.clientType) === "broker";
   const isFamily = role === "family";
 
   const features = data.organization?.features;
@@ -240,9 +243,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         if (isGroup(entry)) {
           return { ...entry, items: entry.items.filter(filterItem) };
         }
+        // Brokers don't have listings — their /my-houses page is the agent roster.
+        if (entry.href === "/my-houses" && isBrokerUser) return { ...entry, label: "My Agents" };
         return entry;
       });
-  }, [role, features, userOverrides]);
+  }, [role, features, userOverrides, isBrokerUser]);
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
