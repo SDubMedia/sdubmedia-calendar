@@ -12,8 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
+import { Calendar as MonthCalendar, type CalendarEvent } from "@/components/Calendar";
+import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
+import { availabilityForDate, addDaysIso } from "@/lib/data";
 import type { Availability } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -182,6 +185,47 @@ export default function AvailabilityPage() {
 
   const personName = crewMembers.find(c => c.id === personId)?.name ?? "this person";
 
+  // At-a-glance availability calendar. Owner sees everyone's open days; staff
+  // see only their own. Recurring (weekday) + one-off blocks are expanded to
+  // concrete dates across a window so dots show on whichever month is paged to.
+  // Tap a day → a name → AvailabilityDayEditor to retime/remove that day.
+  const [dayEdit, setDayEdit] = useState<{ crewMemberId: string; name: string; date: string } | null>(null);
+  const { calEvents, calMeta } = useMemo(() => {
+    const events: CalendarEvent[] = [];
+    const meta = new Map<string, { crewMemberId: string; name: string; hours: string; date: string }>();
+    const scoped = isOwner ? data.availability : data.availability.filter(a => a.crewMemberId === myCrewId);
+    if (scoped.length === 0) return { calEvents: events, calMeta: meta };
+    const start = addDaysIso(toIsoLocal(new Date()), -31);
+    for (let i = 0; i < 400; i++) {
+      const date = addDaysIso(start, i);
+      for (const da of availabilityForDate(scoped, date)) {
+        const name = crewMembers.find(c => c.id === da.crewMemberId)?.name ?? "—";
+        const hours = da.windows.map(w => `${formatTime(w.start)}–${formatTime(w.end)}`).join(", ");
+        const id = `${da.crewMemberId}|${date}`;
+        events.push({ id, date, title: isOwner ? name : hours, color: "bg-emerald-500" });
+        meta.set(id, { crewMemberId: da.crewMemberId, name, hours, date });
+      }
+    }
+    return { calEvents: events, calMeta: meta };
+  }, [isOwner, data.availability, myCrewId, crewMembers]);
+
+  const renderCalEvent = (e: CalendarEvent) => {
+    const m = calMeta.get(e.id);
+    if (!m) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setDayEdit({ crewMemberId: m.crewMemberId, name: m.name, date: m.date })}
+        className="w-full flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-left hover:bg-muted transition-colors min-w-0"
+      >
+        <span className="inline-block size-2 rounded-full bg-emerald-500 shrink-0" />
+        <span className="font-medium text-foreground shrink-0">{m.name}</span>
+        <span className="text-muted-foreground truncate">{m.hours}</span>
+        <Pencil className="w-3 h-3 ml-auto text-muted-foreground shrink-0" />
+      </button>
+    );
+  };
+
   const handleAdd = async () => {
     if (!personId) { toast.error("Pick a person first"); return; }
     if (recurring && weekdays.length === 0) { toast.error("Pick at least one day"); return; }
@@ -255,6 +299,13 @@ export default function AvailabilityPage() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 max-w-2xl w-full mx-auto">
+        {/* At-a-glance availability calendar (owner: everyone; staff: just them) */}
+        <div className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
+          <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5"><CalendarClock className="w-3.5 h-3.5" /> Availability calendar</div>
+          <p className="text-xs text-muted-foreground mb-3">{isOwner ? "Everyone's open days at a glance — tap a day, then a name to adjust their hours." : "Your open days at a glance — tap a day to adjust your hours."}</p>
+          <MonthCalendar events={calEvents} renderEvent={renderCalEvent} />
+        </div>
+
         {/* Person picker — owner only */}
         {isOwner && crewMembers.length > 0 && (
           <div className="mb-5">
@@ -438,6 +489,17 @@ export default function AvailabilityPage() {
           </div>
         )}
       </div>
+
+      {/* Tap a name in the calendar drawer to retime/remove that day's hours */}
+      {dayEdit && (
+        <AvailabilityDayEditor
+          open={!!dayEdit}
+          onClose={() => setDayEdit(null)}
+          crewMemberId={dayEdit.crewMemberId}
+          crewMemberName={dayEdit.name}
+          date={dayEdit.date}
+        />
+      )}
     </div>
   );
 }
