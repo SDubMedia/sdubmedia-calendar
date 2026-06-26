@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useApp } from "@/contexts/AppContext";
+import PullToRefresh from "@/components/PullToRefresh";
 import type { UserRole } from "@/lib/types";
 import { useEffect, useMemo } from "react";
 import GlobalSearch from "./GlobalSearch";
@@ -157,7 +158,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { profile, effectiveProfile, signOut, viewAsRole, setViewAsRole, impersonateUserId, setImpersonateUserId, allProfiles } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { data } = useApp();
+  const { data, refresh } = useApp();
   const orgName = data.organization?.name || "Slate";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Track in-app navigation depth so the mobile header can show a Back button
@@ -637,7 +638,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">
-          {children}
+          <PullToRefresh onRefresh={refresh}>
+            {children}
+          </PullToRefresh>
         </main>
       </div>
 
