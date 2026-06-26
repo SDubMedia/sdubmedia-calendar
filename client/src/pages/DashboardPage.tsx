@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getProjectInvoiceAmount, getProjectCrewCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
@@ -64,6 +64,12 @@ export default function DashboardPage() {
     const w = widgetConfig.find(c => c.id === id);
     return w ? w.enabled : true;
   };
+  // CSS-order position for each widget, from the order set in Settings (drag to
+  // reorder). Stepped by 10 so non-widget sections can slot between.
+  const orderOf = (id: DashboardWidgetId) => {
+    const i = widgetConfig.findIndex(c => c.id === id);
+    return (i < 0 ? 99 : i) * 10;
+  };
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -85,6 +91,31 @@ export default function DashboardPage() {
     in_editing: data.projects.filter(p => p.status === "in_editing").sort((a, b) => b.date.localeCompare(a.date)),
     completed: data.projects.filter(p => p.status === "editing_done" || p.status === "delivered").sort((a, b) => b.date.localeCompare(a.date)),
   }), [data.projects]);
+
+  // Ready to deliver — editing finished, not yet sent to the client.
+  const readyToDeliver = useMemo(
+    () => data.projects.filter(p => p.status === "editing_done").sort((a, b) => b.date.localeCompare(a.date)),
+    [data.projects],
+  );
+
+  // Real-estate pipeline summary (a shoot is RE if its client is an agent or its
+  // payer is a broker — same rule as the Real Estate page).
+  const reStats = useMemo(() => {
+    const clientsById = Object.fromEntries(data.clients.map(c => [c.id, c]));
+    const reShoots = data.projects.filter(p => {
+      if (p.status === "cancelled") return false;
+      const c = clientsById[p.clientId];
+      if (c?.clientType === "agent") return true;
+      return clientsById[getProjectPayerId(p, clientsById)]?.clientType === "broker";
+    });
+    const ym = todayStr.slice(0, 7), yr = todayStr.slice(0, 4);
+    return {
+      month: reShoots.filter(p => p.date.startsWith(ym)).length,
+      year: reShoots.filter(p => p.date.startsWith(yr)).length,
+      brokerages: data.clients.filter(c => c.clientType === "broker").length,
+      agents: data.clients.filter(c => c.clientType === "agent").length,
+    };
+  }, [data.projects, data.clients, todayStr]);
 
   // This month's revenue
   const thisMonthRevenue = useMemo(() => {
@@ -268,9 +299,9 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+      <div className="flex-1 overflow-auto p-3 sm:p-6 flex flex-col gap-5">
         {/* Metric Cards */}
-        {isWidgetEnabled("metrics") && (<>
+        {isWidgetEnabled("metrics") && (<div style={{ order: orderOf("metrics") }}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
             icon={CalendarDays}
@@ -389,11 +420,11 @@ export default function DashboardPage() {
           </div>
         )}
 
-        </>)}
+        </div>)}
 
-        {/* Pipeline Summary — full width */}
+        {/* Pipeline Summary — full width (kept just under the metric cards) */}
         {isFeatureVisible("pipeline") && (
-        <div className="bg-card border border-border rounded-lg">
+        <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 1 }}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               <Users className="w-4 h-4 text-primary" />
@@ -420,10 +451,10 @@ export default function DashboardPage() {
         {/* Activity Feed — recent client interactions across proposals,
             contracts, payments, replies. Pulls only from existing data; no
             new fetches. Owners can disable in Settings → Dashboard widgets. */}
-        {isWidgetEnabled("activity") && <ActivityFeed />}
+        {isWidgetEnabled("activity") && <div style={{ order: orderOf("activity") }}><ActivityFeed /></div>}
 
-        {/* Middle Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Middle Section — Upcoming + Invoices stay side-by-side, ordered as a pair */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5" style={{ order: orderOf("upcoming") }}>
           {/* Upcoming Projects */}
           {isWidgetEnabled("upcoming") && (
           <div className="bg-card border border-border rounded-lg">
@@ -508,9 +539,65 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Ready to Deliver — editing done, not yet sent */}
+        {isWidgetEnabled("readyToDeliver") && (
+          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Ready to Deliver</h3>
+              <span className="text-xs text-muted-foreground">{readyToDeliver.length}</span>
+            </div>
+            <div className="divide-y divide-border">
+              {readyToDeliver.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">Nothing waiting to be delivered</div>
+              ) : (
+                readyToDeliver.slice(0, 6).map(p => {
+                  const client = data.clients.find(c => c.id === p.clientId);
+                  const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                  return (
+                    <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(p)}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground truncate">{pType?.name ?? "Project"}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground shrink-0">{client?.company}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">Edited {formatDate(p.date)} · ready to send</p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-teal-500/40 text-teal-600 dark:text-teal-300 shrink-0">Ready</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Real Estate Pipeline */}
+        {isWidgetEnabled("realEstate") && (
+          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("realEstate") }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Real Estate Pipeline</h3>
+              <Link href="/real-estate" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">Open <ArrowRight className="w-3 h-3" /></Link>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
+              {[
+                { label: "This month", value: reStats.month, sub: "shoots" },
+                { label: "This year", value: reStats.year, sub: "shoots" },
+                { label: "Brokerages", value: reStats.brokerages },
+                { label: "Agents", value: reStats.agents },
+              ].map(s => (
+                <div key={s.label} className="min-w-0">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide truncate">{s.label}</div>
+                  <div className="text-2xl font-semibold text-foreground mt-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{s.value}</div>
+                  {s.sub && <div className="text-xs text-muted-foreground">{s.sub}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Mileage Summary */}
         {isWidgetEnabled("mileage") && isFeatureVisible("mileage") && (mileageStats.monthMiles > 0 || mileageStats.yearMiles > 0) && (
-          <div className="bg-card border border-border rounded-lg p-4">
+          <div className="bg-card border border-border rounded-lg p-4" style={{ order: orderOf("mileage") }}>
             <div className="flex items-center gap-2 mb-3">
               <Car className="w-4 h-4 text-primary" />
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -536,7 +623,7 @@ export default function DashboardPage() {
 
         {/* Revenue Chart */}
         {isWidgetEnabled("revenue") && (
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4" style={{ order: orderOf("revenue") }}>
           <h3 className="text-sm font-semibold text-foreground mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Monthly Revenue
           </h3>

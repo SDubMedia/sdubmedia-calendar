@@ -109,8 +109,15 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
   const [faviconUrl, setFaviconUrl] = useState(org?.faviconUrl || "");
   const [logoErr, setLogoErr] = useState<string | null>(null);
   const [faviconErr, setFaviconErr] = useState<string | null>(null);
+  // Merge in any newer default widgets the saved config predates, so new
+  // widgets (e.g. Ready to Deliver, Real Estate) always show up to toggle.
+  const mergeWidgets = (saved?: DashboardWidgetConfig[]): DashboardWidgetConfig[] => {
+    const base = saved && saved.length ? saved : DEFAULT_DASHBOARD_WIDGETS;
+    const have = new Set(base.map(w => w.id));
+    return [...base, ...DEFAULT_DASHBOARD_WIDGETS.filter(w => !have.has(w.id))];
+  };
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
-    org?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS
+    () => mergeWidgets(org?.dashboardWidgets)
   );
   const [pipelineStages, setPipelineStages] = useState<PipelineStageConfig[]>(
     org?.pipelineStages?.length ? org.pipelineStages : DEFAULT_PIPELINE_STAGES
@@ -272,7 +279,7 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
       setBusinessInfo(org.businessInfo || { address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", ein: "", ownerName: "" });
       setLogoUrl(org.logoUrl || "");
       setFaviconUrl(org.faviconUrl || "");
-      setDashboardWidgets(org.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS);
+      setDashboardWidgets(mergeWidgets(org.dashboardWidgets));
     }
   }, [org]);
 
