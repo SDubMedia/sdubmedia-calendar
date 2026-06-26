@@ -485,6 +485,9 @@ export function getProjectCrewCost(project: Project): number {
  */
 export function getCrewMemberProjectPay(project: Project, crewMemberId: string): number {
   if (project.status === "cancelled") return 0;
+  // Real-estate flat rates: pay comes from the service pieces (shoot → shooter,
+  // edit → editor), which replaces the hourly crew entries to avoid double pay.
+  if (hasServiceCrewPay(project)) return getCrewMemberServicePay(project, crewMemberId);
   const crew = (project.crew || [])
     .filter(e => e.crewMemberId === crewMemberId && e.role !== "Travel")
     .reduce((s, e) => s + crewEntryCost(e), 0);
@@ -649,6 +652,42 @@ export function getProjectProductCost(project: Project): number {
  */
 export function getProjectServiceCost(project: Project): number {
   return (project.services || []).reduce((s, x) => s + Number(x.cost ?? 0), 0);
+}
+
+/**
+ * Flat per-piece crew payouts grouped by role (real-estate flat rates). "shoot"
+ * pieces pay the assigned shooter(s); "edit" pieces pay the assigned editor(s).
+ * Pieces with no crewRole are excluded (e.g. photo editing rides in the Fotello
+ * product cost, not crew pay).
+ */
+export function getProjectServicePayByRole(project: Project): { shoot: number; edit: number } {
+  let shoot = 0, edit = 0;
+  for (const s of project.services || []) {
+    if (s.crewRole === "shoot") shoot += Number(s.cost ?? 0);
+    else if (s.crewRole === "edit") edit += Number(s.cost ?? 0);
+  }
+  return { shoot, edit };
+}
+
+/** Whether a project carries any flat per-piece crew payouts (RE flat-rate). */
+export function hasServiceCrewPay(project: Project): boolean {
+  return (project.services || []).some(s => s.crewRole === "shoot" || s.crewRole === "edit");
+}
+
+/**
+ * A crew member's flat service-piece pay on a project: shooters (distinct people
+ * in project.crew) split the "shoot" payout evenly; editors (distinct people in
+ * project.postProduction) split the "edit" payout evenly; summed if the member is
+ * both. Travel-only entries don't count as being on the shoot.
+ */
+export function getCrewMemberServicePay(project: Project, crewMemberId: string): number {
+  const { shoot, edit } = getProjectServicePayByRole(project);
+  const shooters = new Set((project.crew || []).filter(e => e.role !== "Travel" && e.crewMemberId).map(e => e.crewMemberId));
+  const editors = new Set((project.postProduction || []).filter(e => e.role !== "Travel" && e.crewMemberId).map(e => e.crewMemberId));
+  let pay = 0;
+  if (shooters.has(crewMemberId) && shooters.size > 0) pay += shoot / shooters.size;
+  if (editors.has(crewMemberId) && editors.size > 0) pay += edit / editors.size;
+  return pay;
 }
 
 /**

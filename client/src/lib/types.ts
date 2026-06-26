@@ -372,6 +372,10 @@ export interface CrewMember {
   taxId?: string; // SSN or EIN from W-9
   taxIdType?: "ssn" | "ein" | ""; // type of tax ID
   w9Url?: string; // URL to uploaded W-9 document in Supabase Storage
+  // Stripe direct-deposit payouts (their Express connected account + whether
+  // onboarding is complete / transfers are active). Set server-side.
+  stripeAccountId?: string;
+  stripePayoutsEnabled?: boolean;
 }
 
 export interface Location {
@@ -502,12 +506,18 @@ export interface Project {
   createdAt: string;
 }
 
+// Which crew role a flat per-piece payout is paid to (real-estate flat rates).
+// "shoot" → the shoot's assigned shooter (project.crew); "edit" → the assigned
+// editor (project.postProduction). Absent/null = not a crew payout.
+export type ServiceCrewRole = "shoot" | "edit";
+
 export interface ProjectServiceSelection {
   serviceId: string;
   variantId: string | null;
   label: string;    // e.g. "Real Estate Shoot — Photos (2k-3k sqft)"
   price: number;    // snapshot of the price (what the client is charged)
   cost?: number;    // snapshot of your cost for this piece (photographer payout)
+  crewRole?: ServiceCrewRole | null; // snapshot of who this piece's payout pays
   durationMinutes?: number; // snapshot of on-site minutes this piece takes (sums across pieces)
 }
 
@@ -536,6 +546,7 @@ export interface Service {
   name: string;
   defaultPrice: number;    // used when the service has zero variants
   defaultCost?: number;    // your cost (photographer payout) when no variants
+  crewRole?: ServiceCrewRole | null; // flat payout pays the shooter / editor (RE flat rates)
   durationMinutes?: number; // on-site minutes this piece takes (0 = use shooter default)
   description?: string;    // agent-facing note: what they get with this selection
   position: number;

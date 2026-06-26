@@ -95,6 +95,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
   const [newServicePrice, setNewServicePrice] = useState("0");
   const [newServiceCost, setNewServiceCost] = useState("0");
   const [newServiceDuration, setNewServiceDuration] = useState("0");
+  const [newServiceCrewRole, setNewServiceCrewRole] = useState<"" | "shoot" | "edit">("");
 
   const services = data.services.filter(s => s.categoryId === category.id);
 
@@ -129,6 +130,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
         name: sname,
         defaultPrice: Number(newServicePrice) || 0,
         defaultCost: Number(newServiceCost) || 0,
+        crewRole: newServiceCrewRole || null,
         durationMinutes: Number(newServiceDuration) || 0,
         position: services.length,
       });
@@ -136,6 +138,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
       setNewServicePrice("0");
       setNewServiceCost("0");
       setNewServiceDuration("0");
+      setNewServiceCrewRole("");
       setAddingService(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add service");
@@ -182,7 +185,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
           ))}
 
           {addingService ? (
-            <div className="flex items-center gap-2 rounded border border-dashed border-border p-2">
+            <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-border p-2">
               <input
                 type="text"
                 autoFocus
@@ -224,8 +227,18 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
                 />
                 <span className="text-xs">min</span>
               </div>
+              <select
+                value={newServiceCrewRole}
+                onChange={(e) => setNewServiceCrewRole(e.target.value as "" | "shoot" | "edit")}
+                title="Who this piece's flat payout pays"
+                className="bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Pays: —</option>
+                <option value="shoot">Pays: Shooter</option>
+                <option value="edit">Pays: Editor</option>
+              </select>
               <button onClick={handleAddService} className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm">Add</button>
-              <button onClick={() => { setAddingService(false); setNewServiceName(""); setNewServicePrice("0"); setNewServiceCost("0"); setNewServiceDuration("0"); }} className="px-3 py-1.5 rounded bg-secondary text-muted-foreground text-sm">Cancel</button>
+              <button onClick={() => { setAddingService(false); setNewServiceName(""); setNewServicePrice("0"); setNewServiceCost("0"); setNewServiceDuration("0"); setNewServiceCrewRole(""); }} className="px-3 py-1.5 rounded bg-secondary text-muted-foreground text-sm">Cancel</button>
             </div>
           ) : (
             <button
@@ -247,6 +260,7 @@ function ServiceRow({ service }: { service: Service }) {
   const [name, setName] = useState(service.name);
   const [price, setPrice] = useState(String(service.defaultPrice));
   const [cost, setCost] = useState(String(service.defaultCost ?? 0));
+  const [crewRole, setCrewRole] = useState<"" | "shoot" | "edit">(service.crewRole ?? "");
   const [duration, setDuration] = useState(String(service.durationMinutes ?? 0));
   const [description, setDescription] = useState(service.description ?? "");
   const [showVariants, setShowVariants] = useState(false);
@@ -262,7 +276,7 @@ function ServiceRow({ service }: { service: Service }) {
     const trimmed = name.trim();
     if (!trimmed) { toast.error("Name required"); return; }
     try {
-      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0, defaultCost: Number(cost) || 0, durationMinutes: Number(duration) || 0, description: description.trim() });
+      await updateService(service.id, { name: trimmed, defaultPrice: Number(price) || 0, defaultCost: Number(cost) || 0, crewRole: crewRole || null, durationMinutes: Number(duration) || 0, description: description.trim() });
       setEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
@@ -349,9 +363,18 @@ function ServiceRow({ service }: { service: Service }) {
                   <span className="text-xs text-muted-foreground">min</span>
                 </span>
               </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground uppercase tracking-wide" title="Who this piece's flat payout pays (real-estate flat rates)">
+                Pays
+                <select value={crewRole} onChange={(e) => setCrewRole(e.target.value as "" | "shoot" | "edit")}
+                  className="bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                  <option value="">—</option>
+                  <option value="shoot">Shooter</option>
+                  <option value="edit">Editor</option>
+                </select>
+              </label>
               <div className="flex items-center gap-1 ml-auto">
                 <button onClick={handleSave} className="p-2 text-primary hover:bg-primary/10 rounded"><Save className="w-4 h-4" /></button>
-                <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setDuration(String(service.durationMinutes ?? 0)); setDescription(service.description ?? ""); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
+                <button onClick={() => { setEditing(false); setName(service.name); setPrice(String(service.defaultPrice)); setCost(String(service.defaultCost ?? 0)); setCrewRole(service.crewRole ?? ""); setDuration(String(service.durationMinutes ?? 0)); setDescription(service.description ?? ""); }} className="p-2 text-muted-foreground rounded"><X className="w-4 h-4" /></button>
               </div>
             </div>
           </div>

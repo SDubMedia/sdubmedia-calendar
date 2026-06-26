@@ -217,6 +217,8 @@ function rowToCrew(r: any): CrewMember {
     taxId: r.tax_id || "",
     taxIdType: r.tax_id_type || "",
     w9Url: r.w9_url || "",
+    stripeAccountId: r.stripe_account_id || "",
+    stripePayoutsEnabled: !!r.stripe_payouts_enabled,
   };
 }
 
@@ -743,6 +745,7 @@ function rowToService(r: any): Service {
     name: r.name || "",
     defaultPrice: Number(r.default_price ?? 0),
     defaultCost: Number(r.default_cost ?? 0),
+    crewRole: r.crew_role === "shoot" || r.crew_role === "edit" ? r.crew_role : null,
     durationMinutes: Number(r.duration_minutes ?? 0),
     description: r.description || "",
     position: Number(r.position ?? 0),
@@ -2172,6 +2175,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, ...(orgId ? { org_id: orgId } : {}),
       category_id: s.categoryId, name: s.name,
       default_price: s.defaultPrice ?? 0, default_cost: s.defaultCost ?? 0,
+      crew_role: s.crewRole ?? null,
       duration_minutes: s.durationMinutes ?? 0, description: s.description ?? "", position: s.position ?? 0,
       updated_at: new Date().toISOString(),
     }).select().single();
@@ -2186,6 +2190,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.name !== undefined) patch.name = s.name;
     if (s.defaultPrice !== undefined) patch.default_price = s.defaultPrice;
     if (s.defaultCost !== undefined) patch.default_cost = s.defaultCost;
+    if (s.crewRole !== undefined) patch.crew_role = s.crewRole;
     if (s.durationMinutes !== undefined) patch.duration_minutes = s.durationMinutes;
     if (s.description !== undefined) patch.description = s.description;
     if (s.position !== undefined) patch.position = s.position;

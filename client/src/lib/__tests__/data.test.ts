@@ -16,6 +16,8 @@ import {
   getProjectProductCost,
   getProjectServiceCost,
   getProjectProfit,
+  getProjectServicePayByRole,
+  getCrewMemberServicePay,
   calcHoursWorked,
 } from "../data";
 import type { Client, Project, ProjectCrewEntry } from "../types";
@@ -208,6 +210,72 @@ describe("getCrewMemberProjectPay", () => {
       crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
     });
     expect(getCrewMemberProjectPay(p, "c1")).toBe(0);
+  });
+});
+
+// ---- Real-estate flat per-piece crew payouts (auto by role) ----
+
+describe("flat per-piece crew payouts", () => {
+  const reServices = [
+    { serviceId: "photo", variantId: null, label: "RE — Photography", price: 200, cost: 70, crewRole: "shoot" as const },
+    { serviceId: "vshoot", variantId: null, label: "RE — Video shoot", price: 200, cost: 70, crewRole: "shoot" as const },
+    { serviceId: "vedit", variantId: null, label: "RE — Video edit", price: 150, cost: 70, crewRole: "edit" as const },
+  ];
+
+  it("groups piece payouts by role", () => {
+    const p = makeProject({ services: reServices });
+    expect(getProjectServicePayByRole(p)).toEqual({ shoot: 140, edit: 70 });
+  });
+
+  it("pays the shooter the shoot pieces and the editor the edit pieces", () => {
+    const p = makeProject({
+      services: reServices,
+      crew: [{ crewMemberId: "shooter", role: "Photographer", hoursWorked: 0, payRatePerHour: 0 }],
+      postProduction: [{ crewMemberId: "editor", role: "Video Editor", hoursWorked: 0, payRatePerHour: 0 }],
+    });
+    expect(getCrewMemberServicePay(p, "shooter")).toBe(140); // photo $70 + video shoot $70
+    expect(getCrewMemberServicePay(p, "editor")).toBe(70);   // video edit $70
+    // getCrewMemberProjectPay routes through the flat path, ignoring hours.
+    expect(getCrewMemberProjectPay(p, "shooter")).toBe(140);
+    expect(getCrewMemberProjectPay(p, "editor")).toBe(70);
+  });
+
+  it("splits a role's payout evenly across multiple assigned people", () => {
+    const p = makeProject({
+      services: reServices,
+      crew: [
+        { crewMemberId: "a", role: "Photographer", hoursWorked: 0, payRatePerHour: 0 },
+        { crewMemberId: "b", role: "Photographer", hoursWorked: 0, payRatePerHour: 0 },
+      ],
+    });
+    expect(getCrewMemberServicePay(p, "a")).toBe(70); // 140 / 2 shooters
+    expect(getCrewMemberServicePay(p, "b")).toBe(70);
+  });
+
+  it("flat replaces hourly when pieces carry a crewRole", () => {
+    const p = makeProject({
+      services: reServices,
+      crew: [{ crewMemberId: "shooter", role: "Photographer", hoursWorked: 5, payRatePerHour: 100 }],
+    });
+    expect(getCrewMemberProjectPay(p, "shooter")).toBe(140); // flat, NOT 5×100
+  });
+
+  it("leaves non-real-estate (untagged) shoots on the hourly model", () => {
+    const p = makeProject({
+      services: [{ serviceId: "x", variantId: null, label: "Untagged", price: 100, cost: 40 }],
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 3, payRatePerHour: 100 }],
+    });
+    expect(getCrewMemberServicePay(p, "c1")).toBe(0);     // no crewRole pieces
+    expect(getCrewMemberProjectPay(p, "c1")).toBe(300);   // 3×100, unchanged
+  });
+
+  it("returns 0 for cancelled projects", () => {
+    const p = makeProject({
+      status: "cancelled",
+      services: reServices,
+      crew: [{ crewMemberId: "shooter", role: "Photographer", hoursWorked: 0, payRatePerHour: 0 }],
+    });
+    expect(getCrewMemberProjectPay(p, "shooter")).toBe(0);
   });
 });
 

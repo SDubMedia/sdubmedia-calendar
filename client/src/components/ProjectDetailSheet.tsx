@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus, Invoice } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
+import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { pdf } from "@react-pdf/renderer";
@@ -75,6 +75,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
   const isClient = effectiveProfile?.role === "client";
+  // Staff (crew) see what they're paid, never what the client is billed.
+  const isStaff = effectiveProfile?.role === "staff";
   // Always read the latest project from context so status updates reflect immediately
   const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
   const [editOpen, setEditOpen] = useState(false);
@@ -786,7 +788,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                         <div className="text-sm font-medium truncate">{s.label}</div>
                         {(s.durationMinutes ?? 0) > 0 && <div className="text-xs text-muted-foreground">{fmtDur(s.durationMinutes!)} on-site</div>}
                       </div>
-                      <div className="text-sm font-medium tabular-nums shrink-0">${Number(s.price || 0).toFixed(0)}</div>
+                      {!isStaff && <div className="text-sm font-medium tabular-nums shrink-0">${Number(s.price || 0).toFixed(0)}</div>}
                     </div>
                   ))}
                 </div>
@@ -922,18 +924,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 const myCrewEntry = project.crew.find(c => c.crewMemberId === myCrewMemberId);
                 const myPostEntry = project.postProduction.find(c => c.crewMemberId === myCrewMemberId);
                 const isPhotoEditor = myPostEntry?.role === "Photo Editor" && project.editorBilling;
-                const editorRate = project.editorBilling?.perImageRate ?? 6;
 
-                // Calculate projected pay
-                let projectedPay = 0;
-                if (myCrewEntry) projectedPay += Number(myCrewEntry.hoursWorked ?? 0) * Number(myCrewEntry.payRatePerHour ?? 0);
-                if (myPostEntry) {
-                  if (isPhotoEditor) {
-                    projectedPay += project.editorBilling!.imageCount * editorRate;
-                  } else {
-                    projectedPay += Number(myPostEntry.hoursWorked ?? 0) * Number(myPostEntry.payRatePerHour ?? 0);
-                  }
-                }
+                // Projected pay — same helper Staff Payments uses, so real-estate
+                // flat per-piece payouts (shoot → shooter, edit → editor) and the
+                // hourly / photo-editor models all resolve consistently.
+                const projectedPay = getCrewMemberProjectPay(project, myCrewMemberId);
 
                 return (myCrewEntry || myPostEntry) ? (
                   <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">

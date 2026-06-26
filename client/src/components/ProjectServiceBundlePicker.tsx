@@ -111,7 +111,7 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
     const label = `${cat?.name ? cat.name + " — " : ""}${svc.name}${defaultVariant ? ` (${defaultVariant.label})` : ""}`;
     onChange(categoryId, [
       ...services,
-      { serviceId, variantId: defaultVariant?.id ?? null, label, price, cost, durationMinutes },
+      { serviceId, variantId: defaultVariant?.id ?? null, label, price, cost, crewRole: svc.crewRole ?? null, durationMinutes },
     ]);
   };
 
@@ -133,7 +133,7 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
     onChange(
       categoryId,
       services.map(sel => sel.serviceId === serviceId
-        ? { ...sel, variantId: newVariantId, label, price, cost, durationMinutes }
+        ? { ...sel, variantId: newVariantId, label, price, cost, crewRole: svc.crewRole ?? null, durationMinutes }
         : sel
       ),
     );
