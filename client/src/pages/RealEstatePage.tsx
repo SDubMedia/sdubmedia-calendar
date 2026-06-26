@@ -109,13 +109,13 @@ export default function RealEstatePage() {
             <p className="text-sm text-muted-foreground">No agents yet.</p>
           ) : (
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
-                <span>Agent</span><span className="text-right w-12">Week</span><span className="text-right w-12">Month</span><span className="text-right w-12">Year</span><span className="text-right w-20">$ / yr</span>
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2 text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
+                <span className="min-w-0">Agent</span><span className="text-right w-7">Wk</span><span className="text-right w-8">Mo</span><span className="text-right w-8">Yr</span><span className="text-right w-14">$/yr</span>
               </div>
               {scoreboard.map(({ agent, broker, week, month, year, dollars }) => {
                 const pres = presence(agent.id, allProfiles, appUserIds);
                 return (
-                  <div key={agent.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 px-4 py-2.5 items-center border-b border-border/40 last:border-b-0">
+                  <div key={agent.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center border-b border-border/40 last:border-b-0">
                     <div className="min-w-0 flex items-center gap-2">
                       <span title={pres.label} className="inline-flex"><pres.Icon className={`w-3.5 h-3.5 flex-shrink-0 ${pres.color}`} /></span>
                       <div className="min-w-0">
@@ -123,10 +123,10 @@ export default function RealEstatePage() {
                         {broker && <div className="text-[11px] text-muted-foreground truncate">{broker.company}</div>}
                       </div>
                     </div>
-                    <span className="text-right w-12 text-sm tabular-nums text-foreground">{week}</span>
-                    <span className="text-right w-12 text-sm tabular-nums text-foreground">{month}</span>
-                    <span className="text-right w-12 text-sm tabular-nums font-medium text-foreground">{year}</span>
-                    <span className="text-right w-20 text-sm tabular-nums text-muted-foreground">{money(dollars)}</span>
+                    <span className="text-right w-7 text-sm tabular-nums text-foreground">{week}</span>
+                    <span className="text-right w-8 text-sm tabular-nums text-foreground">{month}</span>
+                    <span className="text-right w-8 text-sm tabular-nums font-medium text-foreground">{year}</span>
+                    <span className="text-right w-14 text-sm tabular-nums text-muted-foreground">{money(dollars)}</span>
                   </div>
                 );
               })}
