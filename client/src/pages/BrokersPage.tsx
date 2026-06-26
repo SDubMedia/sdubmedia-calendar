@@ -28,6 +28,8 @@ import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
 import AgentQuickView from "@/components/AgentQuickView";
 import ProjectDialog from "@/components/ProjectDialog";
+import ProjectDetailSheet from "@/components/ProjectDetailSheet";
+import type { Project } from "@/lib/types";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
@@ -63,6 +65,8 @@ export default function BrokersPage() {
   const [quickAgent, setQuickAgent] = useState<Client | null>(null);
   // Booking dialog pre-filled for an agent (broker + RE flow auto-resolved).
   const [bookingAgentId, setBookingAgentId] = useState<string | null>(null);
+  // Full details for a shoot opened from an agent's quick-view.
+  const [detailProject, setDetailProject] = useState<Project | null>(null);
 
   // Presence: which agents/brokers have an account, and whether on the app.
   const { allProfiles } = useAuth();
@@ -367,6 +371,7 @@ export default function BrokersPage() {
         agent={quickAgent}
         onClose={() => setQuickAgent(null)}
         onBook={(id) => { setQuickAgent(null); setBookingAgentId(id); }}
+        onOpenShoot={(p) => { setQuickAgent(null); setDetailProject(p); }}
       />
 
       {/* Booking dialog, pre-filled for the chosen agent */}
@@ -375,6 +380,11 @@ export default function BrokersPage() {
         defaultClientId={bookingAgentId ?? undefined}
         onClose={() => setBookingAgentId(null)}
       />
+
+      {/* Full shoot details, opened from an agent's quick-view */}
+      {detailProject && (
+        <ProjectDetailSheet project={detailProject} onClose={() => setDetailProject(null)} />
+      )}
     </div>
   );
 }

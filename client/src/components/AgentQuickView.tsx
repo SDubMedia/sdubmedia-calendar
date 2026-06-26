@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Building2, CalendarPlus, MapPin, CalendarClock } from "lucide-react";
+import { Building2, CalendarPlus, MapPin, CalendarClock, ChevronRight } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { cn } from "@/lib/utils";
 import type { Client, Project } from "@/lib/types";
@@ -40,9 +40,11 @@ interface Props {
   onClose: () => void;
   /** Open the booking dialog pre-filled for this agent. */
   onBook: (agentId: string) => void;
+  /** Open the full details for one of the agent's shoots. */
+  onOpenShoot: (project: Project) => void;
 }
 
-export default function AgentQuickView({ agent, onClose, onBook }: Props) {
+export default function AgentQuickView({ agent, onClose, onBook, onOpenShoot }: Props) {
   const { data } = useApp();
 
   const broker = useMemo(
@@ -67,7 +69,7 @@ export default function AgentQuickView({ agent, onClose, onBook }: Props) {
   const typeFor = (p: Project) => data.projectTypes.find(x => x.id === p.projectTypeId)?.name ?? "Shoot";
 
   const Row = ({ p }: { p: Project }) => (
-    <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm min-w-0">
+    <button type="button" onClick={() => onOpenShoot(p)} className="w-full text-left flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm min-w-0 hover:bg-muted transition-colors">
       <div className="w-12 shrink-0 text-center">
         <div className="text-[10px] uppercase text-muted-foreground">{fmtDate(p.date).split(" ")[1]}</div>
         <div className="text-base font-bold leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{fmtDate(p.date).split(" ")[2]}</div>
@@ -88,7 +90,8 @@ export default function AgentQuickView({ agent, onClose, onBook }: Props) {
       )}>
         {STATUS_LABELS[p.status] ?? p.status}
       </Badge>
-    </div>
+      <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+    </button>
   );
 
   return (
