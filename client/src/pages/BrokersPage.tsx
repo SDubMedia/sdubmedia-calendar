@@ -27,6 +27,7 @@ import { showInviteCredentials } from "@/lib/inviteCredentials";
 import ClientProfileSheet from "@/components/ClientProfileSheet";
 import InviteBrokerDialog from "@/components/InviteBrokerDialog";
 import AgentQuickView from "@/components/AgentQuickView";
+import BrokerDetailSheet from "@/components/BrokerDetailSheet";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import type { Project } from "@/lib/types";
@@ -67,6 +68,11 @@ export default function BrokersPage() {
   const [bookingAgentId, setBookingAgentId] = useState<string | null>(null);
   // Full details for a shoot opened from an agent's quick-view.
   const [detailProject, setDetailProject] = useState<Project | null>(null);
+  // Tap a brokerage name → pull it up (month/year totals, shoots, invoices).
+  const [brokerDetail, setBrokerDetail] = useState<Client | null>(null);
+  // Edit a shoot from inside the broker detail, then return to that broker.
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [returnBroker, setReturnBroker] = useState<Client | null>(null);
 
   // Presence: which agents/brokers have an account, and whether on the app.
   const { allProfiles } = useAuth();
@@ -226,9 +232,9 @@ export default function BrokersPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-primary" />
-                    <span className="font-semibold">{broker.company}</span>
+                    <button onClick={() => setBrokerDetail(broker)} className="font-semibold text-left hover:text-primary transition-colors min-w-0 truncate" title="View this month/year + shoots + invoices">{broker.company}</button>
                     <PresenceIcon clientId={broker.id} profiles={allProfiles} appUserIds={appUserIds} />
-                    <button onClick={() => openEdit(broker)} className="text-muted-foreground hover:text-foreground" title="Edit broker"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => openEdit(broker)} className="text-muted-foreground hover:text-foreground shrink-0" title="Edit broker"><Pencil className="w-3.5 h-3.5" /></button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{agents.length} agent{agents.length !== 1 ? "s" : ""}</div>
                 </div>
@@ -379,6 +385,23 @@ export default function BrokersPage() {
         open={!!bookingAgentId}
         defaultClientId={bookingAgentId ?? undefined}
         onClose={() => setBookingAgentId(null)}
+      />
+
+      {/* Brokerage detail — month/year totals, shoots by agent, invoices */}
+      <BrokerDetailSheet
+        broker={brokerDetail}
+        onClose={() => setBrokerDetail(null)}
+        onOpenShoot={(p) => { setReturnBroker(brokerDetail); setBrokerDetail(null); setEditProject(p); }}
+        onGenerate={(b) => generateBrokerInvoice(b)}
+        generating={generating === brokerDetail?.id}
+        onOpenInvoices={() => { setBrokerDetail(null); setLocation("/invoices"); }}
+      />
+
+      {/* Edit a broker's shoot, then return to the broker detail (with the fix shown) */}
+      <ProjectDialog
+        open={!!editProject}
+        project={editProject ?? undefined}
+        onClose={() => { const b = returnBroker; setEditProject(null); setReturnBroker(null); if (b) setBrokerDetail(b); }}
       />
 
       {/* Full shoot details, opened from an agent's quick-view */}
