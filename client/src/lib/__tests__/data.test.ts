@@ -235,9 +235,6 @@ describe("flat per-piece crew payouts", () => {
     });
     expect(getCrewMemberServicePay(p, "shooter")).toBe(140); // photo $70 + video shoot $70
     expect(getCrewMemberServicePay(p, "editor")).toBe(70);   // video edit $70
-    // getCrewMemberProjectPay routes through the flat path, ignoring hours.
-    expect(getCrewMemberProjectPay(p, "shooter")).toBe(140);
-    expect(getCrewMemberProjectPay(p, "editor")).toBe(70);
   });
 
   it("splits a role's payout evenly across multiple assigned people", () => {
@@ -252,12 +249,14 @@ describe("flat per-piece crew payouts", () => {
     expect(getCrewMemberServicePay(p, "b")).toBe(70);
   });
 
-  it("flat replaces hourly when pieces carry a crewRole", () => {
+  it("project pay reads the crew row once the flat rate is auto-filled", () => {
+    // The flat service rate is auto-filled into the crew row in the dialog;
+    // getCrewMemberProjectPay then pays whatever the row says.
     const p = makeProject({
       services: reServices,
-      crew: [{ crewMemberId: "shooter", role: "Photographer", hoursWorked: 5, payRatePerHour: 100 }],
+      crew: [{ crewMemberId: "shooter", role: "Photographer", hoursWorked: 0, payRatePerHour: 0, payType: "flat", flatAmount: 140 }],
     });
-    expect(getCrewMemberProjectPay(p, "shooter")).toBe(140); // flat, NOT 5×100
+    expect(getCrewMemberProjectPay(p, "shooter")).toBe(140);
   });
 
   it("leaves non-real-estate (untagged) shoots on the hourly model", () => {
@@ -665,17 +664,17 @@ describe("getProjectProfit", () => {
     expect(getProjectProfit(p, client)).toBe(150);
   });
 
-  it("uses service-piece cost (not crew) when bundle pieces carry a cost", () => {
+  it("uses the crew row for labor, not the service-piece cost", () => {
     const client = makeClient();
     const p = makeProject({
       status: "editing_done",
-      // Revenue from the service price ($200); labor from the piece cost ($70).
-      // A leftover crew entry must be IGNORED (no double-count).
-      crew: [{ crewMemberId: "c1", role: "Photographer", hoursWorked: 5, payRatePerHour: 100 }],
+      // Crew is paid the (auto-filled) flat rate; the piece's `cost` is only the
+      // default SOURCE for that rate and is not subtracted again.
+      crew: [{ crewMemberId: "c1", role: "Photographer", hoursWorked: 0, payRatePerHour: 0, payType: "flat", flatAmount: 70 }],
       services: [{ serviceId: "a", variantId: null, label: "Photos", price: 200, cost: 70 }],
       products: [{ productId: "f", name: "Fotello", cost: 30 }],
     });
-    // 200 revenue − 70 piece cost − 30 Fotello = 100 (crew 5×100 ignored)
-    expect(getProjectProfit(p, client)).toBe(100);
+    // revenue − 70 crew − 30 Fotello
+    expect(getProjectProfit(p, client)).toBe(getProjectInvoiceAmount(p, client) - 70 - 30);
   });
 });

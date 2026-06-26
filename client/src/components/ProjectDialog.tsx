@@ -13,9 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Plus, Trash2, ArrowLeft, Save, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Save, ChevronRight, Images, Upload, ArrowUpRight } from "lucide-react";
+import { useLocation } from "wouter";
+import { getAuthToken } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, getProjectServiceCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { formatPhoneDisplay } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
@@ -91,8 +93,20 @@ const emptyPostEntry = (): ProjectPostEntry => ({
 const initialCrew = (crewMemberId?: string): ProjectCrewEntry[] =>
   [crewMemberId ? { ...emptyCrewEntry(), crewMemberId, role: "Photographer" } : emptyCrewEntry()];
 
+// Read an image's natural dimensions client-side (best-effort) before upload.
+function readImageDims(file: File): Promise<{ width: number | null; height: number | null }> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) { resolve({ width: null, height: null }); return; }
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(url); };
+    img.onerror = () => { resolve({ width: null, height: null }); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+}
+
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
-  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery } = useApp();
+  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery, registerDeliveryFile } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -214,8 +228,16 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setStartTime(project?.startTime ?? defaultStartTime ?? "09:00");
       setEndTime(project?.endTime ?? "11:00");
       setStatus(project?.status ?? "upcoming");
-      setCrew(project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId));
-      setPostProduction(project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]);
+      // Default crew/editor pay to the live Services flat rate for real-estate
+      // shoots — fills rows that are hourly or have no flat amount yet (so an
+      // existing shoot picks up rates set after it was booked), leaving any
+      // explicit flat override untouched.
+      const reRates = roleRatesFromSelections(project?.services ?? []);
+      const fillRate = <T extends ProjectCrewEntry | ProjectPostEntry>(e: T, total: number): T =>
+        (total > 0 && !Number(e.flatAmount) && (e.payType ?? "hourly") === "hourly")
+          ? { ...e, payType: "flat", flatAmount: total } : e;
+      setCrew((project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId)).map(e => fillRate(e, reRates.shoot)));
+      setPostProduction((project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]).map(e => fillRate(e, reRates.edit)));
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
@@ -308,6 +330,93 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     [data.projectTypes, projectTypeId],
   );
   const isLightweight = useMemo(() => data.projectTypes.find(pt => pt.id === projectTypeId)?.lightweight || false, [data.projectTypes, projectTypeId]);
+
+  // Real-estate flat crew rates: each picked service piece tagged "Pays: Shooter/
+  // Editor" carries a flat payout (set in Manage → Services). Read it LIVE from
+  // the service definitions (not the project's snapshot) so existing shoots pick
+  // up rates set after they were booked. Shooters get the shoot total, editors
+  // the edit total — auto-filled into the crew rows as an editable default.
+  const roleRatesFromSelections = useCallback((sels: ProjectServiceSelection[]) => {
+    let shoot = 0, edit = 0;
+    for (const sel of sels || []) {
+      const svc = data.services.find(s => s.id === sel.serviceId);
+      if (!svc?.crewRole) continue;
+      const variant = sel.variantId ? data.serviceVariants.find(v => v.id === sel.variantId) : null;
+      const cost = variant && variant.cost != null ? Number(variant.cost) : Number(svc.defaultCost ?? 0);
+      if (svc.crewRole === "shoot") shoot += cost;
+      else if (svc.crewRole === "edit") edit += cost;
+    }
+    return { shoot, edit };
+  }, [data.services, data.serviceVariants]);
+  const serviceRoleRates = useMemo(() => roleRatesFromSelections(bundleServices), [roleRatesFromSelections, bundleServices]);
+
+  // Photo gallery for this shoot (upload → deliver). Linked by project id.
+  const [, setLocation] = useLocation();
+  const [creatingGallery, setCreatingGallery] = useState(false);
+  const projectGallery = useMemo(() => data.deliveries.find(d => d.projectId === project?.id), [data.deliveries, project?.id]);
+  const openOrCreateGallery = async () => {
+    if (!project) return;
+    if (projectGallery) { onClose(); setLocation(`/deliveries/${projectGallery.id}`); return; }
+    setCreatingGallery(true);
+    try {
+      const name = propertyAddress.trim() || data.locations.find(l => l.id === locationId)?.name || selectedClient?.company || "Shoot";
+      const g = await createReShootGallery(project.id, name);
+      onClose();
+      if (g) setLocation(`/deliveries/${g.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't open the gallery");
+    } finally {
+      setCreatingGallery(false);
+    }
+  };
+
+  // Pick photos and upload them straight into this shoot's gallery (no leaving).
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhotos, setUploadingPhotos] = useState<{ done: number; total: number } | null>(null);
+  async function handleAddPhotos(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0 || !project) return;
+    const list = Array.from(fileList);
+    let gallery = projectGallery;
+    if (!gallery) {
+      try {
+        const name = propertyAddress.trim() || data.locations.find(l => l.id === locationId)?.name || selectedClient?.company || "Shoot";
+        gallery = (await createReShootGallery(project.id, name)) ?? undefined;
+      } catch { /* surfaced below */ }
+    }
+    if (!gallery) { toast.error("Couldn't open the gallery"); return; }
+    const gid = gallery.id;
+    const token = await getAuthToken();
+    const startPos = data.deliveryFiles.filter(f => f.deliveryId === gid).length;
+    setUploadingPhotos({ done: 0, total: list.length });
+    let done = 0, failed = 0;
+    for (const file of list) {
+      try {
+        const isVideo = file.type.startsWith("video/");
+        const { width, height } = await readImageDims(file);
+        const up = await fetch("/api/delivery-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ deliveryId: gid, fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+        });
+        const upData = await up.json();
+        if (!up.ok) throw new Error(upData.error || "Upload failed");
+        const put = await fetch(upData.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+        if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+        await registerDeliveryFile({
+          deliveryId: gid, storagePath: upData.storagePath, originalName: file.name, sizeBytes: file.size,
+          width, height, mimeType: file.type, position: startPos + done,
+          mediaType: isVideo ? "video" : "image", thumbnailStoragePath: "", durationSeconds: null,
+        });
+        done++;
+      } catch (e) {
+        failed++;
+        toast.error(`Failed: ${file.name}`, { description: e instanceof Error ? e.message : "Try again" });
+      }
+      setUploadingPhotos({ done: done + failed, total: list.length });
+    }
+    setUploadingPhotos(null);
+    if (done > 0) toast.success(`Added ${done} photo${done === 1 ? "" : "s"} to the gallery`);
+  }
 
   // Availability of each crew member for THIS shoot's date/time, shown in the
   // assign-crew picker (available / busy / off). End mirrors start for RE.
@@ -531,6 +640,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         // Reset role and rate when person changes
         updated.role = "";
         updated.payRatePerHour = 0;
+        // Real-estate flat rate: default this shooter's pay to the Services rate.
+        if (value && serviceRoleRates.shoot > 0) { updated.payType = "flat"; updated.flatAmount = serviceRoleRates.shoot; }
       }
       if (field === "role") {
         // Auto-fill pay rate from staff profile for the selected role
@@ -549,6 +660,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       if (field === "crewMemberId") {
         updated.role = "";
         updated.payRatePerHour = 0;
+        // Real-estate flat rate: default this editor's pay to the Services rate.
+        if (value && serviceRoleRates.edit > 0) { updated.payType = "flat"; updated.flatAmount = serviceRoleRates.edit; }
       }
       if (field === "role") {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
@@ -653,12 +766,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none overflow-x-hidden bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg"
+        className="fixed !inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-full !rounded-none overflow-hidden flex flex-col bg-card border-border text-foreground sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[calc(100vw-2rem)] sm:!max-w-[900px] sm:!h-auto sm:!max-h-[90dvh] sm:!rounded-lg"
         style={{
           height: "100%",
           maxHeight: "100%",
-          overflowY: "auto",
-          WebkitOverflowScrolling: "touch",
+          overflow: "hidden",
           paddingTop: "max(1rem, env(safe-area-inset-top))",
           paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
         }}
@@ -677,7 +789,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2 pb-24">
+        <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden" style={{ WebkitOverflowScrolling: "touch" }}>
           {/* Row 1: Client + Project Type */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -1035,7 +1147,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               return (
               <div key={idx} className="flex flex-col gap-2 bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
               <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_75px_60px_80px_28px] sm:gap-2 sm:items-center">
-                <div className="flex gap-2 sm:contents">
+                <div className="flex gap-2 sm:contents min-w-0">
                   <Select
                     value={entry.crewMemberId}
                     onValueChange={(v) => {
@@ -1047,7 +1159,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       }
                     }}
                   >
-                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs flex-1 min-w-0">
                       <SelectValue placeholder="Person" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
@@ -1069,7 +1181,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     onValueChange={(v) => updateCrewEntry(idx, "role", v)}
                     disabled={!entry.crewMemberId}
                   >
-                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs flex-1 min-w-0">
                       <SelectValue placeholder="Role" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
@@ -1086,8 +1198,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="flex gap-2 sm:contents">
-                  <div className="flex-1 sm:flex-none">
+                <div className="flex gap-2 sm:contents min-w-0">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Pay</Label>
                     <select
                       value={entry.payType || "hourly"}
@@ -1098,11 +1210,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       <option value="flat">Flat</option>
                     </select>
                   </div>
-                  <div className="flex-1 sm:flex-none">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
                     <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
-                  <div className="flex-1 sm:flex-none">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
                     {entry.payType === "flat" ? (
                       <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.flatAmount || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "flatAmount", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
@@ -1190,7 +1302,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             </div>
             {postProduction.map((entry, idx) => (
               <div key={idx} className="flex flex-col gap-2 sm:grid sm:grid-cols-[2fr_3fr_75px_60px_80px_28px] sm:gap-2 sm:items-center bg-secondary/40 sm:bg-transparent rounded-lg p-2 sm:p-0 sm:pb-2 sm:border-b sm:border-border/30 sm:last:border-b-0">
-                <div className="flex gap-2 sm:contents">
+                <div className="flex gap-2 sm:contents min-w-0">
                   <Select
                     value={entry.crewMemberId}
                     onValueChange={(v) => {
@@ -1202,7 +1314,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       }
                     }}
                   >
-                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs flex-1 min-w-0">
                       <SelectValue placeholder="Person" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
@@ -1217,7 +1329,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     onValueChange={(v) => updatePostEntry(idx, "role", v)}
                     disabled={!entry.crewMemberId}
                   >
-                    <SelectTrigger className="bg-secondary border-border h-8 text-xs">
+                    <SelectTrigger className="bg-secondary border-border h-8 text-xs flex-1 min-w-0">
                       <SelectValue placeholder="Role" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
@@ -1233,8 +1345,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="flex gap-2 sm:contents">
-                  <div className="flex-1 sm:flex-none">
+                <div className="flex gap-2 sm:contents min-w-0">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Pay</Label>
                     <select
                       value={entry.payType || "hourly"}
@@ -1245,11 +1357,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       <option value="flat">Flat</option>
                     </select>
                   </div>
-                  <div className="flex-1 sm:flex-none">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
                     <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
-                  <div className="flex-1 sm:flex-none">
+                  <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
                     {entry.payType === "flat" ? (
                       <Input type="text" inputMode="decimal" placeholder="0.00" value={entry.flatAmount || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "flatAmount", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
@@ -1413,10 +1525,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               products,
             } as Project;
             const revenue = getProjectInvoiceAmount(draft, selectedClient);
-            // Labor = the service pieces' payout when any is set (real-estate
-            // flat-rate), else assigned-crew pay. Matches getProjectProfit.
-            const serviceCost = getProjectServiceCost(draft);
-            const staffCost = serviceCost > 0 ? serviceCost : getProjectCrewCost(draft);
+            // Labor = assigned-crew pay (real-estate flat rates are auto-filled
+            // into the crew rows from Services). Matches getProjectProfit.
+            const staffCost = getProjectCrewCost(draft);
             const productCost = getProjectProductCost(draft);
             const profit = revenue - staffCost - productCost;
             const defaultLabel = agentBroker ? `${agentBroker.company} (default)` : `${selectedClient.company} (default)`;
@@ -1464,7 +1575,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
 
                 <div className="border-t border-border pt-3 space-y-1 text-xs">
                   <div className="flex justify-between"><span className="text-muted-foreground">Revenue</span><span className="tabular-nums">${revenue.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-muted-foreground"><span>− Labor{serviceCost > 0 ? " (bundle)" : ""}</span><span className="tabular-nums">−${staffCost.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>− Labor (crew)</span><span className="tabular-nums">−${staffCost.toFixed(2)}</span></div>
                   <div className="flex justify-between text-muted-foreground"><span>− Products</span><span className="tabular-nums">−${productCost.toFixed(2)}</span></div>
                   <div className="flex justify-between text-base font-semibold pt-1 border-t border-border/50">
                     <span>Your profit</span>
@@ -1548,9 +1659,29 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </CollapsibleContent>
             </Collapsible>
           )}
+
+          {/* Photo gallery — add images right here, or open the full gallery. */}
+          {isEdit && project && (
+            <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Images className="w-3.5 h-3.5" /> Photo gallery
+                {projectGallery && <span className="normal-case font-normal">· {data.deliveryFiles.filter(f => f.deliveryId === projectGallery.id).length} in gallery</span>}
+              </div>
+              <input ref={photoInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { handleAddPhotos(e.target.files); e.currentTarget.value = ""; }} />
+              <div className="flex gap-2">
+                <Button type="button" onClick={() => photoInputRef.current?.click()} disabled={!!uploadingPhotos} className="flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Upload className="w-4 h-4" /> {uploadingPhotos ? `Uploading ${uploadingPhotos.done}/${uploadingPhotos.total}…` : "Add photos here"}
+                </Button>
+                <Button type="button" variant="outline" onClick={openOrCreateGallery} disabled={creatingGallery} className="border-border gap-1" title="Open the full gallery to arrange & deliver">
+                  Open <ArrowUpRight className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Photos upload straight into this shoot's private gallery. "Open" takes you there to arrange &amp; deliver.</p>
+            </div>
+          )}
         </div>
 
-        <DialogFooter className="sticky bottom-0 bg-card pt-3 pb-3 -mx-6 px-6 border-t border-border z-10 flex-row items-center gap-3 sm:gap-3">
+        <DialogFooter className="shrink-0 bg-card pt-3 pb-3 -mx-6 px-6 border-t border-border flex-row items-center gap-3 sm:gap-3">
           <Button variant="ghost" onClick={handleCloseWithDraft} className="text-muted-foreground hover:text-foreground shrink-0">Cancel</Button>
           <Button onClick={handleSave} className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">
             {isEdit ? "Save Changes" : "Create Project"}

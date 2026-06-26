@@ -485,9 +485,6 @@ export function getProjectCrewCost(project: Project): number {
  */
 export function getCrewMemberProjectPay(project: Project, crewMemberId: string): number {
   if (project.status === "cancelled") return 0;
-  // Real-estate flat rates: pay comes from the service pieces (shoot → shooter,
-  // edit → editor), which replaces the hourly crew entries to avoid double pay.
-  if (hasServiceCrewPay(project)) return getCrewMemberServicePay(project, crewMemberId);
   const crew = (project.crew || [])
     .filter(e => e.crewMemberId === crewMemberId && e.role !== "Travel")
     .reduce((s, e) => s + crewEntryCost(e), 0);
@@ -697,10 +694,10 @@ export function getCrewMemberServicePay(project: Project, crewMemberId: string):
  * (v1: travel and overhead are intentionally excluded.) Cancelled = $0.
  */
 export function getProjectProfit(project: Project, client: Client): number {
-  const serviceCost = getProjectServiceCost(project);
-  const labor = serviceCost > 0 ? serviceCost : getProjectCrewCost(project);
+  // Labor = what you actually pay assigned crew. Real-estate flat rates are
+  // auto-filled into the crew rows from Services, so they flow through here too.
   return getProjectInvoiceAmount(project, client)
-    - labor
+    - getProjectCrewCost(project)
     - getProjectProductCost(project);
 }
 
