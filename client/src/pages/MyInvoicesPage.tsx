@@ -17,11 +17,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  FileText, Plus, Download, Trash2, Save, Building2, Send,
+  FileText, Plus, Download, Trash2, Save, Building2, Send, Banknote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { pdf } from "@react-pdf/renderer";
 import ContractorInvoicePDF from "@/components/ContractorInvoicePDF";
+import { getAuthToken } from "@/lib/supabase";
 import type { ContractorInvoice, ContractorInvoiceLineItem } from "@/lib/types";
 
 function formatCurrency(n: number): string {
@@ -29,7 +30,7 @@ function formatCurrency(n: number): string {
 }
 
 export default function MyInvoicesPage() {
-  const { data, addContractorInvoice, updateContractorInvoice, deleteContractorInvoice, updateCrewMember } = useApp();
+  const { data, addContractorInvoice, updateContractorInvoice, deleteContractorInvoice, updateCrewMember, refresh } = useApp();
   const { effectiveProfile: profile } = useAuth();
 
   const crewMember = data.crewMembers.find(c => c.id === profile?.crewMemberId);
@@ -232,6 +233,49 @@ export default function MyInvoicesPage() {
     toast.success("Invoice deleted");
   };
 
+  // ---- Stripe direct deposit (staff self-service) ----
+  const [ddBusy, setDdBusy] = useState(false);
+
+  async function setupDirectDeposit() {
+    if (!crewMember) return;
+    setDdBusy(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/crew-payout-onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ crewMemberId: crewMember.id, returnUrl: `${window.location.origin}/my-invoices` }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok || !body.url) throw new Error(body.error || "Couldn't start setup");
+      window.location.assign(body.url); // off to Stripe; return_url brings them back
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't start setup");
+      setDdBusy(false);
+    }
+  }
+
+  async function refreshDdStatus() {
+    if (!crewMember) return;
+    setDdBusy(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/crew-payout-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ crewMemberId: crewMember.id }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't check status");
+      await refresh();
+      toast.success(body.enabled ? "Direct deposit is ready." : "Still finishing setup — check back shortly.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't check status");
+    } finally {
+      setDdBusy(false);
+    }
+  }
+
   if (!crewMember) {
     return (
       <div className="p-6 text-center text-muted-foreground">
@@ -269,6 +313,30 @@ export default function MyInvoicesPage() {
           </Button>
         </div>
       )}
+
+      {/* Direct deposit (Stripe ACH) */}
+      <div className={`rounded-lg p-4 flex items-center justify-between gap-3 border ${crewMember.stripePayoutsEnabled ? "bg-emerald-500/10 border-emerald-500/30" : "bg-card border-border"}`}>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-foreground flex items-center gap-1.5">
+            <Banknote className="w-4 h-4" /> Direct deposit
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            {crewMember.stripePayoutsEnabled
+              ? "You're set up — payments land in your bank automatically (~1–2 business days)."
+              : crewMember.stripeAccountId
+                ? "Almost done — finish your Stripe setup, then tap Refresh."
+                : "Get paid straight to your bank. Stripe collects your bank + tax info, one time."}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {crewMember.stripeAccountId && !crewMember.stripePayoutsEnabled && (
+            <Button variant="ghost" size="sm" disabled={ddBusy} onClick={refreshDdStatus}>Refresh</Button>
+          )}
+          <Button variant="outline" size="sm" disabled={ddBusy} onClick={setupDirectDeposit} className="border-border">
+            {crewMember.stripePayoutsEnabled ? "Update bank info" : "Set up"}
+          </Button>
+        </div>
+      </div>
 
       {/* Invoice History */}
       {myInvoices.length === 0 ? (

@@ -30,6 +30,12 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onConfirm: (input: Omit<CrewPayment, "id" | "createdAt">) => Promise<void>;
+  // When set + the member has Stripe payouts enabled + method is Stripe, the
+  // confirm button sends a REAL ACH payout (recorded server-side) instead of
+  // just logging a manual payment.
+  onStripePay?: (input: Omit<CrewPayment, "id" | "createdAt">) => Promise<void>;
+  // Send / open the crew member's Stripe direct-deposit setup link.
+  onSetupStripe?: (crewMemberId: string) => Promise<void>;
   // Optional pre-target — when opened from an outstanding-balance row, jump
   // straight to that member + project instead of starting blank.
   initialCrewMemberId?: string;
@@ -45,7 +51,7 @@ function todayLocal(): string {
 
 export default function LogCrewPaymentDialog({
   crewMembers, projects, projectTypes, locations, crewPayments, open, onClose, onConfirm,
-  initialCrewMemberId, initialProjectId,
+  onStripePay, onSetupStripe, initialCrewMemberId, initialProjectId,
 }: Props) {
   const [crewMemberId, setCrewMemberId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -156,11 +162,15 @@ export default function LogCrewPaymentDialog({
   const parsedAmount = parseFloat(amount);
   const canSave = !!crewMemberId && !!projectId && !isNaN(parsedAmount) && parsedAmount > 0 && !!paidDate;
 
+  // Stripe path: real ACH payout when the member is set up; setup prompt if not.
+  const isStripePay = method === "stripe" && !!crewMember?.stripePayoutsEnabled && !!onStripePay;
+  const stripeNeedsSetup = method === "stripe" && !crewMember?.stripePayoutsEnabled;
+
   async function confirm() {
     if (!canSave || !selectedProject) return; // validate BEFORE setSaving
     setSaving(true);
     try {
-      await onConfirm({
+      const input = {
         crewMemberId,
         projectId,
         role: memberRole(selectedProject) || undefined,
@@ -169,11 +179,23 @@ export default function LogCrewPaymentDialog({
         paidAt: new Date(paidDate + "T12:00:00").toISOString(),
         reference: reference.trim() || undefined,
         note: note.trim() || undefined,
-      });
+      };
+      // Real payout records the crew_payment server-side; manual log uses onConfirm.
+      if (isStripePay) await onStripePay!(input);
+      else await onConfirm(input);
       onClose();
+    } catch {
+      // The handler already surfaced the error (toast); keep the dialog open so
+      // the owner can retry or switch methods.
     } finally {
       setSaving(false);
     }
+  }
+
+  async function sendSetupLink() {
+    if (!crewMemberId || !onSetupStripe) return;
+    setSaving(true);
+    try { await onSetupStripe(crewMemberId); } finally { setSaving(false); }
   }
 
   return (
@@ -271,6 +293,23 @@ export default function LogCrewPaymentDialog({
                 {crewMember.preferredPaymentDetails ? ` · ${crewMember.preferredPaymentDetails}` : ""}
               </p>
             )}
+            {isStripePay && (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                This sends a real ACH deposit to {crewMember?.name || "their"} bank (~1–2 business days).
+              </p>
+            )}
+            {stripeNeedsSetup && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs space-y-2">
+                <p className="text-amber-600 dark:text-amber-300">
+                  {crewMember?.name || "This person"} hasn't set up direct deposit yet — send a setup link, or pick another method to just log the payment.
+                </p>
+                {onSetupStripe && crewMemberId && (
+                  <Button type="button" variant="outline" size="sm" disabled={saving} onClick={sendSetupLink}>
+                    Send setup link
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -293,7 +332,7 @@ export default function LogCrewPaymentDialog({
         <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={confirm} disabled={saving || !canSave} className="bg-green-600 text-white hover:bg-green-500">
-            {saving ? "Saving..." : "Log Payment"}
+            {saving ? (isStripePay ? "Paying…" : "Saving…") : isStripePay ? `Pay ${fmt(parsedAmount || 0)} via Stripe` : "Log Payment"}
           </Button>
         </DialogFooter>
       </DialogContent>

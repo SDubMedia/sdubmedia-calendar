@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import LogCrewPaymentDialog from "@/components/LogCrewPaymentDialog";
 import EditCrewPaymentDialog from "@/components/EditCrewPaymentDialog";
 import { getCrewMemberProjectPay, getCrewProjectPaid, getCrewProjectRemaining } from "@/lib/data";
+import { getAuthToken } from "@/lib/supabase";
 import { PAYMENT_METHOD_LABELS as METHOD_LABELS, type CrewPayment, type Project } from "@/lib/types";
 
 function formatCurrency(n: number): string {
@@ -36,7 +37,7 @@ interface OutstandingItem {
 }
 
 export default function StaffPaymentsPage() {
-  const { data, addCrewPayment, updateCrewPayment, deleteCrewPayment } = useApp();
+  const { data, addCrewPayment, updateCrewPayment, deleteCrewPayment, refresh } = useApp();
   const { profile } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [preTarget, setPreTarget] = useState<{ crewMemberId: string; projectId: string } | null>(null);
@@ -106,6 +107,53 @@ export default function StaffPaymentsPage() {
       toast.success(`Logged ${formatCurrency(created.amount)} to ${crewName(created.crewMemberId)}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to log payment");
+    }
+  }
+
+  // Real ACH payout via Stripe. The endpoint moves the money AND records the
+  // crew_payment, so we just refresh after. Rethrows so the dialog stays open
+  // on failure.
+  async function handleStripePay(input: Omit<CrewPayment, "id" | "createdAt">) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/crew-payout-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          crewMemberId: input.crewMemberId,
+          amount: input.amount,
+          projectId: input.projectId,
+          role: input.role,
+          note: input.note,
+          idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      const body = await res.json().catch(() => ({ error: "Payout failed" }));
+      if (!res.ok) throw new Error(body.error || "Payout failed");
+      toast.success(`Paid ${formatCurrency(input.amount)} to ${crewName(input.crewMemberId)} via Stripe`);
+      if (body.warning) toast.warning(body.warning);
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Payout failed");
+      throw err;
+    }
+  }
+
+  // Owner creates the crew member's Stripe onboarding link and copies it to send.
+  async function handleSetupStripe(crewMemberId: string) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/crew-payout-onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ crewMemberId, returnUrl: `${window.location.origin}/staff-payments` }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok || !body.url) throw new Error(body.error || "Couldn't create setup link");
+      await navigator.clipboard.writeText(body.url).catch(() => { /* clipboard may be blocked */ });
+      toast.success(`Setup link copied — send it to ${crewName(crewMemberId)} to finish their direct deposit.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't create setup link");
     }
   }
 
@@ -256,6 +304,8 @@ export default function StaffPaymentsPage() {
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setPreTarget(null); }}
         onConfirm={handleConfirm}
+        onStripePay={handleStripePay}
+        onSetupStripe={handleSetupStripe}
         initialCrewMemberId={preTarget?.crewMemberId}
         initialProjectId={preTarget?.projectId}
       />

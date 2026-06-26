@@ -183,6 +183,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     switch (event.type) {
+      case "account.updated": {
+        // A crew member's Stripe Express account changed — refresh whether they
+        // can receive payouts. Matches the account id we stored on crew_members;
+        // a no-op for org Connect accounts (those live on the organizations table).
+        const acct = event.data.object as Stripe.Account;
+        const enabled = !!acct.payouts_enabled && acct.capabilities?.transfers === "active";
+        await supabase.from("crew_members")
+          .update({ stripe_payouts_enabled: enabled })
+          .eq("stripe_account_id", acct.id);
+        break;
+      }
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
