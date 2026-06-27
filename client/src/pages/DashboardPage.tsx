@@ -11,8 +11,9 @@ import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
+import ProjectDialog from "@/components/ProjectDialog";
 import { Link } from "wouter";
-import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users } from "lucide-react";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users, Plus } from "lucide-react";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -72,6 +73,7 @@ export default function DashboardPage() {
     return (i < 0 ? 99 : i) * 10;
   };
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [bookOpen, setBookOpen] = useState(false);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -285,6 +287,12 @@ export default function DashboardPage() {
         </div>
         {isRealOwner && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setBookOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Book a shoot
+            </button>
             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
             <select
               value={viewAsRole || ""}
@@ -546,7 +554,7 @@ export default function DashboardPage() {
           <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Ready to Deliver</h3>
-              <span className="text-xs text-muted-foreground">{readyToDeliver.length}</span>
+              <Link href="/deliveries" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">Galleries <ArrowRight className="w-3 h-3" /></Link>
             </div>
             <div className="divide-y divide-border">
               {readyToDeliver.length === 0 ? (
@@ -677,6 +685,9 @@ export default function DashboardPage() {
           onClose={() => setSelectedProject(null)}
         />
       )}
+
+      {/* Book a shoot — quick create from the dashboard launchpad */}
+      <ProjectDialog open={bookOpen} onClose={() => setBookOpen(false)} />
     </div>
   );
 }
