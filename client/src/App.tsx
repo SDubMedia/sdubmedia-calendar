@@ -177,7 +177,7 @@ function Router() {
 
         {/* Feature-gated pages — sidebar toggles control visibility, routes always available */}
         <Route path="/calendar" component={CalendarPage} />
-        <Route path="/contractor-invoices" component={ContractorInvoicesPage} />
+        {(isOwner || isPartner) && <Route path="/contractor-invoices" component={ContractorInvoicesPage} />}
         {isOwner && <Route path="/staff-payments" component={StaffPaymentsPage} />}
         {isOwner && <Route path="/products" component={ProductsPage} />}
         <Route path="/availability" component={AvailabilityPage} />
