@@ -16,6 +16,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DollarSign, Trash2, Pencil, User, Plus, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import LogCrewPaymentDialog from "@/components/LogCrewPaymentDialog";
@@ -42,6 +43,7 @@ export default function StaffPaymentsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [preTarget, setPreTarget] = useState<{ crewMemberId: string; projectId: string } | null>(null);
   const [editPayment, setEditPayment] = useState<CrewPayment | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CrewPayment | null>(null);
 
   // The owner's own linked crew member — exclude from "what you owe" (you
   // don't pay yourself). Fall back to email match if no direct link.
@@ -285,7 +287,7 @@ export default function StaffPaymentsPage() {
                   <Button size="sm" variant="ghost" onClick={() => setEditPayment(p)} className="text-muted-foreground hover:text-foreground" title="Edit payment">
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(p)} className="text-muted-foreground hover:text-red-400" title="Remove payment">
+                  <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(p)} className="text-muted-foreground hover:text-red-400" title="Remove payment">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -318,6 +320,26 @@ export default function StaffPaymentsPage() {
         onClose={() => setEditPayment(null)}
         onSave={handleSaveEdit}
       />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent className="bg-card border-border text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this payment?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              {deleteTarget && `This deletes the ${formatCurrency(deleteTarget.amount)} payment to ${crewName(deleteTarget.crewMemberId)}. It can't be undone, and the amount will show as owed again.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-border">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={() => { if (deleteTarget) handleDelete(deleteTarget); setDeleteTarget(null); }}
+            >
+              Remove payment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
