@@ -904,7 +904,7 @@ export default function CalendarPage() {
                           onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
-                            "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                             // Tentative = agreement sent but not yet paid.
                             // Dashed border + softer fill so it visually
                             // reads "not locked in yet" vs the solid blue
@@ -942,7 +942,7 @@ export default function CalendarPage() {
                             onClick={(ev) => { ev.stopPropagation(); setEditingMeeting(m); setMeetingOpen(true); }}
                             onPointerDown={(ev) => ev.stopPropagation()}
                             className={cn(
-                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity border",
+                              "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity border",
                               mc.bg, mc.text, mc.border
                             )}
                             title={m.title}
@@ -969,7 +969,7 @@ export default function CalendarPage() {
                             onClick={(ev) => { ev.stopPropagation(); setEditingEvent(e); setPersonalEventOpen(true); }}
                             onPointerDown={(ev) => ev.stopPropagation()}
                             className={cn(
-                              "text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                              "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
                               ec.bg, ec.text,
                             )}
                           >
@@ -992,7 +992,7 @@ export default function CalendarPage() {
                           key={e.id}
                           onClick={(ev) => ev.stopPropagation()}
                           onPointerDown={(ev) => ev.stopPropagation()}
-                          className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded truncate border border-dashed text-foreground/80"
+                          className="text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate border border-dashed text-foreground/80"
                           style={{ borderColor: e.color, backgroundColor: e.color + "20" }}
                           title={e.title + (e.location ? ` · ${e.location}` : "")}
                         >
