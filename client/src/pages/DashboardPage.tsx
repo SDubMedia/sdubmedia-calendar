@@ -10,6 +10,7 @@ import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/
 import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
+import GettingStartedCard from "@/components/GettingStartedCard";
 import { Link } from "wouter";
 import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users } from "lucide-react";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
@@ -300,6 +301,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 flex flex-col gap-5">
+        {isRealOwner && <GettingStartedCard />}
         {/* Metric Cards */}
         {isWidgetEnabled("metrics") && (<div style={{ order: orderOf("metrics") }}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
