@@ -4,6 +4,7 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { DateField } from "@/components/DateTimeField";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { getProjectPayerId } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
@@ -481,21 +482,11 @@ export default function InvoicesPage() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Period Start</label>
-                <input
-                  type="date"
-                  value={periodStart}
-                  onChange={e => setPeriodStart(e.target.value)}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+                <DateField value={periodStart} onChange={setPeriodStart} className="w-full bg-background" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Period End</label>
-                <input
-                  type="date"
-                  value={periodEnd}
-                  onChange={e => setPeriodEnd(e.target.value)}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
+                <DateField value={periodEnd} onChange={setPeriodEnd} className="w-full bg-background" />
               </div>
             </div>
 

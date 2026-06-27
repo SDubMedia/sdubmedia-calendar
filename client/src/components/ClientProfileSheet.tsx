@@ -8,6 +8,7 @@ import { Plus, Trash2, Film, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
@@ -629,11 +630,10 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
                     <div className="space-y-1.5 pl-1">
                       <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Budget Active Through</Label>
                       <div className="flex items-center gap-2">
-                        <Input
-                          type="date"
+                        <DateField
                           value={form.partnerSplit.spendingBudgetEndedAt || ""}
-                          onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: e.target.value || undefined } : null }))}
-                          className="bg-secondary border-border h-8 text-xs flex-1"
+                          onChange={v => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, spendingBudgetEndedAt: v || undefined } : null }))}
+                          className="h-8 flex-1 text-xs"
                         />
                         {form.partnerSplit.spendingBudgetEndedAt && (
                           <button
@@ -660,11 +660,10 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
                 <div className="space-y-1.5 border-t border-border/50 pt-2">
                   <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Partnership Active Through</Label>
                   <div className="flex items-center gap-2">
-                    <Input
-                      type="date"
+                    <DateField
                       value={form.partnerSplit.endedAt || ""}
-                      onChange={e => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: e.target.value || undefined } : null }))}
-                      className="bg-secondary border-border h-8 text-xs flex-1"
+                      onChange={v => setForm(f => ({ ...f, partnerSplit: f.partnerSplit ? { ...f.partnerSplit, endedAt: v || undefined } : null }))}
+                      className="h-8 flex-1 text-xs"
                     />
                     {form.partnerSplit.endedAt && (
                       <button

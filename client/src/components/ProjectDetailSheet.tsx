@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DateField, TimeField } from "@/components/DateTimeField";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -1267,30 +1268,27 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">New date</label>
-              <input
-                type="date"
+              <DateField
                 value={rescheduleDate}
-                onChange={e => setRescheduleDate(e.target.value)}
-                className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                onChange={setRescheduleDate}
+                className="w-full"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Start</label>
-                <input
-                  type="time"
+                <TimeField
                   value={rescheduleStartTime}
-                  onChange={e => setRescheduleStartTime(e.target.value)}
-                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                  onChange={setRescheduleStartTime}
+                  className="w-full"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">End</label>
-                <input
-                  type="time"
+                <TimeField
                   value={rescheduleEndTime}
-                  onChange={e => setRescheduleEndTime(e.target.value)}
-                  className="w-full bg-secondary border border-border rounded px-3 py-2 text-sm"
+                  onChange={setRescheduleEndTime}
+                  className="w-full"
                 />
               </div>
             </div>

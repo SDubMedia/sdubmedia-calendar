@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pencil } from "lucide-react";
@@ -97,7 +98,7 @@ export default function EditCrewPaymentDialog({ payment, crewName, projectLabel,
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-foreground">Date paid</Label>
-              <Input value={paidDate} onChange={(e) => setPaidDate(e.target.value)} type="date" className="bg-secondary border-border" />
+              <DateField value={paidDate} onChange={setPaidDate} className="bg-secondary border-border" />
             </div>
           </div>
 

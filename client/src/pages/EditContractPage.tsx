@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Contract, ContractStatus, AdditionalSigner } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -476,12 +477,11 @@ export default function EditContractPage() {
                 />
               </Label>
               {documentExpiresAt && (
-                <Input
-                  type="date"
+                <DateField
                   value={documentExpiresAt.slice(0, 10)}
-                  onChange={(e) => setDocumentExpiresAt(e.target.value || null)}
+                  onChange={(v) => setDocumentExpiresAt(v || null)}
                   disabled={!isDraft}
-                  className="bg-secondary border-border text-xs h-8 mt-1"
+                  className="text-xs h-8 mt-1"
                 />
               )}
               <p className="text-[10px] text-muted-foreground leading-relaxed">

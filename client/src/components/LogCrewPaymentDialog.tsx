@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign } from "lucide-react";
@@ -266,10 +267,9 @@ export default function LogCrewPaymentDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-foreground">Date paid</Label>
-              <Input
+              <DateField
                 value={paidDate}
-                onChange={(e) => setPaidDate(e.target.value)}
-                type="date"
+                onChange={setPaidDate}
                 className="bg-secondary border-border"
               />
             </div>

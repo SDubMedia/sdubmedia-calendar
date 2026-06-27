@@ -8,6 +8,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { BusinessExpenseCategory, BusinessExpense } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Upload, Plus, Trash2, ChevronLeft, ChevronRight, FileText, Download, Sparkles, Loader2 } from "lucide-react";
@@ -811,7 +812,7 @@ export default function BusinessExpensesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
-                <Input type="date" value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} className="bg-secondary border-border" />
+                <DateField value={addForm.date} onChange={v => setAddForm(f => ({ ...f, date: v }))} className="bg-secondary border-border" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Amount ($)</Label>

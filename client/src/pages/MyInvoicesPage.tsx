@@ -8,6 +8,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -415,11 +416,11 @@ export default function MyInvoicesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Period Start</Label>
-                <Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="bg-secondary border-border" />
+                <DateField value={periodStart} onChange={setPeriodStart} className="bg-secondary border-border" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Period End</Label>
-                <Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="bg-secondary border-border" />
+                <DateField value={periodEnd} onChange={setPeriodEnd} className="bg-secondary border-border" />
               </div>
             </div>
 

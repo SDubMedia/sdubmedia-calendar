@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, ChevronDown, ChevronUp, Trash2, CalendarPlus, ExternalLink, MessageSquare, Send, CheckCircle, RotateCcw, GripVertical } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { DateField, TimeField } from "@/components/DateTimeField";
 import type { SeriesEpisode, EpisodeStatus, EpisodeComment, Location, CrewMember, Project } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -410,18 +411,18 @@ function EpisodeDetail({ ep, onUpdateEpisode, onDeleteEpisode, onScheduleEpisode
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="text-[10px] text-muted-foreground">Date</label>
-              <input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)} onBlur={saveDraft}
-                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+              <DateField value={draftDate} onChange={v => { setDraftDate(v); onUpdateEpisode(ep.id, { draftDate: v, draftStartTime, draftEndTime, draftLocationId, draftCrew }); }}
+                className="bg-card text-xs" />
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground">Start</label>
-              <input type="time" value={draftStartTime} onChange={e => setDraftStartTime(e.target.value)} onBlur={saveDraft}
-                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+              <TimeField value={draftStartTime} onChange={v => { setDraftStartTime(v); onUpdateEpisode(ep.id, { draftDate, draftStartTime: v, draftEndTime, draftLocationId, draftCrew }); }}
+                className="bg-card text-xs" />
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground">End</label>
-              <input type="time" value={draftEndTime} onChange={e => setDraftEndTime(e.target.value)} onBlur={saveDraft}
-                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+              <TimeField value={draftEndTime} onChange={v => { setDraftEndTime(v); onUpdateEpisode(ep.id, { draftDate, draftStartTime, draftEndTime: v, draftLocationId, draftCrew }); }}
+                className="bg-card text-xs" />
             </div>
           </div>
           <div>

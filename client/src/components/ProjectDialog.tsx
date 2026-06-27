@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -903,7 +904,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           <div className={`grid grid-cols-1 ${isRealEstate ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-4`}>
             <div className="space-y-1.5 min-w-0">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-secondary border-border w-full min-w-0" />
+              <DateField value={date} onChange={setDate} className="bg-secondary border-border w-full min-w-0" />
             </div>
             <div className="space-y-1.5 min-w-0">
               <Label className="text-xs text-muted-foreground">Start Time</Label>

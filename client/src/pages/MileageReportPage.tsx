@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -631,7 +632,7 @@ export default function MileageReportPage() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" value={tripForm.date} onChange={e => setTripForm(f => ({ ...f, date: e.target.value }))} className="bg-secondary border-border" />
+              <DateField value={tripForm.date} onChange={v => setTripForm(f => ({ ...f, date: v }))} className="bg-secondary border-border" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Location (optional — auto-fills distance)</Label>

@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField, TimeField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useApp } from "@/contexts/AppContext";
@@ -221,11 +222,10 @@ export default function PersonalEventDialog({ open, onClose, defaultDate, editEv
           {/* Date */}
           <div>
             <Label htmlFor="pe-date">Date</Label>
-            <Input
+            <DateField
               id="pe-date"
-              type="date"
               value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+              onChange={v => setForm(f => ({ ...f, date: v }))}
             />
           </div>
 
@@ -244,20 +244,18 @@ export default function PersonalEventDialog({ open, onClose, defaultDate, editEv
               <div className="flex gap-3">
                 <div className="flex-1">
                   <Label htmlFor="pe-start">Start</Label>
-                  <Input
+                  <TimeField
                     id="pe-start"
-                    type="time"
                     value={form.startTime}
-                    onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
+                    onChange={v => setForm(f => ({ ...f, startTime: v }))}
                   />
                 </div>
                 <div className="flex-1">
                   <Label htmlFor="pe-end">End</Label>
-                  <Input
+                  <TimeField
                     id="pe-end"
-                    type="time"
                     value={form.endTime}
-                    onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
+                    onChange={v => setForm(f => ({ ...f, endTime: v }))}
                   />
                 </div>
               </div>

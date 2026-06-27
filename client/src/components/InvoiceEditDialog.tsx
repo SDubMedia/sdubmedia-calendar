@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/DateTimeField";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -142,12 +143,7 @@ export default function InvoiceEditDialog({ invoice, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Due Date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+              <DateField value={dueDate} onChange={setDueDate} className="w-full bg-background" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1">Tax Rate (%)</label>

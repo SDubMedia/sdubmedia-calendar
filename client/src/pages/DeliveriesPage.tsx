@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import PrereqGate from "@/components/PrereqGate";
+import { DateField } from "@/components/DateTimeField";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -274,7 +275,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
         </div>
 
         <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Expiry (optional)</label>
-        <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-5 outline-none focus:border-[#0088ff]" />
+        <DateField value={expiresAt} onChange={setExpiresAt} className="w-full mb-5" />
 
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
@@ -1560,15 +1561,13 @@ function ExpiryPanel({ expiresAt, onUpdate }: { expiresAt: string | null; onUpda
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Expiry</h3>
       <div className="flex items-center gap-3">
-        <input
-          type="date"
+        <DateField
           value={val}
-          onChange={(e) => setVal(e.target.value)}
-          onBlur={async () => {
-            const next = val ? `${val}T23:59:59Z` : null;
-            if (next !== expiresAt) await onUpdate(next);
+          onChange={(v) => {
+            setVal(v);
+            const next = v ? `${v}T23:59:59Z` : null;
+            if (next !== expiresAt) onUpdate(next);
           }}
-          className="bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
         />
         {expiresAt && (
           <button

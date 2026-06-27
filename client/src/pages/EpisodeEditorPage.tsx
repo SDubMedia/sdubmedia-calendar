@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { SeriesEpisode, EpisodeStatus } from "@/lib/types";
 import { ArrowLeft, Calendar, Clock, MapPin, Users, FileText, Lightbulb, ListChecks, CheckCircle2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { DateField, TimeField } from "@/components/DateTimeField";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -280,15 +281,15 @@ export default function EpisodeEditorPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Date</Label>
-                <Input type="date" value={draftDate} onChange={e => setDraftDate(e.target.value)} className="bg-secondary border-border" />
+                <DateField value={draftDate} onChange={setDraftDate} className="bg-secondary border-border" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />Start</Label>
-                <Input type="time" value={draftStartTime} onChange={e => setDraftStartTime(e.target.value)} className="bg-secondary border-border" />
+                <TimeField value={draftStartTime} onChange={setDraftStartTime} className="bg-secondary border-border" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />End</Label>
-                <Input type="time" value={draftEndTime} onChange={e => setDraftEndTime(e.target.value)} className="bg-secondary border-border" />
+                <TimeField value={draftEndTime} onChange={setDraftEndTime} className="bg-secondary border-border" />
               </div>
             </div>
 

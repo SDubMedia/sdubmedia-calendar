@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField, TimeField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -219,15 +220,15 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1.5 col-span-3 sm:col-span-1">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-secondary border-border" />
+              <DateField value={date} onChange={setDate} className="bg-secondary border-border" />
             </div>
             <div className="space-y-1.5 col-span-3 sm:col-span-1">
               <Label className="text-xs text-muted-foreground">Start</Label>
-              <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="bg-secondary border-border" />
+              <TimeField value={startTime} onChange={setStartTime} className="bg-secondary border-border" />
             </div>
             <div className="space-y-1.5 col-span-3 sm:col-span-1">
               <Label className="text-xs text-muted-foreground">End</Label>
-              <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="bg-secondary border-border" />
+              <TimeField value={endTime} onChange={setEndTime} className="bg-secondary border-border" />
             </div>
           </div>
 

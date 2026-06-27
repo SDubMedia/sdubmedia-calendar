@@ -10,6 +10,7 @@ import type { PipelineStage, Proposal, Contract } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -511,7 +512,7 @@ export default function PipelinePage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Event Date</Label>
-                <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="bg-secondary border-border" />
+                <DateField value={newDate} onChange={setNewDate} className="bg-secondary border-border" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Lead Source</Label>
