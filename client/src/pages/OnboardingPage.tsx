@@ -100,6 +100,21 @@ const AGENT_STEPS: OnboardingStep[] = [
   },
 ];
 
+const BROKER_STEPS: OnboardingStep[] = [
+  {
+    icon: Building2, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
+    title: "My Agents",
+    description: "Your whole brokerage in one place",
+    detail: "See every agent under your brokerage and all of their shoots together. Tap an agent to view their listings and what's scheduled.",
+  },
+  {
+    icon: Receipt, iconColor: "text-green-400", iconBg: "bg-green-500/20",
+    title: "What You're Billed",
+    description: "No surprises at invoice time",
+    detail: "Your agents' shoots are billed to the brokerage. See a running total for the month and your past invoices so you always know what's owed.",
+  },
+];
+
 const STAFF_STEPS: OnboardingStep[] = [
   {
     icon: LayoutDashboard, iconColor: "text-cyan-400", iconBg: "bg-cyan-500/20",
@@ -202,7 +217,9 @@ export default function OnboardingPage() {
     return () => { cancelled = true; };
   }, [role, profile?.clientIds]);
 
-  const isAgent = role === "client" && (clientType === "agent" || clientType === "broker");
+  const isBroker = role === "client" && clientType === "broker";
+  const isAgent = role === "client" && clientType === "agent";
+  const isRealEstate = isAgent || isBroker;
 
   // Owner skips the wizard — auto-complete and let the
   // BusinessInfoSetupModal collect identity info from the
@@ -212,17 +229,17 @@ export default function OnboardingPage() {
   // Staff gets the welcome + address screen
   if (role === "staff") return <StaffOnboardingWelcome />;
 
-  const steps = isAgent ? AGENT_STEPS : getStepsForRole(role);
+  const steps = isBroker ? BROKER_STEPS : isAgent ? AGENT_STEPS : getStepsForRole(role);
   const firstName = name.split(" ")[0] || "there";
-  const welcome = isAgent
+  const welcome = isRealEstate
     ? {
         title: `Welcome, ${firstName}!`,
-        subtitle: clientType === "broker"
+        subtitle: isBroker
           ? `You're set up as a brokerage on SDub Media. View your agents' shoots and what you're billed.`
           : `You're set up as an agent${brokerName ? ` with ${brokerName}` : ""}. Here you'll see your listings and request shoots — your brokerage is billed, so you'll never deal with the money.`,
       }
     : getRoleWelcome(role, name);
-  const welcomeCta = isAgent ? (clientType === "broker" ? "I'm with the brokerage" : "I'm an agent") : "Show Me Around";
+  const welcomeCta = isRealEstate ? (isBroker ? "I'm with the brokerage" : "I'm an agent") : "Show Me Around";
 
   const handleComplete = async () => {
     setCompleting(true);
