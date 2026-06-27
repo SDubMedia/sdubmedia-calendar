@@ -52,7 +52,13 @@ export async function getUserOrgId(userId: string): Promise<string | null> {
 }
 
 /** Validate that a URL belongs to an allowed domain */
-const ALLOWED_DOMAINS = ["slate.sdubmedia.com", "localhost", "127.0.0.1"];
+const ALLOWED_DOMAINS = [
+  "slate.sdubmedia.com",
+  // localhost / 127.0.0.1 are only trusted OUTSIDE production. On the live site
+  // they must never pass — otherwise an attacker-supplied *.localhost redirect
+  // would be accepted by Stripe/email/auth callbacks.
+  ...(process.env.VERCEL_ENV === "production" ? [] : ["localhost", "127.0.0.1"]),
+];
 export function isAllowedUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
