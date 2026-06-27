@@ -580,16 +580,16 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
               {[
-                { label: "This month", value: reStats.month, sub: "shoots" },
-                { label: "This year", value: reStats.year, sub: "shoots" },
-                { label: "Brokerages", value: reStats.brokerages },
-                { label: "Agents", value: reStats.agents },
+                { label: "This month", value: reStats.month, sub: "shoots", href: "/real-estate" },
+                { label: "This year", value: reStats.year, sub: "shoots", href: "/real-estate" },
+                { label: "Brokerages", value: reStats.brokerages, href: "/brokers" },
+                { label: "Agents", value: reStats.agents, href: "/brokers" },
               ].map(s => (
-                <div key={s.label} className="min-w-0">
+                <Link key={s.label} href={s.href} className="min-w-0 block rounded-md -m-1 p-1 hover:bg-white/5 transition-colors">
                   <div className="text-xs text-muted-foreground uppercase tracking-wide truncate">{s.label}</div>
                   <div className="text-2xl font-semibold text-foreground mt-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{s.value}</div>
                   {s.sub && <div className="text-xs text-muted-foreground">{s.sub}</div>}
-                </div>
+                </Link>
               ))}
             </div>
           </div>
