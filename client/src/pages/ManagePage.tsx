@@ -28,6 +28,10 @@ export default function ManagePage() {
   // back to Crew & Editors mid-edit.
   const [tab, setTab] = useState<string>(() => {
     if (typeof window === "undefined") return "crew";
+    // A ?tab= deep link (e.g. from the dashboard getting-started checklist) wins
+    // so "Add services" lands on the Services tab, not whatever was last open.
+    const urlTab = new URLSearchParams(window.location.search).get("tab");
+    if (urlTab && ["crew", "types", "services", "users", "settings"].includes(urlTab)) return urlTab;
     return sessionStorage.getItem(MANAGE_TAB_KEY) || "crew";
   });
   const handleTabChange = (v: string) => {

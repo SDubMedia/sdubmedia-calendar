@@ -22,9 +22,9 @@ export default function GettingStartedCard() {
   const dismissed = !!profile?.guidance?.seenGuides?.gettingStarted;
 
   const steps: Step[] = [
-    { label: "Add your business info", done: !!profile?.guidance?.businessInfoSetupSeen, href: "/settings", cta: "Set up" },
-    { label: "Add your services & rates", done: data.services.length > 0, href: "/manage", cta: "Add" },
-    { label: "Connect Stripe to get paid", done: !!org?.stripeAccountId || !!profile?.guidance?.stripeOptedOut, href: "/settings", cta: "Connect" },
+    { label: "Add your business info", done: !!profile?.guidance?.businessInfoSetupSeen, href: "/manage?tab=settings", cta: "Set up" },
+    { label: "Add your services & rates", done: data.services.length > 0, href: "/manage?tab=services", cta: "Add" },
+    { label: "Connect Stripe to get paid", done: !!org?.stripeAccountId || !!profile?.guidance?.stripeOptedOut, href: "/manage?tab=settings", cta: "Connect" },
     { label: "Book your first shoot", done: data.projects.length > 0, href: "/calendar", cta: "Book" },
   ];
 
