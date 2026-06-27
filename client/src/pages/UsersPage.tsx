@@ -411,6 +411,15 @@ export default function UsersPage(props?: { embedded?: boolean }) {
                       <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", ROLE_COLORS[u.role])}>
                         {ROLE_LABELS[u.role]}
                       </span>
+                      {u.role === "staff" && !u.crewMemberId && (
+                        <button
+                          onClick={() => openEdit(u)}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                          title="This staff login isn't linked to a crew member, so they'll see blank screens until it is. Tap to finish setup."
+                        >
+                          Not linked — finish setup
+                        </button>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">{u.email}</p>
                     {u.crewMemberId && editingUser !== u.id && (
