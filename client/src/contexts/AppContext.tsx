@@ -864,6 +864,7 @@ function rowToOrg(r: any): Organization {
     billingStatus: r.billing_status || "ok",
     testimonialPromptedAt: r.testimonial_prompted_at || null,
     seriesReviewMessageTemplate: r.series_review_message_template || "",
+    calendarFeedToken: r.calendar_feed_token || "",
     createdAt: r.created_at,
   };
 }

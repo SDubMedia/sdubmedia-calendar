@@ -38,8 +38,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!firstOrg) return res.status(404).send("No organization found");
     callerOrgId = firstOrg.id;
   } else {
-    // Org-id key — verify it exists and use it to scope data
-    const { data: org } = await db.from("organizations").select("id").eq("id", key).single();
+    // Org-feed token — resolve the org BY its secret feed token, NEVER by id.
+    // (Looking up by id let anyone who knew an org id pull its whole calendar.)
+    const { data: org } = await db.from("organizations").select("id").eq("calendar_feed_token", key).single();
     if (!org) return res.status(401).send("Unauthorized");
     callerOrgId = org.id;
   }

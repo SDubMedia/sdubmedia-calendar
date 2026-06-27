@@ -174,6 +174,9 @@ export interface Organization {
   // {first_name} / {company} / {url} get substituted at copy time.
   // Empty = use the built-in default.
   seriesReviewMessageTemplate?: string;
+  // Secret token for the iCal feed (/api/calendar.ics?key=...). Per-org, random,
+  // not the org id — used so the calendar feed can't be pulled by guessing ids.
+  calendarFeedToken: string;
   createdAt: string;
 }
 

@@ -19,11 +19,11 @@ const FEED_OPTIONS: { key: FeedType; label: string; description: string; icon: t
 
 export default function CalendarSyncPage() {
   const { data } = useApp();
-  const orgId = data.organization?.id || "";
+  const feedToken = data.organization?.calendarFeedToken || "";
   const [feedType, setFeedType] = useState<FeedType>("all");
 
   const feedBase = `${window.location.origin}/api/calendar.ics`;
-  const feedUrl = `${feedBase}?key=${orgId}&type=${feedType}`;
+  const feedUrl = `${feedBase}?key=${feedToken}&type=${feedType}`;
   const webcalUrl = feedUrl.replace("https://", "webcal://").replace("http://", "webcal://");
   const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`;
 
@@ -50,6 +50,11 @@ export default function CalendarSyncPage() {
 
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         <div className="max-w-lg mx-auto space-y-6">
+          {!feedToken && (
+            <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-300">
+              Your calendar feed is being set up — check back in a moment. If this persists, refresh the app.
+            </div>
+          )}
           {/* Feed type picker */}
           <div className="bg-card border border-border rounded-xl p-4 sm:p-6 space-y-3">
             <div>
