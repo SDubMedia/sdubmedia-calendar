@@ -87,6 +87,33 @@ function LoadingScreen() {
   );
 }
 
+// Shown to a staff member whose account isn't linked to a crew profile yet.
+// Without the link, row-level security returns nothing — they'd otherwise see
+// blank schedule/mileage/invoice screens and a cryptic "permission denied" when
+// submitting. This explains it instead. (Also shown if an owner previews such a
+// staff account via impersonation — with an Exit-preview button.)
+function StaffSetupPendingScreen({ impersonating, onExitPreview, onSignOut }: { impersonating: boolean; onExitPreview: () => void; onSignOut: () => void }) {
+  return (
+    <div className="flex h-screen items-center justify-center bg-background flex-col gap-4 px-6">
+      <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+        <Film className="w-6 h-6 text-primary-foreground" />
+      </div>
+      <div className="text-lg font-semibold text-foreground text-center" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+        Almost there — your account isn't set up yet
+      </div>
+      <div className="text-sm text-muted-foreground max-w-sm text-center">
+        Your login isn't linked to your crew profile yet, so your schedule, mileage, and invoices won't show.
+        Ask your admin to finish linking your account, then sign back in.
+      </div>
+      {impersonating ? (
+        <button onClick={onExitPreview} className="text-xs text-primary underline mt-2">Exit preview</button>
+      ) : (
+        <button onClick={onSignOut} className="text-xs text-primary underline mt-2">Sign out</button>
+      )}
+    </div>
+  );
+}
+
 function ErrorScreen({ message }: { message: string }) {
   return (
     <div className="flex h-screen items-center justify-center bg-background flex-col gap-3">
@@ -98,7 +125,7 @@ function ErrorScreen({ message }: { message: string }) {
 }
 
 function Router() {
-  const { effectiveProfile } = useAuth();
+  const { effectiveProfile, impersonateUserId, setImpersonateUserId, signOut } = useAuth();
   const { loading, error } = useApp();
   const [location, navigate] = useLocation();
 
@@ -116,6 +143,9 @@ function Router() {
 
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
+  if (isStaff && !effectiveProfile?.crewMemberId) {
+    return <StaffSetupPendingScreen impersonating={!!impersonateUserId} onExitPreview={() => setImpersonateUserId(null)} onSignOut={signOut} />;
+  }
 
   return (
     <AppLayout>
