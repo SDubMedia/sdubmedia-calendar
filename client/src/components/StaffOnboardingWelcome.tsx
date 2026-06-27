@@ -110,6 +110,17 @@ export default function StaffOnboardingWelcome() {
             </div>
           </div>
 
+          {/* Direct deposit — point them to where to set it up once they're in */}
+          <div className="mb-8 flex items-start gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+            <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center shrink-0">
+              <DollarSign className="w-4 h-4 text-green-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">Get paid by direct deposit</p>
+              <p className="text-[10px] text-muted-foreground">Once you're in, open <span className="font-medium text-foreground">My Invoices</span> and tap “Set up direct deposit” to have your pay sent straight to your bank.</p>
+            </div>
+          </div>
+
           {/* Go */}
           <button
             onClick={handleComplete}
