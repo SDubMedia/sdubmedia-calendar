@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ContractTemplate, ContractStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -130,6 +131,7 @@ function templateIcon(name: string): LucideIcon {
 
 export default function ContractsPage() {
   const { data, addContractTemplate, updateContractTemplate, deleteContractTemplate, updateContract, deleteContract, addProposalTemplate } = useApp();
+  const confirm = useConfirm();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"contracts" | "templates">("templates");
@@ -519,7 +521,7 @@ export default function ContractsPage() {
               setDetailTplId(copy.id);
             };
             const delCta = async () => {
-              if (!confirm(`Archive "${detailTpl.name}"? You can restore it from the Archive page.`)) return;
+              if (!(await confirm({ title: "Archive template?", description: `Archive "${detailTpl.name}"? You can restore it from the Archive page.`, confirmLabel: "Archive" }))) return;
               await deleteContractTemplate(detailTpl.id);
               setDetailTplId(null);
               toast.success("Template archived");

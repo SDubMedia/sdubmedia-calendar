@@ -9,6 +9,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
+import { ConfirmProvider } from "./components/ConfirmProvider";
 import { Film } from "lucide-react";
 
 // Lazy-loaded pages for code splitting
@@ -231,7 +232,9 @@ function AuthGate() {
   return (
     <AppProvider>
       <FaviconSync />
-      <Router />
+      <ConfirmProvider>
+        <Router />
+      </ConfirmProvider>
     </AppProvider>
   );
 }

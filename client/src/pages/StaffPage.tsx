@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import type { CrewMember, CrewRole, RoleRate, HomeAddress, TravelBase, ContractorPaymentMethod } from "@/lib/types";
 import TravelBasesEditor from "@/components/TravelBasesEditor";
@@ -97,6 +98,7 @@ function generatePassword(): string {
 
 export default function StaffPage() {
   const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance } = useApp();
+  const confirm = useConfirm();
   const { createUser } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -388,7 +390,7 @@ export default function StaffPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove ${name} from staff?`)) return;
+    if (!(await confirm({ title: "Remove from staff?", description: `Remove ${name} from staff?`, destructive: true, confirmLabel: "Remove" }))) return;
     try {
       await deleteCrewMember(id);
       toast.success("Staff member removed");

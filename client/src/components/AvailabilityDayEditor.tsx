@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Trash2, Repeat, CalendarDays, Check } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { weekdayOf } from "@/lib/data";
 import { toast } from "sonner";
 
@@ -41,6 +42,7 @@ interface Props {
 
 export default function AvailabilityDayEditor({ open, onClose, crewMemberId, crewMemberName, date }: Props) {
   const { data, updateAvailability, deleteAvailability } = useApp();
+  const confirm = useConfirm();
 
   const entries = useMemo(() => {
     if (!date || !crewMemberId) return [];
@@ -55,7 +57,7 @@ export default function AvailabilityDayEditor({ open, onClose, crewMemberId, cre
     catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't update"); }
   };
   const remove = async (id: string) => {
-    if (!window.confirm("Remove this availability?")) return;
+    if (!(await confirm({ title: "Remove this availability?", destructive: true, confirmLabel: "Remove" }))) return;
     try { await deleteAvailability(id); toast.success("Removed"); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't remove"); }
   };

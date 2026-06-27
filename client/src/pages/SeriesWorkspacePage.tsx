@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParams, Link, useLocation } from "wouter";
 import type { Series, SeriesEpisode, SeriesMessage } from "@/lib/types";
@@ -411,6 +412,7 @@ export default function SeriesWorkspacePage() {
 function ArchiveSeriesButton({ series }: { series: Series }) {
   const [, setLocation] = useLocation();
   const { updateSeries } = useApp();
+  const confirm = useConfirm();
   const isArchived = series.status === "archived";
   return (
     <button
@@ -420,7 +422,7 @@ function ArchiveSeriesButton({ series }: { series: Series }) {
           await updateSeries(series.id, { status: "active" });
           toast.success("Restored to active series");
         } else {
-          if (!confirm(`Archive "${series.name}"? You can restore it later from the Series page.`)) return;
+          if (!(await confirm({ title: "Archive series?", description: `Archive "${series.name}"? You can restore it later from the Series page.`, confirmLabel: "Archive" }))) return;
           await updateSeries(series.id, { status: "archived" });
           toast.success("Series archived");
           setLocation("/series");

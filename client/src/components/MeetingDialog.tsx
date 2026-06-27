@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField, TimeField } from "@/components/DateTimeField";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,6 +48,7 @@ interface Props {
 
 export default function MeetingDialog({ open, onClose, initialDate, editing }: Props) {
   const { data, addMeeting, updateMeeting, deleteMeeting } = useApp();
+  const confirm = useConfirm();
   const { allProfiles, profile } = useAuth();
   // Anyone the owner can invite to a meeting: staff + partners. Owner
   // themselves don't need a chip — they see all meetings already. Clients
@@ -187,7 +189,7 @@ export default function MeetingDialog({ open, onClose, initialDate, editing }: P
 
   const handleDelete = async () => {
     if (!editing) return;
-    if (!confirm(`Delete meeting "${editing.title}"?`)) return;
+    if (!(await confirm({ title: "Delete meeting?", description: `Delete meeting "${editing.title}"?`, destructive: true, confirmLabel: "Delete" }))) return;
     setSaving(true);
     try {
       await deleteMeeting(editing.id);

@@ -9,6 +9,7 @@ import { Home, Plus, Clock, MapPin, CheckCircle2, Hourglass, XCircle, UserPlus, 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import InviteAgentDialog from "@/components/InviteAgentDialog";
@@ -35,6 +36,7 @@ function fmtTime(t: string): string {
 export default function MyHousesPage() {
   const { data, deleteShootRequest, refresh } = useApp();
   const { effectiveProfile } = useAuth();
+  const confirm = useConfirm();
   const [requestOpen, setRequestOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<import("@/lib/types").ShootRequest | null>(null);
@@ -42,14 +44,14 @@ export default function MyHousesPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const cancelRequest = async (id: string) => {
-    if (!window.confirm("Cancel this shoot request? This can't be undone.")) return;
+    if (!(await confirm({ title: "Cancel this shoot request?", description: "This can't be undone.", destructive: true, confirmLabel: "Cancel request", cancelLabel: "Keep it" }))) return;
     try { await deleteShootRequest(id); toast.success("Request cancelled"); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't cancel"); }
   };
 
   // Cancel an APPROVED shoot — allowed until the photographer is on the way.
   const cancelShoot = async (projectId: string) => {
-    if (!window.confirm("Cancel this scheduled shoot? This can't be undone.")) return;
+    if (!(await confirm({ title: "Cancel this scheduled shoot?", description: "This can't be undone.", destructive: true, confirmLabel: "Cancel shoot", cancelLabel: "Keep it" }))) return;
     try {
       const token = await getAuthToken();
       const res = await fetch("/api/agent-cancel-shoot", {

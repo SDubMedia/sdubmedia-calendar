@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { supabase } from "@/lib/supabase";
 import { Trash2, RotateCcw, X, FileText, Receipt, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ const TABLES = [
 
 export default function TrashPage() {
   const { restoreItem, permanentlyDelete } = useApp();
+  const confirm = useConfirm();
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -78,7 +80,7 @@ export default function TrashPage() {
   }
 
   async function handlePermanentDelete(item: TrashItem) {
-    if (!confirm(`Permanently delete "${item.name}"? This cannot be undone.`)) return;
+    if (!(await confirm({ title: "Permanently delete?", description: `Permanently delete "${item.name}"? This cannot be undone.`, destructive: true, confirmLabel: "Delete forever" }))) return;
     try {
       await permanentlyDelete(item.table, item.id);
       setItems(items.filter(i => i.id !== item.id));

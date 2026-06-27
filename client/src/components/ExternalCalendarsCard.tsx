@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ const COLOR_OPTIONS = [
 
 export default function ExternalCalendarsCard() {
   const { data } = useApp();
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -88,7 +90,7 @@ export default function ExternalCalendarsCard() {
   }
 
   async function handleDelete(id: string, label: string) {
-    if (!confirm(`Remove "${label}"? Events from this calendar will disappear from your Slate calendar.`)) return;
+    if (!(await confirm({ title: "Remove calendar?", description: `Remove "${label}"? Events from this calendar will disappear from your Slate calendar.`, destructive: true, confirmLabel: "Remove" }))) return;
     const { error } = await supabase.from("external_calendars").delete().eq("id", id);
     if (error) toast.error(error.message);
     else toast.success("Calendar removed");

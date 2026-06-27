@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { DateField } from "@/components/DateTimeField";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { getProjectPayerId } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
@@ -54,6 +55,7 @@ function getCurrentMonthRange(): [string, string] {
 
 export default function InvoicesPage() {
   const { data, addInvoice, updateInvoice, deleteInvoice } = useApp();
+  const confirm = useConfirm();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [periodStart, setPeriodStart] = useState(() => getCurrentMonthRange()[0]);
@@ -73,7 +75,7 @@ export default function InvoicesPage() {
     const inv = data.invoices.find(i => i.id === invoiceId);
     const agent = inv ? data.clients.find(c => c.id === inv.clientId) : null;
     if (!agent) return;
-    if (!window.confirm(`Charge ${agent.company || agent.contactName}'s card on file ${inv ? `$${inv.total.toFixed(2)}` : ""}? Their agreement authorizes this for shoots the broker didn't cover.`)) return;
+    if (!(await confirm({ title: "Charge card on file?", description: `Charge ${agent.company || agent.contactName}'s card on file ${inv ? `$${inv.total.toFixed(2)}` : ""}? Their agreement authorizes this for shoots the broker didn't cover.`, confirmLabel: "Charge card" }))) return;
     setChargingId(invoiceId);
     try {
       const token = await getAuthToken();

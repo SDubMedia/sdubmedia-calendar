@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
@@ -87,6 +88,7 @@ export default function ServiceCategoriesManager() {
 
 function CategoryCard({ category }: { category: ServiceCategory }) {
   const { data, updateServiceCategory, deleteServiceCategory, addService } = useApp();
+  const confirm = useConfirm();
   const [expanded, setExpanded] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(category.name);
@@ -112,7 +114,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete "${category.name}" and all its services? This won't affect existing projects.`)) return;
+    if (!(await confirm({ title: "Delete category?", description: `Delete "${category.name}" and all its services? This won't affect existing projects.`, destructive: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteServiceCategory(category.id);
       toast.success(`Deleted "${category.name}"`);
@@ -256,6 +258,7 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
 
 function ServiceRow({ service }: { service: Service }) {
   const { data, updateService, deleteService, addServiceVariant } = useApp();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(service.name);
   const [price, setPrice] = useState(String(service.defaultPrice));
@@ -284,7 +287,7 @@ function ServiceRow({ service }: { service: Service }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete service "${service.name}" and its variants?`)) return;
+    if (!(await confirm({ title: "Delete service?", description: `Delete service "${service.name}" and its variants?`, destructive: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteService(service.id);
     } catch (err) {
@@ -478,6 +481,7 @@ function ServiceRow({ service }: { service: Service }) {
 
 function VariantRow({ variant }: { variant: ServiceVariant }) {
   const { updateServiceVariant, deleteServiceVariant } = useApp();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(variant.label);
   const [price, setPrice] = useState(String(variant.price));
@@ -496,7 +500,7 @@ function VariantRow({ variant }: { variant: ServiceVariant }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete variant "${variant.label}"?`)) return;
+    if (!(await confirm({ title: "Delete variant?", description: `Delete variant "${variant.label}"?`, destructive: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteServiceVariant(variant.id);
     } catch (err) {

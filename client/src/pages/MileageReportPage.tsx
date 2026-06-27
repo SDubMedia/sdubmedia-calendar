@@ -10,6 +10,7 @@ import { ChevronLeft, ChevronRight, Printer, Car, RefreshCw, Plus, Trash2, Penci
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/DateTimeField";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -35,6 +36,7 @@ interface MileageTrip {
 
 export default function MileageReportPage() {
   const { data, upsertDistance, addManualTrip, updateManualTrip, deleteManualTrip } = useApp();
+  const confirm = useConfirm();
   const { effectiveProfile: profile } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
   const today = new Date();
@@ -576,8 +578,8 @@ export default function MileageReportPage() {
                                   <Pencil className="w-3 h-3" />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    if (confirm("Delete this trip?")) {
+                                  onClick={async () => {
+                                    if (await confirm({ title: "Delete this trip?", destructive: true, confirmLabel: "Delete" })) {
                                       deleteManualTrip(trip.manualTripId!);
                                       toast.success("Trip deleted");
                                     }

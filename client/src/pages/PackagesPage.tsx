@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { Package } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,6 +169,7 @@ async function fileToDataUrl(file: File): Promise<string> {
 
 export default function PackagesPage() {
   const { data, addPackage, updatePackage, deletePackage } = useApp();
+  const confirm = useConfirm();
   const packages = data.packages;
 
   const [editing, setEditing] = useState<{ id: string | null; draft: PackageDraft } | null>(null);
@@ -213,7 +215,7 @@ export default function PackagesPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this package? Templates referencing it will show 'package not found'.")) return;
+    if (!(await confirm({ title: "Delete package?", description: "Templates referencing it will show 'package not found'.", destructive: true, confirmLabel: "Delete" }))) return;
     try {
       await deletePackage(id);
       toast.success("Package deleted");
@@ -292,7 +294,7 @@ export default function PackagesPage() {
             </Button>
             <Button
               onClick={async () => {
-                if (!confirm(`Seed ${EXAMPLE_PACKAGES.length} example packages from the Wedding Day Proposal PDF? You can edit or delete them afterwards.`)) return;
+                if (!(await confirm({ title: "Seed example packages?", description: `Seed ${EXAMPLE_PACKAGES.length} example packages from the Wedding Day Proposal PDF? You can edit or delete them afterwards.`, confirmLabel: "Seed examples" }))) return;
                 try {
                   for (let i = 0; i < EXAMPLE_PACKAGES.length; i++) {
                     await addPackage({ ...EXAMPLE_PACKAGES[i], iconCustomDataUrl: "", sortOrder: i });

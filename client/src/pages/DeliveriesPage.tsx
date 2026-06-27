@@ -10,6 +10,7 @@ import { useRoute, Link } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import PrereqGate from "@/components/PrereqGate";
 import { DateField } from "@/components/DateTimeField";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -314,6 +315,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
   const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited, addInvoice } = useApp();
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Declared up here (before any early return) to keep hook order stable.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -511,7 +513,7 @@ function DeliveryDetail({ id }: { id: string }) {
   }
 
   async function handleDeleteFile(fileId: string) {
-    if (!confirm("Delete this photo? This also removes it from the client gallery.")) return;
+    if (!(await confirm({ title: "Delete this photo?", description: "This also removes it from the client gallery.", destructive: true, confirmLabel: "Delete" }))) return;
     try {
       const sess = await supabase.auth.getSession();
       const accessToken = sess.data.session?.access_token || "";
@@ -528,7 +530,7 @@ function DeliveryDetail({ id }: { id: string }) {
 
   async function handleDeleteGallery() {
     if (!delivery) return;
-    if (!confirm(`Delete "${delivery.title}"? This removes all photos permanently.`)) return;
+    if (!(await confirm({ title: "Delete gallery?", description: `Delete "${delivery.title}"? This removes all photos permanently.`, destructive: true, confirmLabel: "Delete" }))) return;
     try {
       const sess = await supabase.auth.getSession();
       const accessToken = sess.data.session?.access_token || "";
@@ -614,7 +616,7 @@ function DeliveryDetail({ id }: { id: string }) {
   const deliverToAgent = async () => {
     await setDeliveryStatus(id, "delivered");
     notifyGallery("agent");
-    if (canChargeOnDelivery && !charging && window.confirm(`Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`)) {
+    if (canChargeOnDelivery && !charging && await confirm({ title: "Charge card on file?", description: `Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`, confirmLabel: "Charge card" })) {
       await chargeOnDelivery();
     }
   };

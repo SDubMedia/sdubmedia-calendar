@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
 import type { OrgFeatures, BillingModel, ProductionType, OrgBusinessInfo, DashboardWidgetConfig, PipelineStageConfig, ServiceItem, TravelBase } from "@/lib/types";
 import TravelBasesEditor from "@/components/TravelBasesEditor";
@@ -59,6 +60,7 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
 export default function SettingsPage(props?: { embedded?: boolean }) {
   const embedded = props?.embedded ?? false;
   const { data, updateOrganization, addLocation, updateLocation, updateCrewMember } = useApp();
+  const confirm = useConfirm();
   const { profile, allProfiles, updateUserProfile } = useAuth();
   const org = data.organization;
 
@@ -252,7 +254,7 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
   }
 
   async function disconnectStripe() {
-    if (!org?.id || !confirm("Disconnect your Stripe account?")) return;
+    if (!org?.id || !(await confirm({ title: "Disconnect Stripe?", description: "Disconnect your Stripe account?", destructive: true, confirmLabel: "Disconnect" }))) return;
     const token = await getAuthToken();
     await fetch("/api/stripe-connect?action=disconnect", {
       method: "POST",
