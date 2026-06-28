@@ -195,6 +195,33 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
               <option value="photography">Photography</option>
             </select>
           </div>
+          {/* Per-client override — pin this bundle to specific clients on top of
+              the type tag above. */}
+          <div className="pb-1">
+            <label className="text-xs text-muted-foreground">Also show for specific clients</label>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+              {(category.clientIds ?? []).map(cid => (
+                <span key={cid} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-secondary text-foreground">
+                  {data.clients.find(x => x.id === cid)?.company ?? "Unknown"}
+                  <button
+                    onClick={() => updateServiceCategory(category.id, { clientIds: (category.clientIds ?? []).filter(id => id !== cid) })}
+                    className="text-muted-foreground hover:text-red-400"
+                    title="Remove"
+                  >×</button>
+                </span>
+              ))}
+              <select
+                value=""
+                onChange={(e) => { if (e.target.value) updateServiceCategory(category.id, { clientIds: [...(category.clientIds ?? []), e.target.value] }); }}
+                className="bg-background border border-border rounded px-2 py-0.5 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">+ Add client…</option>
+                {data.clients.filter(c => !(category.clientIds ?? []).includes(c.id)).map(c => (
+                  <option key={c.id} value={c.id}>{c.company}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           {services.map(svc => (
             <ServiceRow key={svc.id} service={svc} />
           ))}

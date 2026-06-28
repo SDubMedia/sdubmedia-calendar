@@ -548,6 +548,7 @@ export interface ServiceCategory {
   name: string;
   position: number;
   appliesTo?: ServiceCategoryScope; // which client type sees this bundle (default "any")
+  clientIds?: string[];             // specific clients pinned to this bundle (in addition to the type tag)
   createdAt: string;
 }
 

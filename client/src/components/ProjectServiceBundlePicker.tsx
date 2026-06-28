@@ -76,8 +76,12 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
     const scopes = (ct === "broker" || ct === "agent") ? ["any", "real_estate"]
       : ct === "photography" ? ["any", "photography"]
       : ["any", "wedding"];
-    return data.serviceCategories.filter(c => scopes.includes(c.appliesTo ?? "any") || c.id === categoryId);
-  }, [data.serviceCategories, client?.clientType, categoryId]);
+    return data.serviceCategories.filter(c =>
+      scopes.includes(c.appliesTo ?? "any")
+      || (c.clientIds ?? []).includes(clientId)   // hand-pinned to this specific client
+      || c.id === categoryId                       // keep an already-selected bundle visible
+    );
+  }, [data.serviceCategories, client?.clientType, clientId, categoryId]);
   const servicesInCategory = useMemo(
     () => categoryId ? data.services.filter(s => s.categoryId === categoryId) : [],
     [data.services, categoryId]
