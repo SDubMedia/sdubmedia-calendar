@@ -87,7 +87,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <p style="font-size:13px;color:#64748b;margin:0 0 24px;">Through ${escapeHtml(brokerName)}</p>
           <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml(firstName)},</p>
           <p style="font-size:15px;line-height:1.6;">${action === "invited" ? `${escapeHtml(brokerName)} set you up to view your listings and request photo/video shoots.` : "Here's a new temporary password to get back in."}</p>
-          <div style="margin:28px 0;"><a href="${APP_URL}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Sign In</a></div>
+          <div style="margin:28px 0;">
+            <a href="${APP_URL}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;margin:0 8px 10px 0;">Sign in on the web</a>
+            <a href="https://apps.apple.com/app/id6768183675" style="display:inline-block;background:#1e293b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;margin:0 0 10px 0;">Download the iPhone app</a>
+            <p style="margin:6px 0 0;font-size:12px;color:#64748b;">Use the same email &amp; password on the web or the iPhone app.</p>
+          </div>
           <div style="background:#f1f5f9;border-radius:8px;padding:20px;margin:24px 0;">
             <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;">Email</p>
             <p style="margin:0 0 16px;font-size:14px;font-family:'SF Mono',Monaco,monospace;">${escapeHtml(agentEmail)}</p>

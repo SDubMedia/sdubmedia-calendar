@@ -95,18 +95,25 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
   const { data, addClient, updateClient } = useApp();
   const { createUser, allProfiles, refreshProfiles } = useAuth();
   const [sendingLogin, setSendingLogin] = useState(false);
-  // Does this client already have a portal login? (a user profile linked to them)
-  const hasLogin = !!client && allProfiles.some(p => (p.clientIds ?? []).includes(client.id));
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [newLoginName, setNewLoginName] = useState("");
+  const [newLoginEmail, setNewLoginEmail] = useState("");
+  // Everyone who can log in for this client (a brokerage's two partners each get
+  // their own account — multiple profiles can link to the same client).
+  const logins = client ? allProfiles.filter(p => (p.clientIds ?? []).includes(client.id)) : [];
 
   // Create (or re-send) a portal login for an existing client: temp password +
   // welcome email, with an in-app fallback if the email doesn't send.
-  async function sendLogin() {
+  // Create a portal login for a specific person (name + email) tied to this
+  // client, with a temp password + welcome email. Call it once per partner.
+  async function sendLoginFor(name: string, email: string) {
     if (!client) return;
-    if (!form.email.trim()) { toast.error("Add an email address first, then save."); return; }
+    const em = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast.error("Enter a valid email address"); return; }
     setSendingLogin(true);
     try {
       const tempPassword = genTempPassword();
-      const userId = await createUser(form.email.trim(), tempPassword, (form.contactName.trim() || form.company.trim()), "client", [client.id]);
+      const userId = await createUser(em, tempPassword, (name.trim() || form.company.trim()), "client", [client.id]);
       const token = await getAuthToken();
       const res = await fetch("/api/invite-user", {
         method: "POST",
@@ -115,6 +122,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
       });
       showInviteCredentials("Login sent", tempPassword, res.ok);
       await refreshProfiles();
+      setAddingPerson(false); setNewLoginName(""); setNewLoginEmail("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send the login");
     } finally {
@@ -369,24 +377,53 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
             </div>
           </div>
 
-          {/* Portal access — give an existing client a login + temp password so
-              they can see their galleries and invoices. Only after they're saved. */}
-          {client && form.clientType !== "broker" && form.clientType !== "agent" && (
-            <div className="rounded-lg border border-border bg-card p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
+          {/* Portal access — one login per person. A brokerage's two partners
+              each get their own account; add as many as you need. Only after the
+              client record is saved. Agents are invited from the Brokers page. */}
+          {client && form.clientType !== "agent" && (
+            <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+              <div>
                 <p className="text-sm font-medium text-foreground">Portal access</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {hasLogin
-                    ? "This client has a login to see their galleries and invoices."
-                    : "Send a login + temporary password so they can see their galleries and invoices."}
+                  People who can log in to see {form.clientType === "broker" ? "this brokerage's agents, shoots," : "their galleries"} and invoices. Add one per person — partners each get their own login.
                 </p>
               </div>
-              {!hasLogin && (
-                <Button onClick={sendLogin} disabled={sendingLogin || !form.email.trim()} variant="outline" size="sm" className="border-border shrink-0">
-                  {sendingLogin ? "Sending…" : "Send login"}
+
+              {logins.length > 0 && (
+                <div className="space-y-1.5">
+                  {logins.map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-secondary/30 px-2.5 py-1.5">
+                      <div className="min-w-0">
+                        <div className="text-xs text-foreground truncate">{p.name}</div>
+                        <div className="text-[11px] text-muted-foreground truncate">{p.email}</div>
+                      </div>
+                      <span className={`text-[11px] shrink-0 ${p.mustChangePassword ? "text-amber-400" : "text-emerald-400"}`}>
+                        {p.mustChangePassword ? "Invited" : "✓ Active"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {addingPerson ? (
+                <div className="space-y-2">
+                  <Input value={newLoginName} onChange={(e) => setNewLoginName(e.target.value)} placeholder="Name (e.g. partner's name)" className="bg-secondary border-border h-9 text-sm" />
+                  <Input value={newLoginEmail} onChange={(e) => setNewLoginEmail(e.target.value)} placeholder="their@email.com" inputMode="email" className="bg-secondary border-border h-9 text-sm" />
+                  <div className="flex gap-2">
+                    <Button onClick={() => sendLoginFor(newLoginName, newLoginEmail)} disabled={sendingLogin || !newLoginEmail.trim()} size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                      {sendingLogin ? "Sending…" : "Send invite"}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setAddingPerson(false); setNewLoginName(""); setNewLoginEmail(""); }}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => { setAddingPerson(true); setNewLoginName(logins.length === 0 ? form.contactName : ""); setNewLoginEmail(logins.length === 0 ? form.email : ""); }}
+                  variant="outline" size="sm" className="border-border gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> {logins.length === 0 ? "Send a login" : "Add another login"}
                 </Button>
               )}
-              {hasLogin && <span className="text-xs text-emerald-400 shrink-0">✓ Active</span>}
             </div>
           )}
 

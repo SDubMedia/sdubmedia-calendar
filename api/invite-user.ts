@@ -16,6 +16,7 @@ const supabase = createClient(
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 const APP_URL = process.env.APP_URL || "https://slate.sdubmedia.com";
+const APP_STORE_URL = "https://apps.apple.com/app/id6768183675";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -116,7 +117,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <p style="font-size: 15px; line-height: 1.6;">${safePitch}</p>
 
         <div style="margin: 28px 0;">
-          <a href="${APP_URL}" style="display: inline-block; background: #0088ff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Sign In</a>
+          <a href="${APP_URL}" style="display: inline-block; background: #0088ff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 8px 10px 0;">Sign in on the web</a>
+          <a href="${APP_STORE_URL}" style="display: inline-block; background: #1e293b; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 0 10px 0;">Download the iPhone app</a>
+          <p style="margin: 6px 0 0; font-size: 12px; color: #64748b;">Use the same email &amp; password on the web or the iPhone app.</p>
         </div>
 
         <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin: 24px 0;">
