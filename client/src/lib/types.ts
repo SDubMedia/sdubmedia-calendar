@@ -311,7 +311,7 @@ export interface Client {
   // shoots; "agent" = belongs to a broker (brokerId) and their shoots can bill
   // up to that broker; "standard" = a normal client. Optional/defaulted for
   // back-compat with rows saved before this column.
-  clientType?: "standard" | "broker" | "agent";
+  clientType?: "standard" | "broker" | "agent" | "photography";
   brokerId?: string | null; // set on agents → their broker client's id
   // Agent card-on-file (saved, not charged — a fallback if a broker doesn't pay).
   stripeCustomerId?: string | null;

@@ -11,10 +11,17 @@ import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
+import { getAuthToken } from "@/lib/supabase";
+import { showInviteCredentials } from "@/lib/inviteCredentials";
 import type { Client, RoleBillingMultiplier, BillingModel, PartnerSplit } from "@/lib/types";
 import { toast } from "sonner";
 import { cn, formatPhoneInput } from "@/lib/utils";
 import BrandNotesAssistant from "./BrandNotesAssistant";
+
+function genTempPassword(): string {
+  return "Ph" + Math.random().toString(36).slice(2, 10) + "7a";
+}
 
 interface ClientFormData {
   company: string;
@@ -34,7 +41,7 @@ interface ClientFormData {
   roleBillingMultipliers: RoleBillingMultiplier[];
   partnerSplit: PartnerSplit | null;
   brandNotes: string;
-  clientType: "standard" | "broker" | "agent";
+  clientType: "standard" | "broker" | "agent" | "photography";
   brokerId: string | null;
 }
 
@@ -80,12 +87,40 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pre-set the type/broker for a NEW client (e.g. "Add Broker" / "Add Agent"). */
-  initialClientType?: "standard" | "broker" | "agent";
+  initialClientType?: "standard" | "broker" | "agent" | "photography";
   initialBrokerId?: string | null;
 }
 
 export default function ClientProfileSheet({ client, open, onOpenChange, initialClientType, initialBrokerId }: Props) {
   const { data, addClient, updateClient } = useApp();
+  const { createUser, allProfiles, refreshProfiles } = useAuth();
+  const [sendingLogin, setSendingLogin] = useState(false);
+  // Does this client already have a portal login? (a user profile linked to them)
+  const hasLogin = !!client && allProfiles.some(p => (p.clientIds ?? []).includes(client.id));
+
+  // Create (or re-send) a portal login for an existing client: temp password +
+  // welcome email, with an in-app fallback if the email doesn't send.
+  async function sendLogin() {
+    if (!client) return;
+    if (!form.email.trim()) { toast.error("Add an email address first, then save."); return; }
+    setSendingLogin(true);
+    try {
+      const tempPassword = genTempPassword();
+      const userId = await createUser(form.email.trim(), tempPassword, (form.contactName.trim() || form.company.trim()), "client", [client.id]);
+      const token = await getAuthToken();
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId, tempPassword }),
+      });
+      showInviteCredentials("Login sent", tempPassword, res.ok);
+      await refreshProfiles();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send the login");
+    } finally {
+      setSendingLogin(false);
+    }
+  }
   const [brandAssistantOpen, setBrandAssistantOpen] = useState(false);
   const [form, setForm] = useState<ClientFormData>(emptyForm());
 
@@ -157,6 +192,32 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
           </SheetTitle>
         </SheetHeader>
         <div className="space-y-5 px-4 sm:px-6 py-2">
+          {/* Client type — only for non-real-estate clients (brokers/agents are
+              created/managed from the Brokers area). Lets you tag a photography
+              client, including after they're already created. */}
+          {form.clientType !== "broker" && form.clientType !== "agent" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Client type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, clientType: "standard" })}
+                  className={cn("rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                    form.clientType !== "photography" ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5")}
+                >
+                  Regular client
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, clientType: "photography" })}
+                  className={cn("rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                    form.clientType === "photography" ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5")}
+                >
+                  Photography
+                </button>
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">
               {form.clientType === "agent" ? "Agent Name *" : form.clientType === "broker" ? "Brokerage Name *" : "Company Name *"}
@@ -296,6 +357,28 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
               <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-secondary border-border" placeholder="email@example.com" />
             </div>
           </div>
+
+          {/* Portal access — give an existing client a login + temp password so
+              they can see their galleries and invoices. Only after they're saved. */}
+          {client && form.clientType !== "broker" && form.clientType !== "agent" && (
+            <div className="rounded-lg border border-border bg-card p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Portal access</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {hasLogin
+                    ? "This client has a login to see their galleries and invoices."
+                    : "Send a login + temporary password so they can see their galleries and invoices."}
+                </p>
+              </div>
+              {!hasLogin && (
+                <Button onClick={sendLogin} disabled={sendingLogin || !form.email.trim()} variant="outline" size="sm" className="border-border shrink-0">
+                  {sendingLogin ? "Sending…" : "Send login"}
+                </Button>
+              )}
+              {hasLogin && <span className="text-xs text-emerald-400 shrink-0">✓ Active</span>}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Street Address</Label>
             <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="bg-secondary border-border" placeholder="123 Main St" />

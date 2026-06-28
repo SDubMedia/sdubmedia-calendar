@@ -41,7 +41,11 @@ export default function ClientsPage() {
     data.projects.filter((p) => p.clientId === clientId).length;
 
   // Brokers + their agents live on the dedicated Brokers page, not here.
-  const standardClients = data.clients.filter(c => (c.clientType ?? "standard") === "standard");
+  // Everything else (regular + photography clients) shows on this page.
+  const standardClients = data.clients.filter(c => {
+    const t = c.clientType ?? "standard";
+    return t !== "broker" && t !== "agent";
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -69,13 +73,18 @@ export default function ClientsPage() {
                   <Building2 className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <button
-                    onClick={() => openEdit(client)}
-                    className="font-medium text-foreground truncate hover:text-primary cursor-pointer text-left block w-full transition-colors"
-                    style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-                  >
-                    {client.company}
-                  </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={() => openEdit(client)}
+                      className="font-medium text-foreground truncate hover:text-primary cursor-pointer text-left transition-colors"
+                      style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                    >
+                      {client.company}
+                    </button>
+                    {client.clientType === "photography" && (
+                      <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-500/40 bg-purple-500/10 text-purple-300">Photography</span>
+                    )}
+                  </div>
                   <div className="text-sm text-muted-foreground">{client.contactName}</div>
                   <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                     {client.phone && (
