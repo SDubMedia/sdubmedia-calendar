@@ -69,7 +69,15 @@ export default function ProjectServiceBundlePicker({ clientId, categoryId, servi
   const { data } = useApp();
   const client = data.clients.find(c => c.id === clientId);
 
-  const categories = data.serviceCategories;
+  // Show only the bundles meant for this client's type (plus "any" bundles, and
+  // whatever's already selected so editing an old project never hides its bundle).
+  const categories = useMemo(() => {
+    const ct = client?.clientType ?? "standard";
+    const scopes = (ct === "broker" || ct === "agent") ? ["any", "real_estate"]
+      : ct === "photography" ? ["any", "photography"]
+      : ["any", "wedding"];
+    return data.serviceCategories.filter(c => scopes.includes(c.appliesTo ?? "any") || c.id === categoryId);
+  }, [data.serviceCategories, client?.clientType, categoryId]);
   const servicesInCategory = useMemo(
     () => categoryId ? data.services.filter(s => s.categoryId === categoryId) : [],
     [data.services, categoryId]

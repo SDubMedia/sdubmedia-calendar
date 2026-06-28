@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useConfirm } from "@/components/ConfirmProvider";
-import type { ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { ServiceCategory, ServiceCategoryScope, Service, ServiceVariant } from "@/lib/types";
 import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -182,6 +182,19 @@ function CategoryCard({ category }: { category: ServiceCategory }) {
 
       {expanded && (
         <div className="p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <label className="text-xs text-muted-foreground">Shown for</label>
+            <select
+              value={category.appliesTo ?? "any"}
+              onChange={(e) => updateServiceCategory(category.id, { appliesTo: e.target.value as ServiceCategoryScope })}
+              className="bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="any">Any client</option>
+              <option value="real_estate">Real estate</option>
+              <option value="wedding">Wedding</option>
+              <option value="photography">Photography</option>
+            </select>
+          </div>
           {services.map(svc => (
             <ServiceRow key={svc.id} service={svc} />
           ))}

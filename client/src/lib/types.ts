@@ -540,10 +540,14 @@ export interface ProjectProductSelection {
 // Lives alongside the flat ProjectType model. Either model can be
 // used per-project; new projects can opt into the bundle flow.
 // ============================================================
+// Which client type a service bundle is for. "any" = shown for every client.
+export type ServiceCategoryScope = "any" | "real_estate" | "wedding" | "photography";
+
 export interface ServiceCategory {
   id: string;
   name: string;
   position: number;
+  appliesTo?: ServiceCategoryScope; // which client type sees this bundle (default "any")
   createdAt: string;
 }
 

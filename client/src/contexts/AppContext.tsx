@@ -735,6 +735,7 @@ function rowToServiceCategory(r: any): ServiceCategory {
     id: r.id,
     name: r.name || "",
     position: Number(r.position ?? 0),
+    appliesTo: r.applies_to || "any",
     createdAt: r.created_at,
   };
 }
@@ -2138,7 +2139,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("service_categories").insert({
       id, ...(orgId ? { org_id: orgId } : {}),
-      name: c.name, position: c.position ?? 0, updated_at: new Date().toISOString(),
+      name: c.name, position: c.position ?? 0, applies_to: c.appliesTo ?? "any", updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw new Error(error.message);
     const cat = rowToServiceCategory(row);
@@ -2150,6 +2151,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = { updated_at: new Date().toISOString() };
     if (c.name !== undefined) patch.name = c.name;
     if (c.position !== undefined) patch.position = c.position;
+    if (c.appliesTo !== undefined) patch.applies_to = c.appliesTo;
     const { error } = await supabase.from("service_categories").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, serviceCategories: d.serviceCategories.map(x => x.id === id ? { ...x, ...c } : x) }));
