@@ -25,14 +25,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { data: profile } = await supabase.from("user_profiles").select("role, client_ids").eq("id", caller.userId).single();
-    if (!profile || profile.role !== "client") return res.status(403).json({ error: "Only an agent can do this" });
+    if (!profile || profile.role !== "client") return res.status(403).json({ error: "Only a client can do this" });
     const orgId = await getUserOrgId(caller.userId);
     const clientIds: string[] = Array.isArray(profile.client_ids) ? profile.client_ids : [];
 
     const { data: agent } = await supabase
       .from("clients").select("id, stripe_customer_id, org_id")
-      .in("id", clientIds).eq("org_id", orgId).eq("client_type", "agent").maybeSingle();
-    if (!agent) return res.status(403).json({ error: "Only an agent can confirm a card" });
+      .in("id", clientIds).eq("org_id", orgId).in("client_type", ["agent", "photography"]).maybeSingle();
+    if (!agent) return res.status(403).json({ error: "Only a client can confirm a card" });
     if (!agent.stripe_customer_id) return res.status(200).json({ cardOnFile: false });
 
     const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", agent.org_id).maybeSingle();

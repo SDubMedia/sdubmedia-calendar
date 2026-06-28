@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
 import { ConfirmProvider } from "./components/ConfirmProvider";
+import PhotographyClientSetup from "./components/PhotographyClientSetup";
 import { Film } from "lucide-react";
 
 // Lazy-loaded pages for code splitting
@@ -127,7 +128,7 @@ function ErrorScreen({ message }: { message: string }) {
 
 function Router() {
   const { effectiveProfile, impersonateUserId, setImpersonateUserId, signOut } = useAuth();
-  const { loading, error } = useApp();
+  const { loading, error, data } = useApp();
   const [location, navigate] = useLocation();
 
   const role = effectiveProfile?.role ?? "client";
@@ -146,6 +147,19 @@ function Router() {
   if (error) return <ErrorScreen message={error} />;
   if (isStaff && !effectiveProfile?.crewMemberId) {
     return <StaffSetupPendingScreen impersonating={!!impersonateUserId} onExitPreview={() => setImpersonateUserId(null)} onSignOut={signOut} />;
+  }
+
+  // Photography clients must finish required setup (address, phone, card on
+  // file) before the portal opens. Owner preview (impersonation) bypasses it.
+  const myClientRecord = role === "client"
+    ? data.clients.find(c => (effectiveProfile?.clientIds ?? []).includes(c.id))
+    : null;
+  if (
+    !impersonateUserId &&
+    myClientRecord?.clientType === "photography" &&
+    (!myClientRecord.address?.trim() || !myClientRecord.phone?.trim() || !myClientRecord.cardOnFile)
+  ) {
+    return <PhotographyClientSetup client={myClientRecord} />;
   }
 
   return (

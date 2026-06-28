@@ -1448,7 +1448,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             // saved Project row.
             const effectiveModel = billingModelOverride ?? selectedClient.billingModel;
             let subtotal: number;
-            if (effectiveModel === "per_project") {
+            if (bundleServices.length > 0) {
+              // Service-bundle pricing wins — matches getProjectSubtotal and the
+              // invoice, so the discount applies to the real bundle total.
+              subtotal = bundleServices.reduce((s, x) => s + Number(x.price ?? 0), 0);
+            } else if (effectiveModel === "per_project") {
               const overrideRate = (billingModelOverride && billingRateOverride) || 0;
               const typeRate = selectedClient.projectTypeRates?.find(r => r.projectTypeId === projectTypeId);
               subtotal = overrideRate

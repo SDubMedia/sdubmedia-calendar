@@ -24,15 +24,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { data: profile } = await supabase.from("user_profiles").select("role, client_ids").eq("id", caller.userId).single();
-    if (!profile || profile.role !== "client") return res.status(403).json({ error: "Only an agent can do this" });
+    if (!profile || profile.role !== "client") return res.status(403).json({ error: "Only a client can do this" });
     const orgId = await getUserOrgId(caller.userId);
     const clientIds: string[] = Array.isArray(profile.client_ids) ? profile.client_ids : [];
 
     // The agent's own client record.
     const { data: agent } = await supabase
       .from("clients").select("id, company, contact_name, email, client_type, stripe_customer_id")
-      .in("id", clientIds).eq("org_id", orgId).eq("client_type", "agent").maybeSingle();
-    if (!agent) return res.status(403).json({ error: "Only an agent can add a card" });
+      .in("id", clientIds).eq("org_id", orgId).in("client_type", ["agent", "photography"]).maybeSingle();
+    if (!agent) return res.status(403).json({ error: "Only a client can add a card" });
 
     const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", orgId).single();
     if (!org?.stripe_account_id) return res.status(400).json({ error: "Payments aren't set up for this account yet" });
