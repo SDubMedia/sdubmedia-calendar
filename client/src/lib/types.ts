@@ -701,6 +701,7 @@ export interface ShootRequest {
   preferredTime: string | null;            // "HH:MM" the agent asked for
   preferredCrewMemberId: string | null;    // optional shooter the agent prefers
   agentWillMeet: boolean;                   // agent will meet the photographer on-site (vs. lockbox/gate-code access)
+  isVacant: boolean;                        // true = property vacant/empty; false = occupied (someone may be home)
   notes: string;
   // What pieces the agent asked for — snapshot of catalog price (broker's rate).
   requestedServices: ProjectServiceSelection[];

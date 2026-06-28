@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
-import { Inbox, MapPin, Clock, User, Check, X } from "lucide-react";
+import { Inbox, MapPin, Clock, User, Check, X, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -114,7 +114,7 @@ export default function ShootRequestsPage() {
         billingModel: null,
         billingRate: null,
         editTypes: [],
-        notes: [req.agentWillMeet ? "Agent will meet on-site." : "", req.notes].filter(Boolean).join(" "),
+        notes: [req.isVacant ? "Property is vacant." : "Property is occupied.", req.agentWillMeet ? "Agent will meet on-site." : "", req.notes].filter(Boolean).join(" "),
         deliverableUrl: "",
         cancellationReason: "",
         cancelledAt: null,
@@ -203,6 +203,12 @@ export default function ShootRequestsPage() {
                     {req.agentWillMeet
                       ? <span className="text-emerald-400 font-medium">Agent will meet on-site</span>
                       : <span className="text-muted-foreground">Lockbox / gate-code access (agent not meeting)</span>}
+                  </p>
+                  <p className="text-xs mb-2 flex items-center gap-1.5">
+                    <Home className="w-3 h-3 flex-shrink-0" />
+                    {req.isVacant
+                      ? <span className="text-amber-400 font-medium">Property is vacant</span>
+                      : <span className="text-muted-foreground">Property is occupied</span>}
                   </p>
                   {req.notes && <p className="text-xs text-muted-foreground mb-3 italic">"{req.notes}"</p>}
                   <div className="flex gap-2">

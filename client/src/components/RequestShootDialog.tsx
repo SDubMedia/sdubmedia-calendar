@@ -50,6 +50,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
   const [pickedTime, setPickedTime] = useState("");
   const [monthOffset, setMonthOffset] = useState(0); // booking calendar navigation
   const [agentWillMeet, setAgentWillMeet] = useState(false);
+  const [isVacant, setIsVacant] = useState(false);
   const touchX = useRef<number | null>(null);
   // Swipe left = next month, swipe right = previous (not below the current month).
   const onTouchStart = (e: React.TouchEvent) => { touchX.current = e.touches[0].clientX; };
@@ -75,6 +76,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
         setPickedDate(editRequest.preferredDate || "");
         setPickedTime(editRequest.preferredTime || "");
         setAgentWillMeet(!!editRequest.agentWillMeet);
+        setIsVacant(!!editRequest.isVacant);
         setNotes(editRequest.notes || "");
       }
     } else if (!open) {
@@ -204,7 +206,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
     ? data.clients.find(c => c.id === agentClient.brokerId) : null;
 
   const reset = () => {
-    setAddress(""); setPicked({}); setShooterId(""); setPickedDate(""); setPickedTime(""); setAgentWillMeet(false); setNotes("");
+    setAddress(""); setPicked({}); setShooterId(""); setPickedDate(""); setPickedTime(""); setAgentWillMeet(false); setIsVacant(false); setNotes("");
   };
 
   const handleSubmit = async () => {
@@ -221,6 +223,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
           preferredTime: pickedTime,
           preferredCrewMemberId: shooterId || null,
           agentWillMeet,
+          isVacant,
           notes: notes.trim(),
           requestedServices: selections,
         });
@@ -236,6 +239,7 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
         preferredTime: pickedTime,
         preferredCrewMemberId: shooterId || null,
         agentWillMeet,
+        isVacant,
         notes: notes.trim(),
         requestedServices: selections,
       });
@@ -383,6 +387,27 @@ export default function RequestShootDialog({ open, onClose, clientId, editReques
                 <p className="mt-2 text-xs text-muted-foreground">No open times that day — pick another, or add a note below.</p>
               )
             )}
+          </div>
+
+          {/* Occupancy: vacant or occupied — so the photographer knows what to expect */}
+          <div>
+            <Label className="text-xs text-muted-foreground">Is the property occupied?</Label>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsVacant(false)}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${!isVacant ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5"}`}
+              >
+                Occupied
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsVacant(true)}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${isVacant ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5"}`}
+              >
+                Vacant
+              </button>
+            </div>
           </div>
 
           {/* Access: will the agent meet on-site? */}
