@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost, getMonthlyEarningsBreakdown } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost, getMonthlyEarningsBreakdown, getProjectPayerId } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
@@ -66,14 +66,19 @@ export default function ReportsPage() {
   const isYearMode = period === "year";
 
   // ---- Derived data ----
+  const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
   const filteredProjects = useMemo(() => {
     return data.projects.filter(p => {
       const [y] = p.date.split("-");
       const yearMatch = y === selectedYear;
-      const clientMatch = selectedClientId === "all" || p.clientId === selectedClientId;
+      // A broker's shoots are owned by their agents but billed to the broker,
+      // so match the payer too — otherwise picking a broker shows nothing.
+      const clientMatch = selectedClientId === "all"
+        || p.clientId === selectedClientId
+        || getProjectPayerId(p, clientsById) === selectedClientId;
       return yearMatch && clientMatch;
     });
-  }, [data.projects, selectedYear, selectedClientId]);
+  }, [data.projects, selectedYear, selectedClientId, clientsById]);
 
   const monthlyProjects = useMemo(() => {
     if (isYearMode) return filteredProjects;

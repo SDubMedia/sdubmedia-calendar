@@ -34,6 +34,7 @@ import {
 import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
+import { formatPhoneInput } from "@/lib/utils";
 
 const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
@@ -601,9 +602,9 @@ export default function StaffPage() {
               <div className="space-y-1.5">
                 <Label>Phone</Label>
                 <Input
-                  placeholder="(555) 000-0000"
+                  placeholder="615-000-0000"
                   value={form.phone}
-                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  onChange={e => setForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
                 />
               </div>
               <div className="space-y-1.5">

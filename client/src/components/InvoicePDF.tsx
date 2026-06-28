@@ -4,6 +4,7 @@
 
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import type { Invoice } from "@/lib/types";
+import { formatPhoneDisplay } from "@/lib/utils";
 
 const brandBlue = "#0088ff";
 const charcoal = "#1e293b";
@@ -37,6 +38,10 @@ const s = StyleSheet.create({
   tableRowAlt: { backgroundColor: "#f8fafc" },
   tableRowInner: { flexDirection: "row" },
   tableRowDesc: { fontSize: 9, color: gray, marginTop: 4, lineHeight: 1.4 },
+  // Broker property header row + indented service sub-rows
+  groupHeaderRow: { paddingTop: 10, paddingBottom: 6, paddingHorizontal: 10, backgroundColor: lightGray, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  groupHeaderText: { fontSize: 11, fontFamily: "Helvetica-Bold", color: charcoal },
+  subItemDesc: { paddingLeft: 14 },
   colDesc: { width: "45%" },
   colQty: { width: "10%", textAlign: "center" },
   colUnit: { width: "10%", textAlign: "center" },
@@ -73,6 +78,9 @@ function formatCurrency(n: number): string {
 export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
   const ci = invoice.companyInfo;
   const cl = invoice.clientInfo;
+  // Mailing address for the "pay by check" line, e.g. "945 Tynan Way, Nolensville, TN 37135".
+  const cityZip = [[ci.city, ci.state].filter(Boolean).join(", "), ci.zip].filter(Boolean).join(" ");
+  const remitAddress = [ci.address, cityZip].filter(Boolean).join(", ");
 
   return (
     <Document>
@@ -85,7 +93,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
               <Text style={[s.brandName, { marginLeft: 8 }]}>Slate</Text>
             </View>
             <Text style={{ fontSize: 9, color: gray, marginBottom: 4 }}>By SDub Media LLC</Text>
-            <Text style={s.brandTagline}>{ci.phone}{ci.phone && ci.email ? " | " : ""}{ci.email}</Text>
+            <Text style={s.brandTagline}>{formatPhoneDisplay(ci.phone)}{ci.phone && ci.email ? " | " : ""}{ci.email}</Text>
             {ci.address && <Text style={s.brandTagline}>{ci.address}{ci.city ? `, ${ci.city}` : ""}{ci.state ? `, ${ci.state}` : ""} {ci.zip}</Text>}
             {ci.website && <Text style={s.brandTagline}>{ci.website}</Text>}
           </View>
@@ -102,7 +110,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
             <Text style={[s.infoText, s.infoBold]}>{ci.name}</Text>
             <Text style={s.infoText}>{ci.address}</Text>
             <Text style={s.infoText}>{ci.city}, {ci.state} {ci.zip}</Text>
-            <Text style={s.infoText}>{ci.phone}</Text>
+            <Text style={s.infoText}>{formatPhoneDisplay(ci.phone)}</Text>
             <Text style={s.infoText}>{ci.email}</Text>
           </View>
           <View style={s.infoBlock}>
@@ -110,7 +118,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
             <Text style={[s.infoText, s.infoBold]}>{cl.company}</Text>
             <Text style={s.infoText}>{cl.contactName}</Text>
             <Text style={s.infoText}>{cl.email}</Text>
-            <Text style={s.infoText}>{cl.phone}</Text>
+            <Text style={s.infoText}>{formatPhoneDisplay(cl.phone)}</Text>
           </View>
         </View>
 
@@ -140,18 +148,28 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
             <Text style={[s.tableHeaderText, s.colAmount]}>Total</Text>
           </View>
           {invoice.lineItems.map((li, i) => (
-            <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
-              <View style={s.tableRowInner}>
-                <Text style={[s.colDesc, { fontFamily: "Helvetica-Bold" }]}>{li.description}</Text>
-                <Text style={s.colQty}>{li.quantity % 1 === 0 ? li.quantity : li.quantity.toFixed(1)}</Text>
-                <Text style={s.colUnit}>{li.quantity === 1 ? "Unit" : "Units"}</Text>
-                <Text style={s.colRate}>{formatCurrency(li.unitPrice)}</Text>
-                <Text style={[s.colAmount, { fontFamily: "Helvetica-Bold" }]}>{formatCurrency(li.amount)}</Text>
+            li.isHeader ? (
+              // Property header on a broker invoice — agent + address, no price.
+              <View key={i} style={s.groupHeaderRow}>
+                <Text style={s.groupHeaderText}>{li.description}</Text>
+                {li.date && li.date !== invoice.issueDate && (
+                  <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
+                )}
               </View>
-              {li.date && li.date !== invoice.issueDate && (
-                <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
-              )}
-            </View>
+            ) : (
+              <View key={i} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
+                <View style={s.tableRowInner}>
+                  <Text style={[s.colDesc, { fontFamily: "Helvetica-Bold" }, li.isSubItem ? s.subItemDesc : {}]}>{li.description}</Text>
+                  <Text style={s.colQty}>{li.quantity % 1 === 0 ? li.quantity : li.quantity.toFixed(1)}</Text>
+                  <Text style={s.colUnit}>{li.quantity === 1 ? "Unit" : "Units"}</Text>
+                  <Text style={s.colRate}>{formatCurrency(li.unitPrice)}</Text>
+                  <Text style={[s.colAmount, { fontFamily: "Helvetica-Bold" }]}>{formatCurrency(li.amount)}</Text>
+                </View>
+                {li.date && li.date !== invoice.issueDate && (
+                  <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
+                )}
+              </View>
+            )
           ))}
         </View>
 
@@ -183,12 +201,22 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
             <Text style={s.notesLabel}>Payment Options</Text>
             <Text style={s.notesText}>
               {invoice.paymentMethods.includes("stripe") && invoice.paymentMethods.includes("venmo")
-                ? "Online: Credit Card (Stripe) or Venmo — open the payment link in your invoice email."
+                ? "Online: Credit Card (Stripe) or Venmo — pay from this invoice in the Slate app, or use the payment link in your invoice email."
                 : invoice.paymentMethods.includes("stripe")
-                ? "Online: Credit Card (Stripe) — open the payment link in your invoice email."
+                ? "Online: Credit Card (Stripe) — pay from this invoice in the Slate app, or use the payment link in your invoice email."
                 : invoice.paymentMethods.includes("venmo")
-                ? "Online: Venmo — open the payment link in your invoice email."
+                ? "Online: Venmo — pay from this invoice in the Slate app, or use the payment link in your invoice email."
                 : ""}
+            </Text>
+          </View>
+        )}
+
+        {/* Pay by check — mail-to remittance (uses your business address) */}
+        {ci.name && (
+          <View style={s.notes}>
+            <Text style={s.notesLabel}>Paying by check?</Text>
+            <Text style={s.notesText}>
+              Please make checks payable to {ci.name}{remitAddress ? ` and mail to ${remitAddress}` : ""}.
             </Text>
           </View>
         )}

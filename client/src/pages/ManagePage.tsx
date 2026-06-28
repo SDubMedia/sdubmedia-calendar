@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Plus, Edit3, Trash2, Users, Briefcase, Shield, Layers, Settings } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formatPhoneInput } from "@/lib/utils";
 import { useApp } from "@/contexts/AppContext";
 import type { CrewMember, ProjectType } from "@/lib/types";
 import { toast } from "sonner";
@@ -156,7 +157,7 @@ function CrewTab() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Phone</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-secondary border-border" placeholder="615-000-0000" />
+                <Input value={phone} onChange={(e) => setPhone(formatPhoneInput(e.target.value))} className="bg-secondary border-border" placeholder="615-000-0000" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Email</Label>
@@ -197,6 +198,14 @@ function CrewTab() {
 }
 
 // ---- Project Types Tab ----
+const PROJECT_TYPE_SCOPES: { value: "any" | "real_estate" | "wedding" | "photography"; label: string }[] = [
+  { value: "any", label: "All clients" },
+  { value: "real_estate", label: "Real estate" },
+  { value: "wedding", label: "Weddings" },
+  { value: "photography", label: "Photography" },
+];
+const scopeLabel = (s?: string) => PROJECT_TYPE_SCOPES.find(o => o.value === (s ?? "any"))?.label ?? "All clients";
+
 function ProjectTypesTab() {
   const { data, addProjectType, updateProjectType, deleteProjectType } = useApp();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -204,17 +213,18 @@ function ProjectTypesTab() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectType | null>(null);
   const [name, setName] = useState("");
   const [lightweight, setLightweight] = useState(false);
+  const [appliesTo, setAppliesTo] = useState<ProjectType["appliesTo"]>("any");
 
-  const openAdd = () => { setEditing(null); setName(""); setLightweight(false); setDialogOpen(true); };
-  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setLightweight(pt.lightweight); setDialogOpen(true); };
+  const openAdd = () => { setEditing(null); setName(""); setLightweight(false); setAppliesTo("any"); setDialogOpen(true); };
+  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setLightweight(pt.lightweight); setAppliesTo(pt.appliesTo ?? "any"); setDialogOpen(true); };
 
   const handleSave = () => {
     if (!name) { toast.error("Name is required"); return; }
     if (editing) {
-      updateProjectType(editing.id, { name, lightweight });
+      updateProjectType(editing.id, { name, lightweight, appliesTo });
       toast.success("Project type updated");
     } else {
-      addProjectType({ name, lightweight });
+      addProjectType({ name, lightweight, appliesTo });
       toast.success("Project type added");
     }
     setDialogOpen(false);
@@ -236,6 +246,7 @@ function ProjectTypesTab() {
             <span className="flex-1 text-sm text-foreground">
               {pt.name}
               {pt.lightweight && <span className="ml-2 text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">Lightweight</span>}
+              {(pt.appliesTo ?? "any") !== "any" && <span className="ml-2 text-[10px] text-primary bg-primary/10 border border-primary/30 px-1.5 py-0.5 rounded">{scopeLabel(pt.appliesTo)}</span>}
             </span>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEdit(pt)}>
@@ -262,6 +273,17 @@ function ProjectTypesTab() {
             <div className="flex items-center gap-2">
               <Checkbox id="lightweight" checked={lightweight} onCheckedChange={(v) => setLightweight(!!v)} />
               <label htmlFor="lightweight" className="text-sm text-muted-foreground cursor-pointer">Lightweight (mileage tracking only)</label>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Shown for</Label>
+              <select
+                value={appliesTo ?? "any"}
+                onChange={(e) => setAppliesTo(e.target.value as ProjectType["appliesTo"])}
+                className="mt-1.5 w-full h-10 rounded-md border border-border bg-secondary px-3 text-sm text-foreground"
+              >
+                {PROJECT_TYPE_SCOPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">Controls which client type sees this project type when booking a shoot.</p>
             </div>
           </div>
           <DialogFooter>

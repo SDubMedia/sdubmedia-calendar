@@ -474,11 +474,11 @@ function rowToLocation(r: any): Location {
 }
 
 function rowToProjectType(r: any): ProjectType {
-  return { id: r.id, name: r.name, lightweight: r.lightweight || false };
+  return { id: r.id, name: r.name, lightweight: r.lightweight || false, appliesTo: r.applies_to || "any" };
 }
 
 function rowToEditType(r: any): EditType {
-  return { id: r.id, name: r.name };
+  return { id: r.id, name: r.name, appliesTo: r.applies_to || "any" };
 }
 
 function normalizeCrewEntry(c: any) {
@@ -561,6 +561,7 @@ function rowToInvoice(r: any): Invoice {
     issueDate: r.issue_date,
     dueDate: r.due_date,
     paidDate: r.paid_date || null,
+    checkSentAt: r.check_sent_at || null,
     lineItems: r.line_items || [],
     companyInfo: r.company_info || {},
     clientInfo: r.client_info || {},
@@ -2442,7 +2443,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---- Project Types ----
   const addProjectType = useCallback(async (pt: Omit<ProjectType, "id">): Promise<ProjectType> => {
     const id = nanoid(10);
-    const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name, lightweight: pt.lightweight || false }).select().single();
+    const { data: row, error } = await supabase.from("project_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: pt.name, lightweight: pt.lightweight || false, applies_to: pt.appliesTo || "any" }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToProjectType(row);
     setRawData(d => ({ ...d, projectTypes: [...d.projectTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -2453,6 +2454,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const dbFields: Record<string, any> = {};
     if (pt.name !== undefined) dbFields.name = pt.name;
     if (pt.lightweight !== undefined) dbFields.lightweight = pt.lightweight;
+    if (pt.appliesTo !== undefined) dbFields.applies_to = pt.appliesTo;
     const { error } = await supabase.from("project_types").update(dbFields).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, projectTypes: d.projectTypes.map(x => x.id === id ? { ...x, ...pt } : x) }));
@@ -2467,7 +2469,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ---- Edit Types ----
   const addEditType = useCallback(async (et: Omit<EditType, "id">): Promise<EditType> => {
     const id = nanoid(10);
-    const { data: row, error } = await supabase.from("edit_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: et.name }).select().single();
+    const { data: row, error } = await supabase.from("edit_types").insert({ id, ...(orgId ? { org_id: orgId } : {}), name: et.name, applies_to: et.appliesTo || "any" }).select().single();
     if (error) throw new Error(error.message);
     const type = rowToEditType(row);
     setRawData(d => ({ ...d, editTypes: [...d.editTypes, type].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -2477,6 +2479,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateEditType = useCallback(async (id: string, et: Partial<EditType>) => {
     const dbFields: Record<string, any> = {};
     if (et.name !== undefined) dbFields.name = et.name;
+    if (et.appliesTo !== undefined) dbFields.applies_to = et.appliesTo;
     const { error } = await supabase.from("edit_types").update(dbFields).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, editTypes: d.editTypes.map(x => x.id === id ? { ...x, ...et } : x) }));
@@ -2679,6 +2682,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (inv.issueDate !== undefined) patch.issue_date = inv.issueDate;
     if (inv.dueDate !== undefined) patch.due_date = inv.dueDate;
     if (inv.paidDate !== undefined) patch.paid_date = inv.paidDate;
+    if (inv.checkSentAt !== undefined) patch.check_sent_at = inv.checkSentAt;
     if (inv.lineItems !== undefined) patch.line_items = inv.lineItems;
     if (inv.companyInfo !== undefined) patch.company_info = inv.companyInfo;
     if (inv.clientInfo !== undefined) patch.client_info = inv.clientInfo;

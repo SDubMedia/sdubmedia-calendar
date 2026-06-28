@@ -20,7 +20,7 @@ import { getAuthToken } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { formatPhoneDisplay } from "@/lib/utils";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
@@ -55,6 +55,14 @@ function addMinutesT(t: string, mins: number): string {
   const total = Math.min(h * 60 + m + mins, 23 * 60 + 59);
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
+
+// "Shown for" choices when scoping an edit type to a client type.
+const EDIT_SCOPE_OPTIONS: { value: "any" | "real_estate" | "wedding" | "photography"; label: string }[] = [
+  { value: "any", label: "All clients" },
+  { value: "real_estate", label: "Real estate" },
+  { value: "wedding", label: "Weddings" },
+  { value: "photography", label: "Photography" },
+];
 
 // 15-min time options as a styled <select> — native <input type="time"> overflows
 // its column on iOS. Include the current value if off-grid so it still shows.
@@ -107,7 +115,7 @@ function readImageDims(file: File): Promise<{ width: number | null; height: numb
 }
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
-  const { data, addProject, updateProject, addProjectType, addEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery, registerDeliveryFile } = useApp();
+  const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery, registerDeliveryFile } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -132,6 +140,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [newTypeName, setNewTypeName] = useState("");
   const [showNewEditType, setShowNewEditType] = useState(false);
   const [newEditTypeName, setNewEditTypeName] = useState("");
+  const [manageEditTypes, setManageEditTypes] = useState(false);
   const [showNewLocation, setShowNewLocation] = useState(false);
   const [newLocForm, setNewLocForm] = useState({ name: "", address: "", city: "", state: "TN", zip: "", oneTimeUse: false });
   const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
@@ -311,18 +320,38 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const handleSaveNewEditType = async () => {
     if (!newEditTypeName.trim()) return;
     try {
-      const et = await addEditType({ name: newEditTypeName.trim() });
+      // New edit types are scoped to the client you're working with, so a
+      // real-estate edit doesn't show up on weddings/photography and vice versa.
+      const et = await addEditType({ name: newEditTypeName.trim(), appliesTo: editTypeScope });
       setEditTypes((prev) => [...prev, et.id]);
       setShowNewEditType(false);
       setNewEditTypeName("");
       toast.success("Edit type created");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create edit type");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create edit type");
     }
   };
 
   // Get the selected client and check if selected type is lightweight
   const selectedClient = useMemo(() => data.clients.find(c => c.id === clientId), [data.clients, clientId]);
+
+  // Edit types are scoped to the client type (same idea as service bundles):
+  // real-estate shoots show real-estate edits, photography shows photography
+  // edits, etc. "any"-scoped edits show everywhere. Already-selected ones always
+  // show so an existing project never loses its edits.
+  const editTypeScope: "real_estate" | "wedding" | "photography" = (() => {
+    const ct = selectedClient?.clientType ?? "standard";
+    if (ct === "broker" || ct === "agent") return "real_estate";
+    if (ct === "photography") return "photography";
+    return "wedding";
+  })();
+  const visibleEditTypes = useMemo(
+    () => data.editTypes.filter(et => {
+      const scope = et.appliesTo ?? "any";
+      return scope === "any" || scope === editTypeScope || editTypes.includes(et.id);
+    }),
+    [data.editTypes, editTypeScope, editTypes],
+  );
 
   // Real-estate shoot: the selected project type's name matches "real estate".
   // Drives the streamlined flow (address field, start-time only, auto bundle).
@@ -435,11 +464,18 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const STATUS_TAG: Record<string, string> = { available: " · ✓ available", busy: " · busy", off: " · off" };
 
   const availableProjectTypes = useMemo(() => {
+    // A per-client allow-list wins (explicit override).
     if (selectedClient?.allowedProjectTypeIds?.length) {
       return data.projectTypes.filter(pt => selectedClient.allowedProjectTypeIds.includes(pt.id));
     }
-    return data.projectTypes;
-  }, [data.projectTypes, selectedClient]);
+    // Otherwise scope by the client TYPE (real estate / wedding / photography),
+    // set in Manage → Project Types. Always keep the project's current type so
+    // an edit never loses it.
+    return data.projectTypes.filter(pt => {
+      const scope = pt.appliesTo ?? "any";
+      return scope === "any" || scope === editTypeScope || pt.id === projectTypeId;
+    });
+  }, [data.projectTypes, selectedClient, editTypeScope, projectTypeId]);
 
   // When client changes, auto-select default project type and pre-fill project rate
   const handleClientChange = (newClientId: string) => {
@@ -1511,6 +1547,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 ? prev.filter(p => p.productId !== id)
                 : [...prev, { productId: prod.id, name: prod.name, cost: prod.unitCost }]);
             };
+            // Per-house cost override — defaults to the catalog cost, but you can
+            // enter a different cost for this specific shoot. Cost only, never billed.
+            const setProductCost = (id: string, cost: number) =>
+              setProducts(prev => prev.map(p => p.productId === id ? { ...p, cost } : p));
             // Live profit via the real helpers, fed a draft project from current state.
             const draft = {
               ...(project ?? {}),
@@ -1572,6 +1612,35 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                       })}
                     </div>
                   )}
+
+                  {/* Per-house cost for each selected product — editable override. */}
+                  {products.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {products.map(sp => {
+                        const cat = data.products.find(p => p.id === sp.productId);
+                        return (
+                          <div key={sp.productId} className="flex items-center gap-2">
+                            <span className="text-xs text-foreground flex-1 min-w-0 truncate">{sp.name}</span>
+                            <span className="text-xs text-muted-foreground">$</span>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={sp.cost || ""}
+                              onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); setProductCost(sp.productId, v === "" ? 0 : parseFloat(v) || 0); }}
+                              className="bg-secondary border-border h-8 text-xs w-20"
+                            />
+                            {cat && cat.unitCost !== sp.cost && (
+                              <button type="button" onClick={() => setProductCost(sp.productId, cat.unitCost)} className="text-[10px] text-primary hover:underline whitespace-nowrap" title="Reset to the catalog default cost">
+                                default ${cat.unitCost.toFixed(2)}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <p className="text-[10px] text-muted-foreground">Cost only — never billed to the client. Counts against this house's profit.</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-border pt-3 space-y-1 text-xs">
@@ -1598,43 +1667,71 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                 <span className="uppercase tracking-wider">Edit Types{editTypes.length > 0 ? ` (${editTypes.length})` : ""}</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  {data.editTypes.map((et) => (
-                    <button
-                      key={et.id}
-                      onClick={() => toggleEditType(et.id)}
-                      className={`px-2.5 py-1 rounded text-xs border transition-colors ${
-                        editTypes.includes(et.id)
-                          ? "bg-primary/20 border-primary/50 text-primary"
-                          : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                      }`}
-                    >
-                      {et.name}
-                    </button>
-                  ))}
-                  {!showNewEditType && (
-                    <button
-                      onClick={() => setShowNewEditType(true)}
-                      className="px-2.5 py-1 rounded text-xs border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Add Edit Type
-                    </button>
-                  )}
-                </div>
-                {showNewEditType && (
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      value={newEditTypeName}
-                      onChange={(e) => setNewEditTypeName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSaveNewEditType()}
-                      placeholder="Edit type name"
-                      className="bg-secondary border-border h-9 flex-1"
-                      autoFocus
-                    />
-                    <Button size="sm" onClick={handleSaveNewEditType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setShowNewEditType(false); setNewEditTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+                {!manageEditTypes ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {visibleEditTypes.map((et) => (
+                        <button
+                          key={et.id}
+                          onClick={() => toggleEditType(et.id)}
+                          className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                            editTypes.includes(et.id)
+                              ? "bg-primary/20 border-primary/50 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                          }`}
+                        >
+                          {et.name}
+                        </button>
+                      ))}
+                      {!showNewEditType && (
+                        <button
+                          onClick={() => setShowNewEditType(true)}
+                          className="px-2.5 py-1 rounded text-xs border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Add Edit Type
+                        </button>
+                      )}
+                    </div>
+                    {showNewEditType && (
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          value={newEditTypeName}
+                          onChange={(e) => setNewEditTypeName(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveNewEditType()}
+                          placeholder="Edit type name"
+                          className="bg-secondary border-border h-9 flex-1"
+                          autoFocus
+                        />
+                        <Button size="sm" onClick={handleSaveNewEditType} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowNewEditType(false); setNewEditTypeName(""); }} className="shrink-0 h-9">Cancel</Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Manage mode — set which client type sees each edit, or delete it. */
+                  <div className="space-y-1.5">
+                    {data.editTypes.map((et) => (
+                      <div key={et.id} className="flex items-center gap-2">
+                        <span className="text-xs text-foreground flex-1 min-w-0 truncate">{et.name}</span>
+                        <select
+                          value={et.appliesTo ?? "any"}
+                          onChange={(e) => updateEditType(et.id, { appliesTo: e.target.value as EditType["appliesTo"] })}
+                          className="bg-secondary border border-border rounded px-2 py-1 text-xs text-foreground"
+                          title="Which client type sees this edit"
+                        >
+                          {EDIT_SCOPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <button type="button" onClick={() => deleteEditType(et.id)} className="text-muted-foreground hover:text-destructive shrink-0" title="Delete edit type">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-muted-foreground">"Shown for" controls which client type sees each edit — e.g. set "Full Edit" to Weddings so it stays off real-estate shoots.</p>
                   </div>
                 )}
+                <button type="button" onClick={() => setManageEditTypes(v => !v)} className="text-[11px] text-muted-foreground hover:text-foreground underline">
+                  {manageEditTypes ? "Done managing" : "Manage edit types"}
+                </button>
               </CollapsibleContent>
             </Collapsible>
           )}

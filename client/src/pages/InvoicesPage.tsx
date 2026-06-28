@@ -579,6 +579,11 @@ export default function InvoicesPage() {
                         <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border", STATUS_COLORS[inv.status])}>
                           {STATUS_LABELS[inv.status]}
                         </span>
+                        {inv.checkSentAt && inv.status !== "paid" && inv.status !== "void" && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded border bg-amber-500/15 text-amber-300 border-amber-500/40" title="The broker marked their check as mailed — mark this invoice paid when it arrives.">
+                            Check in the mail · mailed {formatDate(inv.checkSentAt)}
+                          </span>
+                        )}
                         {/* Click to toggle. Filled = active for this invoice's
                             public page; outlined = available but not selected. */}
                         <button

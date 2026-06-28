@@ -264,6 +264,9 @@ export type CrewRole =
 export interface EditType {
   id: string;
   name: string;
+  // Which client type this edit shows for (reuses the service-bundle scopes).
+  // "any" = all clients; otherwise only that client type's projects. Default "any".
+  appliesTo?: ServiceCategoryScope;
 }
 
 export type BillingModel = "hourly" | "per_project";
@@ -399,6 +402,9 @@ export interface ProjectType {
   id: string;
   name: string;
   lightweight: boolean;
+  // Which client type this project type shows for (reuses the bundle scopes).
+  // "any" = all clients; otherwise only that client type's projects. Default "any".
+  appliesTo?: ServiceCategoryScope;
 }
 
 // A crew member assigned to a project (filming/shoot)
@@ -751,6 +757,10 @@ export interface InvoiceLineItem {
   quantity: number;    // hours or 1 (for per-project)
   unitPrice: number;   // rate per hour or flat rate
   amount: number;      // quantity × unitPrice
+  // Broker invoices group by property: a header row names the agent + address
+  // (no price), then each service (Photography, Drone…) is an indented sub-row.
+  isHeader?: boolean;
+  isSubItem?: boolean;
 }
 
 export interface Invoice {
@@ -767,6 +777,9 @@ export interface Invoice {
   issueDate: string;
   dueDate: string;
   paidDate: string | null;
+  // Date a broker marked their check as mailed (via the Check Mailed button).
+  // The owner sees it's incoming and marks the invoice paid when it arrives.
+  checkSentAt?: string | null;
   lineItems: InvoiceLineItem[];
   companyInfo: Record<string, string>;
   clientInfo: Record<string, string>;

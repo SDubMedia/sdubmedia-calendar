@@ -30,7 +30,8 @@ import AgentQuickView from "@/components/AgentQuickView";
 import BrokerDetailSheet from "@/components/BrokerDetailSheet";
 import ProjectDialog from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
-import type { Project } from "@/lib/types";
+import BrokerInvoicePreviewDialog from "@/components/BrokerInvoicePreviewDialog";
+import type { Project, Invoice } from "@/lib/types";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
@@ -61,6 +62,8 @@ export default function BrokersPage() {
   const [sheetType, setSheetType] = useState<"broker" | "agent">("broker");
   const [sheetBrokerId, setSheetBrokerId] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
+  // Preview the broker's month-end invoice before actually creating it.
+  const [preview, setPreview] = useState<{ broker: Client; draft: Omit<Invoice, "id" | "createdAt" | "updatedAt"> } | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   // Tap an agent's name → pull them up (their shoots + a Book button).
   const [quickAgent, setQuickAgent] = useState<Client | null>(null);
@@ -177,15 +180,24 @@ export default function BrokersPage() {
     setSheetClient(client); setSheetType(client.clientType === "agent" ? "agent" : "broker"); setSheetBrokerId(client.brokerId ?? null); setSheetOpen(true);
   }
 
-  async function generateBrokerInvoice(broker: Client) {
+  // Step 1: build the draft (no DB write) and show it for review.
+  function openInvoicePreview(broker: Client) {
     const roll = rollupByBroker[broker.id];
     if (!roll || roll.homes === 0) { toast.error("No homes to bill this broker this month yet"); return; }
+    const draft = buildInvoice(broker, data.projects, data.projectTypes, data.locations, data.invoices, month.start, month.end, data.organization, data.clients);
+    if (draft.lineItems.length === 0) { toast.error("Nothing left to bill — these houses may already be invoiced"); return; }
+    setPreview({ broker, draft });
+  }
+
+  // Step 2: the owner confirmed the preview — create and open the invoice.
+  async function confirmGenerateInvoice() {
+    if (!preview) return;
+    const { broker, draft } = preview;
     setGenerating(broker.id);
     try {
-      const draft = buildInvoice(broker, data.projects, data.projectTypes, data.locations, data.invoices, month.start, month.end, data.organization, data.clients);
-      if (draft.lineItems.length === 0) { toast.error("Nothing left to bill — these houses may already be invoiced"); return; }
       draft.invoiceNumber = await generateInvoiceNumberFromDB(supabase);
       await addInvoice(draft);
+      setPreview(null);
       toast.success(`Invoice ${draft.invoiceNumber} created for ${broker.company}`, { description: "Opening Invoices so you can review and send it." });
       setLocation("/invoices");
     } catch (err) {
@@ -247,8 +259,8 @@ export default function BrokersPage() {
                       {" · "}<span className={`tabular-nums ${(roll?.profit ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(roll?.profit ?? 0)} profit</span>
                     </div>
                   </div>
-                  <Button size="sm" onClick={() => generateBrokerInvoice(broker)} disabled={generating === broker.id || !roll?.homes} className="gap-1.5">
-                    <FileText className="w-3.5 h-3.5" /> {generating === broker.id ? "Generating…" : "Generate invoice"}
+                  <Button size="sm" onClick={() => openInvoicePreview(broker)} disabled={generating === broker.id || !roll?.homes} className="gap-1.5">
+                    <FileText className="w-3.5 h-3.5" /> {generating === broker.id ? "Generating…" : "Preview invoice"}
                   </Button>
                 </div>
               </div>
@@ -392,9 +404,19 @@ export default function BrokersPage() {
         broker={brokerDetail}
         onClose={() => setBrokerDetail(null)}
         onOpenShoot={(p) => { setReturnBroker(brokerDetail); setBrokerDetail(null); setEditProject(p); }}
-        onGenerate={(b) => generateBrokerInvoice(b)}
+        onGenerate={(b) => openInvoicePreview(b)}
         generating={generating === brokerDetail?.id}
         onOpenInvoices={() => { setBrokerDetail(null); setLocation("/invoices"); }}
+      />
+
+      {/* Invoice preview — review the bill before it's created */}
+      <BrokerInvoicePreviewDialog
+        broker={preview?.broker ?? null}
+        draft={preview?.draft ?? null}
+        monthLabel={month.label}
+        creating={generating === preview?.broker.id}
+        onConfirm={confirmGenerateInvoice}
+        onCancel={() => setPreview(null)}
       />
 
       {/* Edit a broker's shoot, then return to the broker detail (with the fix shown) */}

@@ -69,6 +69,24 @@ export default function RealEstatePage() {
     }).sort((a, b) => b.year - a.year || b.dollars - a.dollars);
   }, [agents, reShoots, clientsById, weekStart, weekEnd, ym, yr]);
 
+  // Broker scoreboard — roll every broker's agents' shoots up to the brokerage,
+  // so you can see your best vs. quietest brokerages the same way as agents.
+  const brokerScoreboard = useMemo(() => {
+    return brokers.map(broker => {
+      const shoots = reShoots.filter(p => getProjectPayerId(p, clientsById) === broker.id);
+      const count = (filter: (d: string) => boolean) => shoots.filter(p => filter(p.date)).length;
+      const yearShoots = shoots.filter(p => p.date.startsWith(yr));
+      return {
+        broker,
+        agentCount: agents.filter(a => a.brokerId === broker.id).length,
+        week: count(d => d >= weekStart && d <= weekEnd),
+        month: count(d => d.startsWith(ym)),
+        year: yearShoots.length,
+        dollars: yearShoots.reduce((s, p) => s + getProjectInvoiceAmount(p, clientsById[p.clientId] || broker), 0),
+      };
+    }).sort((a, b) => b.year - a.year || b.dollars - a.dollars);
+  }, [brokers, agents, reShoots, clientsById, weekStart, weekEnd, ym, yr]);
+
   const activeAgents = scoreboard.filter(r => presence(r.agent.id, allProfiles, appUserIds).active).length;
   const activeBrokers = brokers.filter(b => presence(b.id, allProfiles, appUserIds).active).length;
 
@@ -100,6 +118,36 @@ export default function RealEstatePage() {
             <div className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><Home className="w-3 h-3" /> Shoots this year</div>
             <div className="text-2xl font-semibold text-foreground mt-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{reShoots.filter(p => p.date.startsWith(yr)).length}</div>
           </div>
+        </div>
+
+        {/* Broker scoreboard — brokerages ranked by how much they book you */}
+        <div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Broker scoreboard · your best brokerages</div>
+          {brokerScoreboard.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No brokers yet.</p>
+          ) : (
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2 text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
+                <span className="min-w-0">Broker</span><span className="text-right w-10">Agts</span><span className="text-right w-7">Wk</span><span className="text-right w-8">Mo</span><span className="text-right w-8">Yr</span><span className="text-right w-14">$/yr</span>
+              </div>
+              {brokerScoreboard.map(({ broker, agentCount, week, month, year, dollars }) => {
+                const pres = presence(broker.id, allProfiles, appUserIds);
+                return (
+                  <div key={broker.id} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center border-b border-border/40 last:border-b-0">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span title={pres.label} className="inline-flex"><pres.Icon className={`w-3.5 h-3.5 flex-shrink-0 ${pres.color}`} /></span>
+                      <div className="text-sm text-foreground truncate">{broker.company}</div>
+                    </div>
+                    <span className="text-right w-10 text-sm tabular-nums text-muted-foreground">{agentCount}</span>
+                    <span className="text-right w-7 text-sm tabular-nums text-foreground">{week}</span>
+                    <span className="text-right w-8 text-sm tabular-nums text-foreground">{month}</span>
+                    <span className="text-right w-8 text-sm tabular-nums font-medium text-foreground">{year}</span>
+                    <span className="text-right w-14 text-sm tabular-nums text-muted-foreground">{money(dollars)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Agent scoreboard */}

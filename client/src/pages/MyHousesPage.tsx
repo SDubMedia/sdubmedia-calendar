@@ -140,6 +140,29 @@ export default function MyHousesPage() {
     [data.invoices, myClientId]
   );
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+
+  // Broker taps "Check Mailed" — record it and ping the owner that a check is
+  // coming. Brokers can't write invoices directly (RLS), so this goes through
+  // the server. The badge appears once the change syncs back via realtime.
+  const markCheckMailed = async (invId: string) => {
+    setCheckingId(invId);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/mark-invoice-check-sent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ invoiceId: invId }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't mark check mailed");
+      toast.success("Thanks — we'll mark it paid when the check arrives.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't mark check mailed");
+    } finally {
+      setCheckingId(null);
+    }
+  };
 
   // Bounce-back after a successful Stripe checkout.
   useEffect(() => {
@@ -307,9 +330,22 @@ export default function MyHousesPage() {
                       <Badge className="bg-green-500/15 text-green-600 dark:text-green-300 border-green-500/30 flex-shrink-0">Paid</Badge>
                     )
                   ) : inv.status === "sent" ? (
-                    <Button onClick={() => handlePay(inv.id, inv.viewToken)} disabled={payingId === inv.id} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 flex-shrink-0">
-                      <CreditCard className="w-4 h-4" /> {payingId === inv.id ? "Opening…" : `Pay ${money(inv.total)}`}
-                    </Button>
+                    inv.checkSentAt ? (
+                      <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30 flex-shrink-0">
+                        Check in the mail · {new Date(inv.checkSentAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </Badge>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button onClick={() => handlePay(inv.id, inv.viewToken)} disabled={payingId === inv.id} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
+                          <CreditCard className="w-4 h-4" /> {payingId === inv.id ? "Opening…" : `Pay ${money(inv.total)}`}
+                        </Button>
+                        {isBroker && (
+                          <Button variant="outline" onClick={() => markCheckMailed(inv.id)} disabled={checkingId === inv.id} className="border-border">
+                            {checkingId === inv.id ? "Saving…" : "Check Mailed"}
+                          </Button>
+                        )}
+                      </div>
+                    )
                   ) : (
                     <Badge variant="outline" className="border-border text-muted-foreground capitalize flex-shrink-0">{inv.status}</Badge>
                   )}

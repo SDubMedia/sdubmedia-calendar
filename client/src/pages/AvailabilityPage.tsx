@@ -6,7 +6,7 @@
 // Design: Dark Cinematic Studio
 // ============================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Plus, Trash2, Repeat, CalendarDays, Check, Settings2, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,6 +142,17 @@ export default function AvailabilityPage() {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
   const [saving, setSaving] = useState(false);
+
+  // Quick-add: tap a day on the calendar to drop it into the one-time form.
+  const addFormRef = useRef<HTMLDivElement>(null);
+  const [quickDate, setQuickDate] = useState<string | null>(null);
+  const quickAddDate = (iso: string) => {
+    setRecurring(false);
+    const d = new Date(iso + "T00:00:00");
+    setSpecificDates(prev => prev.some(x => toIsoLocal(x) === iso) ? prev : [...prev, d]);
+    setQuickDate(null);
+    setTimeout(() => addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
 
   // Per-person operating rules (shoot length / travel buffer / daily cap)
   const [shootMinutes, setShootMinutes] = useState(60);
@@ -302,8 +313,16 @@ export default function AvailabilityPage() {
         {/* At-a-glance availability calendar (owner: everyone; staff: just them) */}
         <div className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
           <div className="text-sm font-medium text-foreground mb-1 flex items-center gap-1.5"><CalendarClock className="w-3.5 h-3.5" /> Availability calendar</div>
-          <p className="text-xs text-muted-foreground mb-3">{isOwner ? "Everyone's open days at a glance — tap a day, then a name to adjust their hours." : "Your open days at a glance — tap a day to adjust your hours."}</p>
-          <MonthCalendar events={calEvents} renderEvent={renderCalEvent} />
+          <p className="text-xs text-muted-foreground mb-3">{isOwner ? "Everyone's open days at a glance — tap a day to add availability, or tap an existing block to adjust hours." : "Your open days at a glance — tap a day to add availability, or tap a block to adjust hours."}</p>
+          <MonthCalendar events={calEvents} renderEvent={renderCalEvent} onSelectDate={setQuickDate} />
+          {quickDate && (
+            <button
+              onClick={() => quickAddDate(quickDate)}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-md border border-primary bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add availability for {new Date(quickDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+            </button>
+          )}
         </div>
 
         {/* Person picker — owner only */}
@@ -321,7 +340,7 @@ export default function AvailabilityPage() {
         )}
 
         {/* Add a block */}
-        <div className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
+        <div ref={addFormRef} className="bg-card border border-border rounded-lg p-4 mb-6 overflow-hidden">
           <div className="text-sm font-medium text-foreground mb-3">Add an opening</div>
 
           {/* Repeat vs one-time */}

@@ -157,7 +157,7 @@ export default function BrokerDetailSheet({ broker, onClose, onOpenShoot, onGene
 
         {broker && (
           <Button onClick={() => onGenerate(broker)} disabled={generating || !view?.homes} className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-            <FileText className="w-4 h-4" /> {generating ? "Generating…" : "Generate this month's invoice"}
+            <FileText className="w-4 h-4" /> {generating ? "Generating…" : "Preview this month's invoice"}
           </Button>
         )}
 

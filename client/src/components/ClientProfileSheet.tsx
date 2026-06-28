@@ -132,6 +132,17 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
     [data.projectTypes]
   );
 
+  // Only show project types that apply to this client's type (plus any already
+  // picked), matching the per-type "Shown for" scoping set in Manage.
+  const scopedProjectTypes = useMemo(() => {
+    const scope = (form.clientType === "broker" || form.clientType === "agent") ? "real_estate"
+      : form.clientType === "photography" ? "photography" : "wedding";
+    return data.projectTypes.filter(pt => {
+      const s = pt.appliesTo ?? "any";
+      return s === "any" || s === scope || form.allowedProjectTypeIds.includes(pt.id);
+    });
+  }, [data.projectTypes, form.clientType, form.allowedProjectTypeIds]);
+
   // Hydrate form when sheet opens or client changes
   useEffect(() => {
     if (!open) return;
@@ -306,7 +317,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
               Click to toggle which project types this client uses. Leave empty to allow all types.
             </p>
             <div className="flex flex-wrap gap-2">
-              {data.projectTypes.map(pt => (
+              {scopedProjectTypes.map(pt => (
                 <button
                   key={pt.id}
                   onClick={() => setForm(f => ({
@@ -335,7 +346,7 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
                   className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="">None</option>
-                  {data.projectTypes
+                  {scopedProjectTypes
                     .filter(pt => form.allowedProjectTypeIds.includes(pt.id))
                     .map(pt => (
                       <option key={pt.id} value={pt.id}>{pt.name}</option>

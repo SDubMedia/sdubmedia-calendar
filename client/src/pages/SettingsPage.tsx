@@ -24,7 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon, KeyRound, Menu as MenuIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneInput } from "@/lib/utils";
 import { getAuthToken, supabase } from "@/lib/supabase";
 
 interface FeatureToggle {
@@ -603,7 +603,7 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Phone</Label>
-                <Input value={businessInfo.phone} onChange={e => setBusinessInfo(b => ({ ...b, phone: e.target.value }))} className="bg-secondary border-border" placeholder="(615) 555-0000" />
+                <Input value={businessInfo.phone} onChange={e => setBusinessInfo(b => ({ ...b, phone: formatPhoneInput(e.target.value) }))} className="bg-secondary border-border" placeholder="615-555-0000" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Email</Label>

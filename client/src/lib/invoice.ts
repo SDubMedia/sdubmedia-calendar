@@ -134,17 +134,32 @@ export function buildLineItems(
     // and price snapshot from when the project was created/edited. This
     // bypasses both the per_project and hourly branches below.
     if (p.services && p.services.length > 0) {
+      // On a broker invoice, lead with a header row naming the agent + property,
+      // then list each service (Photography, Videography, Drone…) on its own
+      // indented line beneath it so the broker can read the breakdown at a
+      // glance. Regular invoices keep one flat line per service.
+      if (brokerPrefix) {
+        items.push({
+          projectId: p.id,
+          date: p.date,
+          description: brokerPrefix,
+          quantity: 0,
+          unitPrice: 0,
+          amount: 0,
+          isHeader: true,
+        });
+      }
       for (const svc of p.services) {
         const svcLabel = svc.label || projectLabel;
         items.push({
           projectId: p.id,
-          date: p.date,
-          // On a broker invoice: "Agent · 123 Main St · Photos" so the broker
-          // sees who, which property, and what piece on every line.
-          description: brokerPrefix ? `${brokerPrefix} · ${svcLabel}` : svcLabel,
+          // The header carries the shoot date; sub-rows don't repeat it.
+          date: brokerPrefix ? "" : p.date,
+          description: svcLabel,
           quantity: 1,
           unitPrice: Number(svc.price || 0),
           amount: Number(svc.price || 0),
+          isSubItem: !!brokerPrefix,
         });
       }
       // Skip the per_project/hourly branches — services define the price.
@@ -157,11 +172,12 @@ export function buildLineItems(
           : "Discount";
         items.push({
           projectId: p.id,
-          date: p.date,
-          description: `${projectLabel} — ${discountLabel}`,
+          date: brokerPrefix ? "" : p.date,
+          description: brokerPrefix ? discountLabel : `${projectLabel} — ${discountLabel}`,
           quantity: 1,
           unitPrice: -discountValue,
           amount: -discountValue,
+          isSubItem: !!brokerPrefix,
         });
       }
       continue;

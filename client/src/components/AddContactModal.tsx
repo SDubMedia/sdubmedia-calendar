@@ -13,6 +13,7 @@ import { useApp } from "@/contexts/AppContext";
 import type { Client } from "@/lib/types";
 import { toast } from "sonner";
 import { ChevronDown } from "lucide-react";
+import { formatPhoneInput } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -124,7 +125,7 @@ export default function AddContactModal({ open, onClose, onCreated, prefill }: P
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Phone</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 123-4567" className="bg-secondary border-border" />
+            <Input value={phone} onChange={(e) => setPhone(formatPhoneInput(e.target.value))} placeholder="615-000-0000" className="bg-secondary border-border" />
           </div>
 
           <button
