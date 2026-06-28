@@ -6,7 +6,7 @@
 // go through API endpoints (signed URL for upload, server-side hashing).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import PrereqGate from "@/components/PrereqGate";
 import { DateField } from "@/components/DateTimeField";
@@ -316,6 +316,10 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 function DeliveryDetail({ id }: { id: string }) {
   const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited, addInvoice } = useApp();
   const confirm = useConfirm();
+  const [, setLocation] = useLocation();
+  // Go back to wherever we came from (e.g. the project we opened the gallery
+  // from) rather than always dumping the user in the galleries list.
+  const goBack = () => { if (window.history.length > 1) window.history.back(); else setLocation("/deliveries"); };
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Declared up here (before any early return) to keep hook order stable.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -640,7 +644,7 @@ function DeliveryDetail({ id }: { id: string }) {
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
-      <Link href="/deliveries"><a className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white mb-3"><ArrowLeft className="w-4 h-4" /> All galleries</a></Link>
+      <button onClick={goBack} className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white mb-3"><ArrowLeft className="w-4 h-4" /> Back</button>
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div className="min-w-0">
