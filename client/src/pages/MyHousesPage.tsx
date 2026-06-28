@@ -82,6 +82,7 @@ export default function MyHousesPage() {
   const myClientId = myClient?.id ?? "";
   const isBroker = (myClient?.clientType ?? "") === "broker";
   const isAgent = (myClient?.clientType ?? "") === "agent";
+  const isPhotography = (myClient?.clientType ?? "") === "photography";
   // Set true once we've confirmed the card with Stripe on return — clears the
   // booking gate immediately, without waiting on the async webhook.
   const [cardConfirmed, setCardConfirmed] = useState(false);
@@ -218,7 +219,7 @@ export default function MyHousesPage() {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 flex-wrap gap-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{isBroker ? "My Agents" : "My Listings"}</h1>
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{isBroker ? "My Agents" : isPhotography ? "My Photos" : "My Listings"}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{isBroker ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} · ${houses.length} shoot${houses.length !== 1 ? "s" : ""}` : `${houses.length} shoot${houses.length !== 1 ? "s" : ""}`}</p>
         </div>
         {isBroker ? (
@@ -233,11 +234,11 @@ export default function MyHousesPage() {
           <Button onClick={() => openAgreement(null)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <CreditCard className="w-4 h-4" /> Review agreement to book
           </Button>
-        ) : (
+        ) : isAgent ? (
           <Button onClick={() => setRequestOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <Plus className="w-4 h-4" /> Request a shoot
           </Button>
-        )}
+        ) : null}
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl w-full mx-auto space-y-6">

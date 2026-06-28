@@ -8,6 +8,7 @@ import { Plus, Building2, Phone, Mail, Edit3, Trash2, Calendar, DollarSign } fro
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Client } from "@/lib/types";
 import { toast } from "sonner";
 import { formatPhoneDisplay } from "@/lib/utils";
@@ -15,6 +16,10 @@ import ClientProfileSheet from "@/components/ClientProfileSheet";
 
 export default function ClientsPage() {
   const { data, deleteClient } = useApp();
+  const { allProfiles } = useAuth();
+  // Photography clients are meant to have a portal login — flag the ones you
+  // haven't invited yet so you remember to send it.
+  const clientHasLogin = (id: string) => allProfiles.some(p => (p.clientIds ?? []).includes(id));
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
@@ -83,6 +88,15 @@ export default function ClientsPage() {
                     </button>
                     {client.clientType === "photography" && (
                       <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-500/40 bg-purple-500/10 text-purple-300">Photography</span>
+                    )}
+                    {client.clientType === "photography" && !clientHasLogin(client.id) && (
+                      <button
+                        onClick={() => openEdit(client)}
+                        className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                        title="This client hasn't been sent a login yet. Tap to open their profile and send one."
+                      >
+                        No login yet
+                      </button>
                     )}
                   </div>
                   <div className="text-sm text-muted-foreground">{client.contactName}</div>

@@ -174,6 +174,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // A broker logs in as a client role; their "My Listings" page is really their
   // agents roster, so relabel that nav item to "My Agents" for them.
   const isBrokerUser = (data.clients.find(c => effectiveProfile?.clientIds?.includes(c.id))?.clientType) === "broker";
+  // A photography client's portal is tailored: "My Photos" instead of "My Listings",
+  // and no My Reports tab.
+  const isPhotographyUser = (data.clients.find(c => effectiveProfile?.clientIds?.includes(c.id))?.clientType) === "photography";
   const isFamily = role === "family";
 
   const features = data.organization?.features;
@@ -199,6 +202,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const navKey = `nav.${item.href}`;
         if (userOverrides[navKey] === false) return false;
       }
+
+      // Photography clients don't get the My Reports tab.
+      if (item.href === "/my-reports" && isPhotographyUser) return false;
 
       const roleAllowed = item.roles.includes(role);
       if (role !== "owner" && item.feature && features) {
@@ -246,9 +252,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
         // Brokers don't have listings — their /my-houses page is the agent roster.
         if (entry.href === "/my-houses" && isBrokerUser) return { ...entry, label: "My Agents" };
+        // Photography clients see "My Photos" instead of "My Listings".
+        if (entry.href === "/my-houses" && isPhotographyUser) return { ...entry, label: "My Photos" };
         return entry;
       });
-  }, [role, features, userOverrides, isBrokerUser]);
+  }, [role, features, userOverrides, isBrokerUser, isPhotographyUser]);
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
