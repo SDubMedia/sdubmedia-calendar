@@ -8,12 +8,13 @@ import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import type { InvoiceStatus, SeriesEpisode, Project } from "@/lib/types";
 import { Link, Redirect, useLocation } from "wouter";
-import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus, Building2, CreditCard } from "lucide-react";
+import { CalendarDays, Film, CheckCircle, FileText, ArrowRight, Clock, MapPin, AlertCircle, Clapperboard, Plus, Building2, CreditCard, Images, Receipt } from "lucide-react";
 import RequestShootDialog from "@/components/RequestShootDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import { hasAcceptedAgreement } from "@/lib/agreements";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const STATUS_COLORS: Record<string, string> = {
   upcoming: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -57,6 +58,7 @@ export default function ClientDashboardPage() {
   // Agents book straight from here. If they still need a card/agreement, send
   // them to My Listings where that gate lives; otherwise open the request.
   const isAgent = myClient?.clientType === "agent";
+  const isPhotography = myClient?.clientType === "photography";
   // An agent whose brokerage covers them: their shoots bill to the broker, so
   // they should see a statement of what was shot — never a balance to pay.
   const broker = isAgent && myClient?.brokerId ? data.clients.find(c => c.id === myClient.brokerId) : null;
@@ -126,6 +128,26 @@ export default function ClientDashboardPage() {
   }, [data.invoices]);
 
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+
+  // Pay an invoice via Stripe Checkout (same flow as My Photos / My Listings).
+  const handlePay = async (invId: string, viewToken: string) => {
+    if (!viewToken) { toast.error("This invoice isn't ready to pay yet — ask for it to be re-sent."); return; }
+    setPayingId(invId);
+    try {
+      const res = await fetch("/api/stripe-payment?action=checkout-by-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: viewToken, successUrl: `${window.location.origin}/?paid=1`, cancelUrl: window.location.origin }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't start checkout");
+      window.location.assign(body.url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't start checkout");
+      setPayingId(null);
+    }
+  };
 
   // Projects by status
   const projectsByStatus = useMemo(() => ({
@@ -156,6 +178,89 @@ export default function ClientDashboardPage() {
 
   // Brokerage accounts get their own home, not the standard client dashboard.
   if (isBroker) return <Redirect to="/my-houses" />;
+
+  // Photography clients get a stripped-down home: upcoming shoots, invoices,
+  // and a link to their galleries. Nothing else.
+  if (isPhotography) {
+    const invoices = data.invoices.slice().sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || ""));
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+          <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            {myClient?.company ? `Hi, ${(myClient.contactName || myClient.company).split(" ")[0]}` : "Welcome"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Your shoots, galleries, and invoices</p>
+        </div>
+
+        <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5 max-w-2xl w-full mx-auto">
+          {/* Galleries */}
+          <button onClick={() => navigate("/my-houses")} className="w-full bg-primary text-primary-foreground rounded-lg px-5 py-4 flex items-center justify-between gap-3 hover:bg-primary/90 transition-colors">
+            <span className="flex items-center gap-2 font-semibold"><Images className="w-5 h-5" /> View my photos</span>
+            <ArrowRight className="w-5 h-5" />
+          </button>
+
+          {/* Upcoming shoots */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-blue-400" />
+              <h2 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Upcoming shoots</h2>
+            </div>
+            {upcomingProjects.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">No upcoming shoots scheduled.</div>
+            ) : (
+              upcomingProjects.map(p => {
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const loc = data.locations.find(l => l.id === p.locationId);
+                return (
+                  <div key={p.id} onClick={() => setDetailProject(p)} className="px-4 py-3 border-b border-border/50 last:border-0 flex items-start justify-between gap-3 cursor-pointer hover:bg-secondary/30 transition-colors">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground">{pType?.name ?? "Shoot"}</div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.startTime}{p.endTime ? ` — ${p.endTime}` : ""}</span>
+                        {loc && <span className="flex items-center gap-1 min-w-0"><MapPin className="w-3 h-3 shrink-0" /><span className="truncate">{loc.name}</span></span>}
+                      </div>
+                    </div>
+                    <span className="text-xs font-medium text-primary shrink-0">{formatDate(p.date)}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Invoices */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Invoices</h2>
+            </div>
+            {invoices.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">No invoices yet.</div>
+            ) : (
+              invoices.map(inv => (
+                <div key={inv.id} className="px-4 py-3 border-b border-border/50 last:border-0 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">{inv.invoiceNumber} · {formatCurrency(inv.total)}</div>
+                    {inv.issueDate && <div className="text-xs text-muted-foreground">{formatDate(inv.issueDate)}</div>}
+                  </div>
+                  {inv.status === "paid" ? (
+                    <span className="text-xs font-medium px-2.5 py-1 rounded border border-green-500/30 bg-green-500/15 text-green-300 shrink-0">Paid</span>
+                  ) : inv.status === "sent" ? (
+                    <button onClick={() => handlePay(inv.id, inv.viewToken)} disabled={payingId === inv.id} className="text-xs font-medium px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 disabled:opacity-60">
+                      {payingId === inv.id ? "Opening…" : `Pay ${formatCurrency(inv.total)}`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground capitalize shrink-0">{inv.status}</span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {detailProject && <ProjectDetailSheet project={detailProject} onClose={() => setDetailProject(null)} />}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
