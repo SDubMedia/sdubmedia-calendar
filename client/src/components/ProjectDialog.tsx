@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/DateTimeField";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
@@ -850,11 +850,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     <SelectValue placeholder="Select client or broker" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
-                    {data.clients
-                      .filter((c) => (c.clientType ?? "standard") !== "agent")
-                      .map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.company}{c.clientType === "broker" ? " (Broker)" : ""}</SelectItem>
-                      ))}
+                    {(() => {
+                      // Group the picker by client type so a long list reads as
+                      // tidy sections. (Radix Select also supports type-to-jump.)
+                      const nonAgent = data.clients.filter((c) => (c.clientType ?? "standard") !== "agent");
+                      const brokers = nonAgent.filter((c) => c.clientType === "broker");
+                      const photography = nonAgent.filter((c) => c.clientType === "photography");
+                      const others = nonAgent.filter((c) => { const t = c.clientType ?? "standard"; return t !== "broker" && t !== "photography"; });
+                      const section = (label: string, list: typeof nonAgent) => list.length > 0 ? (
+                        <SelectGroup>
+                          <SelectLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</SelectLabel>
+                          {list.map((c) => <SelectItem key={c.id} value={c.id}>{c.company}</SelectItem>)}
+                        </SelectGroup>
+                      ) : null;
+                      return (
+                        <>
+                          {section("Real Estate", brokers)}
+                          {section("Photography", photography)}
+                          {section("Other Clients", others)}
+                        </>
+                      );
+                    })()}
                     <SelectItem value="__new__" className="text-primary font-medium">
                       <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> New Client</span>
                     </SelectItem>
