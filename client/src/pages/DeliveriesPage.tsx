@@ -20,8 +20,35 @@ import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const PUBLIC_BASE = typeof window !== "undefined" ? window.location.origin : "https://slate.sdubmedia.com";
+
+// One draggable photo tile. Drag to reorder (mouse: move ~6px; touch: press &
+// hold ~0.2s, so normal scrolling still works). The tile's own buttons stop the
+// drag from starting so taps still delete / mark / pick a thumbnail.
+function SortablePhoto({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 30 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="relative group aspect-square bg-white/[0.02] border border-white/10 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing"
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+}
 
 function money(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -315,7 +342,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, markSelectionEdited, addInvoice } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice } = useApp();
   const confirm = useConfirm();
   const [, setLocation] = useLocation();
   // Go back to wherever we came from (e.g. the project we opened the gallery
@@ -340,6 +367,22 @@ function DeliveryDetail({ id }: { id: string }) {
     () => data.deliveryFiles.filter(f => f.deliveryId === id).sort((a, b) => a.position - b.position),
     [data.deliveryFiles, id]
   );
+
+  // Drag-to-reorder: mouse drags after a small move; touch needs a short press
+  // (so the gallery still scrolls normally on phones).
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+  function handlePhotoDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = files.findIndex(f => f.id === active.id);
+    const newIndex = files.findIndex(f => f.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const newOrder = arrayMove(files, oldIndex, newIndex).map(f => f.id);
+    reorderDeliveryFiles(id, newOrder).catch(() => toast.error("Couldn't save the new order"));
+  }
   const selections = useMemo(
     () => data.deliverySelections.filter(s => s.deliveryId === id),
     [data.deliverySelections, id]
@@ -867,6 +910,8 @@ function DeliveryDetail({ id }: { id: string }) {
       {files.length === 0 ? (
         <p className="text-center text-sm text-slate-500 py-8">No photos or videos yet.</p>
       ) : (
+        <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handlePhotoDragEnd}>
+        <SortableContext items={files.map(f => f.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {files.map((f) => {
             const sel = selections.find(s => s.fileId === f.id);
@@ -874,7 +919,7 @@ function DeliveryDetail({ id }: { id: string }) {
             const thumb = thumbUrls.get(f.id);
             const photo = signedUrls.get(f.id);
             return (
-              <div key={f.id} className="relative group aspect-square bg-white/[0.02] border border-white/10 rounded-lg overflow-hidden">
+              <SortablePhoto key={f.id} id={f.id}>
                 {isVideo ? (
                   // Video tile: show thumbnail (or fallback) + play overlay + duration
                   <>
@@ -913,6 +958,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 {sel && proofingEnabled && !isVideo && (
                   <button
                     onClick={() => markSelectionEdited(sel.id, !sel.editedAt)}
+                    onPointerDown={(e) => e.stopPropagation()}
                     className={`absolute top-2 right-2 text-[10px] px-2 py-1 rounded font-semibold ${
                       sel.editedAt ? "bg-emerald-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
                     }`}
@@ -923,6 +969,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 {isVideo && (
                   <button
                     onClick={() => setThumbnailPickerFileId(f.id)}
+                    onPointerDown={(e) => e.stopPropagation()}
                     className="absolute top-2 right-2 text-[10px] bg-black/60 hover:bg-blue-500 text-white px-2 py-1 rounded font-semibold opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                     title="Pick a thumbnail frame from playback"
                   >
@@ -931,15 +978,18 @@ function DeliveryDetail({ id }: { id: string }) {
                 )}
                 <button
                   onClick={() => handleDeleteFile(f.id)}
+                  onPointerDown={(e) => e.stopPropagation()}
                   className="absolute bottom-2 right-2 p-1.5 bg-black/60 hover:bg-red-500 text-white rounded opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                   aria-label="Delete"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              </SortablePhoto>
             );
           })}
         </div>
+        </SortableContext>
+        </DndContext>
       )}
 
       {/* Video thumbnail picker — opens when admin clicks "Thumbnail" on a video tile */}

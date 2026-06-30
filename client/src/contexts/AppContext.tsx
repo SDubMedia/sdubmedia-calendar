@@ -2076,10 +2076,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reorderDeliveryFiles = useCallback(async (deliveryId: string, orderedIds: string[]) => {
-    // Update positions in a single round-trip via .upsert on (id, position).
-    const updates = orderedIds.map((id, i) => ({ id, position: i }));
-    const { error } = await supabase.from("delivery_files").upsert(updates, { onConflict: "id" });
-    if (error) throw new Error(error.message);
+    // Update each file's position individually — a partial upsert would null out
+    // the row's NOT NULL columns (storage_path etc.) on insert. Update local
+    // state first so the new order shows instantly, then persist.
     setRawData(s => {
       const positionMap = new Map(orderedIds.map((id, i) => [id, i]));
       return {
@@ -2091,6 +2090,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ),
       };
     });
+    const results = await Promise.all(
+      orderedIds.map((fid, i) => supabase.from("delivery_files").update({ position: i }).eq("id", fid))
+    );
+    const failed = results.find(r => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
   }, []);
 
   // ---- Delivery Collections ----
