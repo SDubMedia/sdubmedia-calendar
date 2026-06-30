@@ -923,7 +923,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 {isVideo && (
                   <button
                     onClick={() => setThumbnailPickerFileId(f.id)}
-                    className="absolute top-2 right-2 text-[10px] bg-black/60 hover:bg-blue-500 text-white px-2 py-1 rounded font-semibold opacity-0 group-hover:opacity-100"
+                    className="absolute top-2 right-2 text-[10px] bg-black/60 hover:bg-blue-500 text-white px-2 py-1 rounded font-semibold opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                     title="Pick a thumbnail frame from playback"
                   >
                     Thumbnail
@@ -931,10 +931,10 @@ function DeliveryDetail({ id }: { id: string }) {
                 )}
                 <button
                   onClick={() => handleDeleteFile(f.id)}
-                  className="absolute bottom-2 right-2 p-1 bg-black/60 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100"
+                  className="absolute bottom-2 right-2 p-1.5 bg-black/60 hover:bg-red-500 text-white rounded opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                   aria-label="Delete"
                 >
-                  <Trash2 className="w-3 h-3" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             );
