@@ -19,6 +19,7 @@ import { useLocation } from "wouter";
 import { getAuthToken } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
+import { toUploadableImage } from "@/lib/heic";
 import { formatPhoneDisplay } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
@@ -419,8 +420,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     const startPos = data.deliveryFiles.filter(f => f.deliveryId === gid).length;
     setUploadingPhotos({ done: 0, total: list.length });
     let done = 0, failed = 0;
-    for (const file of list) {
+    for (const rawFile of list) {
       try {
+        // iPhone HEIC → JPEG so it displays; full quality, full resolution.
+        const file = await toUploadableImage(rawFile);
         const isVideo = file.type.startsWith("video/");
         const { width, height } = await readImageDims(file);
         const up = await fetch("/api/delivery-upload", {
@@ -440,7 +443,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         done++;
       } catch (e) {
         failed++;
-        toast.error(`Failed: ${file.name}`, { description: e instanceof Error ? e.message : "Try again" });
+        toast.error(`Failed: ${rawFile.name}`, { description: e instanceof Error ? e.message : "Try again" });
       }
       setUploadingPhotos({ done: done + failed, total: list.length });
     }

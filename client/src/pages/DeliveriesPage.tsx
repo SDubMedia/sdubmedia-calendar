@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
+import { toUploadableImage } from "@/lib/heic";
 import PrereqGate from "@/components/PrereqGate";
 import { DateField } from "@/components/DateTimeField";
 import { useConfirm } from "@/components/ConfirmProvider";
@@ -430,8 +431,10 @@ function DeliveryDetail({ id }: { id: string }) {
     const list = Array.from(fileList);
     setUploading({ done: 0, total: list.length });
     let done = 0;
-    for (const file of list) {
+    for (const rawFile of list) {
       try {
+        // iPhone HEIC → JPEG so it displays; full quality, full resolution.
+        const file = await toUploadableImage(rawFile);
         const isVideo = file.type.startsWith("video/");
 
         // Read dimensions/duration client-side. Video also produces a
@@ -507,7 +510,7 @@ function DeliveryDetail({ id }: { id: string }) {
         done++;
         setUploading({ done, total: list.length });
       } catch (err) {
-        toast.error(`Failed: ${file.name}`, { description: err instanceof Error ? err.message : "Try again" });
+        toast.error(`Failed: ${rawFile.name}`, { description: err instanceof Error ? err.message : "Try again" });
         done++;
         setUploading({ done, total: list.length });
       }

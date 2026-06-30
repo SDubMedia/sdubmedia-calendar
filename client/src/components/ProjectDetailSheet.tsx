@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
+import { toUploadableImage } from "@/lib/heic";
 import { pdf } from "@react-pdf/renderer";
 import { toast } from "sonner";
 import ProjectDialog from "./ProjectDialog";
@@ -167,8 +168,10 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
       const startPos = data.deliveryFiles.filter(f => f.deliveryId === deliveryId).length;
       let done = 0, failed = 0;
-      for (const file of list) {
+      for (const rawFile of list) {
         try {
+          // iPhone HEIC → JPEG so it displays; full quality, full resolution.
+          const file = await toUploadableImage(rawFile);
           const isVideo = file.type.startsWith("video/");
           const { width, height } = await readDims(file);
           const up = await fetch("/api/delivery-upload", {
@@ -192,7 +195,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
           done++;
         } catch (e) {
           failed++;
-          toast.error(`Failed: ${file.name}`, { description: e instanceof Error ? e.message : "Try again" });
+          toast.error(`Failed: ${rawFile.name}`, { description: e instanceof Error ? e.message : "Try again" });
         }
         setCrewUploading({ done: done + failed, total: list.length });
       }
