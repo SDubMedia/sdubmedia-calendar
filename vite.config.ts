@@ -9,7 +9,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" so a new deploy shows a one-tap Refresh banner instead of
+      // silently serving the stale cached app (we register manually in main.tsx).
+      registerType: "prompt",
+      injectRegister: false,
       includeAssets: ["pwa-192x192.png", "pwa-512x512.png"],
       manifest: {
         name: "Slate — SDub Media",

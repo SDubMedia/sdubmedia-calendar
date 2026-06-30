@@ -1,5 +1,8 @@
+/// <reference types="vite-plugin-pwa/client" />
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
+import { registerSW } from "virtual:pwa-register";
+import { toast } from "sonner";
 import App from "./App";
 import "./index.css";
 // Side-effect import: runs captureAttribution() at app boot so UTM
@@ -38,14 +41,24 @@ window.addEventListener("vite:preloadError", () => {
 // reload the page so the now-current HTML + chunks are loaded. Prevents
 // the "old bundle running, new chunks fetched" mismatch that landed on
 // the ErrorBoundary twice in April 2026.
-if ("serviceWorker" in navigator) {
-  let reloadedOnce = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloadedOnce) return;
-    reloadedOnce = true;
-    window.location.reload();
-  });
-}
+// PWA updates: when a new deploy is detected, show a one-tap "Refresh" banner
+// instead of silently serving the old cached app. A background check every
+// minute lets long-open tabs notice new versions on their own. The user stays
+// on the working version until they tap Refresh — no surprise mid-edit reloads.
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    toast("A new version of Slate is available", {
+      duration: Infinity,
+      action: { label: "Refresh", onClick: () => updateSW(true) },
+    });
+  },
+  onRegisteredSW(_swUrl, registration) {
+    if (registration) {
+      setInterval(() => { registration.update().catch(() => {}); }, 60 * 1000);
+    }
+  },
+});
 
 // When running inside Capacitor, redirect /api/* calls to the production server
 const apiBase = import.meta.env.VITE_API_BASE;
