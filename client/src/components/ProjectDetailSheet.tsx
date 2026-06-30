@@ -3,7 +3,7 @@
 // Design: Dark Cinematic Studio
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
@@ -71,7 +71,7 @@ interface Props {
 }
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh } = useApp();
   const [, setLocation] = useLocation();
   const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
@@ -130,6 +130,80 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // an hour of the start; it notifies the agent and locks their edit/cancel.
   const myCrewId = effectiveProfile?.crewMemberId || "";
   const isAssignedShooter = !!myCrewId && (project.crew || []).some(c => c.crewMemberId === myCrewId);
+  // Assigned crew in a qualifying role (photographer/videographer on the shoot,
+  // or an editor in post) can upload the finals straight into this property's
+  // gallery — owner still controls delivering it to the client.
+  const canCrewUpload = isStaff && !!myCrewId && (
+    (project.crew || []).some(c => c.crewMemberId === myCrewId && /photograph|videograph/i.test(c.role || "")) ||
+    (project.postProduction || []).some(c => c.crewMemberId === myCrewId && /editor/i.test(c.role || ""))
+  );
+  const crewPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [crewUploading, setCrewUploading] = useState<{ done: number; total: number } | null>(null);
+
+  // Upload finals to this project's gallery as assigned crew. Mirrors the owner
+  // flow but goes through crew-scoped endpoints (RLS blocks direct writes).
+  async function handleCrewUpload(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const list = Array.from(fileList);
+    setCrewUploading({ done: 0, total: list.length });
+    try {
+      const token = await getAuthToken();
+      const ens = await fetch("/api/crew-gallery-ensure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const ensBody = await ens.json().catch(() => ({ error: "Failed" }));
+      if (!ens.ok) throw new Error(ensBody.error || "Couldn't open the gallery");
+      const deliveryId = ensBody.deliveryId as string;
+
+      const readDims = (file: File) => new Promise<{ width: number; height: number }>((resolve) => {
+        if (!file.type.startsWith("image/")) return resolve({ width: 0, height: 0 });
+        const img = new Image();
+        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(img.src); };
+        img.onerror = () => resolve({ width: 0, height: 0 });
+        img.src = URL.createObjectURL(file);
+      });
+
+      const startPos = data.deliveryFiles.filter(f => f.deliveryId === deliveryId).length;
+      let done = 0, failed = 0;
+      for (const file of list) {
+        try {
+          const isVideo = file.type.startsWith("video/");
+          const { width, height } = await readDims(file);
+          const up = await fetch("/api/delivery-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ deliveryId, fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+          });
+          const upData = await up.json();
+          if (!up.ok) throw new Error(upData.error || "Upload failed");
+          const put = await fetch(upData.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+          if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+          await fetch("/api/crew-register-file", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              deliveryId, storagePath: upData.storagePath, originalName: file.name, sizeBytes: file.size,
+              width, height, mimeType: file.type, position: startPos + done,
+              mediaType: isVideo ? "video" : "image",
+            }),
+          });
+          done++;
+        } catch (e) {
+          failed++;
+          toast.error(`Failed: ${file.name}`, { description: e instanceof Error ? e.message : "Try again" });
+        }
+        setCrewUploading({ done: done + failed, total: list.length });
+      }
+      await refresh();
+      if (done > 0) toast.success(`Uploaded ${done} file${done === 1 ? "" : "s"} to the gallery`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't upload");
+    } finally {
+      setCrewUploading(null);
+    }
+  }
   const shootStartMs = (() => {
     if (!project.date || !project.startTime) return null;
     const [y, m, d] = project.date.split("-").map(Number);
@@ -267,13 +341,25 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     const next = NEXT_STATUS[project.status];
     if (!next) return;
     try {
-      await updateProject(project.id, { status: next });
+      // Staff can't write the projects table directly (RLS), so assigned crew
+      // go through the server, which verifies they're on this job. Owner/partner
+      // update directly.
+      if (isStaff) {
+        const token = await getAuthToken();
+        const res = await fetch("/api/crew-update-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId: project.id, status: next }),
+        });
+        const body = await res.json().catch(() => ({ error: "Failed" }));
+        if (!res.ok) throw new Error(body.error || "Couldn't update status");
+        await refresh();
+      } else {
+        await updateProject(project.id, { status: next });
+      }
       toast.success(`Status updated to ${STATUS_LABELS[next]}`);
-    } catch (err: any) {
-      // updateProject's .single() throws "Cannot coerce..." when the UPDATE
-      // matches 0 rows (e.g. RLS blocks a staff user from this project).
-      // Surface it instead of letting it escape as an unhandled rejection.
-      toast.error(err.message || "Failed to update status");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update status");
       return;
     }
 
@@ -1109,6 +1195,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 <div className="w-full text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5 py-1">
                   <Car className="w-3.5 h-3.5" /> Agent notified you're on the way
                 </div>
+              )}
+              {/* Assigned crew: upload finals straight into this property's gallery. */}
+              {canCrewUpload && (
+                <>
+                  <input ref={crewPhotoInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { handleCrewUpload(e.target.files); e.currentTarget.value = ""; }} />
+                  <Button onClick={() => crewPhotoInputRef.current?.click()} disabled={!!crewUploading} className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
+                    <Upload className="w-4 h-4" />
+                    {crewUploading ? `Uploading ${crewUploading.done}/${crewUploading.total}…` : "Upload final photos"}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground text-center -mt-1">Goes into this property's gallery. Your owner delivers it to the client.</p>
+                </>
               )}
               {isOwner && (
                 <Button
