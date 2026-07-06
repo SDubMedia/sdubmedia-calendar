@@ -103,14 +103,20 @@ export default function ReportsPage() {
     return data.clients.map(client => {
       // Only count non-cancelled projects toward billing stats. Cancelled
       // projects appear in their own section on the report.
-      const clientProjects = allMonthlyProjects.filter(p => p.clientId === client.id && p.status !== "cancelled");
-      const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
+      // Payer-aware: a broker's shoots are owned by their agents but billed to
+      // the broker, so match the payer too — otherwise a broker's stats come out
+      // $0 and their card vanishes from the Client Reports tab. Price each shoot
+      // at its own agent's rate (clientsById[p.clientId]), matching buildInvoice.
+      const clientProjects = allMonthlyProjects.filter(p =>
+        (p.clientId === client.id || getProjectPayerId(p, clientsById) === client.id) && p.status !== "cancelled");
+      const priceEntityOf = (p: typeof clientProjects[number]) => clientsById[p.clientId] || client;
+      const totalHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, priceEntityOf(p)).totalBillable, 0);
       const crewCost = clientProjects.reduce((s, p) => s + getProjectCrewCost(p), 0);
-      const invoiceAmount = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+      const invoiceAmount = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, priceEntityOf(p)), 0);
       const margin = invoiceAmount - crewCost;
       return { client, projectCount: clientProjects.length, totalHours, invoiceAmount, crewCost, margin };
     });
-  }, [data.clients, allMonthlyProjects]);
+  }, [data.clients, allMonthlyProjects, clientsById]);
 
   // ---- Report generators ----
   function generateInternalReport() {
@@ -705,19 +711,23 @@ export default function ReportsPage() {
     // Filter projects for this client in the selected month, then split
     // active vs cancelled. Active projects drive billing/totals;
     // cancelled appear in a separate section below.
+    // Payer-aware: include the broker's agents' shoots (billed to the broker),
+    // and price each shoot at its own agent's rate — matching buildInvoice. For
+    // a normal client this resolves right back to the client itself.
     const allClientProjectsThisMonth = filteredProjects
-      .filter(p => p.clientId === clientId && parseInt(p.date.split("-")[1]) === monthNum)
+      .filter(p => (p.clientId === clientId || getProjectPayerId(p, clientsById) === clientId) && parseInt(p.date.split("-")[1]) === monthNum)
       .sort((a, b) => b.date.localeCompare(a.date));
     const cancelledClientProjects = allClientProjectsThisMonth.filter(p => p.status === "cancelled");
     const clientProjects = allClientProjectsThisMonth.filter(p => p.status !== "cancelled");
+    const pricingClientOf = (p: typeof clientProjects[number]) => clientsById[p.clientId] || client;
 
     // Calculate billable hours (with role multipliers + editorBilling)
     const totalProductionHours = clientProjects.reduce((s, p) =>
-      s + getProjectBillableHours(p, client).crewBillable, 0);
+      s + getProjectBillableHours(p, pricingClientOf(p)).crewBillable, 0);
     const totalEditorHours = clientProjects.reduce((s, p) =>
-      s + getProjectBillableHours(p, client).postBillable, 0);
+      s + getProjectBillableHours(p, pricingClientOf(p)).postBillable, 0);
     const totalHours = totalProductionHours + totalEditorHours;
-    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, pricingClientOf(p)), 0);
 
     // Report number
     const clientPrefix = client.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);
@@ -763,7 +773,7 @@ export default function ReportsPage() {
     const projectCards = clientProjects.map(p => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
       const loc = data.locations.find(l => l.id === p.locationId);
-      const { crewBillable: crewHours, postBillable: postHours, totalBillable: projTotal } = getProjectBillableHours(p, client);
+      const { crewBillable: crewHours, postBillable: postHours, totalBillable: projTotal } = getProjectBillableHours(p, pricingClientOf(p));
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
       const locationHtml = loc ? `
@@ -785,7 +795,7 @@ export default function ReportsPage() {
         return `
           <div class="crew-entry">
             <div><div class="crew-role">Filming</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
-            <div class="crew-hours">${getBillableHours(e, client).toFixed(2)} hrs</div>
+            <div class="crew-hours">${getBillableHours(e, pricingClientOf(p)).toFixed(2)} hrs</div>
           </div>
         `;
       }).join("");
@@ -793,7 +803,7 @@ export default function ReportsPage() {
       const postEntries = (p.postProduction || []).filter(e => e.role !== "Travel").map(e => {
         const member = data.crewMembers.find(c => c.id === e.crewMemberId);
         const isPhotoEditorWithBilling = e.role === "Photo Editor" && p.editorBilling?.finalHours;
-        const displayHours = isPhotoEditorWithBilling ? p.editorBilling!.finalHours : getBillableHours(e, client);
+        const displayHours = isPhotoEditorWithBilling ? p.editorBilling!.finalHours : getBillableHours(e, pricingClientOf(p));
         return `
           <div class="crew-entry">
             <div><div class="crew-role">Editing</div><div class="crew-name">${member?.name ?? "Unknown"}</div></div>
@@ -802,7 +812,7 @@ export default function ReportsPage() {
         `;
       }).join("");
 
-      const projRate = getProjectInvoiceAmount(p, client);
+      const projRate = getProjectInvoiceAmount(p, pricingClientOf(p));
 
       return `
         <div class="project-card">
@@ -1185,23 +1195,25 @@ export default function ReportsPage() {
     const yr = parseInt(selectedYear);
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
+    // Payer-aware + per-agent pricing, same as the monthly client report.
     const allClientProjects = filteredProjects
-      .filter(p => p.clientId === clientId)
+      .filter(p => p.clientId === clientId || getProjectPayerId(p, clientsById) === clientId)
       .sort((a, b) => a.date.localeCompare(b.date));
     const cancelledClientProjects = allClientProjects.filter(p => p.status === "cancelled");
     const clientProjects = allClientProjects.filter(p => p.status !== "cancelled");
+    const pricingClientOf = (p: typeof clientProjects[number]) => clientsById[p.clientId] || client;
 
-    const totalProductionHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).crewBillable, 0);
-    const totalEditorHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, client).postBillable, 0);
+    const totalProductionHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, pricingClientOf(p)).crewBillable, 0);
+    const totalEditorHours = clientProjects.reduce((s, p) => s + getProjectBillableHours(p, pricingClientOf(p)).postBillable, 0);
     const totalHours = totalProductionHours + totalEditorHours;
-    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+    const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, pricingClientOf(p)), 0);
     const isPerProject = client.billingModel === "per_project";
 
     const monthlyAgg = MONTHS.map((monthName, idx) => {
       const mNum = idx + 1;
       const mp = clientProjects.filter(p => parseInt(p.date.split("-")[1]) === mNum);
-      const hours = mp.reduce((s, p) => s + getProjectBillableHours(p, client).totalBillable, 0);
-      const rev = mp.reduce((s, p) => s + getProjectInvoiceAmount(p, client), 0);
+      const hours = mp.reduce((s, p) => s + getProjectBillableHours(p, pricingClientOf(p)).totalBillable, 0);
+      const rev = mp.reduce((s, p) => s + getProjectInvoiceAmount(p, pricingClientOf(p)), 0);
       return { monthName, count: mp.length, hours, rev };
     }).filter(m => m.count > 0);
 
@@ -1213,8 +1225,8 @@ export default function ReportsPage() {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
       const loc = data.locations.find(l => l.id === p.locationId);
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-      const { totalBillable } = getProjectBillableHours(p, client);
-      const inv = getProjectInvoiceAmount(p, client);
+      const { totalBillable } = getProjectBillableHours(p, pricingClientOf(p));
+      const inv = getProjectInvoiceAmount(p, pricingClientOf(p));
       return `<tr><td>${dateStr}</td><td>${type}</td><td>${loc?.name || ""}</td><td style="text-align:right">${totalBillable.toFixed(2)}</td><td style="text-align:right">${formatCurrency(inv)}</td></tr>`;
     }).join("");
 
