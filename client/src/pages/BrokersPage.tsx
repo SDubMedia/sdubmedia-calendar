@@ -112,18 +112,18 @@ export default function BrokersPage() {
       setLinkingId(null);
     }
   };
-  const inviteOrResend = async (agentId: string) => {
-    setInvitingId(agentId);
+  const inviteOrResend = async (clientId: string, kind: "agent" | "broker" = "agent") => {
+    setInvitingId(clientId);
     try {
       const token = await getAuthToken();
       const res = await fetch("/api/invite-or-resend-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ agentClientId: agentId }),
+        body: JSON.stringify({ agentClientId: clientId }),
       });
       const body = await res.json().catch(() => ({ error: "Failed" }));
       if (!res.ok) throw new Error(body.error || "Couldn't send");
-      if (body.tempPassword) showInviteCredentials(body.action === "resent" ? "New password ready" : "Agent invited", body.tempPassword, body.emailed !== false);
+      if (body.tempPassword) showInviteCredentials(body.action === "resent" ? "New password ready" : `${kind === "broker" ? "Broker" : "Agent"} invited`, body.tempPassword, body.emailed !== false);
       else toast.success(body.action === "resent" ? "New password sent" : "Invite sent");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send");
@@ -247,6 +247,9 @@ export default function BrokersPage() {
                     <button onClick={() => setBrokerDetail(broker)} className="font-semibold text-left hover:text-primary transition-colors min-w-0 truncate" title="View this month/year + shoots + invoices">{broker.company}</button>
                     <PresenceIcon clientId={broker.id} profiles={allProfiles} appUserIds={appUserIds} />
                     <button onClick={() => openEdit(broker)} className="text-muted-foreground hover:text-foreground shrink-0" title="Edit broker"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => inviteOrResend(broker.id, "broker")} disabled={invitingId === broker.id} className="text-xs text-primary hover:underline disabled:opacity-50 shrink-0" title={agentHasLogin(broker.id) ? "Send a fresh password" : "Invite this broker to log in"}>
+                      {invitingId === broker.id ? "Sending…" : agentHasLogin(broker.id) ? "Resend password" : "Invite"}
+                    </button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{agents.length} agent{agents.length !== 1 ? "s" : ""}</div>
                 </div>

@@ -47,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const agentEmail = (agent.email || "").trim().toLowerCase();
     if (!agentEmail) return res.status(400).json({ error: "This agent has no email on file — add one first." });
 
+    const isBroker = agent.client_type === "broker";
     const { data: broker } = agent.broker_id
       ? await supabase.from("clients").select("company").eq("id", agent.broker_id).maybeSingle()
       : { data: null };
@@ -80,13 +81,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Email the credentials (best-effort — surface the temp pw if it fails).
     if (isAllowedUrl(APP_URL)) {
-      const heading = action === "invited" ? "You're set up to book shoots" : "Your Slate password was reset";
+      const invitedHeading = isBroker ? "You're set up on Slate" : "You're set up to book shoots";
+      const heading = action === "invited" ? invitedHeading : "Your Slate password was reset";
+      const invitedBody = isBroker
+        ? "You can now sign in to view your agents' shoots, your monthly billing, and your invoices."
+        : `${escapeHtml(brokerName)} set you up to view your listings and request photo/video shoots.`;
       const html = `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1e293b;">
           <h1 style="font-size:24px;font-weight:700;color:#0088ff;margin:0 0 8px;">${heading}</h1>
-          <p style="font-size:13px;color:#64748b;margin:0 0 24px;">Through ${escapeHtml(brokerName)}</p>
+          ${isBroker ? "" : `<p style="font-size:13px;color:#64748b;margin:0 0 24px;">Through ${escapeHtml(brokerName)}</p>`}
           <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml(firstName)},</p>
-          <p style="font-size:15px;line-height:1.6;">${action === "invited" ? `${escapeHtml(brokerName)} set you up to view your listings and request photo/video shoots.` : "Here's a new temporary password to get back in."}</p>
+          <p style="font-size:15px;line-height:1.6;">${action === "invited" ? invitedBody : "Here's a new temporary password to get back in."}</p>
           <div style="margin:28px 0;">
             <a href="${APP_URL}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;margin:0 8px 10px 0;">Sign in on the web</a>
             <a href="https://apps.apple.com/app/id6768183675" style="display:inline-block;background:#1e293b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;margin:0 0 10px 0;">Download the iPhone app</a>
@@ -101,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </div>
         </div>`;
       try {
-        await resend.emails.send({ from: `Slate <${FROM_EMAIL}>`, to: agentEmail, subject: action === "invited" ? `You're set up to book shoots` : `Your Slate password was reset`, html });
+        await resend.emails.send({ from: `Slate <${FROM_EMAIL}>`, to: agentEmail, subject: action === "invited" ? invitedHeading : `Your Slate password was reset`, html });
         return res.status(200).json({ ok: true, action, emailed: true, tempPassword });
       } catch (e) {
         console.error("invite/resend email failed:", e);
