@@ -769,8 +769,8 @@ export default function ReportsPage() {
 
     const isPerProject = client.billingModel === "per_project";
 
-    // Build project cards
-    const projectCards = clientProjects.map(p => {
+    // Build one project card. Grouped by agent below for broker reports.
+    const renderCard = (p: Project) => {
       const type = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "";
       const loc = data.locations.find(l => l.id === p.locationId);
       const { crewBillable: crewHours, postBillable: postHours, totalBillable: projTotal } = getProjectBillableHours(p, pricingClientOf(p));
@@ -845,7 +845,36 @@ export default function ReportsPage() {
           </div>
         </div>
       `;
-    }).join("");
+    };
+
+    // For a broker's report, group the shoots by agent — each agent gets a
+    // header with their property count + subtotal, then their property cards —
+    // so the broker sees which houses belong to which agent. A normal client's
+    // shoots are all theirs, so render one flat list (unchanged).
+    const projectCards = client.clientType === "broker"
+      ? (() => {
+          const groups = new Map<string, { agent: Client; projects: Project[] }>();
+          for (const p of clientProjects) {
+            const agent = clientsById[p.clientId] || client;
+            const g = groups.get(agent.id);
+            if (g) g.projects.push(p);
+            else groups.set(agent.id, { agent, projects: [p] });
+          }
+          return Array.from(groups.values())
+            .sort((a, b) => a.agent.company.localeCompare(b.agent.company))
+            .map(({ agent, projects }) => {
+              const subtotal = projects.reduce((s, p) => s + getProjectInvoiceAmount(p, clientsById[p.clientId] || client), 0);
+              return `
+                <div style="margin-top: 20px;">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #e5e7eb;padding-bottom:6px;margin-bottom:12px;">
+                    <h3 style="font-size:16px;font-weight:700;margin:0;">${agent.company}</h3>
+                    <span style="font-size:13px;color:#666;">${projects.length} propert${projects.length !== 1 ? "ies" : "y"} · ${formatCurrency(subtotal)}</span>
+                  </div>
+                  ${projects.map(renderCard).join("")}
+                </div>`;
+            }).join("");
+        })()
+      : clientProjects.map(renderCard).join("");
 
     const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
     const locationsList = Array.from(locationSet.values()).join("; ");
@@ -1227,7 +1256,9 @@ export default function ReportsPage() {
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const { totalBillable } = getProjectBillableHours(p, pricingClientOf(p));
       const inv = getProjectInvoiceAmount(p, pricingClientOf(p));
-      return `<tr><td>${dateStr}</td><td>${type}</td><td>${loc?.name || ""}</td><td style="text-align:right">${totalBillable.toFixed(2)}</td><td style="text-align:right">${formatCurrency(inv)}</td></tr>`;
+      // On a broker's annual report, name the agent each property belongs to.
+      const agentCell = client.clientType === "broker" ? `<td>${(clientsById[p.clientId] || client).company}</td>` : "";
+      return `<tr><td>${dateStr}</td><td>${type}</td>${agentCell}<td>${loc?.name || ""}</td><td style="text-align:right">${totalBillable.toFixed(2)}</td><td style="text-align:right">${formatCurrency(inv)}</td></tr>`;
     }).join("");
 
     const clientPrefix = client.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);
@@ -1275,7 +1306,7 @@ export default function ReportsPage() {
 
       <h2 style="font-size: 18px; font-weight: 700; margin: 24px 0 12px; border: none;">All Projects</h2>
       <table class="pay-table">
-        <thead><tr><th>Date</th><th>Type</th><th>Location</th><th style="text-align:right">Hours</th><th style="text-align:right">Billed</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th>${client.clientType === "broker" ? "<th>Agent</th>" : ""}<th>Location</th><th style="text-align:right">Hours</th><th style="text-align:right">Billed</th></tr></thead>
         <tbody>${projectRows || "<tr><td colspan='5' style='text-align:center;color:#888'>No projects</td></tr>"}</tbody>
       </table>
 
