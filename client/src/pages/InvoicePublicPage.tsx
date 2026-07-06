@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "wouter";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Printer } from "lucide-react";
 
 interface PublicLineItem {
   description?: string;
@@ -182,6 +182,17 @@ export default function InvoicePublicPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
+        {/* Print / Save as PDF — for the recipient to keep, print, or forward
+            to their office (e.g. payroll). Hidden from the printout itself. */}
+        <div className="flex justify-end mb-4 print:hidden">
+          <button
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 border border-slate-300 hover:border-slate-400 rounded-lg px-3 py-1.5 bg-white transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Print / Save as PDF
+          </button>
+        </div>
+
         {/* Header */}
         <div className="text-center mb-8 pb-6 border-b border-slate-200">
           {org.logoUrl ? (
@@ -304,7 +315,7 @@ export default function InvoicePublicPage() {
 
         {/* Payment buttons */}
         {!isPaid && (
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 space-y-3 print:hidden">
             {showStripe && (
               <div>
                 <button

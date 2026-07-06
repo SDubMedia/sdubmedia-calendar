@@ -320,6 +320,13 @@ export default function MyHousesPage() {
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-foreground truncate">#{inv.invoiceNumber} · {money(inv.total)}</div>
                     {inv.issueDate && <div className="text-xs text-muted-foreground">{inv.issueDate}</div>}
+                    {/* View the full invoice — print, save as PDF, or forward it
+                        (e.g. to the office/payroll). Available once it's sent. */}
+                    {inv.viewToken && (
+                      <a href={`/invoice/${inv.viewToken}`} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                        <FileText className="w-3 h-3" /> View / print
+                      </a>
+                    )}
                   </div>
                   {inv.status === "paid" ? (
                     inv.viewToken ? (
