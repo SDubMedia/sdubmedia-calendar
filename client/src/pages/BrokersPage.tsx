@@ -78,7 +78,7 @@ export default function BrokersPage() {
   const [returnBroker, setReturnBroker] = useState<Client | null>(null);
 
   // Presence: which agents/brokers have an account, and whether on the app.
-  const { allProfiles } = useAuth();
+  const { allProfiles, refreshProfiles } = useAuth();
   const [appUserIds, setAppUserIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +125,8 @@ export default function BrokersPage() {
       if (!res.ok) throw new Error(body.error || "Couldn't send");
       if (body.tempPassword) showInviteCredentials(body.action === "resent" ? "New password ready" : `${kind === "broker" ? "Broker" : "Agent"} invited`, body.tempPassword, body.emailed !== false);
       else toast.success(body.action === "resent" ? "New password sent" : "Invite sent");
+      // Refresh the profiles so the button flips to "Resend password" right away.
+      await refreshProfiles();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send");
     } finally {
