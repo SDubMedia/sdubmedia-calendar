@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -217,6 +217,7 @@ function rowToCrew(r: any): CrewMember {
     taxId: r.tax_id || "",
     taxIdType: r.tax_id_type || "",
     w9Url: r.w9_url || "",
+    w9SubmittedAt: r.w9_submitted_at || null,
     stripeAccountId: r.stripe_account_id || "",
     stripePayoutsEnabled: !!r.stripe_payouts_enabled,
   };
@@ -275,6 +276,21 @@ function rowToContract(r: any): Contract {
     inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
     pages: Array.isArray(r.pages) ? r.pages : [],
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToStaffAgreement(r: any): StaffAgreement {
+  return {
+    id: r.id,
+    crewMemberId: r.crew_member_id || "",
+    agreementVersion: r.agreement_version || "",
+    agreementTitle: r.agreement_title || "",
+    staffSignature: r.staff_signature || null,
+    staffSignedAt: r.staff_signed_at || null,
+    ownerSignature: r.owner_signature || null,
+    ownerSignedAt: r.owner_signed_at || null,
+    status: r.status || "awaiting_staff",
+    createdAt: r.created_at,
   };
 }
 
@@ -869,12 +885,14 @@ function rowToOrg(r: any): Organization {
     testimonialPromptedAt: r.testimonial_prompted_at || null,
     seriesReviewMessageTemplate: r.series_review_message_template || "",
     calendarFeedToken: r.calendar_feed_token || "",
+    w9TemplatePath: r.w9_template_path || "",
+    w9FieldMap: (r.w9_field_map && typeof r.w9_field_map === "object") ? r.w9_field_map : {},
     createdAt: r.created_at,
   };
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1125,6 +1143,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: shootRequestsData, error: e7sr },
         { data: availabilityData, error: e7av },
         { data: shooterPrefsData, error: e7sp },
+        { data: staffAgreementsData, error: _eSA },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1165,6 +1184,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("shoot_requests").select("*").order("created_at", { ascending: false }),
         supabase.from("availability").select("*"),
         supabase.from("shooter_prefs").select("*"),
+        supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
@@ -1192,6 +1212,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         timeEntries: (timeEntriesData || []).map(r => { try { return rowToTimeEntry(r); } catch { return null; } }).filter(Boolean) as any[],
         contractTemplates: (contractTpls || []).map(r => { try { return rowToContractTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
+        staffAgreements: (staffAgreementsData || []).map(r => { try { return rowToStaffAgreement(r); } catch { return null; } }).filter(Boolean) as StaffAgreement[],
         proposalTemplates: (proposalTpls || []).map(r => { try { return rowToProposalTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1275,6 +1296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       time_entries: { key: "timeEntries", convert: rowToTimeEntry },
       contract_templates: { key: "contractTemplates", convert: rowToContractTemplate, softDelete: true },
       contracts: { key: "contracts", convert: rowToContract, softDelete: true },
+      staff_agreements: { key: "staffAgreements", convert: rowToStaffAgreement },
       proposal_templates: { key: "proposalTemplates", convert: rowToProposalTemplate, softDelete: true },
       proposals: { key: "proposals", convert: rowToProposal, softDelete: true },
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },

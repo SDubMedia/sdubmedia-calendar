@@ -11,6 +11,7 @@ import { AppProvider, useApp } from "./contexts/AppContext";
 import AppLayout from "./components/AppLayout";
 import { ConfirmProvider } from "./components/ConfirmProvider";
 import PhotographyClientSetup from "./components/PhotographyClientSetup";
+import StaffOnboarding from "./components/StaffOnboarding";
 import { Film } from "lucide-react";
 
 // Lazy-loaded pages for code splitting
@@ -147,6 +148,18 @@ function Router() {
   if (error) return <ErrorScreen message={error} />;
   if (isStaff && !effectiveProfile?.crewMemberId) {
     return <StaffSetupPendingScreen impersonating={!!impersonateUserId} onExitPreview={() => setImpersonateUserId(null)} onSignOut={signOut} />;
+  }
+
+  // New staff must finish required onboarding (info + signed 1099 + W-9) before
+  // the app opens. Owner preview (impersonation) bypasses it, same as the
+  // photography-client gate below.
+  if (
+    isStaff &&
+    effectiveProfile?.crewMemberId &&
+    !effectiveProfile?.staffOnboardingCompletedAt &&
+    !impersonateUserId
+  ) {
+    return <StaffOnboarding profile={effectiveProfile} />;
   }
 
   // Photography clients must finish required setup (address, phone, card on

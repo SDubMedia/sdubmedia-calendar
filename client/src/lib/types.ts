@@ -177,6 +177,12 @@ export interface Organization {
   // Secret token for the iCal feed (/api/calendar.ics?key=...). Per-org, random,
   // not the org id — used so the calendar feed can't be pulled by guessing ids.
   calendarFeedToken: string;
+  // Staff W-9 onboarding: the blank official IRS W-9 the owner uploaded once
+  // (storage path in the private w9-documents bucket), and the AcroForm
+  // field-name map discovered on upload (semantic key -> real PDF field name).
+  // Empty template path = the owner hasn't uploaded a W-9 template yet.
+  w9TemplatePath: string;
+  w9FieldMap: Record<string, string>;
   createdAt: string;
 }
 
@@ -201,6 +207,9 @@ export interface UserProfile {
   crewMemberId: string; // links staff user to a crew member (staff role only)
   mustChangePassword: boolean; // force password change on first login
   hasCompletedOnboarding: boolean;
+  // When set, the staff member finished required onboarding (info + signed 1099
+  // + submitted W-9). Null/undefined = the blocking onboarding gate still shows.
+  staffOnboardingCompletedAt?: string | null;
   featureOverrides?: Record<string, boolean>; // per-user feature overrides (most specific wins)
   // When false, this user is hidden from the "Assign people" picker on
   // meetings. Only staff/partner roles ever appear there in the first
@@ -382,6 +391,7 @@ export interface CrewMember {
   taxId?: string; // SSN or EIN from W-9
   taxIdType?: "ssn" | "ein" | ""; // type of tax ID
   w9Url?: string; // URL to uploaded W-9 document in Supabase Storage
+  w9SubmittedAt?: string | null; // when the staff member completed + signed their W-9 (onboarding)
   // Stripe direct-deposit payouts (their Express connected account + whether
   // onboarding is complete / transfers are active). Set server-side.
   stripeAccountId?: string;
@@ -975,6 +985,23 @@ export interface ContractSignature {
   signatureType: "drawn" | "typed";
 }
 
+// A staff member's signed 1099 independent-contractor agreement. The staff
+// member signs during onboarding; the owner countersigns afterward. Both
+// signatures reuse the ContractSignature shape. One row per crew member per
+// agreement version.
+export interface StaffAgreement {
+  id: string;
+  crewMemberId: string;
+  agreementVersion: string;
+  agreementTitle: string;
+  staffSignature: ContractSignature | null;
+  staffSignedAt: string | null;
+  ownerSignature: ContractSignature | null;
+  ownerSignedAt: string | null;
+  status: "awaiting_staff" | "staff_signed" | "completed";
+  createdAt: string;
+}
+
 // Extra signers beyond the always-present client + owner. Each gets their
 // own sign URL via a unique signToken so the UX matches what the primary
 // client sees today. Stored inline on the contract row as JSONB.
@@ -1554,6 +1581,7 @@ export interface AppData {
   timeEntries: TimeEntry[];
   contractTemplates: ContractTemplate[];
   contracts: Contract[];
+  staffAgreements: StaffAgreement[];
   proposalTemplates: ProposalTemplate[];
   proposals: Proposal[];
   pipelineLeads: PipelineLead[];

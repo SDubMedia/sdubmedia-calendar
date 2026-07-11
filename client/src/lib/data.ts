@@ -415,6 +415,7 @@ export const seedData: AppData = {
   timeEntries: [],
   contractTemplates: [],
   contracts: [],
+  staffAgreements: [],
   proposalTemplates: [],
   proposals: [],
   pipelineLeads: [],

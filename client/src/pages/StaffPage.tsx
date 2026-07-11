@@ -35,6 +35,8 @@ import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shiel
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
+import SignaturePad from "@/components/SignaturePad";
+import { STAFF_AGREEMENT_VERSION } from "@/lib/staffAgreement";
 
 const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
@@ -98,7 +100,7 @@ function generatePassword(): string {
 }
 
 export default function StaffPage() {
-  const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance } = useApp();
+  const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance, refresh } = useApp();
   const confirm = useConfirm();
   const { createUser } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -114,6 +116,11 @@ export default function StaffPage() {
 
   const [uploadingW9, setUploadingW9] = useState(false);
   const [w9Url, setW9Url] = useState("");
+
+  // Staff onboarding: blank W-9 template + 1099 countersign.
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [countersignAgreementId, setCountersignAgreementId] = useState<string | null>(null);
+  const hasW9Template = !!data.organization?.w9TemplatePath;
 
   async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
     const locationsWithAddress = data.locations.filter(l => l.address && l.city);
@@ -259,6 +266,62 @@ export default function StaffPage() {
       toast.error(err.message || "Failed to remove W-9");
     } finally {
       setUploadingW9(false);
+    }
+  }
+
+  // Owner uploads the blank official IRS W-9 once — staff W-9s fill from it.
+  async function uploadW9Template(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingTemplate(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Couldn't read the file"));
+        r.readAsDataURL(file);
+      });
+      const token = await getAuthToken();
+      const res = await fetch("/api/w9-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ pdfBase64: base64 }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Upload failed");
+      await refresh();
+      toast.success(`W-9 template saved (${(body.fields || []).length} fields detected)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't upload the template");
+    } finally {
+      setUploadingTemplate(false);
+    }
+  }
+
+  async function countersign1099(sig: { name: string; signatureData: string; signatureType: "typed" | "drawn" }) {
+    if (!countersignAgreementId) return;
+    const token = await getAuthToken();
+    const res = await fetch("/api/owner-countersign-agreement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agreementId: countersignAgreementId, signature: sig }),
+    });
+    const body = await res.json().catch(() => ({ error: "Failed" }));
+    if (!res.ok) throw new Error(body.error || "Couldn't countersign");
+    await refresh();
+    setCountersignAgreementId(null);
+    toast.success("1099 countersigned");
+  }
+
+  async function viewMemberW9(path: string) {
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data: signed, error } = await supabase.storage.from("w9-documents").createSignedUrl(path, 60);
+      if (error) throw new Error(error.message);
+      window.open(signed.signedUrl, "_blank");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't open the W-9");
     }
   }
 
@@ -417,6 +480,56 @@ export default function StaffPage() {
           Add Staff
         </Button>
       </div>
+
+      {/* Onboarding — 1099 agreements + W-9 template/status */}
+      <Card className="bg-card border-border overflow-hidden">
+        <CardContent className="py-4 px-5 space-y-4">
+          {/* Blank W-9 template */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5"><FileText className="w-4 h-4" /> W-9 template</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {hasW9Template ? "Official blank W-9 on file — staff fill this when they onboard." : "Upload the blank official IRS W-9 so staff can fill it during onboarding."}
+              </p>
+            </div>
+            <label className="shrink-0">
+              <input type="file" accept="application/pdf" onChange={uploadW9Template} className="hidden" disabled={uploadingTemplate} />
+              <span className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-border cursor-pointer hover:bg-white/5 ${uploadingTemplate ? "opacity-50 pointer-events-none" : ""}`}>
+                <Upload className="w-3.5 h-3.5" /> {uploadingTemplate ? "Uploading…" : hasW9Template ? "Replace" : "Upload W-9 template"}
+              </span>
+            </label>
+          </div>
+
+          {/* Per-staff onboarding status */}
+          {data.crewMembers.length > 0 && (
+            <div className="border-t border-border/60 pt-3 space-y-2">
+              {data.crewMembers.map(member => {
+                const agreement = data.staffAgreements.find(a => a.crewMemberId === member.id && a.agreementVersion === STAFF_AGREEMENT_VERSION);
+                const needsCountersign = !!agreement?.staffSignedAt && !agreement?.ownerSignedAt;
+                return (
+                  <div key={member.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
+                    <span className="text-foreground truncate min-w-0">{member.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      {agreement?.status === "completed" ? (
+                        <Badge className="bg-green-500/15 text-green-400 border-green-500/30">1099 ✓</Badge>
+                      ) : needsCountersign ? (
+                        <Button size="sm" variant="outline" className="h-7 border-amber-500/40 text-amber-300" onClick={() => setCountersignAgreementId(agreement!.id)}>Countersign 1099</Button>
+                      ) : (
+                        <Badge variant="outline" className="border-border text-muted-foreground">1099: not signed</Badge>
+                      )}
+                      {member.w9SubmittedAt ? (
+                        <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => viewMemberW9(member.w9Url || "")}><Eye className="w-3.5 h-3.5" /> W-9</Button>
+                      ) : (
+                        <Badge variant="outline" className="border-border text-muted-foreground">W-9: not submitted</Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Staff list */}
       {data.crewMembers.length === 0 ? (
@@ -830,6 +943,28 @@ export default function StaffPage() {
               {saving ? "Saving..." : editingId ? "Save Changes" : "Add Staff Member"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Countersign a staff member's signed 1099 */}
+      <Dialog open={!!countersignAgreementId} onOpenChange={(o) => !o && setCountersignAgreementId(null)}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Countersign 1099</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2 mb-2">
+            {(() => {
+              const a = data.staffAgreements.find(x => x.id === countersignAgreementId);
+              const m = data.crewMembers.find(c => c.id === a?.crewMemberId);
+              return m ? `${m.name} signed on ${a?.staffSignedAt ? new Date(a.staffSignedAt).toLocaleDateString("en-US") : ""}. Add your countersignature below.` : "";
+            })()}
+          </p>
+          <SignaturePad
+            defaultName={data.organization?.name || ""}
+            buttonLabel="Countersign"
+            consentText="By signing, you agree this is your legal signature."
+            onSign={countersign1099}
+          />
         </DialogContent>
       </Dialog>
     </div>

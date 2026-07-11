@@ -21,6 +21,7 @@ interface AuthContextValue {
   deleteUser: (id: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   completeOnboarding: () => Promise<void>;
+  completeStaffOnboarding: (completedAt: string) => void;
   saveMyTemplates: (templates: PersonalEventTemplate[]) => Promise<void>;
   markGuideSeen: (pageId: string) => Promise<void>;
   markBusinessInfoSetupSeen: (opts?: { stripeOptedOut?: boolean }) => Promise<void>;
@@ -50,6 +51,7 @@ function rowToProfile(r: any): UserProfile {
     crewMemberId: r.crew_member_id || "",
     mustChangePassword: r.must_change_password ?? true,
     hasCompletedOnboarding: r.has_completed_onboarding ?? false,
+    staffOnboardingCompletedAt: r.staff_onboarding_completed_at || null,
     featureOverrides: r.feature_overrides || undefined,
     showInMeetingAssignments: r.show_in_meeting_assignments ?? true,
     personalEventTemplates: Array.isArray(r.personal_event_templates) ? r.personal_event_templates : [],
@@ -309,6 +311,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
   }, [user]);
 
+  // Staff onboarding is persisted server-side by /api/w9-submit (the final
+  // step). This just clears the blocking gate locally so the staff member
+  // proceeds without a full reload; the persisted value loads on next fetch.
+  const completeStaffOnboarding = useCallback((completedAt: string) => {
+    setProfile(p => p ? { ...p, staffOnboardingCompletedAt: completedAt } : p);
+  }, []);
+
   const saveMyTemplates = useCallback(async (templates: PersonalEventTemplate[]) => {
     if (!user) throw new Error("Not authenticated");
     const { error } = await supabase.from("user_profiles").update({ personal_event_templates: templates }).eq("id", user.id);
@@ -374,7 +383,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, profile, session, loading,
-      signIn, signOut, changePassword, completeOnboarding, saveMyTemplates,
+      signIn, signOut, changePassword, completeOnboarding, completeStaffOnboarding, saveMyTemplates,
       markGuideSeen, markBusinessInfoSetupSeen, markSeenTravelBaseInfo,
       createUser, updateUserProfile, deleteUser,
       allProfiles, refreshProfiles,
