@@ -15,8 +15,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { createCipheriv, randomBytes } from "crypto";
-import { PDFDocument } from "pdf-lib";
 import { verifyAuth, errorMessage } from "./_auth.js";
+import { fillW9 } from "./_w9fill.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -25,30 +25,6 @@ const supabase = createClient(
 
 const BUCKET = "w9-documents";
 const ENCRYPTION_KEY = process.env.TAX_ENCRYPTION_KEY || "";
-
-// Calibrated AcroForm field names for the official IRS W-9 (Rev. 3-2024),
-// read directly from the real form. Text fields can be overridden per-org via
-// organizations.w9_field_map (e.g. if a future revision renames a field).
-const P1 = "topmostSubform[0].Page1[0]";
-const W9_TEXT: Record<string, string> = {
-  name: `${P1}.f1_01[0]`,
-  businessName: `${P1}.f1_02[0]`,
-  address: `${P1}.Address_ReadOrder[0].f1_07[0]`,
-  cityStateZip: `${P1}.Address_ReadOrder[0].f1_08[0]`,
-  ssn1: `${P1}.f1_11[0]`, ssn2: `${P1}.f1_12[0]`, ssn3: `${P1}.f1_13[0]`, // SSN 3-2-4
-  ein1: `${P1}.f1_14[0]`, ein2: `${P1}.f1_15[0]`,                          // EIN 2-7
-};
-// Line 3a federal tax classification — 7 separate checkboxes (labels match the
-// StaffOnboarding dropdown). We check the one the staff member picked.
-const W9_CLASS: Record<string, string> = {
-  "Individual / sole proprietor": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[0]`,
-  "C corporation": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[1]`,
-  "S corporation": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[2]`,
-  "Partnership": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[3]`,
-  "Trust / estate": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[4]`,
-  "Limited liability company (LLC)": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[5]`,
-  "Other": `${P1}.Boxes3a-b_ReadOrder[0].c1_1[6]`,
-};
 
 function encryptTaxId(plainText: string): string {
   if (!plainText || !ENCRYPTION_KEY || ENCRYPTION_KEY.length < 32) return plainText;
@@ -97,59 +73,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (dlErr || !blob) return res.status(500).json({ error: errorMessage(dlErr, "Couldn't load the W-9 template") });
     const templateBytes = Buffer.from(await blob.arrayBuffer());
 
-    const pdfDoc = await PDFDocument.load(templateBytes);
-    const form = pdfDoc.getForm();
-    const textMap: Record<string, string> = { ...W9_TEXT, ...(org.w9_field_map && typeof org.w9_field_map === "object" ? org.w9_field_map : {}) };
-
-    // Fill text fields — per-field try/catch so an unmatched name is skipped, not fatal.
-    const setText = (semanticKey: string, value: string) => {
-      const fieldName = textMap[semanticKey];
-      if (!fieldName || !value) return;
-      try { form.getTextField(fieldName).setText(value); } catch (e) { console.warn(`w9 field '${semanticKey}' (${fieldName}) not filled:`, (e as Error).message); }
-    };
-    setText("name", String(fields.name || ""));
-    setText("businessName", String(fields.businessName || ""));
-    setText("address", String(fields.address || ""));
-    setText("cityStateZip", String(fields.cityStateZip || ""));
-
-    // TIN — Part I. SSN goes in the 3-2-4 boxes, EIN in the 2-7 boxes.
-    const digits = (s: string) => s.replace(/\D/g, "");
-    if (ssn) {
-      const d = digits(ssn).padEnd(9, " ").slice(0, 9);
-      setText("ssn1", d.slice(0, 3).trim()); setText("ssn2", d.slice(3, 5).trim()); setText("ssn3", d.slice(5, 9).trim());
-    } else if (ein) {
-      const d = digits(ein).padEnd(9, " ").slice(0, 9);
-      setText("ein1", d.slice(0, 2).trim()); setText("ein2", d.slice(2, 9).trim());
-    }
-
-    // Line 3a federal tax classification — check the matching box.
-    const clsField = W9_CLASS[String(fields.taxClassification || "")];
-    if (clsField) {
-      try { form.getCheckBox(clsField).check(); } catch (e) { console.warn("w9 taxClassification not set:", (e as Error).message); }
-    }
-
-    // Stamp the drawn signature + date on the Part II "Sign Here" line (no
-    // AcroForm field there). Positions calibrated to the Rev. 3-2024 form;
-    // override via organizations.w9_field_map._sig = {x,y,w,h,dateX,dateY}.
-    try {
-      const pngBytes = Buffer.from(String(signature.signatureData).replace(/^data:image\/png;base64,/, ""), "base64");
-      const page = pdfDoc.getPages()[0];
-      const fm = org.w9_field_map as Record<string, unknown> | undefined;
-      const cfg = (fm?._sig as { x?: number; y?: number; w?: number; h?: number; dateX?: number; dateY?: number }) || {};
-      if (String(signature.signatureType) === "drawn") {
-        const png = await pdfDoc.embedPng(pngBytes);
-        page.drawImage(png, { x: cfg.x ?? 120, y: cfg.y ?? 200, width: cfg.w ?? 150, height: cfg.h ?? 22 });
-      } else {
-        page.drawText(String(signature.name || ""), { x: cfg.x ?? 120, y: cfg.y ?? 205, size: 12 });
-      }
-      const dateStr = new Date().toLocaleDateString("en-US");
-      page.drawText(dateStr, { x: cfg.dateX ?? 470, y: cfg.dateY ?? 205, size: 11 });
-    } catch (e) {
-      console.warn("w9 signature stamp failed:", (e as Error).message);
-    }
-
-    form.flatten();
-    const outBytes = await pdfDoc.save();
+    const outBytes = await fillW9(
+      templateBytes,
+      { name: fields.name, businessName: fields.businessName, taxClassification: fields.taxClassification, address: fields.address, cityStateZip: fields.cityStateZip, ssn, ein },
+      { signatureData: String(signature.signatureData), name: String(signature.name || ""), signatureType: String(signature.signatureType) === "drawn" ? "drawn" : "typed" },
+      org.w9_field_map as Record<string, unknown> | undefined,
+    );
 
     const completedPath = `${profile.crew_member_id}/w9-completed.pdf`;
     const { error: upErr } = await supabase.storage.from(BUCKET)

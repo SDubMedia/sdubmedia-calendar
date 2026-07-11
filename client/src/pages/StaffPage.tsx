@@ -325,6 +325,25 @@ export default function StaffPage() {
     }
   }
 
+  // Show where every value lands: fill the uploaded template with sample data
+  // and open it, so the owner can verify the layout before staff submit.
+  async function previewW9Fill() {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/w9-preview", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't build preview");
+      const bin = atob(body.pdfBase64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't build the preview");
+    }
+  }
+
   function addRoleRate() {
     if (!newRole) { toast.error("Select a role first"); return; }
     if (form.roleRates.some(rr => rr.role === newRole)) {
@@ -492,12 +511,19 @@ export default function StaffPage() {
                 {hasW9Template ? "Official blank W-9 on file — staff fill this when they onboard." : "Upload the blank official IRS W-9 so staff can fill it during onboarding."}
               </p>
             </div>
-            <label className="shrink-0">
-              <input type="file" accept="application/pdf" onChange={uploadW9Template} className="hidden" disabled={uploadingTemplate} />
-              <span className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-border cursor-pointer hover:bg-white/5 ${uploadingTemplate ? "opacity-50 pointer-events-none" : ""}`}>
-                <Upload className="w-3.5 h-3.5" /> {uploadingTemplate ? "Uploading…" : hasW9Template ? "Replace" : "Upload W-9 template"}
-              </span>
-            </label>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {hasW9Template && (
+                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={previewW9Fill}>
+                  <Eye className="w-3.5 h-3.5" /> Preview fill layout
+                </Button>
+              )}
+              <label>
+                <input type="file" accept="application/pdf" onChange={uploadW9Template} className="hidden" disabled={uploadingTemplate} />
+                <span className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-border cursor-pointer hover:bg-white/5 ${uploadingTemplate ? "opacity-50 pointer-events-none" : ""}`}>
+                  <Upload className="w-3.5 h-3.5" /> {uploadingTemplate ? "Uploading…" : hasW9Template ? "Replace" : "Upload W-9 template"}
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Per-staff onboarding status */}
