@@ -31,12 +31,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, Eye } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, FileSignature, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
 import SignaturePad from "@/components/SignaturePad";
-import { STAFF_AGREEMENT_VERSION } from "@/lib/staffAgreement";
+import { STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, STAFF_AGREEMENT_INTRO, STAFF_AGREEMENT_SECTIONS } from "@/lib/staffAgreement";
 
 const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
@@ -120,6 +120,7 @@ export default function StaffPage() {
   // Staff onboarding: blank W-9 template + 1099 countersign.
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [countersignAgreementId, setCountersignAgreementId] = useState<string | null>(null);
+  const [agreementOpen, setAgreementOpen] = useState(false);
   const hasW9Template = !!data.organization?.w9TemplatePath;
 
   async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
@@ -524,6 +525,17 @@ export default function StaffPage() {
                 </span>
               </label>
             </div>
+          </div>
+
+          {/* 1099 agreement — the document staff sign during onboarding */}
+          <div className="flex items-center justify-between gap-3 flex-wrap border-t border-border/60 pt-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5"><FileSignature className="w-4 h-4" /> 1099 agreement</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{STAFF_AGREEMENT_TITLE} — the contract staff read and sign during onboarding.</p>
+            </div>
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 shrink-0" onClick={() => setAgreementOpen(true)}>
+              <Eye className="w-3.5 h-3.5" /> View agreement
+            </Button>
           </div>
 
           {/* Per-staff onboarding status */}
@@ -969,6 +981,30 @@ export default function StaffPage() {
               {saving ? "Saving..." : editingId ? "Save Changes" : "Add Staff Member"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View the 1099 agreement text */}
+      <Dialog open={agreementOpen} onOpenChange={setAgreementOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{STAFF_AGREEMENT_TITLE}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto space-y-3 pr-1">
+            <p className="text-xs text-muted-foreground">{STAFF_AGREEMENT_INTRO}</p>
+            {STAFF_AGREEMENT_SECTIONS.map((s) => (
+              <div key={s.heading}>
+                <p className="text-xs font-semibold text-foreground">{s.heading}</p>
+                {s.blocks.map((b, i) => b.bullets ? (
+                  <ul key={i} className="list-disc pl-4 mt-1 space-y-0.5">
+                    {b.bullets.map((li, j) => <li key={j} className="text-[11px] text-muted-foreground leading-relaxed">{li}</li>)}
+                  </ul>
+                ) : (
+                  <p key={i} className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{b.text}</p>
+                ))}
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
