@@ -12,6 +12,7 @@ import TravelBasesEditor from "@/components/TravelBasesEditor";
 import ExternalCalendarsCard from "@/components/ExternalCalendarsCard";
 import LeadFormEmbedCard from "@/components/LeadFormEmbedCard";
 import { MapPinned } from "lucide-react";
+import GoogleDriveSettings from "@/components/GoogleDriveSettings";
 import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -696,6 +697,9 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
             )}
           </CardContent>
         </Card>
+
+        {/* Google Drive archiving */}
+        <GoogleDriveSettings />
 
         {/* Default Billing */}
         <Card className="bg-card border-border">

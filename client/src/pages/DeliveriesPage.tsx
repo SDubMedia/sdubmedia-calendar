@@ -19,7 +19,7 @@ import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -348,6 +348,38 @@ function DeliveryDetail({ id }: { id: string }) {
   // Go back to wherever we came from (e.g. the project we opened the gallery
   // from) rather than always dumping the user in the galleries list.
   const goBack = () => { if (window.history.length > 1) window.history.back(); else setLocation("/deliveries"); };
+
+  // Archive this gallery to the owner's Google Drive — one file per request so
+  // large galleries don't time out. Shows live progress.
+  const [driveSend, setDriveSend] = useState<{ active: boolean; done: number; total: number }>({ active: false, done: 0, total: 0 });
+  const sendToDrive = async () => {
+    if (!delivery) return;
+    if (!data.organization?.googleDriveEmail) { toast.error("Connect Google Drive first (Manage → Settings)"); return; }
+    setDriveSend({ active: true, done: 0, total: 0 });
+    try {
+      const token = await getAuthToken();
+      const auth = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+      const prep = await fetch("/api/gallery-drive-prepare", { method: "POST", headers: auth, body: JSON.stringify({ deliveryId: delivery.id }) });
+      const pbody = await prep.json().catch(() => ({ error: "Failed" }));
+      if (!prep.ok) throw new Error(pbody.error || "Couldn't prepare Drive folder");
+      const driveFiles: { id: string }[] = pbody.files || [];
+      setDriveSend({ active: true, done: 0, total: driveFiles.length });
+      let done = 0, failed = 0;
+      for (const f of driveFiles) {
+        try {
+          const up = await fetch("/api/gallery-drive-upload", { method: "POST", headers: auth, body: JSON.stringify({ deliveryId: delivery.id, fileId: f.id, folderId: pbody.folderId }) });
+          if (!up.ok) failed++;
+        } catch { failed++; }
+        done++;
+        setDriveSend({ active: true, done, total: driveFiles.length });
+      }
+      toast.success(failed ? `Sent ${done - failed} of ${done} to Google Drive (${failed} failed)` : `Sent ${done} photo${done === 1 ? "" : "s"} to Google Drive`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send to Google Drive");
+    } finally {
+      setDriveSend({ active: false, done: 0, total: 0 });
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Declared up here (before any early return) to keep hook order stable.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -747,6 +779,19 @@ function DeliveryDetail({ id }: { id: string }) {
               </button>
             )}
           </div>
+          {/* Archive to Google Drive */}
+          {files.length > 0 && data.organization?.googleDriveEmail && (
+            <div className="mb-6">
+              <button
+                onClick={sendToDrive}
+                disabled={driveSend.active}
+                className="w-full border border-border rounded-lg py-2.5 px-4 text-sm font-medium flex items-center justify-center gap-2 hover:bg-white/5 transition-colors disabled:opacity-50"
+              >
+                <HardDrive className="w-4 h-4 shrink-0" />
+                {driveSend.active ? `Sending to Google Drive… ${driveSend.done}/${driveSend.total}` : "Send to Google Drive"}
+              </button>
+            </div>
+          )}
           {/* Stats compact strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm">
             <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">

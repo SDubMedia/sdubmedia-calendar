@@ -188,6 +188,9 @@ export interface Organization {
   // staff are asked to re-sign the current text.
   staffAgreementText: string;
   staffAgreementVersion: string;
+  // The connected Google Drive account email (empty = not connected). The
+  // refresh token is server-only and never sent to the frontend.
+  googleDriveEmail: string;
   createdAt: string;
 }
 

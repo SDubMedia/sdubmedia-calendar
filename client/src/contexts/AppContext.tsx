@@ -901,6 +901,7 @@ function rowToOrg(r: any): Organization {
     w9FieldMap: (r.w9_field_map && typeof r.w9_field_map === "object") ? r.w9_field_map : {},
     staffAgreementText: r.staff_agreement_text || "",
     staffAgreementVersion: r.staff_agreement_version || "",
+    googleDriveEmail: r.google_drive_email || "",
     createdAt: r.created_at,
   };
 }
