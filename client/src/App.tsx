@@ -255,7 +255,10 @@ function AuthGate() {
   if (loading) return <LoadingScreen />;
   if (!user) return <Suspense fallback={<LoadingScreen />}><LoginPage /></Suspense>;
   if (profile?.mustChangePassword) return <Suspense fallback={<LoadingScreen />}><ChangePasswordPage /></Suspense>;
-  if (!profile?.hasCompletedOnboarding) return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
+  // Staff use the required staff-onboarding flow (info → 1099 → W-9) inside the
+  // app, not this generic welcome — which lives outside AppProvider and would
+  // crash reading app data. Route them straight in.
+  if (!profile?.hasCompletedOnboarding && profile?.role !== "staff") return <Suspense fallback={<LoadingScreen />}><OnboardingPage /></Suspense>;
   return (
     <AppProvider>
       <FaviconSync />
