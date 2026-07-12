@@ -76,7 +76,9 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
   const [w9Business, setW9Business] = useState(me?.businessName ?? "");
   const [w9Class, setW9Class] = useState(TAX_CLASSES[0]);
   const [w9Address, setW9Address] = useState("");
-  const [w9CityStateZip, setW9CityStateZip] = useState("");
+  const [w9City, setW9City] = useState("");
+  const [w9State, setW9State] = useState("");
+  const [w9Zip, setW9Zip] = useState("");
   const [w9IdType, setW9IdType] = useState<"ssn" | "ein">("ssn");
   const [w9TaxId, setW9TaxId] = useState("");
 
@@ -106,7 +108,10 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
     toast.success("1099 agreement signed");
   };
 
-  const w9Complete = !!(w9Name.trim() && w9Address.trim() && w9CityStateZip.trim() && w9TaxId.trim());
+  // The IRS W-9 line 6 is a single "City, state, and ZIP code" field — recombine
+  // the split inputs for the PDF fill.
+  const w9CityStateZip = [[w9City.trim(), w9State.trim()].filter(Boolean).join(", "), w9Zip.trim()].filter(Boolean).join(" ");
+  const w9Complete = !!(w9Name.trim() && w9Address.trim() && w9City.trim() && w9State.trim() && w9Zip.trim() && w9TaxId.trim());
 
   const submitW9 = async (sig: CapturedSignature) => {
     const resp = await post("/api/w9-submit", {
@@ -214,7 +219,7 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
           <div className="space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Name (as shown on your tax return)</Label>
-              <Input value={w9Name} onChange={(e) => setW9Name(e.target.value)} className="bg-secondary border-border mt-1" />
+              <Input value={w9Name} onChange={(e) => setW9Name(e.target.value)} autoComplete="name" className="bg-secondary border-border mt-1" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Business name / disregarded entity (if different)</Label>
@@ -228,11 +233,21 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Address (number, street, apt.)</Label>
-              <Input value={w9Address} onChange={(e) => setW9Address(e.target.value)} className="bg-secondary border-border mt-1" />
+              <Input value={w9Address} onChange={(e) => setW9Address(e.target.value)} autoComplete="address-line1" className="bg-secondary border-border mt-1" />
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">City, state, ZIP</Label>
-              <Input value={w9CityStateZip} onChange={(e) => setW9CityStateZip(e.target.value)} className="bg-secondary border-border mt-1" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <Label className="text-xs text-muted-foreground">City</Label>
+                <Input value={w9City} onChange={(e) => setW9City(e.target.value)} autoComplete="address-level2" className="bg-secondary border-border mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">State</Label>
+                <Input value={w9State} onChange={(e) => setW9State(e.target.value)} autoComplete="address-level1" className="bg-secondary border-border mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">ZIP</Label>
+                <Input value={w9Zip} onChange={(e) => setW9Zip(e.target.value)} autoComplete="postal-code" inputMode="numeric" className="bg-secondary border-border mt-1" />
+              </div>
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Taxpayer ID</Label>
