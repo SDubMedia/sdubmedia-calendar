@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import StaffAgreementResign from "@/components/StaffAgreementResign";
+import SignedAgreementDialog from "@/components/SignedAgreementDialog";
+import { STAFF_AGREEMENT_VERSION, defaultAgreementText } from "@/lib/staffAgreement";
+import { FileSignature } from "lucide-react";
 import type { HomeAddress } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -53,6 +56,14 @@ export default function StaffDashboardPage() {
   const { data, updateCrewMember, upsertDistance } = useApp();
   const { effectiveProfile } = useAuth();
   const crewMemberId = effectiveProfile?.crewMemberId || "";
+  const [viewSigned1099, setViewSigned1099] = useState(false);
+  // My most-recent signed 1099 (any version), for viewing my executed copy.
+  const mySigned1099 = data.staffAgreements
+    .filter(a => a.crewMemberId === crewMemberId && a.staffSignedAt)
+    .sort((a, b) => (b.staffSignedAt || "").localeCompare(a.staffSignedAt || ""))[0];
+  const orgName = data.organization?.name || "";
+  const currentAgreementVersion = (data.organization?.staffAgreementVersion || "").trim() || STAFF_AGREEMENT_VERSION;
+  const currentAgreementText = (data.organization?.staffAgreementText || "").trim() || defaultAgreementText(orgName);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
@@ -202,6 +213,31 @@ export default function StaffDashboardPage() {
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
         <StaffAgreementResign />
+        {mySigned1099 && (
+          <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border border-border bg-card/50 px-4 py-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <FileSignature className="w-4 h-4 text-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{mySigned1099.agreementTitle || "1099 agreement"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Signed {mySigned1099.staffSignedAt ? new Date(mySigned1099.staffSignedAt).toLocaleDateString("en-US") : ""}
+                  {mySigned1099.ownerSignedAt ? " · countersigned" : " · awaiting countersignature"}
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={() => setViewSigned1099(true)}>View</Button>
+          </div>
+        )}
+        {mySigned1099 && (
+          <SignedAgreementDialog
+            open={viewSigned1099}
+            onOpenChange={setViewSigned1099}
+            agreement={mySigned1099}
+            text={mySigned1099.agreementText || (mySigned1099.agreementVersion === currentAgreementVersion ? currentAgreementText : defaultAgreementText(orgName))}
+            orgName={orgName}
+            ownerName={orgName}
+          />
+        )}
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard icon={CalendarDays} iconColor="text-blue-400" iconBg="bg-blue-500/20"

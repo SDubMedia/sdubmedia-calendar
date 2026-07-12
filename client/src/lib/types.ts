@@ -1008,6 +1008,7 @@ export interface StaffAgreement {
   crewMemberId: string;
   agreementVersion: string;
   agreementTitle: string;
+  agreementText: string; // snapshot of the exact text signed (empty on older rows)
   staffSignature: ContractSignature | null;
   staffSignedAt: string | null;
   ownerSignature: ContractSignature | null;

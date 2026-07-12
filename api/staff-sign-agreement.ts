@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const { agreementVersion, agreementTitle, signature } = req.body || {};
+    const { agreementVersion, agreementTitle, agreementText, signature } = req.body || {};
     if (!agreementVersion || typeof agreementVersion !== "string") return res.status(400).json({ error: "Missing agreement version" });
     if (!signature || typeof signature !== "object" || !signature.signatureData || !signature.name) {
       return res.status(400).json({ error: "Signature is required" });
@@ -64,13 +64,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (existing) {
       const { error } = await supabase.from("staff_agreements").update({
         staff_signature: sig, staff_signed_at: sig.timestamp, status: "staff_signed",
-        agreement_title: String(agreementTitle || ""),
+        agreement_title: String(agreementTitle || ""), agreement_text: String(agreementText || ""),
       }).eq("id", existing.id);
       if (error) return res.status(500).json({ error: errorMessage(error, "Couldn't record your signature") });
     } else {
       const { error } = await supabase.from("staff_agreements").insert({
         id: randomUUID(), org_id: orgId, crew_member_id: member.id,
         agreement_version: agreementVersion, agreement_title: String(agreementTitle || ""),
+        agreement_text: String(agreementText || ""),
         staff_signature: sig, staff_signed_at: sig.timestamp, status: "staff_signed",
       });
       if (error) return res.status(500).json({ error: errorMessage(error, "Couldn't record your signature") });

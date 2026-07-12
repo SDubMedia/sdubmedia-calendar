@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { useAuth } from "@/contexts/AuthContext";
-import type { CrewMember, CrewRole, RoleRate, HomeAddress, TravelBase, ContractorPaymentMethod } from "@/lib/types";
+import type { CrewMember, CrewRole, RoleRate, HomeAddress, TravelBase, ContractorPaymentMethod, StaffAgreement } from "@/lib/types";
 import TravelBasesEditor from "@/components/TravelBasesEditor";
 import { nanoid } from "nanoid";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
 import SignaturePad from "@/components/SignaturePad";
+import SignedAgreementDialog from "@/components/SignedAgreementDialog";
 import StaffLoginStatus, { staffLoginFor } from "@/components/StaffLoginStatus";
 import { STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, defaultAgreementText } from "@/lib/staffAgreement";
 
@@ -124,6 +125,7 @@ export default function StaffPage() {
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [countersignAgreementId, setCountersignAgreementId] = useState<string | null>(null);
   const [agreementOpen, setAgreementOpen] = useState(false);
+  const [viewAgreement, setViewAgreement] = useState<StaffAgreement | null>(null);
   const hasW9Template = !!data.organization?.w9TemplatePath;
 
   // Archived crew are hidden from the main list (kept for history).
@@ -657,6 +659,10 @@ export default function StaffPage() {
               {activeCrew.map(member => {
                 const agreement = data.staffAgreements.find(a => a.crewMemberId === member.id && a.agreementVersion === agreementVersion);
                 const needsCountersign = !!agreement?.staffSignedAt && !agreement?.ownerSignedAt;
+                // Most-recent signed agreement (any version) — what "View" opens.
+                const signed = data.staffAgreements
+                  .filter(a => a.crewMemberId === member.id && a.staffSignedAt)
+                  .sort((a, b) => (b.staffSignedAt || "").localeCompare(a.staffSignedAt || ""))[0];
                 return (
                   <div key={member.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
                     <span className="text-foreground truncate min-w-0">{member.name}</span>
@@ -667,6 +673,9 @@ export default function StaffPage() {
                         <Button size="sm" variant="outline" className="h-7 border-amber-500/40 text-amber-300" onClick={() => setCountersignAgreementId(agreement!.id)}>Countersign 1099</Button>
                       ) : (
                         <Badge variant="outline" className="border-border text-muted-foreground">1099: not signed</Badge>
+                      )}
+                      {signed && (
+                        <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => setViewAgreement(signed)}><Eye className="w-3.5 h-3.5" /> View 1099</Button>
                       )}
                       {member.w9SubmittedAt ? (
                         <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => viewMemberW9(member.w9Url || "")}><Eye className="w-3.5 h-3.5" /> W-9</Button>
@@ -1207,6 +1216,18 @@ export default function StaffPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* View an executed 1099 (staff signature + owner countersignature) */}
+      {viewAgreement && (
+        <SignedAgreementDialog
+          open={!!viewAgreement}
+          onOpenChange={(o) => !o && setViewAgreement(null)}
+          agreement={viewAgreement}
+          text={viewAgreement.agreementText || (viewAgreement.agreementVersion === agreementVersion ? agreementText : defaultAgreementText(orgName))}
+          orgName={orgName}
+          ownerName={data.organization?.name || ""}
+        />
+      )}
     </div>
   );
 }

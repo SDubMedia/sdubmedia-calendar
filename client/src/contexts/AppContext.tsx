@@ -287,6 +287,7 @@ function rowToStaffAgreement(r: any): StaffAgreement {
     crewMemberId: r.crew_member_id || "",
     agreementVersion: r.agreement_version || "",
     agreementTitle: r.agreement_title || "",
+    agreementText: r.agreement_text || "",
     staffSignature: r.staff_signature || null,
     staffSignedAt: r.staff_signed_at || null,
     ownerSignature: r.owner_signature || null,

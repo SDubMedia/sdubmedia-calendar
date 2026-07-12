@@ -102,6 +102,7 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
     await post("/api/staff-sign-agreement", {
       agreementVersion,
       agreementTitle: STAFF_AGREEMENT_TITLE,
+      agreementText,
       signature: { ...sig, email },
     });
     await refresh();
