@@ -6,13 +6,17 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
+import { Resend } from "resend";
+import { verifyAuth, getUserOrgId, escapeHtml, errorMessage } from "./_auth.js";
 import { sendPushToUser } from "./_apns.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+const APP_URL = process.env.APP_URL || "https://slate.sdubmedia.com";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
@@ -41,14 +45,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq("org_id", orgId).eq("agreement_version", version).not("staff_signed_at", "is", null).in("crew_member_id", crewIds);
     const signedSet = new Set((signed || []).map(r => r.crew_member_id));
 
+    // Emails for the crew members who still need to sign.
+    const toNotify = staffWithCrew.filter(s => !signedSet.has(s.crew_member_id));
+    const { data: members } = await supabase
+      .from("crew_members").select("id, name, email").in("id", toNotify.map(s => s.crew_member_id));
+    const emailById = new Map((members || []).map(m => [m.id, { name: m.name, email: (m.email || "").trim() }]));
+
     let sent = 0;
-    for (const s of staffWithCrew) {
-      if (signedSet.has(s.crew_member_id)) continue;
+    for (const s of toNotify) {
+      // Push (app users)…
       await sendPushToUser(s.id, {
         title: "Please review & sign",
         body: "Your company updated the contractor agreement — please review and sign it.",
         data: { url: "/staff-dashboard" },
       });
+      // …and email (reliable regardless of the app).
+      const m = emailById.get(s.crew_member_id);
+      if (m?.email) {
+        try {
+          await resend.emails.send({
+            from: `Slate <${FROM_EMAIL}>`, to: m.email,
+            subject: "Please review & sign the updated agreement",
+            html: `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1e293b;">
+              <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml((m.name || "there").split(" ")[0])},</p>
+              <p style="font-size:15px;line-height:1.6;">Your company updated the contractor agreement. Please sign in to Slate to review and sign it.</p>
+              <p style="margin:20px 0;">
+                <a href="${APP_URL}" style="background:#0088ff;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Review &amp; sign</a>
+              </p>
+            </div>`,
+          });
+        } catch (e) { console.error("agreement email failed:", e); }
+      }
       sent++;
     }
 

@@ -403,6 +403,9 @@ export interface CrewMember {
   // When true, this crew member must tap "Confirm I'll be there" for shoots
   // they're assigned to; the owner sees confirmed vs awaiting.
   requiresShootConfirmation?: boolean;
+  // Archived crew are hidden from the Staff list and crew pickers, but kept for
+  // history (past projects, pay, W-9). Not deleted.
+  archived?: boolean;
   // Stripe direct-deposit payouts (their Express connected account + whether
   // onboarding is complete / transfers are active). Set server-side.
   stripeAccountId?: string;

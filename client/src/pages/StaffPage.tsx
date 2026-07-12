@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, FileSignature, Eye, Send } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, FileSignature, Eye, Send, Archive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
@@ -125,6 +125,19 @@ export default function StaffPage() {
   const [countersignAgreementId, setCountersignAgreementId] = useState<string | null>(null);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const hasW9Template = !!data.organization?.w9TemplatePath;
+
+  // Archived crew are hidden from the main list (kept for history).
+  const [showArchived, setShowArchived] = useState(false);
+  const activeCrew = data.crewMembers.filter(m => !m.archived);
+  const archivedCrew = data.crewMembers.filter(m => m.archived);
+  const toggleArchive = async (member: CrewMember) => {
+    try {
+      await updateCrewMember(member.id, { archived: !member.archived });
+      toast.success(member.archived ? `${member.name} restored to staff` : `${member.name} archived`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update");
+    }
+  };
 
   // Editable 1099 agreement — the org's text/version, or the built-in default.
   const orgName = data.organization?.name || "";
@@ -620,7 +633,7 @@ export default function StaffPage() {
           {/* Per-staff onboarding status */}
           {data.crewMembers.length > 0 && (
             <div className="border-t border-border/60 pt-3 space-y-2">
-              {data.crewMembers.map(member => {
+              {activeCrew.map(member => {
                 const agreement = data.staffAgreements.find(a => a.crewMemberId === member.id && a.agreementVersion === agreementVersion);
                 const needsCountersign = !!agreement?.staffSignedAt && !agreement?.ownerSignedAt;
                 return (
@@ -649,7 +662,7 @@ export default function StaffPage() {
       </Card>
 
       {/* Staff list */}
-      {data.crewMembers.length === 0 ? (
+      {activeCrew.length === 0 ? (
         <Card className="bg-card border-border">
           <CardContent className="py-12 text-center">
             <User className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -658,7 +671,7 @@ export default function StaffPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {data.crewMembers.map(member => (
+          {activeCrew.map(member => (
             <Card key={member.id} className="bg-card border-border hover:border-primary/40 transition-colors">
               <CardContent className="py-4 px-5">
                 <div className="flex items-start gap-4">
@@ -718,6 +731,9 @@ export default function StaffPage() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(member)}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Archive" onClick={() => toggleArchive(member)}>
+                      <Archive className="w-3.5 h-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -731,6 +747,27 @@ export default function StaffPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Archived crew — hidden from the list, kept for history */}
+      {archivedCrew.length > 0 && (
+        <div className="pt-1">
+          <button onClick={() => setShowArchived(v => !v)} className="text-xs text-muted-foreground hover:text-foreground">
+            {showArchived ? "Hide" : "Show"} archived ({archivedCrew.length})
+          </button>
+          {showArchived && (
+            <div className="space-y-2 mt-2">
+              {archivedCrew.map(member => (
+                <div key={member.id} className="bg-card/50 border border-border rounded-lg px-4 py-2.5 flex items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground truncate min-w-0">{member.name}</span>
+                  <Button size="sm" variant="outline" className="h-7 gap-1.5 shrink-0" onClick={() => toggleArchive(member)}>
+                    <RotateCcw className="w-3.5 h-3.5" /> Restore
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

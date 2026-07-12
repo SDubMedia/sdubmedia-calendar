@@ -1234,7 +1234,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
                       <SelectItem value="__new_crew__" className="text-primary font-medium">+ New crew member…</SelectItem>
-                      {data.crewMembers.map((c) => {
+                      {data.crewMembers.filter(c => !c.archived).map((c) => {
                         const st = crewStatus(c.id);
                         return (
                           <SelectItem key={c.id} value={c.id}>
@@ -1389,7 +1389,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     </SelectTrigger>
                     <SelectContent className="bg-popover border-border">
                       <SelectItem value="__new_crew__" className="text-primary font-medium">+ New crew member…</SelectItem>
-                      {data.crewMembers.map((c) => (
+                      {data.crewMembers.filter(c => !c.archived).map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
                     </SelectContent>

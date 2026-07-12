@@ -219,6 +219,7 @@ function rowToCrew(r: any): CrewMember {
     w9Url: r.w9_url || "",
     w9SubmittedAt: r.w9_submitted_at || null,
     requiresShootConfirmation: !!r.requires_shoot_confirmation,
+    archived: !!r.archived,
     stripeAccountId: r.stripe_account_id || "",
     stripePayoutsEnabled: !!r.stripe_payouts_enabled,
   };
@@ -1498,6 +1499,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.taxIdType !== undefined) patch.tax_id_type = c.taxIdType;
     if (c.w9Url !== undefined) patch.w9_url = c.w9Url;
     if (c.requiresShootConfirmation !== undefined) patch.requires_shoot_confirmation = c.requiresShootConfirmation;
+    if (c.archived !== undefined) patch.archived = c.archived;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));
