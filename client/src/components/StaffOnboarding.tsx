@@ -262,7 +262,7 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
               buttonLabel="Sign & submit W-9"
               disabled={!w9Complete}
               disabledHint="Fill in every field above to sign."
-              consentText="Under penalties of perjury, I certify the information on this W-9 is true, correct, and complete."
+              consentText="Under penalties of perjury, I certify the information on this W-9 is true, correct, and complete. I agree to sign this W-9 electronically, and that my electronic signature is the legal equivalent of my handwritten signature."
               onSign={submitW9}
             />
           </div>
