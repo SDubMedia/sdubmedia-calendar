@@ -205,6 +205,27 @@ export default function StaffPage() {
     }
   };
 
+  // Nudge one staff member to sign their 1099 or complete their W-9 (push + email).
+  const [sendingItem, setSendingItem] = useState<{ id: string; item: string } | null>(null);
+  const sendItem = async (member: CrewMember, item: "w9" | "agreement") => {
+    setSendingItem({ id: member.id, item });
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-staff-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ crewMemberId: member.id, item }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't send");
+      toast.success(`${item === "w9" ? "W-9" : "1099"} reminder sent to ${member.name}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send the reminder");
+    } finally {
+      setSendingItem(null);
+    }
+  };
+
   async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
     const locationsWithAddress = data.locations.filter(l => l.address && l.city);
     if (locationsWithAddress.length === 0) return;
@@ -692,6 +713,16 @@ export default function StaffPage() {
                       {!staffLoginFor(allProfiles, member.id) && (
                         <button onClick={() => inviteCrewMember(member)} disabled={invitingMemberId === member.id} className="text-xs text-primary hover:underline disabled:opacity-50">
                           {invitingMemberId === member.id ? "Inviting…" : "Invite"}
+                        </button>
+                      )}
+                      {staffLoginFor(allProfiles, member.id) && !data.staffAgreements.some(a => a.crewMemberId === member.id && a.agreementVersion === agreementVersion && a.staffSignedAt) && (
+                        <button onClick={() => sendItem(member, "agreement")} disabled={sendingItem?.id === member.id} className="text-xs text-primary hover:underline disabled:opacity-50">
+                          {sendingItem?.id === member.id && sendingItem?.item === "agreement" ? "Sending…" : "Send 1099 Agreement"}
+                        </button>
+                      )}
+                      {staffLoginFor(allProfiles, member.id) && !member.w9SubmittedAt && (
+                        <button onClick={() => sendItem(member, "w9")} disabled={sendingItem?.id === member.id} className="text-xs text-primary hover:underline disabled:opacity-50">
+                          {sendingItem?.id === member.id && sendingItem?.item === "w9" ? "Sending…" : "Send W-9"}
                         </button>
                       )}
                     </div>
