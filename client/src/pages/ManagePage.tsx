@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import UsersPage from "./UsersPage";
 import SettingsPage from "./SettingsPage";
 import ServiceCategoriesManager from "@/components/ServiceCategoriesManager";
+import StaffLoginStatus from "@/components/StaffLoginStatus";
 
 const MANAGE_TAB_KEY = "manage-tab";
 
@@ -120,7 +121,10 @@ function CrewTab() {
               {member.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-foreground">{member.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-foreground">{member.name}</span>
+                <StaffLoginStatus crewMemberId={member.id} />
+              </div>
               <div className="flex flex-wrap gap-1 mt-1">
                 {(member.roleRates ?? []).map((rr) => (
                   <span key={rr.role} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">

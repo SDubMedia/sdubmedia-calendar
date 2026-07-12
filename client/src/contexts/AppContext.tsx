@@ -899,6 +899,8 @@ function rowToOrg(r: any): Organization {
     calendarFeedToken: r.calendar_feed_token || "",
     w9TemplatePath: r.w9_template_path || "",
     w9FieldMap: (r.w9_field_map && typeof r.w9_field_map === "object") ? r.w9_field_map : {},
+    staffAgreementText: r.staff_agreement_text || "",
+    staffAgreementVersion: r.staff_agreement_version || "",
     createdAt: r.created_at,
   };
 }
@@ -2334,6 +2336,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.pipelineStages !== undefined) patch.pipeline_stages = updates.pipelineStages;
     if (updates.services !== undefined) patch.services = updates.services;
     if (updates.seriesReviewMessageTemplate !== undefined) patch.series_review_message_template = updates.seriesReviewMessageTemplate;
+    if (updates.staffAgreementText !== undefined) patch.staff_agreement_text = updates.staffAgreementText;
+    if (updates.staffAgreementVersion !== undefined) patch.staff_agreement_version = updates.staffAgreementVersion;
     const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, organization: d.organization ? { ...d.organization, ...updates } : null }));

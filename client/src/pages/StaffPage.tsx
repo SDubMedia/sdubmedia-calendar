@@ -31,12 +31,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, FileSignature, Eye } from "lucide-react";
+import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shield, Upload, FileText, FileSignature, Eye, Send } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
 import SignaturePad from "@/components/SignaturePad";
-import { STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, STAFF_AGREEMENT_INTRO, STAFF_AGREEMENT_SECTIONS } from "@/lib/staffAgreement";
+import StaffLoginStatus, { staffLoginFor } from "@/components/StaffLoginStatus";
+import { STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, defaultAgreementText } from "@/lib/staffAgreement";
 
 const ALL_ROLES: CrewRole[] = [
   "Main Videographer",
@@ -102,9 +103,9 @@ function generatePassword(): string {
 }
 
 export default function StaffPage() {
-  const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance, refresh } = useApp();
+  const { data, addCrewMember, updateCrewMember, deleteCrewMember, upsertDistance, refresh, updateOrganization } = useApp();
   const confirm = useConfirm();
-  const { createUser } = useAuth();
+  const { createUser, allProfiles, refreshProfiles } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StaffFormData>(emptyForm());
@@ -124,6 +125,72 @@ export default function StaffPage() {
   const [countersignAgreementId, setCountersignAgreementId] = useState<string | null>(null);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const hasW9Template = !!data.organization?.w9TemplatePath;
+
+  // Editable 1099 agreement — the org's text/version, or the built-in default.
+  const orgName = data.organization?.name || "";
+  const agreementText = (data.organization?.staffAgreementText || "").trim() || defaultAgreementText(orgName);
+  const agreementVersion = (data.organization?.staffAgreementVersion || "").trim() || STAFF_AGREEMENT_VERSION;
+  const [editAgreementOpen, setEditAgreementOpen] = useState(false);
+  const [agreementDraft, setAgreementDraft] = useState("");
+  const [savingAgreement, setSavingAgreement] = useState(false);
+  const [sendingAgreement, setSendingAgreement] = useState(false);
+  const openEditAgreement = () => { setAgreementDraft(agreementText); setEditAgreementOpen(true); };
+  const sendForSignature = async () => {
+    setSendingAgreement(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-staff-agreement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ version: agreementVersion }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't send");
+      toast.success(body.sent > 0 ? `Sent to ${body.sent} staff to review & sign` : "Everyone with a login has already signed the current version");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send for signature");
+    } finally {
+      setSendingAgreement(false);
+    }
+  };
+  const saveAgreement = async () => {
+    setSavingAgreement(true);
+    try {
+      await updateOrganization({ staffAgreementText: agreementDraft, staffAgreementVersion: new Date().toISOString() });
+      await refresh();
+      toast.success("Agreement saved — staff will be asked to sign the new version");
+      setEditAgreementOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save the agreement");
+    } finally {
+      setSavingAgreement(false);
+    }
+  };
+
+  // Invite an existing crew member who has no login yet — creates their staff
+  // login and emails it; first sign-in drops them into the onboarding flow.
+  const [invitingMemberId, setInvitingMemberId] = useState<string | null>(null);
+  const inviteCrewMember = async (member: CrewMember) => {
+    if (!member.email?.trim()) { toast.error(`Add an email to ${member.name} first, then invite`); return; }
+    setInvitingMemberId(member.id);
+    try {
+      const pw = generatePassword();
+      const userId = await createUser(member.email.trim(), pw, member.name || member.email.trim(), "staff", [], member.id);
+      const token = await getAuthToken();
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId, tempPassword: pw }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: "Failed" })); throw new Error(err.error || "Invite failed"); }
+      await refreshProfiles();
+      toast.success(`Login invite sent to ${member.email}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send the invite");
+    } finally {
+      setInvitingMemberId(null);
+    }
+  };
 
   async function calculateDistances(crewMemberId: string, homeAddr: HomeAddress) {
     const locationsWithAddress = data.locations.filter(l => l.address && l.city);
@@ -537,16 +604,24 @@ export default function StaffPage() {
               <p className="text-sm font-medium text-foreground flex items-center gap-1.5"><FileSignature className="w-4 h-4" /> 1099 agreement</p>
               <p className="text-xs text-muted-foreground mt-0.5">{STAFF_AGREEMENT_TITLE} — the contract staff read and sign during onboarding.</p>
             </div>
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 shrink-0" onClick={() => setAgreementOpen(true)}>
-              <Eye className="w-3.5 h-3.5" /> View agreement
-            </Button>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={openEditAgreement}>
+                <Pencil className="w-3.5 h-3.5" /> Edit
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setAgreementOpen(true)}>
+                <Eye className="w-3.5 h-3.5" /> View
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={sendForSignature} disabled={sendingAgreement}>
+                <Send className="w-3.5 h-3.5" /> {sendingAgreement ? "Sending…" : "Send for signature"}
+              </Button>
+            </div>
           </div>
 
           {/* Per-staff onboarding status */}
           {data.crewMembers.length > 0 && (
             <div className="border-t border-border/60 pt-3 space-y-2">
               {data.crewMembers.map(member => {
-                const agreement = data.staffAgreements.find(a => a.crewMemberId === member.id && a.agreementVersion === STAFF_AGREEMENT_VERSION);
+                const agreement = data.staffAgreements.find(a => a.crewMemberId === member.id && a.agreementVersion === agreementVersion);
                 const needsCountersign = !!agreement?.staffSignedAt && !agreement?.ownerSignedAt;
                 return (
                   <div key={member.id} className="flex items-center justify-between gap-3 flex-wrap text-sm">
@@ -596,9 +671,17 @@ export default function StaffPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                      {member.name}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {member.name}
+                      </p>
+                      <StaffLoginStatus crewMemberId={member.id} />
+                      {!staffLoginFor(allProfiles, member.id) && (
+                        <button onClick={() => inviteCrewMember(member)} disabled={invitingMemberId === member.id} className="text-xs text-primary hover:underline disabled:opacity-50">
+                          {invitingMemberId === member.id ? "Inviting…" : "Invite"}
+                        </button>
+                      )}
+                    </div>
 
                     {/* Role + Rate table */}
                     {(member.roleRates ?? []).length > 0 ? (
@@ -1007,21 +1090,31 @@ export default function StaffPage() {
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{STAFF_AGREEMENT_TITLE}</DialogTitle>
           </DialogHeader>
-          <div className="overflow-y-auto space-y-3 pr-1">
-            <p className="text-xs text-muted-foreground">{STAFF_AGREEMENT_INTRO}</p>
-            {STAFF_AGREEMENT_SECTIONS.map((s) => (
-              <div key={s.heading}>
-                <p className="text-xs font-semibold text-foreground">{s.heading}</p>
-                {s.blocks.map((b, i) => b.bullets ? (
-                  <ul key={i} className="list-disc pl-4 mt-1 space-y-0.5">
-                    {b.bullets.map((li, j) => <li key={j} className="text-[11px] text-muted-foreground leading-relaxed">{li}</li>)}
-                  </ul>
-                ) : (
-                  <p key={i} className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{b.text}</p>
-                ))}
-              </div>
-            ))}
+          <div className="overflow-y-auto pr-1">
+            <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{agreementText}</p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit the 1099 agreement (per-company template) */}
+      <Dialog open={editAgreementOpen} onOpenChange={(o) => !o && setEditAgreementOpen(false)}>
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Edit 1099 agreement</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">
+            This is your company's agreement — edit it however you like. Saving asks staff to review and sign the new version.
+          </p>
+          <textarea
+            value={agreementDraft}
+            onChange={(e) => setAgreementDraft(e.target.value)}
+            className="flex-1 min-h-[45vh] w-full rounded-lg border border-border bg-secondary/40 p-3 text-xs text-foreground leading-relaxed font-mono resize-none"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditAgreementOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setAgreementDraft(defaultAgreementText(orgName))}>Reset to default</Button>
+            <Button onClick={saveAgreement} disabled={savingAgreement}>{savingAgreement ? "Saving…" : "Save agreement"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

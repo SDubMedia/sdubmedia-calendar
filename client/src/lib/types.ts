@@ -183,6 +183,11 @@ export interface Organization {
   // Empty template path = the owner hasn't uploaded a W-9 template yet.
   w9TemplatePath: string;
   w9FieldMap: Record<string, string>;
+  // Editable per-org 1099 staff agreement. Empty text = use the built-in
+  // default (rendered with this org's company name). Version bumps on edit so
+  // staff are asked to re-sign the current text.
+  staffAgreementText: string;
+  staffAgreementVersion: string;
   createdAt: string;
 }
 

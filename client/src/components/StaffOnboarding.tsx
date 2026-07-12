@@ -19,7 +19,7 @@ import { formatPhoneInput } from "@/lib/utils";
 import { toast } from "sonner";
 import SignaturePad, { type CapturedSignature } from "@/components/SignaturePad";
 import {
-  STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, STAFF_AGREEMENT_INTRO, STAFF_AGREEMENT_SECTIONS,
+  STAFF_AGREEMENT_VERSION, STAFF_AGREEMENT_TITLE, defaultAgreementText,
 } from "@/lib/staffAgreement";
 import type { UserProfile } from "@/lib/types";
 
@@ -50,8 +50,11 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
   const { signOut, completeStaffOnboarding } = useAuth();
 
   const me = data.crewMembers.find(c => c.id === profile.crewMemberId);
+  // Effective agreement — the org's edited text/version, or the built-in default.
+  const agreementText = (data.organization?.staffAgreementText || "").trim() || defaultAgreementText(data.organization?.name || "");
+  const agreementVersion = (data.organization?.staffAgreementVersion || "").trim() || STAFF_AGREEMENT_VERSION;
   const agreement = data.staffAgreements.find(
-    a => a.crewMemberId === profile.crewMemberId && a.agreementVersion === STAFF_AGREEMENT_VERSION,
+    a => a.crewMemberId === profile.crewMemberId && a.agreementVersion === agreementVersion,
   );
 
   const infoDone = !!(me?.name?.trim() && me?.email?.trim() && me?.phone?.trim());
@@ -95,7 +98,7 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
 
   const sign1099 = async (sig: CapturedSignature) => {
     await post("/api/staff-sign-agreement", {
-      agreementVersion: STAFF_AGREEMENT_VERSION,
+      agreementVersion,
       agreementTitle: STAFF_AGREEMENT_TITLE,
       signature: { ...sig, email },
     });
@@ -189,20 +192,8 @@ export default function StaffOnboarding({ profile }: { profile: UserProfile }) {
             <p className="text-xs text-muted-foreground pl-8">Signed{agreement?.ownerSignedAt ? " · countersigned by SDub Media" : " · awaiting countersignature"}.</p>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">{STAFF_AGREEMENT_INTRO}</p>
-              <div className="max-h-56 overflow-y-auto rounded-lg border border-border bg-secondary/30 p-3 space-y-3">
-                {STAFF_AGREEMENT_SECTIONS.map((s) => (
-                  <div key={s.heading}>
-                    <p className="text-xs font-semibold text-foreground">{s.heading}</p>
-                    {s.blocks.map((b, i) => b.bullets ? (
-                      <ul key={i} className="list-disc pl-4 mt-1 space-y-0.5">
-                        {b.bullets.map((li, j) => <li key={j} className="text-[11px] text-muted-foreground leading-relaxed">{li}</li>)}
-                      </ul>
-                    ) : (
-                      <p key={i} className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{b.text}</p>
-                    ))}
-                  </div>
-                ))}
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-secondary/30 p-3">
+                <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{agreementText}</p>
               </div>
               <SignaturePad
                 defaultName={name || me?.name || ""}

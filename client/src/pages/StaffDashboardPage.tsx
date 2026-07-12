@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
+import StaffAgreementResign from "@/components/StaffAgreementResign";
 import type { HomeAddress } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -200,6 +201,7 @@ export default function StaffDashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+        <StaffAgreementResign />
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard icon={CalendarDays} iconColor="text-blue-400" iconBg="bg-blue-500/20"

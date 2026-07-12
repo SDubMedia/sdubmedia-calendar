@@ -10,6 +10,24 @@
 export const STAFF_AGREEMENT_VERSION = "2026-07-11";
 export const STAFF_AGREEMENT_TITLE = "Master Independent Contractor Agreement";
 
+// The built-in agreement as one plain-text document, with the org's company
+// name substituted. This is what a new org's editable agreement is seeded from,
+// and what's shown/signed when the org hasn't customized it. Kept in sync with
+// the structured sections below so there's a single source of truth.
+export function defaultAgreementText(company: string): string {
+  const c = (company || "").trim() || "SDub Media, LLC";
+  const lines: string[] = [STAFF_AGREEMENT_TITLE, "", STAFF_AGREEMENT_INTRO, ""];
+  for (const s of STAFF_AGREEMENT_SECTIONS) {
+    lines.push(s.heading);
+    for (const b of s.blocks) {
+      if (b.bullets) for (const li of b.bullets) lines.push(`  • ${li}`);
+      else if (b.text) lines.push(b.text);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").replace(/SDub Media, LLC/g, c).replace(/SDub Media/g, c).trim();
+}
+
 export interface AgreementBlock {
   text?: string;
   bullets?: string[];
