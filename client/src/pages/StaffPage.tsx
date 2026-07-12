@@ -71,6 +71,7 @@ interface StaffFormData {
   taxIdType: "ssn" | "ein" | "";
   preferredPaymentMethod: ContractorPaymentMethod | null;
   preferredPaymentDetails: string;
+  requiresShootConfirmation: boolean;
 }
 
 const emptyForm = (): StaffFormData => ({
@@ -90,6 +91,7 @@ const emptyForm = (): StaffFormData => ({
   taxIdType: "",
   preferredPaymentMethod: null,
   preferredPaymentDetails: "",
+  requiresShootConfirmation: false,
 });
 
 function generatePassword(): string {
@@ -196,6 +198,7 @@ export default function StaffPage() {
       taxIdType: member.taxIdType || "",
       preferredPaymentMethod: (member.preferredPaymentMethod as ContractorPaymentMethod) || null,
       preferredPaymentDetails: member.preferredPaymentDetails || "",
+      requiresShootConfirmation: !!member.requiresShootConfirmation,
     });
     setW9Url(member.w9Url || "");
     setNewRole("");
@@ -402,6 +405,7 @@ export default function StaffPage() {
         businessCity: form.businessCity.trim(),
         businessState: form.businessState.trim(),
         businessZip: form.businessZip.trim(),
+        requiresShootConfirmation: form.requiresShootConfirmation,
       };
       // Auto-fill business address from primary travel base if business address is still empty
       if (derivedHomeAddress?.address && !form.businessAddress) {
@@ -848,6 +852,19 @@ export default function StaffPage() {
                 />
               </div>
             </div>
+
+            {/* Shoot confirmation */}
+            <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-border p-3">
+              <input
+                type="checkbox"
+                checked={form.requiresShootConfirmation}
+                onChange={e => setForm(f => ({ ...f, requiresShootConfirmation: e.target.checked }))}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="text-sm text-foreground">Require shoot confirmation
+                <span className="block text-xs text-muted-foreground mt-0.5">This person must tap "Confirm I'll be there" for shoots they're assigned to. You'll see confirmed vs awaiting on each shoot.</span>
+              </span>
+            </label>
 
             {/* Business Info (for invoices & 1099) */}
             <div className="space-y-2">

@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -218,6 +218,7 @@ function rowToCrew(r: any): CrewMember {
     taxIdType: r.tax_id_type || "",
     w9Url: r.w9_url || "",
     w9SubmittedAt: r.w9_submitted_at || null,
+    requiresShootConfirmation: !!r.requires_shoot_confirmation,
     stripeAccountId: r.stripe_account_id || "",
     stripePayoutsEnabled: !!r.stripe_payouts_enabled,
   };
@@ -290,6 +291,17 @@ function rowToStaffAgreement(r: any): StaffAgreement {
     ownerSignature: r.owner_signature || null,
     ownerSignedAt: r.owner_signed_at || null,
     status: r.status || "awaiting_staff",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToShootConfirmation(r: any): ShootConfirmation {
+  return {
+    id: r.id,
+    projectId: r.project_id || "",
+    crewMemberId: r.crew_member_id || "",
+    notifiedAt: r.notified_at || null,
+    confirmedAt: r.confirmed_at || null,
     createdAt: r.created_at,
   };
 }
@@ -892,7 +904,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1144,6 +1156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: availabilityData, error: e7av },
         { data: shooterPrefsData, error: e7sp },
         { data: staffAgreementsData, error: _eSA },
+        { data: shootConfirmationsData, error: _eSC },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1185,6 +1198,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("availability").select("*"),
         supabase.from("shooter_prefs").select("*"),
         supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
+        supabase.from("shoot_confirmations").select("*"),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
@@ -1213,6 +1227,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contractTemplates: (contractTpls || []).map(r => { try { return rowToContractTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
         staffAgreements: (staffAgreementsData || []).map(r => { try { return rowToStaffAgreement(r); } catch { return null; } }).filter(Boolean) as StaffAgreement[],
+        shootConfirmations: (shootConfirmationsData || []).map(r => { try { return rowToShootConfirmation(r); } catch { return null; } }).filter(Boolean) as ShootConfirmation[],
         proposalTemplates: (proposalTpls || []).map(r => { try { return rowToProposalTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1297,6 +1312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       contract_templates: { key: "contractTemplates", convert: rowToContractTemplate, softDelete: true },
       contracts: { key: "contracts", convert: rowToContract, softDelete: true },
       staff_agreements: { key: "staffAgreements", convert: rowToStaffAgreement },
+      shoot_confirmations: { key: "shootConfirmations", convert: rowToShootConfirmation },
       proposal_templates: { key: "proposalTemplates", convert: rowToProposalTemplate, softDelete: true },
       proposals: { key: "proposals", convert: rowToProposal, softDelete: true },
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },
@@ -1451,6 +1467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id, ...(orgId ? { org_id: orgId } : {}), name: c.name, role_rates: c.roleRates ?? [], phone: c.phone, email: c.email,
       default_pay_rate_per_hour: c.defaultPayRatePerHour, home_address: c.homeAddress || null,
       home_bases: c.homeBases ?? [],
+      requires_shoot_confirmation: c.requiresShootConfirmation ?? false,
     }).select().single();
     if (error) throw new Error(error.message);
     const member = rowToCrew(row);
@@ -1477,6 +1494,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.taxId !== undefined) patch.tax_id = c.taxId;
     if (c.taxIdType !== undefined) patch.tax_id_type = c.taxIdType;
     if (c.w9Url !== undefined) patch.w9_url = c.w9Url;
+    if (c.requiresShootConfirmation !== undefined) patch.requires_shoot_confirmation = c.requiresShootConfirmation;
     const { error } = await supabase.from("crew_members").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, crewMembers: d.crewMembers.map(x => x.id === id ? { ...x, ...c } : x) }));

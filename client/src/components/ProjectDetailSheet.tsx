@@ -81,6 +81,10 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const isStaff = effectiveProfile?.role === "staff";
   // Always read the latest project from context so status updates reflect immediately
   const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
+  // Shoot availability confirmation — only flagged crew must confirm.
+  const requiresConfirm = (id: string) => data.crewMembers.find(c => c.id === id)?.requiresShootConfirmation ?? false;
+  const confirmationFor = (id: string) => data.shootConfirmations.find(sc => sc.projectId === project.id && sc.crewMemberId === id);
+  const [confirmingShoot, setConfirmingShoot] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -243,6 +247,26 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   const { crewHours: totalCrewHrs, postHours: totalPostHrs, totalHours: totalHrs } = getProjectWorkedHours(project);
   const myCrewMemberId = effectiveProfile?.crewMemberId || "";
+
+  const handleConfirmShoot = async () => {
+    setConfirmingShoot(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/crew-confirm-shoot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const body = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(body.error || "Couldn't confirm");
+      await refresh();
+      toast.success("Confirmed — thanks!");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't confirm");
+    } finally {
+      setConfirmingShoot(false);
+    }
+  };
 
   // Tracked time from timer
   const trackedEntries = data.timeEntries?.filter(t => t.projectId === project.id && t.endTime) || [];
@@ -990,6 +1014,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                         <div>
                           <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
                           <div className="text-xs text-muted-foreground">{entry.role}</div>
+                          {requiresConfirm(entry.crewMemberId) && (
+                            confirmationFor(entry.crewMemberId)?.confirmedAt
+                              ? <div className="text-[11px] text-green-500 flex items-center gap-1 mt-0.5"><CheckCircle2 className="w-3 h-3" /> Confirmed available</div>
+                              : <div className="text-[11px] text-amber-500 mt-0.5">Awaiting confirmation</div>
+                          )}
                         </div>
                         <div className="text-right">
                           {entry.payType === "flat" ? (
@@ -1038,6 +1067,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                         {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(projectedPay)}
                       </div>
                     </div>
+                    {requiresConfirm(myCrewMemberId) && (
+                      <div className="mt-3 pt-3 border-t border-primary/20">
+                        {confirmationFor(myCrewMemberId)?.confirmedAt ? (
+                          <div className="text-sm text-green-500 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> You confirmed you'll be there</div>
+                        ) : (
+                          <Button onClick={handleConfirmShoot} disabled={confirmingShoot} className="w-full gap-1.5">
+                            <CheckCircle2 className="w-4 h-4" /> {confirmingShoot ? "Confirming…" : "Confirm I'll be there"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : null;
               })()

@@ -392,6 +392,9 @@ export interface CrewMember {
   taxIdType?: "ssn" | "ein" | ""; // type of tax ID
   w9Url?: string; // URL to uploaded W-9 document in Supabase Storage
   w9SubmittedAt?: string | null; // when the staff member completed + signed their W-9 (onboarding)
+  // When true, this crew member must tap "Confirm I'll be there" for shoots
+  // they're assigned to; the owner sees confirmed vs awaiting.
+  requiresShootConfirmation?: boolean;
   // Stripe direct-deposit payouts (their Express connected account + whether
   // onboarding is complete / transfers are active). Set server-side.
   stripeAccountId?: string;
@@ -1002,6 +1005,18 @@ export interface StaffAgreement {
   createdAt: string;
 }
 
+// A flagged crew member's confirmation that they're available for a specific
+// shoot. One row per (project, crew member). notifiedAt = when we first asked;
+// confirmedAt set once they confirm (null = still awaiting).
+export interface ShootConfirmation {
+  id: string;
+  projectId: string;
+  crewMemberId: string;
+  notifiedAt: string | null;
+  confirmedAt: string | null;
+  createdAt: string;
+}
+
 // Extra signers beyond the always-present client + owner. Each gets their
 // own sign URL via a unique signToken so the UX matches what the primary
 // client sees today. Stored inline on the contract row as JSONB.
@@ -1582,6 +1597,7 @@ export interface AppData {
   contractTemplates: ContractTemplate[];
   contracts: Contract[];
   staffAgreements: StaffAgreement[];
+  shootConfirmations: ShootConfirmation[];
   proposalTemplates: ProposalTemplate[];
   proposals: Proposal[];
   pipelineLeads: PipelineLead[];

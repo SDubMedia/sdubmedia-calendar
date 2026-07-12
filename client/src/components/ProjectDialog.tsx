@@ -777,9 +777,22 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       billToId: billToId || null,
       products,
     };
+    // Notify flagged crew to confirm availability (only if the org uses it).
+    const notifyConfirm = async (pid: string) => {
+      if (!data.crewMembers.some(c => c.requiresShootConfirmation)) return;
+      try {
+        const token = await getAuthToken();
+        await fetch("/api/notify-shoot-confirmations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId: pid }),
+        });
+      } catch { /* non-fatal */ }
+    };
     try {
       if (isEdit && project) {
         await updateProject(project.id, payload);
+        void notifyConfirm(project.id);
         toast.success("Project updated");
       } else {
         const newProject = await addProject(payload);
@@ -787,6 +800,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
         if (isRealEstate) {
           try { await createReShootGallery(newProject.id, propertyAddress.trim()); } catch { /* non-fatal */ }
         }
+        void notifyConfirm(newProject.id);
         try { localStorage.removeItem(PROJECT_DRAFT_KEY); } catch { /* ignore */ }
         toast.success("Project created");
         if (onCreated) onCreated(newProject);
