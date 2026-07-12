@@ -23,6 +23,14 @@ function formatICalDate(date: string, time?: string): string {
   return d;
 }
 
+// All-day events use an EXCLUSIVE end date (the day after), per RFC 5545.
+// Emitting DTEND is what stops Apple/Google from rendering the event blank.
+function nextDayDate(date: string): string {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Auth via query param (calendar apps can't send headers)
   const key = req.query.key as string;
@@ -49,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Minimal row shapes for the .ics builder — enough for the fields we read.
   type ProjectRow = { id: string; client_id: string; project_type_id: string; location_id: string; date: string; start_time: string | null; end_time: string | null; notes: string | null };
-  type PersonalEventRow = { id: string; title: string; date: string; start_time: string | null; end_time: string | null; notes: string | null };
+  type PersonalEventRow = { id: string; title: string; date: string; start_time: string | null; end_time: string | null; notes: string | null; location: string | null };
   type ClientRow = { id: string; company: string };
   type TypeRow = { id: string; name: string };
   type LocationRow = { id: string; name: string; address: string; city: string; state: string };
@@ -104,6 +112,7 @@ SUMMARY:${esc(summary)}`;
       vevent += `\nDTEND:${formatICalDate(p.date, p.end_time)}`;
     } else {
       vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(p.date)}`;
+      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(p.date)}`;
     }
 
     if (loc) {
@@ -135,10 +144,9 @@ SUMMARY:${esc(e.title || "Event")}`;
     if (e.start_time && e.end_time) {
       vevent += `\nDTSTART:${formatICalDate(e.date, e.start_time)}`;
       vevent += `\nDTEND:${formatICalDate(e.date, e.end_time)}`;
-    } else if (e.all_day) {
-      vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(e.date)}`;
     } else {
       vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(e.date)}`;
+      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(e.date)}`;
     }
 
     if (e.location) vevent += `\nLOCATION:${esc(e.location)}`;
@@ -162,6 +170,7 @@ SUMMARY:${esc(summary)}`;
       vevent += `\nDTEND:${formatICalDate(m.date, m.end_time)}`;
     } else {
       vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(m.date)}`;
+      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(m.date)}`;
     }
 
     const where = m.meeting_address || m.location_text || "";
@@ -183,8 +192,11 @@ X-WR-TIMEZONE:America/Chicago
 ${events.join("\n")}
 END:VCALENDAR`;
 
+  // RFC 5545 requires CRLF line endings; the feed is built with \n, so normalize.
+  const body = ical.replace(/\r?\n/g, "\r\n");
+
   res.setHeader("Content-Type", "text/calendar; charset=utf-8");
   res.setHeader("Content-Disposition", "inline; filename=slate.ics");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  return res.status(200).send(ical);
+  return res.status(200).send(body);
 }
