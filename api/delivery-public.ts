@@ -180,6 +180,10 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
   const filesWithUrls = fileRows.map((f) => {
     const isVideo = f.media_type === "video";
+    // A download link that tells R2 to serve the file as an attachment. The
+    // browser streams it straight to disk — critical for videos, which are far
+    // too large to fetch into memory and ZIP client-side like photos.
+    const safeName = (f.original_name || "download").replace(/["\\\r\n]/g, "");
     return {
       id: f.id,
       originalName: f.original_name,
@@ -191,6 +195,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       mediaType: isVideo ? "video" : "image",
       durationSeconds: f.duration_seconds ?? null,
       url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
+      downloadUrl: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600, responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` } }) : "",
       thumbnailUrl: isVideo && f.thumbnail_storage_path && r2Configured()
         ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
         : "",

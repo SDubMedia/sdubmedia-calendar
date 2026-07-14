@@ -27,6 +27,9 @@ interface FileItem {
   mimeType: string;
   position: number;
   url: string;
+  // Attachment-forced link (Content-Disposition) that streams straight to disk.
+  // Used for videos, which are too large to pull into memory like photos.
+  downloadUrl?: string;
   // Server returns these for video files (otherwise "image" / "" / null).
   mediaType?: "image" | "video";
   durationSeconds?: number | null;
@@ -351,38 +354,52 @@ export default function DeliverGalleryPage() {
 
   async function downloadAll() {
     if (files.length === 0) return;
+    // Videos are streamed to disk individually; only photos go through the
+    // in-memory client-side ZIP (they're small). This keeps a big video from
+    // ever being fetched into memory, which is what breaks download-all today.
+    const videos = files.filter((f) => f.mediaType === "video");
+    const photos = files.filter((f) => f.mediaType !== "video");
     setZipping(true);
     try {
-      // Lazy-load JSZip from CDN — no bundle bloat for clients who don't use this
-      if (!window.JSZip) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error("Failed to load ZIP library"));
-          document.head.appendChild(s);
-        });
+      // Stream each video straight to disk. A short gap keeps the browser from
+      // collapsing several rapid-fire downloads into one.
+      for (const v of videos) {
+        streamToDisk(v.downloadUrl || v.url);
+        if (videos.length > 1) await new Promise((r) => setTimeout(r, 800));
       }
-      const JSZipCtor = (window.JSZip as unknown as { new(): { file: (n: string, b: Blob) => void; generateAsync: (o: { type: "blob" }) => Promise<Blob> } });
-      const zip = new JSZipCtor();
-      // Fetch files in parallel batches of 4 to avoid hammering R2
-      const batchSize = 4;
-      for (let i = 0; i < files.length; i += batchSize) {
-        const batch = files.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (f) => {
-          const r = await fetch(f.url);
-          if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
-          const blob = await r.blob();
-          zip.file(f.originalName, blob);
-        }));
+
+      if (photos.length > 0) {
+        // Lazy-load JSZip from CDN — no bundle bloat for clients who don't use this
+        if (!window.JSZip) {
+          await new Promise<void>((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error("Failed to load ZIP library"));
+            document.head.appendChild(s);
+          });
+        }
+        const JSZipCtor = (window.JSZip as unknown as { new(): { file: (n: string, b: Blob) => void; generateAsync: (o: { type: "blob" }) => Promise<Blob> } });
+        const zip = new JSZipCtor();
+        // Fetch files in parallel batches of 4 to avoid hammering R2
+        const batchSize = 4;
+        for (let i = 0; i < photos.length; i += batchSize) {
+          const batch = photos.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (f) => {
+            const r = await fetch(f.url);
+            if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
+            const blob = await r.blob();
+            zip.file(f.originalName, blob);
+          }));
+        }
+        const blob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
       }
-      const blob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
     } catch (err) {
       toast.error("Download failed", { description: err instanceof Error ? err.message : "Try again" });
     } finally {
@@ -396,7 +413,25 @@ export default function DeliverGalleryPage() {
   const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files[0] || null;
   const coverUrl = coverFile?.url || "";
 
+  // Kick off a direct, attachment-forced download that the browser streams to
+  // disk — no blob held in memory, so it works for files of any size.
+  function streamToDisk(url: string) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   async function downloadOne(f: FileItem) {
+    // Videos stream straight to disk via their attachment link — pulling a
+    // multi-hundred-MB video into a blob first would run mobile Safari out of
+    // memory. Photos keep the blob path (forces a save even cross-origin).
+    if (f.mediaType === "video" && f.downloadUrl) {
+      streamToDisk(f.downloadUrl);
+      return;
+    }
     try {
       const res = await fetch(f.url);
       const blob = await res.blob();
@@ -601,7 +636,14 @@ export default function DeliverGalleryPage() {
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
           <button onClick={downloadAll} disabled={zipping} className="inline-flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 disabled:opacity-50">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {zipping ? "Preparing…" : `Download all ${files.length} photo${files.length === 1 ? "" : "s"}`}
+            {zipping ? "Preparing…" : (() => {
+              const v = files.filter((f) => f.mediaType === "video").length;
+              const p = files.length - v;
+              const parts: string[] = [];
+              if (p) parts.push(`${p} photo${p === 1 ? "" : "s"}`);
+              if (v) parts.push(`${v} video${v === 1 ? "" : "s"}`);
+              return `Download all ${parts.join(" + ")}`;
+            })()}
           </button>
         </div>
       )}
