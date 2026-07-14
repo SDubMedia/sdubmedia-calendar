@@ -18,6 +18,17 @@ export function formatPhoneInput(value: string): string {
   return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
+/**
+ * Build a maps link for an address, preferring the native app per platform:
+ * Apple Maps on iPhone/iPad, Google Maps everywhere else. Both universal links
+ * hand off to the installed app on mobile and open the web map on desktop.
+ */
+export function mapsUrlFor(query: string): string {
+  const q = encodeURIComponent(query.trim());
+  const isApple = typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return isApple ? `https://maps.apple.com/?q=${q}` : `https://maps.google.com/?q=${q}`;
+}
+
 /** Format a stored phone for display (dashes). Leaves odd-length input as-is. */
 export function formatPhoneDisplay(phone: string): string {
   const d = (phone || "").replace(/\D/g, "");

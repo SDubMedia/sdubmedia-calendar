@@ -15,6 +15,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { Location } from "@/lib/types";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
+import { mapsUrlFor } from "@/lib/utils";
 
 interface LocationFormData {
   name: string;
@@ -133,7 +134,7 @@ export default function LocationsPage() {
   };
 
   const getMapsUrl = (loc: Location) =>
-    `https://maps.google.com/?q=${encodeURIComponent(`${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`)}`;
+    mapsUrlFor(`${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`);
 
   return (
     <div className="flex flex-col h-full">

@@ -19,7 +19,7 @@ import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus, Invoice } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
-import { cn } from "@/lib/utils";
+import { cn, mapsUrlFor } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
@@ -741,9 +741,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     }
   };
 
-  const mapsUrl = location
-    ? `https://maps.google.com/?q=${encodeURIComponent(`${location.address}, ${location.city}, ${location.state} ${location.zip}`)}`
-    : null;
+  // Full street address for display + maps handoff. Only the pieces that exist,
+  // joined cleanly so a location with just a street still reads correctly.
+  const locationAddress = location
+    ? [location.address, [location.city, location.state].filter(Boolean).join(", "), location.zip]
+        .map((p) => (p || "").trim())
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  // Apple Maps on iPhone, Google Maps elsewhere. Prefer the typed address;
+  // fall back to the location name so a named place with no address still maps.
+  const mapsUrl = location ? mapsUrlFor(locationAddress || location.name || "") : null;
 
   return (
     <>
@@ -873,7 +881,14 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <MapPin className="w-3.5 h-3.5" /> Location
                 </div>
-                <div className="text-sm font-medium truncate">{location?.name ?? "—"}</div>
+                {mapsUrl ? (
+                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-primary transition-colors">
+                    <div className="text-sm font-medium truncate">{location?.name ?? "—"}</div>
+                    {locationAddress && <div className="text-xs text-muted-foreground break-words">{locationAddress}</div>}
+                  </a>
+                ) : (
+                  <div className="text-sm font-medium truncate">{location?.name ?? "—"}</div>
+                )}
                 <div className="flex items-center gap-3">
                   {mapsUrl && (
                     <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline">
