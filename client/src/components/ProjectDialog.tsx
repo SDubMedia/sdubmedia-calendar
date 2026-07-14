@@ -128,6 +128,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "upcoming");
   const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId));
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
+  // Raw text for the hours inputs while typing, so intermediate decimal states
+  // like "0." or "1." survive (a number model would strip the point and block
+  // half-hour entries). The numeric hoursWorked stays authoritative for totals.
+  const [crewHoursText, setCrewHoursText] = useState<Record<number, string>>({});
+  const [postHoursText, setPostHoursText] = useState<Record<number, string>>({});
   const [editTypes, setEditTypes] = useState<string[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
@@ -178,6 +183,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   useEffect(() => {
     // Only reset form state when dialog transitions from closed → open
     if (open && !wasOpen.current) {
+      // Fresh open: drop any in-progress hours text from a prior project so it
+      // doesn't shadow the numeric values being loaded here.
+      setCrewHoursText({}); setPostHoursText({});
       // Resume a half-entered project from the saved draft.
       if (resume && !project) {
         let d: any = null;
@@ -1282,7 +1290,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   </div>
                   <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
-                    <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updateCrewEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0" value={crewHoursText[idx] ?? (entry.hoursWorked || "")} onChange={(e) => { let v = e.target.value.replace(/[^\d.]/g, ""); const dot = v.indexOf("."); if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, ""); setCrewHoursText((prev) => ({ ...prev, [idx]: v })); updateCrewEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
@@ -1429,7 +1437,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   </div>
                   <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">Hours</Label>
-                    <Input type="text" inputMode="decimal" placeholder="0" value={entry.hoursWorked || ""} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); updatePostEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
+                    <Input type="text" inputMode="decimal" placeholder="0" value={postHoursText[idx] ?? (entry.hoursWorked || "")} onChange={(e) => { let v = e.target.value.replace(/[^\d.]/g, ""); const dot = v.indexOf("."); if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, ""); setPostHoursText((prev) => ({ ...prev, [idx]: v })); updatePostEntry(idx, "hoursWorked", v === "" ? 0 : parseFloat(v) || 0); }} className="bg-secondary border-border h-8 text-xs" />
                   </div>
                   <div className="flex-1 sm:flex-none min-w-0">
                     <Label className="text-[10px] text-muted-foreground sm:hidden">{entry.payType === "flat" ? "Flat $" : "Pay/hr ($)"}</Label>
