@@ -1,17 +1,17 @@
 // ============================================================
 // AgentQuickView — tap an agent's name on the Brokers page to pull them up:
-// see what they have on the production calendar (their shoots) and book a new
-// shoot in one tap. Read-only list; editing details still happens via the
-// agent's profile (the pencil). Owner-facing.
+// see their contact info (tap to email/call), what they have on the production
+// calendar (their shoots), and book a new shoot in one tap. Read-only; editing
+// details still happens via the agent's profile (the pencil). Owner-facing.
 // ============================================================
 
 import { useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Building2, CalendarPlus, MapPin, CalendarClock, ChevronRight } from "lucide-react";
+import { Building2, CalendarPlus, MapPin, CalendarClock, ChevronRight, Mail, Phone } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { cn } from "@/lib/utils";
+import { cn, formatPhoneDisplay } from "@/lib/utils";
 import type { Client, Project } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -103,6 +103,21 @@ export default function AgentQuickView({ agent, onClose, onBook, onOpenShoot }: 
             <p className="text-xs text-muted-foreground flex items-center gap-1"><Building2 className="w-3 h-3" /> {broker.company}</p>
           )}
         </DialogHeader>
+
+        {(agent?.email || agent?.phone) && (
+          <div className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/40 px-3 py-2">
+            {agent?.email && (
+              <a href={`mailto:${agent.email}`} className="text-sm text-primary flex items-center gap-2 hover:underline min-w-0">
+                <Mail className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{agent.email}</span>
+              </a>
+            )}
+            {agent?.phone && (
+              <a href={`tel:${agent.phone}`} className="text-sm text-primary flex items-center gap-2 hover:underline">
+                <Phone className="w-3.5 h-3.5 shrink-0" /> {formatPhoneDisplay(agent.phone)}
+              </a>
+            )}
+          </div>
+        )}
 
         <Button onClick={() => agent && onBook(agent.id)} className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
           <CalendarPlus className="w-4 h-4" /> Book a shoot
