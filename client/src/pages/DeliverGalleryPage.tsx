@@ -740,10 +740,10 @@ export default function DeliverGalleryPage() {
                 />
               )}
               {/* Hover gradient for icon legibility */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity pointer-events-none" />
 
               {/* Hover icons — bottom-right cluster */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
                 {delivery.printsEnabled && !isVideo && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setPrintFor(f); }}
