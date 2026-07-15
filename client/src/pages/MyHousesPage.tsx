@@ -228,11 +228,14 @@ export default function MyHousesPage() {
 
   // Agreement gate. Agents fold it into the card step; brokers accept standalone.
   const [agreementOpen, setAgreementOpen] = useState(false);
-  const [agreementNext, setAgreementNext] = useState<"card" | "invite" | null>(null);
+  const [agreementNext, setAgreementNext] = useState<"card" | "invite" | "book" | null>(null);
   // Read-only "view terms anytime" — separate from the accept flow above.
   const [viewTermsOpen, setViewTermsOpen] = useState(false);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
-  const openAgreement = (next: "card" | "invite" | null) => { setAgreementNext(next); setAgreementOpen(true); };
+  const openAgreement = (next: "card" | "invite" | "book" | null) => { setAgreementNext(next); setAgreementOpen(true); };
+  // Brokers can request a shoot too (billed to the brokerage). Gate on the
+  // one-time agreement first, same as agents.
+  const startBrokerBooking = () => { if (needsAgreement) openAgreement("book"); else setRequestOpen(true); };
   // Agent taps "Add a card to book": agree first (if needed), then Stripe.
   const startCardFlow = () => { if (needsAgreement) openAgreement("card"); else handleAddCard(); };
   // Broker taps "Invite agent": agree first (if needed), then invite.
@@ -246,9 +249,14 @@ export default function MyHousesPage() {
           <p className="text-sm text-muted-foreground mt-0.5">{isBroker ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} · ${houses.length} shoot${houses.length !== 1 ? "s" : ""}` : `${houses.length} shoot${houses.length !== 1 ? "s" : ""}`}</p>
         </div>
         {isBroker ? (
-          <Button onClick={startInvite} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-            <UserPlus className="w-4 h-4" /> Invite agent
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button onClick={startBrokerBooking} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+              <Plus className="w-4 h-4" /> Request a shoot
+            </Button>
+            <Button onClick={startInvite} variant="outline" className="gap-2">
+              <UserPlus className="w-4 h-4" /> Invite agent
+            </Button>
+          </div>
         ) : needsCard ? (
           <Button onClick={startCardFlow} disabled={addingCard} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             <CreditCard className="w-4 h-4" /> {addingCard ? "Opening…" : "Add a card to book"}
@@ -493,7 +501,7 @@ export default function MyHousesPage() {
         onClose={() => setAgreementOpen(false)}
         kind={isBroker ? "broker" : "agent"}
         agreeLabel={agreementNext === "card" ? "Agree & add card" : "Agree"}
-        onAccepted={() => { setJustAccepted(true); if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); }}
+        onAccepted={() => { setJustAccepted(true); if (agreementNext === "card") handleAddCard(); else if (agreementNext === "invite") setInviteOpen(true); else if (agreementNext === "book") setRequestOpen(true); }}
       />
       <AgreementDialog open={viewTermsOpen} onClose={() => setViewTermsOpen(false)} kind={isBroker ? "broker" : "agent"} readOnly />
     </div>
