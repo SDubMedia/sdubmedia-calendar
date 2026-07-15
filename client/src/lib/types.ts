@@ -333,6 +333,9 @@ export interface Client {
   // back-compat with rows saved before this column.
   clientType?: "standard" | "broker" | "agent" | "photography";
   brokerId?: string | null; // set on agents → their broker client's id
+  // For a brokerage (clientType='broker') with multiple managing-broker logins:
+  // the user_profiles.id of the one designated principal (brokerage admin).
+  principalBrokerUserId?: string | null;
   // Agent card-on-file (saved, not charged — a fallback if a broker doesn't pay).
   stripeCustomerId?: string | null;
   cardOnFile?: boolean;

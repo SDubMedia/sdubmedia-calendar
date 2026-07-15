@@ -187,6 +187,7 @@ function rowToClient(r: any): Client {
     brandNotes: r.brand_notes || "",
     clientType: r.client_type || "standard",
     brokerId: r.broker_id || null,
+    principalBrokerUserId: r.principal_broker_user_id || null,
     stripeCustomerId: r.stripe_customer_id || null,
     cardOnFile: r.card_on_file === true,
     cardBrand: r.card_brand || null,

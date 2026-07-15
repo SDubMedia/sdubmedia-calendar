@@ -14,6 +14,7 @@ import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import type { Client, Project } from "@/lib/types";
+import ManagingBrokersSection from "@/components/ManagingBrokersSection";
 
 const STATUS_LABELS: Record<string, string> = {
   tentative: "Tentative", upcoming: "Upcoming", filming_done: "Filmed",
@@ -162,6 +163,9 @@ export default function BrokerDetailSheet({ broker, onClose, onOpenShoot, onGene
         )}
 
         <div className="max-h-[45vh] overflow-y-auto space-y-4">
+          {/* Managing broker logins for this brokerage */}
+          {broker && <ManagingBrokersSection brokerId={broker.id} brokerCompany={broker.company} />}
+
           {/* Shoots grouped by agent */}
           <div>
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Shoots this {period} <span className="normal-case font-normal">· tap to edit</span></div>
