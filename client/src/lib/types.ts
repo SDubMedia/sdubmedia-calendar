@@ -623,6 +623,18 @@ export interface MarketingExpense {
   createdAt: string;
 }
 
+// One entry in a project's audit trail (created / moved status / moved date).
+export interface ProjectHistoryEntry {
+  id: string;
+  projectId: string;
+  actorUserId: string | null;
+  actorName: string;
+  action: "created" | "status_changed" | "date_changed" | "time_changed";
+  fromValue: string | null;
+  toValue: string | null;
+  createdAt: string;
+}
+
 // Monthly billing summary for a client
 export interface MonthlyBillingSummary {
   year: number;

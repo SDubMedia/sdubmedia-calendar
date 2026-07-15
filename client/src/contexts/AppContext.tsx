@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -39,6 +39,7 @@ interface AppContextValue {
   addProject: (p: Omit<Project, "id" | "createdAt">) => Promise<Project>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
+  fetchProjectHistory: (projectId: string) => Promise<ProjectHistoryEntry[]>;
   // Marketing Expenses
   addMarketingExpense: (e: Omit<MarketingExpense, "id" | "createdAt">) => Promise<MarketingExpense>;
   deleteMarketingExpense: (id: string) => Promise<void>;
@@ -2545,6 +2546,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ---- Projects ----
+  // Append entries to a project's audit trail (best-effort — a logging failure
+  // must never block the underlying edit). Actor is the REAL signed-in user,
+  // not an impersonated one, so the trail reflects who actually did it.
+  const logProjectHistory = useCallback(async (
+    projectId: string,
+    entries: Array<{ action: ProjectHistoryEntry["action"]; from?: string | null; to?: string | null }>,
+  ) => {
+    if (!entries.length) return;
+    const rows = entries.map(e => ({
+      id: nanoid(12),
+      org_id: orgId,
+      project_id: projectId,
+      actor_user_id: profile?.id || null,
+      actor_name: profile?.name || "",
+      action: e.action,
+      from_value: e.from ?? null,
+      to_value: e.to ?? null,
+    }));
+    const { error } = await supabase.from("project_history").insert(rows);
+    if (error) console.error("project history log failed:", error.message);
+  }, [orgId, profile]);
+
+  const fetchProjectHistory = useCallback(async (projectId: string): Promise<ProjectHistoryEntry[]> => {
+    const { data, error } = await supabase
+      .from("project_history").select("*").eq("project_id", projectId).order("created_at", { ascending: false });
+    if (error) { console.error("fetch project history failed:", error.message); return []; }
+    return (data || []).map((r: any) => ({
+      id: r.id,
+      projectId: r.project_id,
+      actorUserId: r.actor_user_id || null,
+      actorName: r.actor_name || "",
+      action: r.action,
+      fromValue: r.from_value ?? null,
+      toValue: r.to_value ?? null,
+      createdAt: r.created_at,
+    }));
+  }, []);
+
   const addProject = useCallback(async (p: Omit<Project, "id" | "createdAt">): Promise<Project> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("projects").insert({
@@ -2580,10 +2619,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
     const project = rowToProject(row);
     setRawData(d => ({ ...d, projects: [...d.projects, project].sort((a, b) => a.date.localeCompare(b.date)) }));
+    // Audit trail: record who created it (and the initial date it was set to).
+    logProjectHistory(id, [{ action: "created", to: project.date }]);
     return project;
-  }, [orgId]);
+  }, [orgId, logProjectHistory]);
 
   const updateProject = useCallback(async (id: string, p: Partial<Project>) => {
+    // Snapshot the current values so we can log what actually changed.
+    const prev = rawData.projects.find(x => x.id === id);
     const patch: any = {};
     if (p.clientId !== undefined) patch.client_id = p.clientId;
     if (p.projectTypeId !== undefined) patch.project_type_id = p.projectTypeId;
@@ -2635,6 +2678,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const normalized = rowToProject(updated);
     setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
 
+    // Audit trail: log status / date / time moves (only real changes).
+    if (prev) {
+      const hist: Array<{ action: ProjectHistoryEntry["action"]; from?: string | null; to?: string | null }> = [];
+      if (patch.status !== undefined && patch.status !== prev.status) hist.push({ action: "status_changed", from: prev.status, to: patch.status });
+      if (patch.date !== undefined && patch.date !== prev.date) hist.push({ action: "date_changed", from: prev.date, to: patch.date });
+      if (patch.start_time !== undefined && patch.start_time !== prev.startTime) hist.push({ action: "time_changed", from: prev.startTime, to: patch.start_time });
+      logProjectHistory(id, hist);
+    }
+
     // Notify owners/partners when staff advances a project status. The
     // owner moving things themselves doesn't need a ping (they already
     // know). Best-effort — never block the update on a notification fail.
@@ -2663,7 +2715,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, allProfiles]);
+  }, [profile, allProfiles, logProjectHistory]);
 
   const deleteProject = useCallback(async (id: string) => {
     const { error } = await supabase.from("projects").delete().eq("id", id);
@@ -3161,7 +3213,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addLocation, updateLocation, deleteLocation,
       addProjectType, updateProjectType, deleteProjectType,
       addEditType, updateEditType, deleteEditType,
-      addProject, updateProject, deleteProject,
+      addProject, updateProject, deleteProject, fetchProjectHistory,
       addMarketingExpense, deleteMarketingExpense,
       addInvoice, updateInvoice, deleteInvoice,
       addContractorInvoice, updateContractorInvoice, deleteContractorInvoice,

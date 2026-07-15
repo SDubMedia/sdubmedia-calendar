@@ -18,6 +18,7 @@ import { Plus, Trash2, ArrowLeft, Save, ChevronRight, Images, Upload, ArrowUpRig
 import { useLocation } from "wouter";
 import { getAuthToken } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
+import ProjectHistorySection from "@/components/ProjectHistorySection";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { toUploadableImage } from "@/lib/heic";
 import { formatPhoneDisplay } from "@/lib/utils";
@@ -1822,6 +1823,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               <p className="text-[11px] text-muted-foreground">Photos upload straight into this shoot's private gallery. "Open" takes you there to arrange &amp; deliver.</p>
             </div>
           )}
+
+          {/* Audit trail — who created it and every status/date/time move. */}
+          {isEdit && project && <ProjectHistorySection projectId={project.id} />}
         </div>
 
         <DialogFooter className="shrink-0 bg-card pt-3 pb-3 -mx-6 px-6 border-t border-border flex-row items-center gap-3 sm:gap-3">
