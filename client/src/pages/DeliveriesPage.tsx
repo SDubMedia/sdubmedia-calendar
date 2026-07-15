@@ -698,8 +698,31 @@ function DeliveryDetail({ id }: { id: string }) {
   const deliverToAgent = async () => {
     await setDeliveryStatus(id, "delivered");
     notifyGallery("agent");
+    // If this shoot belongs to a brokerage, automatically notify every managing
+    // broker too — no button. Fires quietly so a brokerage-less shoot is a no-op.
+    const shootClient = project ? data.clients.find(c => c.id === project.clientId) : null;
+    const hasBrokerage = shootClient?.clientType === "broker" || (shootClient?.clientType === "agent" && !!shootClient.brokerId);
+    if (hasBrokerage) notifyBrokersSilently();
     if (canChargeOnDelivery && !charging && await confirm({ title: "Charge card on file?", description: `Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`, confirmLabel: "Charge card" })) {
       await chargeOnDelivery();
+    }
+  };
+
+  // Best-effort auto fan-out to the brokerage's managing brokers on delivery.
+  const notifyBrokersSilently = async () => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-gallery-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ deliveryId: id, recipient: "broker" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        console.error("Auto broker-notify failed:", d.error || res.status);
+      }
+    } catch (e) {
+      console.error("Auto broker-notify failed:", e);
     }
   };
 
