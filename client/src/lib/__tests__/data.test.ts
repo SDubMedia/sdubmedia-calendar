@@ -406,6 +406,26 @@ describe("getProjectInvoiceAmount", () => {
     const p = makeProject({ projectTypeId: "pt-1", projectRate: 1000 });
     expect(getProjectInvoiceAmount(p, client)).toBe(1000);
   });
+
+  it("hourly billing adds services on top of the labor", () => {
+    const client = makeClient({ billingModel: "hourly", billingRatePerHour: 200 });
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 50 }],
+      services: [{ serviceId: "s1", variantId: null, label: "Logo", price: 200 }],
+    });
+    // 4 hrs × $200 (=$800) PLUS the $200 logo add-on = $1000
+    expect(getProjectInvoiceAmount(p, client)).toBe(1000);
+  });
+
+  it("per-project bundles are unchanged: services define the price, labor not billed", () => {
+    const client = makeClient({ billingModel: "per_project", perProjectRate: 500 });
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Photographer", hoursWorked: 2, payRatePerHour: 50 }],
+      services: [{ serviceId: "s1", variantId: null, label: "Real Estate Photos", price: 200 }],
+    });
+    // Bundle pricing wins — just the $200 service, the 2 photographer hours are cost only
+    expect(getProjectInvoiceAmount(p, client)).toBe(200);
+  });
 });
 
 // ---- calcHoursWorked ----

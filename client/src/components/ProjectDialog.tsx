@@ -1489,21 +1489,24 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             // getProjectSubtotal but using local state instead of a
             // saved Project row.
             const effectiveModel = billingModelOverride ?? selectedClient.billingModel;
+            const serviceTotal = bundleServices.reduce((s, x) => s + Number(x.price ?? 0), 0);
             let subtotal: number;
-            if (bundleServices.length > 0) {
-              // Service-bundle pricing wins — matches getProjectSubtotal and the
-              // invoice, so the discount applies to the real bundle total.
-              subtotal = bundleServices.reduce((s, x) => s + Number(x.price ?? 0), 0);
-            } else if (effectiveModel === "per_project") {
-              const overrideRate = (billingModelOverride && billingRateOverride) || 0;
-              const typeRate = selectedClient.projectTypeRates?.find(r => r.projectTypeId === projectTypeId);
-              subtotal = overrideRate
-                || (projectRate ?? 0)
-                || Number(typeRate?.rate ?? selectedClient.perProjectRate ?? 0);
+            if (effectiveModel === "per_project") {
+              // Real-estate / flat bundles: services define the price (untouched).
+              if (bundleServices.length > 0) {
+                subtotal = serviceTotal;
+              } else {
+                const overrideRate = (billingModelOverride && billingRateOverride) || 0;
+                const typeRate = selectedClient.projectTypeRates?.find(r => r.projectTypeId === projectTypeId);
+                subtotal = overrideRate
+                  || (projectRate ?? 0)
+                  || Number(typeRate?.rate ?? selectedClient.perProjectRate ?? 0);
+              }
             } else {
+              // Hourly: labor hours × rate PLUS any services as add-ons.
               const hourly = billingRateOverride ?? selectedClient.billingRatePerHour ?? 0;
               const totalHours = [...crew, ...postProduction].reduce((s, e) => s + Number(e.hoursWorked || 0), 0);
-              subtotal = totalHours * Number(hourly);
+              subtotal = totalHours * Number(hourly) + serviceTotal;
             }
             const discount = discountAmount > 0
               ? (discountType === "percent"

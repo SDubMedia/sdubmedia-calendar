@@ -129,11 +129,13 @@ export function buildLineItems(
       : null;
     const projectLabel = brokerPrefix || baseLabel;
 
-    // Service bundle pricing wins if the project has selected services.
-    // Each service becomes its own line item with the denormalized label
-    // and price snapshot from when the project was created/edited. This
-    // bypasses both the per_project and hourly branches below.
-    if (p.services && p.services.length > 0) {
+    const effectiveModel = p.billingModel ?? pricingClient.billingModel;
+
+    // Real-estate / flat bundles (per-project billing): the selected services
+    // define the whole price and labor isn't billed to the client. Each service
+    // is its own line item. Hourly projects fall through and bill labor + these
+    // services as add-ons instead (handled in the hourly branch below).
+    if (p.services && p.services.length > 0 && effectiveModel === "per_project") {
       // On a broker invoice, lead with a header row naming the agent + property,
       // then list each service (Photography, Videography, Drone…) on its own
       // indented line beneath it so the broker can read the breakdown at a
@@ -183,7 +185,6 @@ export function buildLineItems(
       continue;
     }
 
-    const effectiveModel = p.billingModel ?? pricingClient.billingModel;
     const projectSubtotal = getProjectSubtotal(p, pricingClient);
     if (effectiveModel === "per_project") {
       // Flat-rate projects show a single line item with the flat amount
@@ -222,6 +223,18 @@ export function buildLineItems(
           projectId: p.id, date: p.date,
           description: projectLabel,
           quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
+        });
+      }
+
+      // À-la-carte services on an hourly project bill on top of the labor,
+      // each as its own line (e.g. a logo added to an hourly video shoot).
+      for (const svc of (p.services || [])) {
+        items.push({
+          projectId: p.id, date: p.date,
+          description: svc.label || projectLabel,
+          quantity: 1,
+          unitPrice: Number(svc.price || 0),
+          amount: Number(svc.price || 0),
         });
       }
     }

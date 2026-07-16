@@ -593,21 +593,25 @@ export function getProjectBillableHours(project: Project, client: Client): {
 // the "subtotal" displayed in the Edit Project dialog.
 export function getProjectSubtotal(project: Project, client: Client): number {
   if (project.status === "cancelled") return 0;
-  // Service-bundle pricing wins when pieces are selected — the snapshot prices
-  // on the project are the source of truth (same as the invoice builder).
-  if (project.services && project.services.length > 0) {
-    return project.services.reduce((s, x) => s + Number(x.price ?? 0), 0);
-  }
+  const services = project.services || [];
+  const serviceTotal = services.reduce((s, x) => s + Number(x.price ?? 0), 0);
   const effectiveModel = project.billingModel ?? client.billingModel;
+
   if (effectiveModel === "per_project") {
+    // Real-estate / flat bundles: the selected services ARE the price and the
+    // photographer's hours are internal cost only. Leave this untouched.
+    if (services.length > 0) return serviceTotal;
     if (project.billingRate != null && project.billingRate > 0) return project.billingRate;
     if (project.projectRate != null && project.projectRate > 0) return project.projectRate;
     const typeRate = client.projectTypeRates?.find(r => r.projectTypeId === project.projectTypeId);
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
+
+  // Hourly billing: bill the labor hours × rate PLUS any selected services as
+  // add-ons (e.g. a logo on top of an hourly video shoot).
   const { totalBillable } = getProjectBillableHours(project, client);
   const effectiveHourly = project.billingRate ?? client.billingRatePerHour ?? 0;
-  return totalBillable * Number(effectiveHourly);
+  return totalBillable * Number(effectiveHourly) + serviceTotal;
 }
 
 // Computes the discount value (always positive — caller subtracts).
