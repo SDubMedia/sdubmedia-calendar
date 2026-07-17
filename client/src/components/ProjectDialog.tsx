@@ -117,7 +117,7 @@ function readImageDims(file: File): Promise<{ width: number | null; height: numb
 }
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
-  const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, addCrewMember, createReShootGallery, registerDeliveryFile } = useApp();
+  const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, updateClient, addCrewMember, createReShootGallery, registerDeliveryFile, ensureLocationDistances } = useApp();
   const isEdit = !!project;
 
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
@@ -622,6 +622,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     if (!newTypeName.trim()) return;
     try {
       const pt = await addProjectType({ name: newTypeName.trim(), lightweight: false });
+      // If this client restricts which project types they can use, add the new
+      // one to their allow-list — otherwise it's filtered right back out and
+      // "never shows" (e.g. Coldwell, which has a restricted type list).
+      if (selectedClient?.allowedProjectTypeIds?.length) {
+        await updateClient(selectedClient.id, { allowedProjectTypeIds: [...selectedClient.allowedProjectTypeIds, pt.id] });
+      }
       handleProjectTypeChange(pt.id);
       setShowNewType(false);
       setNewTypeName("");
@@ -806,12 +812,15 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       } catch { /* non-fatal */ }
     };
     try {
+      const crewIds = [...crew, ...postProduction].map(c => c.crewMemberId).filter(Boolean);
       if (isEdit && project) {
         await updateProject(project.id, payload);
+        void ensureLocationDistances(finalLocationId || project.locationId, crewIds);
         void notifyConfirm(project.id);
         toast.success("Project updated");
       } else {
         const newProject = await addProject(payload);
+        void ensureLocationDistances(newProject.locationId, crewIds);
         // Real-estate shoots get a private gallery auto-created for uploads.
         if (isRealEstate) {
           try { await createReShootGallery(newProject.id, propertyAddress.trim()); } catch { /* non-fatal */ }
