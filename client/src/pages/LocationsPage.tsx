@@ -94,10 +94,12 @@ export default function LocationsPage() {
   };
 
   async function calculateDistancesForLocation(loc: Location) {
-    const crewWithAddress = data.crewMembers.filter(c => c.homeAddress?.address && c.homeAddress?.city);
-    if (crewWithAddress.length === 0 || !loc.address || !loc.city) return;
+    const crewWithAddress = data.crewMembers.filter(c => c.homeAddress?.address);
+    if (crewWithAddress.length === 0 || !loc.address) return;
 
-    const destination = `${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}`;
+    // One-line addresses (city/state/zip blank) still geocode fine — only the
+    // street address is required.
+    const destination = [loc.address, loc.city, [loc.state, loc.zip].filter(Boolean).join(" ")].map(s => (s || "").trim()).filter(Boolean).join(", ");
     for (const crew of crewWithAddress) {
       const ha = crew.homeAddress!;
       const origin = `${ha.address}, ${ha.city}, ${ha.state} ${ha.zip}`;

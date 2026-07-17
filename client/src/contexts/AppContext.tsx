@@ -82,6 +82,7 @@ interface AppContextValue {
   addComment: (c: Omit<EpisodeComment, "id" | "createdAt">) => Promise<EpisodeComment>;
   // Crew Location Distances
   upsertDistance: (crewMemberId: string, locationId: string, distanceMiles: number, homeBaseId?: string) => Promise<void>;
+  ensureLocationDistances: (locationId: string | null | undefined, crewMemberIds: string[]) => Promise<void>;
   // Manual Trips
   addManualTrip: (t: Omit<ManualTrip, "id" | "createdAt">) => Promise<ManualTrip>;
   updateManualTrip: (id: string, patch: Partial<Omit<ManualTrip, "id" | "createdAt">>) => Promise<void>;
@@ -2369,6 +2370,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [orgId]);
 
+  // Auto-compute the drive from each assigned person's primary home base to the
+  // project's location, so mileage shows up without visiting the Locations page.
+  // Best-effort; skips anyone who already has a distance for this location, and
+  // works with one-line addresses (no separate city/state/zip required).
+  const ensureLocationDistances = useCallback(async (locationId: string | null | undefined, crewMemberIds: string[]) => {
+    if (!locationId) return;
+    const loc = rawData.locations.find(l => l.id === locationId);
+    if (!loc?.address) return;
+    const joinAddr = (a?: string, city?: string, state?: string, zip?: string) =>
+      [a, city, [state, zip].filter(Boolean).join(" ")].map(s => (s || "").trim()).filter(Boolean).join(", ");
+    const destination = joinAddr(loc.address, loc.city, loc.state, loc.zip);
+    const done = new Set<string>();
+    for (const cmId of crewMemberIds) {
+      if (!cmId || done.has(cmId)) continue;
+      done.add(cmId);
+      if (rawData.crewLocationDistances.some(d => d.crewMemberId === cmId && d.locationId === locationId)) continue;
+      const ha = rawData.crewMembers.find(c => c.id === cmId)?.homeAddress;
+      if (!ha?.address) continue;
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) continue;
+        const res = await fetch("/api/calculate-distance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ origin: joinAddr(ha.address, ha.city, ha.state, ha.zip), destination }),
+        });
+        if (res.ok) { const { distanceMiles } = await res.json(); await upsertDistance(cmId, locationId, distanceMiles, "primary"); }
+      } catch (e) { console.error("auto-distance failed:", e); }
+    }
+  }, [rawData, upsertDistance]);
+
   // ---- Manual Trips ----
   const addManualTrip = useCallback(async (t: Omit<ManualTrip, "id" | "createdAt">): Promise<ManualTrip> => {
     const id = nanoid(10);
@@ -3229,7 +3261,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addEpisode, updateEpisode, deleteEpisode,
       fetchMessages, addMessage, fetchEpisodes,
       fetchComments, addComment,
-      upsertDistance,
+      upsertDistance, ensureLocationDistances,
       addManualTrip, updateManualTrip, deleteManualTrip,
       addBusinessExpense, addBusinessExpenses, updateBusinessExpense, deleteBusinessExpense,
       upsertCategoryRule,
