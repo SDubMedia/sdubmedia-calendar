@@ -123,7 +123,7 @@ export default function StaffDashboardPage() {
       });
       // Post-production entries — use editorBilling for photo editors
       p.postProduction.filter(c => c.crewMemberId === crewMemberId).forEach(e => {
-        if (e.role === "Photo Editor" || (p.editorBilling && e.crewMemberId === crewMemberId)) {
+        if (p.editorBilling && (e.role === "Photo Editor" || e.crewMemberId === crewMemberId)) {
           const rate = p.editorBilling?.perImageRate ?? 6;
           const imgs = p.editorBilling?.imageCount ?? 0;
           const isFinalized = p.editorBilling?.finalized === true || p.status === "editing_done" || p.status === "delivered";
