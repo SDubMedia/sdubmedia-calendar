@@ -123,11 +123,6 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const invoiceClient = data.clients.find((c) => c.id === getProjectPayerId(project, clientsById)) ?? client;
   // For an agent's shoot, which brokerage they're under (shown without opening Edit).
   const agentBroker = client?.clientType === "agent" && client.brokerId ? clientsById[client.brokerId] : null;
-  // Flat-rate / service-priced shoots aren't billed by the hour, so the
-  // "retainer hours" summary is meaningless and gets hidden.
-  const isFlatBilled = (project.billingModel ?? client?.billingModel) === "per_project"
-    || (project.projectRate ?? 0) > 0
-    || (project.services?.length ?? 0) > 0;
   const projectGallery = data.deliveries.find(d => d.projectId === project.id);
   const [creatingGallery, setCreatingGallery] = useState(false);
 
@@ -245,7 +240,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   const getCrewName = (id: string) => data.crewMembers.find((c) => c.id === id)?.name ?? "Unknown";
 
-  const { crewHours: totalCrewHrs, postHours: totalPostHrs, totalHours: totalHrs } = getProjectWorkedHours(project);
+  const { totalHours: totalHrs } = getProjectWorkedHours(project);
   const myCrewMemberId = effectiveProfile?.crewMemberId || "";
 
   const handleConfirmShoot = async () => {
@@ -945,22 +940,6 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                       <div className="text-sm text-muted-foreground tabular-nums shrink-0">${Number(p.cost || 0).toFixed(0)}</div>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* Retainer Summary (owner only) — hidden for flat-rate shoots */}
-            {isOwner && !isFlatBilled && (
-              <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Retainer Hours</span>
-                  <span className="text-xl font-bold text-primary tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {Number(totalHrs ?? 0).toFixed(2)} hrs
-                  </span>
-                </div>
-                <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                  <span>Filming: {Number(totalCrewHrs ?? 0).toFixed(2)} hrs</span>
-                  <span>Post: {Number(totalPostHrs ?? 0).toFixed(2)} hrs</span>
                 </div>
               </div>
             )}
