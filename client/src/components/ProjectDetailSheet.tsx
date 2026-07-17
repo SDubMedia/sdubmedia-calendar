@@ -1160,7 +1160,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {project.editTypes.map((et) => (
-                    <Badge key={et} variant="outline" className="text-xs border-border text-muted-foreground">{et}</Badge>
+                    <Badge key={et} variant="outline" className="text-xs border-border text-muted-foreground">
+                      {data.editTypes.find((t) => t.id === et)?.name ?? et}
+                    </Badge>
                   ))}
                 </div>
               </div>
