@@ -296,19 +296,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeOnboarding = useCallback(async () => {
     if (!user) throw new Error("Not authenticated");
-    const { data, error } = await supabase
+    // Flip the local gate FIRST so the app leaves onboarding immediately — a
+    // slow or hung network write (seen on the iOS app) must never trap the user
+    // on the tour with a stuck "Getting Started…" button. The write persists in
+    // the background; the DB is re-read on next load.
+    setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
+    const { error } = await supabase
       .from("user_profiles")
       .update({ has_completed_onboarding: true })
-      .eq("id", user.id)
-      .select("id")
-      .maybeSingle();
+      .eq("id", user.id);
     if (error) throw new Error(error.message);
-    if (!data) {
-      // Auth user exists but no user_profiles row — account is in a broken state.
-      // Common cause: profile was manually deleted, or signup trigger didn't fire.
-      throw new Error("Your account isn't fully set up. Please sign out and sign up again.");
-    }
-    setProfile(p => p ? { ...p, hasCompletedOnboarding: true } : p);
   }, [user]);
 
   // Staff onboarding is persisted server-side by /api/w9-submit (the final
