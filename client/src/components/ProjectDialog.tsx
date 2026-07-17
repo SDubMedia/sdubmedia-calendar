@@ -21,7 +21,7 @@ import { useApp } from "@/contexts/AppContext";
 import ProjectHistorySection from "@/components/ProjectHistorySection";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { toUploadableImage } from "@/lib/heic";
-import { formatPhoneDisplay } from "@/lib/utils";
+import { formatPhoneDisplay, parsePastedAddress } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
@@ -1017,7 +1017,16 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               ) : showNewLocation ? (
                 <div className="space-y-2 rounded-md border border-border p-3 bg-secondary/30">
                   <Input value={newLocForm.name} onChange={(e) => setNewLocForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary border-border" placeholder="Location name *" autoFocus />
-                  <Input value={newLocForm.address} onChange={(e) => setNewLocForm(f => ({ ...f, address: e.target.value }))} className="bg-secondary border-border" placeholder="Street address *" />
+                  <Input value={newLocForm.address} onChange={(e) => setNewLocForm(f => ({ ...f, address: e.target.value }))}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData("text");
+                      if (text && text.includes(",")) {
+                        e.preventDefault();
+                        const p = parsePastedAddress(text);
+                        setNewLocForm(f => ({ ...f, address: p.address, city: p.city || f.city, state: p.state || f.state, zip: p.zip || f.zip }));
+                      }
+                    }}
+                    className="bg-secondary border-border" placeholder="Street address *" />
                   <div className="grid grid-cols-3 gap-2">
                     <Input value={newLocForm.city} onChange={(e) => setNewLocForm(f => ({ ...f, city: e.target.value }))} className="bg-secondary border-border" placeholder="City" />
                     <Input value={newLocForm.state} onChange={(e) => setNewLocForm(f => ({ ...f, state: e.target.value }))} className="bg-secondary border-border" placeholder="State" />
