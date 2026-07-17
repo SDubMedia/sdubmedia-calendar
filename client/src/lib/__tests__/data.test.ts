@@ -426,6 +426,36 @@ describe("getProjectInvoiceAmount", () => {
     // Bundle pricing wins — just the $200 service, the 2 photographer hours are cost only
     expect(getProjectInvoiceAmount(p, client)).toBe(200);
   });
+
+  it("project-level billed hours drive the bill, independent of crew", () => {
+    const client = makeClient({ billingModel: "hourly", billingRatePerHour: 200 });
+    const p = makeProject({
+      billedHours: 3,
+      // Two people totaling 6 worked hours — must NOT affect the client bill.
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 100 }],
+      postProduction: [{ crewMemberId: "c2", role: "Editor", hoursWorked: 2, payRatePerHour: 100 }],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(3 * 200); // 3 billed hrs × $200
+  });
+
+  it("billed hours + services add on top", () => {
+    const client = makeClient({ billingModel: "hourly", billingRatePerHour: 200 });
+    const p = makeProject({
+      billedHours: 3,
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 100 }],
+      services: [{ serviceId: "s1", variantId: null, label: "Logo", price: 200 }],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(3 * 200 + 200); // $800
+  });
+
+  it("no billed hours set → falls back to summing crew hours (legacy)", () => {
+    const client = makeClient({ billingModel: "hourly", billingRatePerHour: 200 });
+    const p = makeProject({
+      crew: [{ crewMemberId: "c1", role: "Videographer", hoursWorked: 4, payRatePerHour: 100 }],
+      postProduction: [{ crewMemberId: "c2", role: "Editor", hoursWorked: 2, payRatePerHour: 100 }],
+    });
+    expect(getProjectInvoiceAmount(p, client)).toBe(6 * 200); // 6 crew hrs × $200
+  });
 });
 
 // ---- calcHoursWorked ----

@@ -196,34 +196,48 @@ export function buildLineItems(
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
       const rate = Number(p.billingRate ?? pricingClient.billingRatePerHour ?? 0);
-      const { crewBillable, postBillable } = getProjectBillableHours(p, pricingClient);
 
-      if (p.crew.length > 0 && crewBillable > 0) {
-        items.push({
-          projectId: p.id, date: p.date,
-          description: `${projectLabel} — Production`,
-          quantity: crewBillable,
-          unitPrice: rate, amount: crewBillable * rate,
-        });
-      }
+      if (p.billedHours != null) {
+        // Project-level billed hours: one client line, independent of the crew
+        // roster (crew still drives their own pay, just not the bill).
+        const billed = Number(p.billedHours);
+        if (billed > 0) {
+          items.push({
+            projectId: p.id, date: p.date,
+            description: projectLabel,
+            quantity: billed, unitPrice: rate, amount: billed * rate,
+          });
+        }
+      } else {
+        const { crewBillable, postBillable } = getProjectBillableHours(p, pricingClient);
 
-      if (p.postProduction.length > 0 && postBillable > 0) {
-        items.push({
-          projectId: p.id, date: p.date,
-          description: `${projectLabel} — Editing`,
-          quantity: postBillable,
-          unitPrice: rate, amount: postBillable * rate,
-        });
-      }
+        if (p.crew.length > 0 && crewBillable > 0) {
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Production`,
+            quantity: crewBillable,
+            unitPrice: rate, amount: crewBillable * rate,
+          });
+        }
 
-      // Fallback if no crew/post data
-      if (p.crew.length === 0 && p.postProduction.length === 0) {
-        const { totalBillable } = getProjectBillableHours(p, pricingClient);
-        items.push({
-          projectId: p.id, date: p.date,
-          description: projectLabel,
-          quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
-        });
+        if (p.postProduction.length > 0 && postBillable > 0) {
+          items.push({
+            projectId: p.id, date: p.date,
+            description: `${projectLabel} — Editing`,
+            quantity: postBillable,
+            unitPrice: rate, amount: postBillable * rate,
+          });
+        }
+
+        // Fallback if no crew/post data
+        if (p.crew.length === 0 && p.postProduction.length === 0) {
+          const { totalBillable } = getProjectBillableHours(p, pricingClient);
+          items.push({
+            projectId: p.id, date: p.date,
+            description: projectLabel,
+            quantity: totalBillable, unitPrice: rate, amount: totalBillable * rate,
+          });
+        }
       }
 
       // À-la-carte services on an hourly project bill on top of the labor,

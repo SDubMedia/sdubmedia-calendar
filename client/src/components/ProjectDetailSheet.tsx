@@ -954,7 +954,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(invoiceAmount)}
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  {client?.billingModel === "per_project" ? "Flat rate" : `${totalHrs.toFixed(1)} hrs billed`}
+                  {client?.billingModel === "per_project" ? "Flat rate" : `${Number(project.billedHours ?? totalHrs).toFixed(1)} hrs billed`}
                 </div>
               </div>
               <div className="bg-secondary rounded-lg p-3 space-y-1">

@@ -607,11 +607,14 @@ export function getProjectSubtotal(project: Project, client: Client): number {
     return Number(typeRate?.rate ?? client.perProjectRate ?? 0);
   }
 
-  // Hourly billing: bill the labor hours × rate PLUS any selected services as
-  // add-ons (e.g. a logo on top of an hourly video shoot).
-  const { totalBillable } = getProjectBillableHours(project, client);
+  // Hourly billing: bill hours × rate PLUS any services as add-ons.
+  // The billed hours are set at the PROJECT level when provided (independent of
+  // the crew roster); otherwise fall back to summing the crew's worked hours.
   const effectiveHourly = project.billingRate ?? client.billingRatePerHour ?? 0;
-  return totalBillable * Number(effectiveHourly) + serviceTotal;
+  const billableHours = project.billedHours != null
+    ? Number(project.billedHours)
+    : getProjectBillableHours(project, client).totalBillable;
+  return billableHours * Number(effectiveHourly) + serviceTotal;
 }
 
 // Computes the discount value (always positive — caller subtracts).

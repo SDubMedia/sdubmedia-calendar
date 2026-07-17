@@ -141,6 +141,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
   const [billingModelOverride, setBillingModelOverride] = useState<BillingModel | null>(project?.billingModel ?? null);
   const [billingRateOverride, setBillingRateOverride] = useState<number | null>(project?.billingRate ?? null);
+  const [billedHours, setBilledHours] = useState<number | null>(project?.billedHours ?? null);
+  const [billedHoursText, setBilledHoursText] = useState<string>(project?.billedHours != null ? String(project.billedHours) : "");
 
   // Inline creation state
   const [showNewType, setShowNewType] = useState(false);
@@ -210,6 +212,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           setProjectRate(d.projectRate ?? null);
           setBillingModelOverride(d.billingModelOverride ?? null);
           setBillingRateOverride(d.billingRateOverride ?? null);
+          setBilledHours(d.billedHours ?? null);
+          setBilledHoursText(d.billedHours != null ? String(d.billedHours) : "");
           setDiscountType(d.discountType ?? null);
           setDiscountAmount(d.discountAmount ?? 0);
           setDiscountReason(d.discountReason ?? "");
@@ -277,6 +281,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       }
       setBillingModelOverride(project?.billingModel ?? null);
       setBillingRateOverride(project?.billingRate ?? null);
+      setBilledHours(project?.billedHours ?? null);
+      setBilledHoursText(project?.billedHours != null ? String(project.billedHours) : "");
       setDiscountType(project?.discountType ?? null);
       setDiscountAmount(project?.discountAmount ?? 0);
       setDiscountReason(project?.discountReason ?? "");
@@ -303,7 +309,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     brokerSelectId, clientId, projectTypeId, locationId, propertyAddress,
     date, startTime, endTime, status, crew, postProduction, editTypes, notes,
     deliverableUrl, cancellationReason, projectRate, billingModelOverride,
-    billingRateOverride, discountType, discountAmount, discountReason,
+    billingRateOverride, billedHours, discountType, discountAmount, discountReason,
     serviceCategoryId, bundleServices, billToId, products,
   });
   const draftMeaningful = (d: ReturnType<typeof captureDraft>) =>
@@ -775,6 +781,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       projectRate: selectedClient?.billingModel === "per_project" ? projectRate : null,
       billingModel: billingModelOverride,
       billingRate: billingModelOverride ? billingRateOverride : null,
+      billedHours,
       editTypes, notes, deliverableUrl,
       cancellationReason: status === "cancelled" ? cancellationReason.trim() : "",
       cancelledAt: status === "cancelled" ? (project?.cancelledAt ?? null) : null,
@@ -1512,10 +1519,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   || Number(typeRate?.rate ?? selectedClient.perProjectRate ?? 0);
               }
             } else {
-              // Hourly: labor hours × rate PLUS any services as add-ons.
+              // Hourly: billed hours × rate PLUS any services as add-ons. Billed
+              // hours come from the project-level field when set, else the crew total.
               const hourly = billingRateOverride ?? selectedClient.billingRatePerHour ?? 0;
-              const totalHours = [...crew, ...postProduction].reduce((s, e) => s + Number(e.hoursWorked || 0), 0);
-              subtotal = totalHours * Number(hourly) + serviceTotal;
+              const hrs = billedHours != null ? billedHours : [...crew, ...postProduction].reduce((s, e) => s + Number(e.hoursWorked || 0), 0);
+              subtotal = hrs * Number(hourly) + serviceTotal;
             }
             const discount = discountAmount > 0
               ? (discountType === "percent"
@@ -1525,6 +1533,25 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             const total = Math.max(0, subtotal - discount);
             return (
               <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
+                {effectiveModel !== "per_project" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Billed hours (client)</Label>
+                    <Input
+                      type="text" inputMode="decimal"
+                      value={billedHoursText}
+                      onChange={(e) => {
+                        let v = e.target.value.replace(/[^\d.]/g, "");
+                        const dot = v.indexOf(".");
+                        if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, "");
+                        setBilledHoursText(v);
+                        setBilledHours(v.trim() === "" ? null : (parseFloat(v) || 0));
+                      }}
+                      placeholder={`Auto — ${[...crew, ...postProduction].reduce((s, e) => s + Number(e.hoursWorked || 0), 0)} hr from crew`}
+                      className="bg-secondary border-border h-9 text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">What the client is billed, independent of crew pay. Leave blank to total the crew's hours.</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground uppercase tracking-wider">Discount (optional)</Label>
                   <div className="flex gap-2 items-center">

@@ -514,6 +514,11 @@ export interface Project {
   projectRate?: number | null; // per-project rate override (for per_project billing)
   billingModel?: BillingModel | null; // null = inherit from client
   billingRate?: number | null; // $/hr when hourly, flat $ when per_project. null = inherit
+  // Client-billed hours for hourly billing, set at the project level and
+  // INDEPENDENT of the crew roster. When set, the client bill = billedHours ×
+  // rate (+ services), so adding/paying crew differently doesn't move the bill.
+  // null = fall back to summing the crew's worked hours (legacy behavior).
+  billedHours?: number | null;
   paidDate?: string | null; // date this project was marked paid (ISO date or null)
   editTypes: string[]; // edit_type IDs
   notes: string;
