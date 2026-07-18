@@ -195,6 +195,7 @@ export default function ClientReportsPage() {
               }
             </div>
           </div>
+          ${(p.services && p.services.length > 0) ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;">${p.services.map(s => `<div style="display:flex;justify-content:space-between;margin:2px 0;"><span style="color:#888;">${s.label}</span><span style="font-weight:600;">${formatCurrency(Number(s.price || 0))}</span></div>`).join("")}</div>` : ""}
           ${loc ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;"><span style="color:#888;">Location: </span>${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>` : ""}
         </div>
       `;
