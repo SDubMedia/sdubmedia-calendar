@@ -7,17 +7,7 @@
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, Client, PartnerSplit } from "@/lib/types";
-
-// A partner split only applies to projects dated on/before the day it ended.
-// After endedAt (a partnership that dissolved, e.g. 2026-04-30), those projects
-// bill entirely to the owner and no partner section shows for that period.
-function activePartnerSplit(client: Client | undefined, projectDate: string): PartnerSplit | null {
-  const s = client?.partnerSplit;
-  if (!s) return null;
-  if (s.endedAt && projectDate > s.endedAt) return null;
-  return s;
-}
+import type { Project, Client } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, BarChart2, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import ReportPreview from "@/components/ReportPreview";
 import { cn } from "@/lib/utils";
-import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost, getMonthlyEarningsBreakdown, getProjectPayerId } from "@/lib/data";
+import { getBillableHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectWorkedHours, getProjectCrewCost as getProjectCrewCostHelper, getProjectTravelCost, getMonthlyEarningsBreakdown, getProjectPayerId, activePartnerSplit } from "@/lib/data";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];

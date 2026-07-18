@@ -3,7 +3,21 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit } from "./types";
+
+/**
+ * A client's partner split, but only if it's active for the given project date.
+ * A split with an endedAt (partnership dissolved) does NOT apply to projects
+ * dated after it — those bill entirely to the owner and show no partner. Used
+ * everywhere partner splits are computed or displayed so an ended partnership
+ * drops off consistently across the app while pre-end history stays intact.
+ */
+export function activePartnerSplit(client: Client | undefined | null, projectDate: string): PartnerSplit | null {
+  const s = client?.partnerSplit;
+  if (!s) return null;
+  if (s.endedAt && projectDate > s.endedAt) return null;
+  return s;
+}
 
 // ---- Availability → bookable slots -----------------------------------------
 // Turns each shooter's availability + operating rules + existing bookings into

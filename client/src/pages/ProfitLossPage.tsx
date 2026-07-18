@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown, activePartnerSplit } from "@/lib/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -122,13 +122,14 @@ export default function ProfitLossPage() {
       .filter(p => new Date(p.date + "T00:00:00").getFullYear() === year)
       .forEach(p => {
         const client = data.clients.find(c => c.id === p.clientId);
-        if (!client?.partnerSplit) return;
+        const split = activePartnerSplit(client, p.date);
+        if (!client || !split) return;
         const revenue = getProjectInvoiceAmount(p, client);
         const crewCost = getProjectCrewCost(p);
         const profit = Math.max(0, revenue - crewCost);
-        const weight = profit * (client.partnerSplit.partnerPercent ?? 0);
+        const weight = profit * (split.partnerPercent ?? 0);
         if (weight <= 0) return;
-        partnerWeights.set(client.partnerSplit.partnerName, (partnerWeights.get(client.partnerSplit.partnerName) || 0) + weight);
+        partnerWeights.set(split.partnerName, (partnerWeights.get(split.partnerName) || 0) + weight);
         totalWeight += weight;
       });
 

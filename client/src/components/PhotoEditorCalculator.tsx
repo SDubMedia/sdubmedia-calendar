@@ -13,6 +13,7 @@ import { ImageIcon, Calculator, Save } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import type { Project, Client, EditorBilling } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { activePartnerSplit } from "@/lib/data";
 import { toast } from "sonner";
 
 const DEFAULT_RATE_PER_IMAGE = 6;
@@ -122,8 +123,9 @@ export default function PhotoEditorCalculator({ project, client, editorName }: P
     }
   }, [imageCount, billingMode, finalHours, perImageRate, project.id, updateProject]);
 
-  const hasPartnerSplit = client.partnerSplit != null;
-  const split = client.partnerSplit;
+  // Respect a partnership's end date: no partner split on shoots after it ended.
+  const split = activePartnerSplit(client, project.date);
+  const hasPartnerSplit = split != null;
 
   return (
     <div className="space-y-3">
