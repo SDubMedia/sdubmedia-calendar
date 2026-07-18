@@ -326,6 +326,10 @@ export default function ReportsPage() {
     const ytdMarketingEarned = ytdProjects.reduce((s, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return s;
+        // Spending budget was a partner-contract feature — no accrual on
+        // projects after the partnership ended (endedAt). Keeps the running
+        // balance flat post-April instead of growing every month.
+        if (!activePartnerSplit(client, p.date)) return s;
         const billing = getProjectInvoiceAmount(p, client);
         const pMonth = parseInt(p.date.split("-")[1]);
         const pYear = parseInt(p.date.split("-")[0]);
@@ -350,6 +354,7 @@ export default function ReportsPage() {
     const prevBudgetEarned = prevMonthProjects.reduce((s, p) => {
       const client = data.clients.find(c => c.id === p.clientId);
       if (!client) return s;
+      if (!activePartnerSplit(client, p.date)) return s;
       const billing = getProjectInvoiceAmount(p, client);
       const pMonth = parseInt(p.date.split("-")[1]);
       const pYear = parseInt(p.date.split("-")[0]);
