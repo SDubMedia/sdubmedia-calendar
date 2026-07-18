@@ -4,7 +4,7 @@
 // output into clean expense rows is.
 
 import { describe, expect, it } from "vitest";
-import { parseTransactionsRegex, normalizeAiTransactions, findStatementYear } from "../../../../api/parse-pdf";
+import { parseTransactionsRegex, normalizeAiTransactions, findStatementYear, findStatementClosingMonth, correctYearBoundary } from "../../../../api/parse-pdf";
 
 describe("parseTransactionsRegex", () => {
   it("parses MM/DD description amount lines", () => {
@@ -67,5 +67,62 @@ describe("findStatementYear", () => {
 
   it("falls back to the current year when none is found", () => {
     expect(findStatementYear("no year here")).toBe(String(new Date().getFullYear()));
+  });
+});
+
+describe("findStatementClosingMonth", () => {
+  it("reads the closing month from a single closing date", () => {
+    expect(findStatementClosingMonth("Statement Closing Date: 01/15/2026")).toBe(1);
+  });
+
+  it("reads the closing month from an opening/closing range", () => {
+    expect(findStatementClosingMonth("Opening/Closing Date 12/16/25 - 01/15/26")).toBe(1);
+  });
+
+  it("returns null when no closing date is present", () => {
+    expect(findStatementClosingMonth("no dates here")).toBeNull();
+  });
+});
+
+describe("correctYearBoundary", () => {
+  it("moves December charges on a January statement back to the prior year", () => {
+    const fixed = correctYearBoundary(
+      [{ date: "2026-12-28", description: "GAS", amount: 40 }],
+      1, // closing month January
+      "2026",
+    );
+    expect(fixed[0].date).toBe("2025-12-28");
+  });
+
+  it("leaves charges within the closing month untouched", () => {
+    const fixed = correctYearBoundary(
+      [{ date: "2026-01-05", description: "COFFEE", amount: 5 }],
+      1,
+      "2026",
+    );
+    expect(fixed[0].date).toBe("2026-01-05");
+  });
+
+  it("leaves charges from mid-year statements untouched", () => {
+    const fixed = correctYearBoundary(
+      [{ date: "2026-06-10", description: "LUNCH", amount: 12 }],
+      7, // July statement
+      "2026",
+    );
+    expect(fixed[0].date).toBe("2026-06-10");
+  });
+
+  it("is a no-op when the closing month is unknown", () => {
+    const rows = [{ date: "2026-12-28", description: "GAS", amount: 40 }];
+    expect(correctYearBoundary(rows, null, "2026")).toEqual(rows);
+  });
+
+  it("does not double-correct dates already in the prior year", () => {
+    const fixed = correctYearBoundary(
+      [{ date: "2025-12-28", description: "GAS", amount: 40 }],
+      1,
+      "2026",
+    );
+    expect(fixed[0].date).toBe("2025-12-28");
   });
 });

@@ -45,6 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawText = Array.isArray(result.text) ? result.text.join("\n") : String(result.text || "");
     const lines = rawText.split("\n").map((l: string) => l.trim()).filter(Boolean);
     const statementYear = findStatementYear(rawText);
+    const closingMonth = findStatementClosingMonth(rawText);
 
     // Prefer AI extraction (handles any bank). Fall back to regex if the
     // key is missing or the model returns nothing useful.
@@ -63,6 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method = "regex";
     }
 
+    // Reassign December-on-a-January-statement charges to the prior year.
+    transactions = correctYearBoundary(transactions, closingMonth, statementYear);
+
     return res.status(200).json({ transactions, count: transactions.length, method, rawLineCount: lines.length });
   } catch (err) {
     return res.status(500).json({ error: errorMessage(err, "Failed to parse PDF") });
@@ -75,6 +79,37 @@ export function findStatementYear(rawText: string): string {
     || rawText.match(/(\d{4})\s+totals/i)
     || rawText.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}.*?(\d{4})/i);
   return yearMatch ? (yearMatch[1] || yearMatch[2]) : String(new Date().getFullYear());
+}
+
+// The statement's closing month (1-12), or null if not found. Used to fix
+// the year-boundary case below.
+export function findStatementClosingMonth(rawText: string): number | null {
+  // "Opening/Closing Date 12/16/25 - 01/15/26" → closing month = the 2nd date
+  const range = rawText.match(/opening.{0,25}?closing\s+date[:\s]*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[-–—]\s*(\d{1,2})\/\d{1,2}\/\d{2,4}/i);
+  if (range) { const mm = parseInt(range[1], 10); if (mm >= 1 && mm <= 12) return mm; }
+  // "Statement Closing Date: 01/15/2026"
+  const single = rawText.match(/statement\s+(?:closing\s+)?date[:\s]*(\d{1,2})\/\d{1,2}\/\d{2,4}/i);
+  if (single) { const mm = parseInt(single[1], 10); if (mm >= 1 && mm <= 12) return mm; }
+  return null;
+}
+
+// Fix the year-boundary case: a statement closing in, say, January lists the
+// prior December's charges with only MM/DD, so applying the statement year
+// stamps them into the WRONG (future) December. Any transaction whose month
+// falls AFTER the statement's closing month belongs to the previous year.
+export function correctYearBoundary(txns: ParsedTxn[], closingMonth: number | null, statementYear: string): ParsedTxn[] {
+  if (!closingMonth) return txns;
+  const yr = parseInt(statementYear, 10);
+  if (!Number.isFinite(yr)) return txns;
+  return txns.map(t => {
+    const m = t.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return t;
+    const [, y, mo, d] = m;
+    if (parseInt(y, 10) === yr && parseInt(mo, 10) > closingMonth) {
+      return { ...t, date: `${yr - 1}-${mo}-${d}` };
+    }
+    return t;
+  });
 }
 
 // Generic regex fallback: matches "MM/DD [MM/DD] Description Amount" lines.
