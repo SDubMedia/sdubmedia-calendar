@@ -10,7 +10,7 @@ import { DateField } from "@/components/DateTimeField";
 import type { ExpenseCategory } from "@/lib/types";
 import { Trash2, Plus, X, DollarSign, Receipt, PiggyBank, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { getProjectInvoiceAmount, getProjectTravelCost, getProjectCrewCost } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectTravelCost, getProjectCrewCost, activePartnerSplit } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import ReportPreview from "@/components/ReportPreview";
 
@@ -73,17 +73,28 @@ export default function MarketingBudgetPage() {
     return new Set(data.clients.filter(c => c.partnerSplit?.spendingBudgetEnabled !== false && c.partnerSplit).map(c => c.id));
   }, [data.clients]);
 
+  // A project accrues spending budget only while its client's partnership is
+  // still active for that project's date. The budget was a partner-contract
+  // feature — once the partnership ended (endedAt), later projects stop
+  // contributing, so the balance goes flat instead of climbing every month.
+  const accruesBudget = (p: { clientId: string; date: string }) => {
+    if (!budgetClientIds.has(p.clientId)) return false;
+    const client = data.clients.find(c => c.id === p.clientId);
+    return !!(client && activePartnerSplit(client, p.date));
+  };
+
   // Calculate total billing for the year (only from budget-eligible clients)
   const totalBilling = useMemo(() => {
     return data.projects
       .filter(p => p.date.startsWith(String(selectedYear)))
-      .filter(p => budgetClientIds.has(p.clientId))
+      .filter(p => accruesBudget(p))
       .filter(p => showAllExpenses || matchingClientIds.has(p.clientId))
       .reduce((sum, p) => {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return sum;
         return sum + getProjectInvoiceAmount(p, client);
       }, 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.projects, data.clients, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
   // Expenses for selected year — all marketing expenses come from the shared spending budget pool
@@ -104,7 +115,7 @@ export default function MarketingBudgetPage() {
 
       const monthProjects = data.projects
         .filter(p => p.date.startsWith(monthStr))
-        .filter(p => budgetClientIds.has(p.clientId))
+        .filter(p => accruesBudget(p))
         .filter(p => showAllExpenses || matchingClientIds.has(p.clientId));
 
       const monthBilling = monthProjects.reduce((sum, p) => {
@@ -140,6 +151,7 @@ export default function MarketingBudgetPage() {
 
       return { name, budgetAdded, monthExpenses, monthTravel, net, balance: runningBalance, hasActivity };
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.projects, data.clients, yearExpenses, selectedYear, matchingClientIds, budgetClientIds, showAllExpenses]);
 
   // Budget = sum of monthly contributions (10% of billing pre-April 2026, 10% of profit April 2026+)
