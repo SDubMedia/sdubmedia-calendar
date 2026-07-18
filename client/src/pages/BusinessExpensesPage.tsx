@@ -387,30 +387,36 @@ export default function BusinessExpensesPage() {
     const skipped = selected.length - toImport.length;
     if (toImport.length === 0) { toast.error("All selected transactions are already imported"); return; }
 
-    // Save category rules for any manually changed categories
-    for (const row of toImport) {
-      if (row.category !== "Other") {
-        // Extract keyword from description (first meaningful word or merchant name)
-        const keyword = row.description.split(/\s+/)[0]?.toUpperCase();
-        if (keyword && keyword.length >= 3) {
-          await upsertCategoryRule(keyword, row.category);
+    try {
+      // Save category rules for any manually changed categories
+      for (const row of toImport) {
+        if (row.category !== "Other") {
+          // Extract keyword from description (first meaningful word or merchant name)
+          const keyword = row.description.split(/\s+/)[0]?.toUpperCase();
+          if (keyword && keyword.length >= 3) {
+            await upsertCategoryRule(keyword, row.category);
+          }
         }
       }
+
+      await addBusinessExpenses(toImport.map(r => ({
+        date: r.date,
+        description: r.description,
+        category: r.category,
+        amount: r.amount,
+        serialNumber: "",
+        notes: "",
+        chaseCategory: r.chaseCategory,
+      })));
+
+      toast.success(`Imported ${toImport.length} transaction${toImport.length !== 1 ? "s" : ""}${skipped > 0 ? ` (${skipped} duplicate${skipped !== 1 ? "s" : ""} skipped)` : ""}`);
+      setCsvRows([]);
+      setShowUpload(false);
+    } catch (err) {
+      // Never fail silently — surface the real reason the save didn't stick.
+      console.error("[import] failed to save transactions:", err);
+      toast.error(err instanceof Error ? `Import failed: ${err.message}` : "Import failed — transactions were not saved");
     }
-
-    await addBusinessExpenses(toImport.map(r => ({
-      date: r.date,
-      description: r.description,
-      category: r.category,
-      amount: r.amount,
-      serialNumber: "",
-      notes: "",
-      chaseCategory: r.chaseCategory,
-    })));
-
-    toast.success(`Imported ${toImport.length} transaction${toImport.length !== 1 ? "s" : ""}${skipped > 0 ? ` (${skipped} duplicate${skipped !== 1 ? "s" : ""} skipped)` : ""}`);
-    setCsvRows([]);
-    setShowUpload(false);
   }
 
   // Manual add
