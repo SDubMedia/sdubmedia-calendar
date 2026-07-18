@@ -64,6 +64,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method = "regex";
     }
 
+    // Last resort: if the text paths found nothing (unreadable text —
+    // Type3/embedded fonts, scanned or image-only PDFs), hand the raw PDF to
+    // the model to read it visually.
+    if (transactions.length === 0 && process.env.ANTHROPIC_API_KEY) {
+      try {
+        const aiPdf = await extractWithAIFromPdf(fileData, statementYear);
+        if (aiPdf.length > 0) { transactions = aiPdf; method = "ai-pdf"; }
+      } catch (err) {
+        console.warn(`[parse-pdf] PDF-document extraction failed: ${errorMessage(err)}`);
+      }
+    }
+
     // Reassign December-on-a-January-statement charges to the prior year.
     transactions = correctYearBoundary(transactions, closingMonth, statementYear);
 
@@ -160,16 +172,12 @@ export function normalizeAiTransactions(raw: unknown, fallbackYear: string): Par
   return out;
 }
 
-async function extractWithAI(rawText: string, statementYear: string): Promise<ParsedTxn[]> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const text = rawText.length > MAX_AI_CHARS ? rawText.slice(0, MAX_AI_CHARS) : rawText;
+const AI_MODEL = "claude-sonnet-4-20250514";
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
-    messages: [{
-      role: "user",
-      content: `You are extracting expenses from a bank or credit-card statement. The raw text below may come from any bank (Chase, Wells Fargo, American Express, Bank of America, Capital One, Citi, etc.).
+// Shared extraction instructions. `source` describes where the model is
+// reading from ("text below" vs "attached PDF") so the year guidance fits.
+function extractionInstructions(statementYear: string, fromPdf: boolean): string {
+  return `You are extracting expenses from a bank or credit-card statement. It may come from any bank (Chase, Wells Fargo, American Express, Bank of America, Capital One, Citi, etc.).
 
 Return ONLY a JSON array of the purchases/charges (money the account holder SPENT), each as:
 {"date": "YYYY-MM-DD", "description": string, "amount": number}
@@ -177,20 +185,62 @@ Return ONLY a JSON array of the purchases/charges (money the account holder SPEN
 Rules:
 - amount is a positive number in dollars (drop any minus sign or "CR").
 - EXCLUDE payments to the card, refunds, credits, deposits, interest paid to you, balance/summary lines, and "payment thank you" lines. Only outgoing charges.
-- If a row shows only MM/DD, use the statement year ${statementYear}.
+- ${fromPdf
+  ? "Read the year from the statement's billing period. A charge shown as MM/DD belongs to that period's year — a December charge on a January statement is the PRIOR year."
+  : `If a row shows only MM/DD, use the statement year ${statementYear}.`}
 - If there are no charges, return [].
-- Return ONLY the JSON array, no prose, no code fences.
+- Return ONLY the JSON array, no prose, no code fences.`;
+}
 
-Statement text:
-${text}`,
-    }],
-  });
-
-  const content = response.content[0];
-  const out = content && content.type === "text" ? content.text : "";
+// Pull the JSON array out of the model's reply and normalize it.
+function parseAiReply(out: string, statementYear: string): ParsedTxn[] {
   const jsonMatch = out.match(/\[[\s\S]*\]/);
   if (!jsonMatch) return [];
   let parsed: unknown;
   try { parsed = JSON.parse(jsonMatch[0]); } catch { return []; }
   return normalizeAiTransactions(parsed, statementYear);
+}
+
+// Primary path: extract charges from the already-extracted statement TEXT.
+async function extractWithAI(rawText: string, statementYear: string): Promise<ParsedTxn[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const text = rawText.length > MAX_AI_CHARS ? rawText.slice(0, MAX_AI_CHARS) : rawText;
+
+  const response = await anthropic.messages.create({
+    model: AI_MODEL,
+    max_tokens: 4096,
+    messages: [{
+      role: "user",
+      content: `${extractionInstructions(statementYear, false)}\n\nStatement text:\n${text}`,
+    }],
+  });
+
+  const content = response.content[0];
+  return parseAiReply(content && content.type === "text" ? content.text : "", statementYear);
+}
+
+// Fallback path: hand the raw PDF to the model so it can READ it visually.
+// This rescues statements whose text can't be extracted — Type3/embedded
+// fonts, scanned/image PDFs, or unusual encodings that unpdf returns as
+// garbage. Only fires when the text paths find nothing.
+async function extractWithAIFromPdf(base64Pdf: string, statementYear: string): Promise<ParsedTxn[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await anthropic.messages.create({
+    model: AI_MODEL,
+    max_tokens: 8192,
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
+        },
+        { type: "text", text: extractionInstructions(statementYear, true) },
+      ],
+    }],
+  });
+
+  const content = response.content[0];
+  return parseAiReply(content && content.type === "text" ? content.text : "", statementYear);
 }
