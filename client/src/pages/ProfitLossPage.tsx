@@ -49,11 +49,14 @@ export default function ProfitLossPage() {
     return data.marketingExpenses.filter(e => e.clientId === clientFilter);
   }, [data.marketingExpenses, clientFilter]);
 
+  // Company overhead (incl. imported card spending) only applies to the whole
+  // business, not a single client — so only fold it in on the "all clients" view.
+  const bizExpensesForPnl = clientFilter === "all" ? data.businessExpenses : [];
   const monthlyData = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) =>
-      getMonthlyEarningsBreakdown(scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, m + 1)
+      getMonthlyEarningsBreakdown(scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, m + 1, bizExpensesForPnl)
     );
-  }, [scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year]);
+  }, [scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, bizExpensesForPnl]);
 
   // Revenue by client for the year
   const clientBreakdown = useMemo(() => {
@@ -155,9 +158,10 @@ export default function ProfitLossPage() {
       partnerPayout: acc.partnerPayout + m.partnerPayout,
       adminSplit: acc.adminSplit + m.adminSplit,
       nonPartnerProfit: acc.nonPartnerProfit + m.nonPartnerProfit,
+      businessExpenses: acc.businessExpenses + m.businessExpenses,
       grossProfit: acc.grossProfit + m.grossProfit,
       netProfit: acc.netProfit + m.netProfit,
-    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, spendingBudget: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, grossProfit: 0, netProfit: 0 });
+    }), { projectCount: 0, revenue: 0, crewCost: 0, ownerCrewPay: 0, travelCost: 0, marketingExpenses: 0, spendingBudget: 0, partnerPayout: 0, adminSplit: 0, nonPartnerProfit: 0, businessExpenses: 0, grossProfit: 0, netProfit: 0 });
   }, [monthlyData]);
 
   const annualGrossMargin = annualTotals.revenue > 0 ? (annualTotals.grossProfit / annualTotals.revenue) * 100 : 0;
@@ -246,7 +250,7 @@ export default function ProfitLossPage() {
         <div className="bg-secondary/30 border border-border rounded-lg px-4 py-3 text-xs text-muted-foreground print:border-gray-300">
           <p>
             <span className="font-semibold text-foreground">Gross Profit</span> = Revenue − Crew Costs.{" "}
-            <span className="font-semibold text-foreground">Net Profit</span> = Gross Profit − Spending Budget − Partner Payout. Admin Split is your personal income and is not subtracted from Net Profit.
+            <span className="font-semibold text-foreground">Net Profit</span> = Gross Profit − Spending Budget − Partner Payout − Business Expenses. Admin Split is your personal income and is not subtracted from Net Profit.
           </p>
         </div>
 
@@ -277,6 +281,7 @@ export default function ProfitLossPage() {
                   {showPartnerColumns && <th className="text-right px-3 py-2">Partner</th>}
                   {showPartnerColumns && <th className="text-right px-3 py-2">Admin</th>}
                   <th className="text-right px-3 py-2">Gross Profit</th>
+                  <th className="text-right px-3 py-2">Expenses</th>
                   <th className="text-right px-4 py-2">Net Profit</th>
                 </tr>
               </thead>
@@ -304,8 +309,9 @@ export default function ProfitLossPage() {
                     <td className={`text-right px-3 py-2 font-medium ${m.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                       {m.revenue ? formatCurrency(m.grossProfit) : "—"}
                     </td>
+                    <td className="text-right px-3 py-2 text-red-300/70">{m.businessExpenses ? formatCurrency(m.businessExpenses) : "—"}</td>
                     <td className={`text-right px-4 py-2 font-medium ${m.netProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {m.revenue ? formatCurrency(m.netProfit) : "—"}
+                      {m.revenue || m.businessExpenses ? formatCurrency(m.netProfit) : "—"}
                     </td>
                   </tr>
                   );
@@ -324,6 +330,7 @@ export default function ProfitLossPage() {
                   <td className={`text-right px-3 py-3 ${annualTotals.grossProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {formatCurrency(annualTotals.grossProfit)}
                   </td>
+                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.businessExpenses)}</td>
                   <td className={`text-right px-4 py-3 ${annualTotals.netProfit >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {formatCurrency(annualTotals.netProfit)}
                   </td>

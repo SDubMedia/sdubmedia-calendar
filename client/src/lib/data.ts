@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense } from "./types";
 
 /**
  * A client's partner split, but only if it's active for the given project date.
@@ -760,6 +760,9 @@ export interface MonthlyEarnings {
   partnerPayout: number;
   adminSplit: number;
   nonPartnerProfit: number;
+  // Actual business/overhead expenses for the month (incl. imported card
+  // spending). Subtracted from net profit to show a true bottom line.
+  businessExpenses: number;
   grossProfit: number;
   netProfit: number;
 }
@@ -771,6 +774,7 @@ export function getMonthlyEarningsBreakdown(
   ownerCrewMemberId: string,
   year: number,
   month: number,
+  businessExpenses: BusinessExpense[] = [],
 ): MonthlyEarnings {
   const monthStr = `${year}-${String(month).padStart(2, "0")}`;
   const monthProjects = projects.filter(p => p.date.startsWith(monthStr));
@@ -934,7 +938,12 @@ export function getMonthlyEarningsBreakdown(
   // company). In non-legacy months we fall back to actual marketing
   // expenses since there's no contractual budget allocation.
   const allocatedSpend = spendingBudget > 0 ? spendingBudget : mktgExp;
-  const netProfit = revenue - totalCrewCost - travelCost - allocatedSpend - partnerPayout;
+  // Actual business/overhead expenses (incl. imported card spending) for the
+  // month. Subtracted from net so the P&L shows a true bottom line.
+  const bizExp = businessExpenses
+    .filter(e => e.date.startsWith(monthStr))
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
+  const netProfit = revenue - totalCrewCost - travelCost - allocatedSpend - partnerPayout - bizExp;
 
   return {
     year, month,
@@ -948,6 +957,7 @@ export function getMonthlyEarningsBreakdown(
     partnerPayout,
     adminSplit,
     nonPartnerProfit,
+    businessExpenses: bizExp,
     grossProfit,
     netProfit,
   };
