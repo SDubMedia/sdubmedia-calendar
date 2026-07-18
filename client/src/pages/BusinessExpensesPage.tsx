@@ -38,6 +38,14 @@ interface CsvRow {
   amount: number;
   chaseCategory: string;
   selected: boolean;
+  duplicate?: boolean; // already in the ledger (or repeated in this batch)
+}
+
+// Stable key for detecting an expense we've already imported. Guards against
+// accidentally re-uploading the same statement and double-counting.
+function expenseKey(date: string, amount: number, description: string): string {
+  const normDesc = description.trim().replace(/\s+/g, " ").toUpperCase();
+  return `${date}|${Math.round(amount * 100)}|${normDesc}`;
 }
 
 function parseChaseCSV(text: string): CsvRow[] {
@@ -116,6 +124,27 @@ export default function BusinessExpensesPage() {
   const [catPickerIndex, setCatPickerIndex] = useState<number | null>(null); // index in csvRows, or null for edit mode
   const [catPickerTarget, setCatPickerTarget] = useState<string | null>(null); // expense ID for edit mode
   const [customCategory, setCustomCategory] = useState("");
+
+  // Keys of every expense already in the ledger — used to skip re-imports.
+  const existingExpenseKeys = useMemo(
+    () => new Set(data.businessExpenses.map(e => expenseKey(e.date, e.amount, e.description))),
+    [data.businessExpenses],
+  );
+
+  // Flag rows that duplicate an existing expense OR repeat earlier in the same
+  // batch, and pre-uncheck them so an accidental re-upload imports nothing.
+  function markDuplicates(rows: CsvRow[]): { rows: CsvRow[]; dupCount: number } {
+    const seen = new Set(existingExpenseKeys);
+    let dupCount = 0;
+    const out = rows.map(r => {
+      const key = expenseKey(r.date, r.amount, r.description);
+      const isDup = seen.has(key);
+      if (isDup) dupCount++;
+      else seen.add(key);
+      return { ...r, duplicate: isDup, selected: !isDup };
+    });
+    return { rows: out, dupCount };
+  }
 
   // All categories: built-in + any custom ones from existing expenses
   const allCategories = useMemo(() => {
@@ -293,7 +322,7 @@ export default function BusinessExpensesPage() {
         return;
       }
 
-      const rows: CsvRow[] = (transactions || []).map((t: any) => ({
+      const rawRows: CsvRow[] = (transactions || []).map((t: any) => ({
         date: t.date,
         description: t.description,
         category: autoCategory(t.description) as BusinessExpenseCategory,
@@ -302,7 +331,10 @@ export default function BusinessExpensesPage() {
         selected: true,
       }));
 
-      toast.success(`Found ${rows.length} transactions`);
+      const { rows, dupCount } = markDuplicates(rawRows);
+      toast.success(dupCount > 0
+        ? `Found ${rows.length} transactions — ${dupCount} already imported (unchecked)`
+        : `Found ${rows.length} transactions`);
       setCsvRows(rows);
       setShowUpload(true);
     } catch (err: any) {
@@ -321,12 +353,15 @@ export default function BusinessExpensesPage() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const rows = parseChaseCSV(text);
-      rows.forEach(r => { r.category = autoCategory(r.description); });
-      if (rows.length === 0) {
+      const parsed = parseChaseCSV(text);
+      parsed.forEach(r => { r.category = autoCategory(r.description); });
+      if (parsed.length === 0) {
         toast.error("No transactions found. Make sure it's a Chase CSV export.");
       } else {
-        toast.success(`Found ${rows.length} transactions`);
+        const { rows, dupCount } = markDuplicates(parsed);
+        toast.success(dupCount > 0
+          ? `Found ${rows.length} transactions — ${dupCount} already imported (unchecked)`
+          : `Found ${rows.length} transactions`);
         setCsvRows(rows);
         setShowUpload(true);
       }
@@ -339,8 +374,21 @@ export default function BusinessExpensesPage() {
     const selected = csvRows.filter(r => r.selected);
     if (selected.length === 0) { toast.error("No transactions selected"); return; }
 
+    // Safety net: never import a row that already exists in the ledger, and
+    // collapse exact duplicates within this batch — even if the user manually
+    // re-checked a flagged row. Protects against double-counting on re-upload.
+    const batchSeen = new Set(existingExpenseKeys);
+    const toImport = selected.filter(r => {
+      const key = expenseKey(r.date, r.amount, r.description);
+      if (batchSeen.has(key)) return false;
+      batchSeen.add(key);
+      return true;
+    });
+    const skipped = selected.length - toImport.length;
+    if (toImport.length === 0) { toast.error("All selected transactions are already imported"); return; }
+
     // Save category rules for any manually changed categories
-    for (const row of selected) {
+    for (const row of toImport) {
       if (row.category !== "Other") {
         // Extract keyword from description (first meaningful word or merchant name)
         const keyword = row.description.split(/\s+/)[0]?.toUpperCase();
@@ -350,7 +398,7 @@ export default function BusinessExpensesPage() {
       }
     }
 
-    await addBusinessExpenses(selected.map(r => ({
+    await addBusinessExpenses(toImport.map(r => ({
       date: r.date,
       description: r.description,
       category: r.category,
@@ -360,7 +408,7 @@ export default function BusinessExpensesPage() {
       chaseCategory: r.chaseCategory,
     })));
 
-    toast.success(`Imported ${selected.length} transaction${selected.length !== 1 ? "s" : ""}`);
+    toast.success(`Imported ${toImport.length} transaction${toImport.length !== 1 ? "s" : ""}${skipped > 0 ? ` (${skipped} duplicate${skipped !== 1 ? "s" : ""} skipped)` : ""}`);
     setCsvRows([]);
     setShowUpload(false);
   }
@@ -743,7 +791,10 @@ export default function BusinessExpensesPage() {
                         }} />
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap text-xs">{row.date}</td>
-                      <td className="px-2 py-1.5 text-xs max-w-[200px] truncate">{row.description}</td>
+                      <td className="px-2 py-1.5 text-xs max-w-[200px] truncate">
+                        {row.description}
+                        {row.duplicate && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 align-middle">already imported</span>}
+                      </td>
                       <td className="px-2 py-1.5">
                         <button
                           onClick={() => openCatPicker(i)}
