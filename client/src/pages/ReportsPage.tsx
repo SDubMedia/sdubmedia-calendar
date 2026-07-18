@@ -7,7 +7,17 @@
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, Client } from "@/lib/types";
+import type { Project, Client, PartnerSplit } from "@/lib/types";
+
+// A partner split only applies to projects dated on/before the day it ended.
+// After endedAt (a partnership that dissolved, e.g. 2026-04-30), those projects
+// bill entirely to the owner and no partner section shows for that period.
+function activePartnerSplit(client: Client | undefined, projectDate: string): PartnerSplit | null {
+  const s = client?.partnerSplit;
+  if (!s) return null;
+  if (s.endedAt && projectDate > s.endedAt) return null;
+  return s;
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -179,7 +189,7 @@ export default function ReportsPage() {
     // dumps everything to admin while still rendering the partner row at $0.
     const hasPartnerProjects = projects.some(p => {
       const c = data.clients.find(cl => cl.id === p.clientId);
-      return !!c?.partnerSplit;
+      return !!activePartnerSplit(c, p.date);
     });
     const useNewSplitLogic = hasPartnerProjects && (yr > 2026 || (yr === 2026 && monthNum >= 3));
 
@@ -193,8 +203,9 @@ export default function ReportsPage() {
         const client = data.clients.find(c => c.id === p.clientId);
         if (!client) return;
 
-        // Only apply partner split logic to clients that have a partnerSplit
-        const clientSplit = client.partnerSplit;
+        // Only apply partner split logic to clients with an ACTIVE split for
+        // this project's date (ended partnerships bill entirely to the owner).
+        const clientSplit = activePartnerSplit(client, p.date);
         if (!clientSplit) {
           // Non-partner client (e.g. Hannah Grace): revenue goes entirely to SDub Media
           const projRevenue = getProjectInvoiceAmount(p, client);
@@ -1023,13 +1034,14 @@ export default function ReportsPage() {
     let totalWeight = 0;
     filteredProjects.forEach(p => {
       const client = data.clients.find(c => c.id === p.clientId);
-      if (!client?.partnerSplit) return;
+      const split = activePartnerSplit(client, p.date);
+      if (!client || !split) return;
       const revenue = getProjectInvoiceAmount(p, client);
       const crewCost = getProjectCrewCost(p);
       const profit = Math.max(0, revenue - crewCost);
-      const weight = profit * (client.partnerSplit.partnerPercent ?? 0);
+      const weight = profit * (split.partnerPercent ?? 0);
       if (weight <= 0) return;
-      const name = client.partnerSplit.partnerName;
+      const name = split.partnerName;
       partnerWeights.set(name, (partnerWeights.get(name) || 0) + weight);
       totalWeight += weight;
     });
