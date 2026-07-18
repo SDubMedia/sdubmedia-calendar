@@ -173,7 +173,10 @@ export default function ReportsPage() {
 
     // Earnings splits — use client's partnerSplit if available, otherwise SDub-only split
     const selectedClient = selectedClientId !== "all" ? data.clients.find(c => c.id === selectedClientId) : null;
-    const split = selectedClient?.partnerSplit;
+    // Gate the selected client's split by the report month — a split that ended
+    // before this month (e.g. Coldwell's, ended 2026-04-30) must not drive the
+    // legacy partner calc or the client-specific partner section.
+    const split = activePartnerSplit(selectedClient ?? undefined, `${yr}-${String(monthNum).padStart(2, "0")}-01`);
     // When a single client is selected, use its partnerName. When viewing
     // "all" but the visible roster has exactly one partner-split client
     // (the partner-impersonation case for Dan/Sandra), surface that name
