@@ -64,7 +64,11 @@ export default function ClientDashboardPage() {
   const broker = isAgent && myClient?.brokerId ? data.clients.find(c => c.id === myClient.brokerId) : null;
   const coveredByBroker = !!broker;
   const brokerName = broker?.company ?? "your brokerage";
-  const bookingGated = isAgent && (!myClient?.cardOnFile || !hasAcceptedAgreement(myClient));
+  // Split the gate so the booking button can say exactly what's needed next,
+  // instead of silently bouncing the agent to another page.
+  const needsCard = isAgent && !myClient?.cardOnFile;
+  const needsAgreement = isAgent && !hasAcceptedAgreement(myClient);
+  const bookingGated = needsCard || needsAgreement;
   const [, navigate] = useLocation();
   const [requestOpen, setRequestOpen] = useState(false);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
@@ -111,6 +115,24 @@ export default function ClientDashboardPage() {
       .sort((a, b) => b.p.date.localeCompare(a.p.date));
   }, [coveredByBroker, myClient, broker, data.projects, clientsById]);
   const myShootsBilled = useMemo(() => myBilledShoots.reduce((s, x) => s + x.amt, 0), [myBilledShoots]);
+
+  // "Your photos are ready" nudge: recently-delivered galleries (last 45 days),
+  // so the agent sees it in-app instead of only via email. Capped and time-boxed
+  // so it's a nudge, not a permanent list.
+  const readyPhotos = useMemo(() => {
+    const cutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    return data.projects
+      .map(p => ({ p, g: data.deliveries.find(d => d.projectId === p.id && d.status === "delivered") }))
+      .filter((x): x is { p: Project; g: NonNullable<typeof x.g> } => !!x.g && x.p.date >= cutoff)
+      .sort((a, b) => b.p.date.localeCompare(a.p.date))
+      .slice(0, 5)
+      .map(({ p, g }) => ({
+        id: p.id,
+        label: data.locations.find(l => l.id === p.locationId)?.name || "Your shoot",
+        url: `${window.location.origin}${g.slug ? `/g/${g.slug}` : `/deliver/${g.token}`}`,
+      }));
+  }, [data.projects, data.deliveries, data.locations]);
+
   // "What you owe" = invoices billed to the agent themselves (self-pay agents,
   // or shoots a broker declined and you re-pointed to the agent). Honest for all.
   const showOwe = !coveredByBroker || outstandingAmount > 0;
@@ -272,10 +294,28 @@ export default function ClientDashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-5">
+        {/* Your photos are ready — an in-app nudge for recently delivered galleries */}
+        {readyPhotos.length > 0 && (
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-2">
+            <div className="flex items-center gap-2 font-semibold text-foreground">
+              <Images className="w-5 h-5 text-emerald-500" /> Your photos are ready
+            </div>
+            <div className="space-y-1.5">
+              {readyPhotos.map(r => (
+                <a key={r.id} href={r.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-md bg-background/60 px-3 py-2 hover:bg-background transition-colors">
+                  <span className="text-sm text-foreground min-w-0 truncate">{r.label}</span>
+                  <span className="text-xs font-medium text-emerald-600 shrink-0 flex items-center gap-1">View &amp; download <ArrowRight className="w-3.5 h-3.5" /></span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Agents: book a shoot right from the home screen */}
         {isAgent && (
           <button onClick={startBooking} className="w-full bg-primary text-primary-foreground rounded-lg px-5 py-4 flex items-center justify-between gap-3 hover:bg-primary/90 transition-colors">
-            <span className="flex items-center gap-2 font-semibold"><Plus className="w-5 h-5" /> Request a shoot</span>
+            <span className="flex items-center gap-2 font-semibold">
+              <Plus className="w-5 h-5" /> {needsCard ? "Add a card to book" : needsAgreement ? "Review agreement to book" : "Request a shoot"}
+            </span>
             <ArrowRight className="w-5 h-5" />
           </button>
         )}
