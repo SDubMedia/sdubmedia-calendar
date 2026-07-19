@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
+import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectPayerId, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
@@ -362,16 +362,32 @@ export default function CalendarPage() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
 
+  // A shoot matches the picked client if it's billed directly to them OR its
+  // "who pays" resolves to them — so selecting a brokerage (Realty One) shows
+  // its own shoots AND every agent shoot that bills up to it, matching how the
+  // reports group agents under their broker. Selecting an individual agent
+  // still shows just that agent's shoots (direct clientId match).
+  const clientsById = useMemo(
+    () => Object.fromEntries(data.clients.map((c) => [c.id, c])),
+    [data.clients],
+  );
+  const matchesClientFilter = useCallback(
+    (p: typeof data.projects[number]) =>
+      clientFilter === "all" ||
+      p.clientId === clientFilter ||
+      getProjectPayerId(p, clientsById) === clientFilter,
+    [clientFilter, clientsById],
+  );
+
   // Projects for this month — already pre-filtered by clientFilter so every
   // downstream consumer (grid cells, status counts, hours totals, list view)
   // reflects the picked client without each one having to re-filter.
   const monthProjects = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     return data.projects.filter((p) =>
-      p.date.startsWith(prefix) &&
-      (clientFilter === "all" || p.clientId === clientFilter)
+      p.date.startsWith(prefix) && matchesClientFilter(p)
     );
-  }, [data.projects, year, month, clientFilter]);
+  }, [data.projects, year, month, matchesClientFilter]);
 
   // Personal events for this month
   const monthPersonalEvents = useMemo(() => {
@@ -427,14 +443,15 @@ export default function CalendarPage() {
     } else {
       projects = viewScope === "month" ? monthProjects : data.projects;
     }
-    // Apply clientFilter when viewing "all" — monthProjects is already filtered.
-    if (viewScope === "all" && clientFilter !== "all") {
-      projects = projects.filter((p) => p.clientId === clientFilter);
+    // Apply clientFilter when viewing "all" or a selected day — monthProjects
+    // is already filtered. Payer-aware so a brokerage picks up its agents.
+    if (clientFilter !== "all" && (viewScope === "all" || selectedDate)) {
+      projects = projects.filter(matchesClientFilter);
     }
     const sorted = [...projects].sort((a, b) => a.date.localeCompare(b.date));
     if (filterStatus === "all") return sorted;
     return sorted.filter((p) => p.status === filterStatus);
-  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate, clientFilter]);
+  }, [data.projects, monthProjects, filterStatus, viewScope, selectedDate, clientFilter, matchesClientFilter]);
 
   const filteredPersonalEvents = useMemo(() => {
     if (selectedDate) {
