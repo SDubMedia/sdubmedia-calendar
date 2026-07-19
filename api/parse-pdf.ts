@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawText = Array.isArray(result.text) ? result.text.join("\n") : String(result.text || "");
     const lines = rawText.split("\n").map((l: string) => l.trim()).filter(Boolean);
     const statementYear = findStatementYear(rawText);
-    const closingMonth = findStatementClosingMonth(rawText);
+    const closing = findStatementClosingDate(rawText);
 
     // Prefer AI extraction (handles any bank). Fall back to regex if the
     // key is missing or the model returns nothing useful.
@@ -77,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Reassign December-on-a-January-statement charges to the prior year.
-    transactions = correctYearBoundary(transactions, closingMonth, statementYear);
+    transactions = correctYearBoundary(transactions, closing);
 
     return res.status(200).json({ transactions, count: transactions.length, method, rawLineCount: lines.length });
   } catch (err) {
@@ -93,34 +93,43 @@ export function findStatementYear(rawText: string): string {
   return yearMatch ? (yearMatch[1] || yearMatch[2]) : String(new Date().getFullYear());
 }
 
-// The statement's closing month (1-12), or null if not found. Used to fix
-// the year-boundary case below.
-export function findStatementClosingMonth(rawText: string): number | null {
-  // "Opening/Closing Date 12/16/25 - 01/15/26" → closing month = the 2nd date
-  const range = rawText.match(/opening.{0,25}?closing\s+date[:\s]*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[-–—]\s*(\d{1,2})\/\d{1,2}\/\d{2,4}/i);
-  if (range) { const mm = parseInt(range[1], 10); if (mm >= 1 && mm <= 12) return mm; }
+// Parse a MM + (YY or YYYY) into a concrete {month, year}, or null if invalid.
+function toMonthYear(mm: string, yy: string): { month: number; year: number } | null {
+  const month = parseInt(mm, 10);
+  let year = parseInt(yy, 10);
+  if (!Number.isFinite(month) || !Number.isFinite(year) || month < 1 || month > 12) return null;
+  if (yy.length === 2) year += 2000;
+  return { month, year };
+}
+
+// The statement's closing month AND year, or null if not found. Both come from
+// the SAME closing date so the year-boundary fix below can't disagree with
+// itself. Used to place each charge in the correct year.
+export function findStatementClosingDate(rawText: string): { month: number; year: number } | null {
+  // "Opening/Closing Date 12/16/25 - 01/15/26" → closing = the 2nd date
+  const range = rawText.match(/opening.{0,25}?closing\s+date[:\s]*\d{1,2}\/\d{1,2}\/\d{2,4}\s*[-–—]\s*(\d{1,2})\/\d{1,2}\/(\d{2,4})/i);
+  if (range) { const d = toMonthYear(range[1], range[2]); if (d) return d; }
   // "Statement Closing Date: 01/15/2026"
-  const single = rawText.match(/statement\s+(?:closing\s+)?date[:\s]*(\d{1,2})\/\d{1,2}\/\d{2,4}/i);
-  if (single) { const mm = parseInt(single[1], 10); if (mm >= 1 && mm <= 12) return mm; }
+  const single = rawText.match(/statement\s+(?:closing\s+)?date[:\s]*(\d{1,2})\/\d{1,2}\/(\d{2,4})/i);
+  if (single) { const d = toMonthYear(single[1], single[2]); if (d) return d; }
   return null;
 }
 
-// Fix the year-boundary case: a statement closing in, say, January lists the
-// prior December's charges with only MM/DD, so applying the statement year
-// stamps them into the WRONG (future) December. Any transaction whose month
-// falls AFTER the statement's closing month belongs to the previous year.
-export function correctYearBoundary(txns: ParsedTxn[], closingMonth: number | null, statementYear: string): ParsedTxn[] {
-  if (!closingMonth) return txns;
-  const yr = parseInt(statementYear, 10);
-  if (!Number.isFinite(yr)) return txns;
+// Place each charge in the correct year for the statement period. A statement
+// closing in, say, January lists the prior December's charges with only MM/DD.
+// Months at/before the closing month are in the closing year; any month AFTER
+// it wrapped from the prior year. Keyed off the closing DATE itself (month AND
+// year), so a mis-detected statement year can't push a December charge two
+// years back.
+export function correctYearBoundary(txns: ParsedTxn[], closing: { month: number; year: number } | null): ParsedTxn[] {
+  if (!closing) return txns;
   return txns.map(t => {
     const m = t.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return t;
-    const [, y, mo, d] = m;
-    if (parseInt(y, 10) === yr && parseInt(mo, 10) > closingMonth) {
-      return { ...t, date: `${yr - 1}-${mo}-${d}` };
-    }
-    return t;
+    const [, , mo, d] = m;
+    const month = parseInt(mo, 10);
+    const year = month > closing.month ? closing.year - 1 : closing.year;
+    return { ...t, date: `${year}-${mo}-${d}` };
   });
 }
 
