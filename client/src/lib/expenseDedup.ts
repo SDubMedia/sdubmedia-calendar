@@ -25,20 +25,20 @@ export function expenseKey(date: string, amount: number, description: string): s
 }
 
 // Flag rows that duplicate an expense already in the ledger (`existingKeys`)
-// OR that repeat earlier in this same batch, and pre-uncheck them so an
-// accidental re-upload imports nothing. Returns new rows (does not mutate)
-// plus how many were flagged.
+// and pre-uncheck them, so an accidental re-upload of a statement imports
+// nothing. Deliberately does NOT collapse repeats within the same batch: two
+// genuinely-identical charges on one statement (e.g. two identical parking
+// fees the same day) are both real and must both import — dropping one would
+// silently undercount expenses. Returns new rows (does not mutate) plus how
+// many were flagged.
 export function markDuplicateRows<T extends DedupRow>(
   rows: T[],
   existingKeys: Set<string>,
 ): { rows: T[]; dupCount: number } {
-  const seen = new Set(existingKeys);
   let dupCount = 0;
   const out = rows.map(r => {
-    const key = expenseKey(r.date, r.amount, r.description);
-    const isDup = seen.has(key);
+    const isDup = existingKeys.has(expenseKey(r.date, r.amount, r.description));
     if (isDup) dupCount++;
-    else seen.add(key);
     return { ...r, duplicate: isDup, selected: !isDup };
   });
   return { rows: out, dupCount };

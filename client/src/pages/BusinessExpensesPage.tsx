@@ -366,16 +366,11 @@ export default function BusinessExpensesPage() {
     const selected = csvRows.filter(r => r.selected);
     if (selected.length === 0) { toast.error("No transactions selected"); return; }
 
-    // Safety net: never import a row that already exists in the ledger, and
-    // collapse exact duplicates within this batch — even if the user manually
-    // re-checked a flagged row. Protects against double-counting on re-upload.
-    const batchSeen = new Set(existingExpenseKeys);
-    const toImport = selected.filter(r => {
-      const key = expenseKey(r.date, r.amount, r.description);
-      if (batchSeen.has(key)) return false;
-      batchSeen.add(key);
-      return true;
-    });
+    // Safety net: never import a row that already exists in the ledger — even
+    // if the user manually re-checked a flagged row. Protects against
+    // double-counting on re-upload. Genuine identical repeats on one statement
+    // are kept (they're not in the ledger yet), so real expenses aren't dropped.
+    const toImport = selected.filter(r => !existingExpenseKeys.has(expenseKey(r.date, r.amount, r.description)));
     const skipped = selected.length - toImport.length;
     if (toImport.length === 0) { toast.error("All selected transactions are already imported"); return; }
 

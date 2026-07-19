@@ -47,16 +47,27 @@ describe("markDuplicateRows", () => {
     expect(rows[0].selected).toBe(true);
   });
 
-  it("dedupes exact repeats within the same batch (keeps the first)", () => {
+  it("keeps genuine identical repeats on one statement (both import)", () => {
+    // Two real, identical charges the same day must NOT collapse — dropping
+    // one would silently undercount expenses.
     const { rows, dupCount } = markDuplicateRows(
       [row("2026-05-10", 5, "COFFEE"), row("2026-05-10", 5, "COFFEE")],
       new Set(),
     );
-    expect(dupCount).toBe(1);
-    expect(rows[0].duplicate).toBe(false);
+    expect(dupCount).toBe(0);
     expect(rows[0].selected).toBe(true);
-    expect(rows[1].duplicate).toBe(true);
-    expect(rows[1].selected).toBe(false);
+    expect(rows[1].selected).toBe(true);
+  });
+
+  it("flags both copies when that charge is ALSO already in the ledger", () => {
+    // A true re-upload: the charge already exists, so both incoming copies are
+    // flagged (they'd be genuinely new only if absent from the ledger).
+    const existing = new Set([expenseKey("2026-05-10", 5, "COFFEE")]);
+    const { dupCount } = markDuplicateRows(
+      [row("2026-05-10", 5, "COFFEE"), row("2026-05-10", 5, "COFFEE")],
+      existing,
+    );
+    expect(dupCount).toBe(2);
   });
 
   it("allows same-day same-merchant charges of different amounts", () => {
