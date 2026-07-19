@@ -72,6 +72,7 @@ export default function ClientReportsPage() {
         status: p.status,
         hours: totalBillable,
         amount,
+        services: (p.services || []).map(s => ({ label: s.label, price: Number(s.price || 0) })),
       };
     });
     return { rows, totalHours, totalAmount };
@@ -378,29 +379,43 @@ export default function ClientReportsPage() {
                   <div className="p-6 text-center text-sm text-muted-foreground">No projects this month</div>
                 ) : (
                   monthlySummary.rows.map((r, i) => (
-                    <div key={i} className="px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">{r.type}</span>
-                          <span className={cn("text-[10px] font-medium", STATUS_COLORS[r.status] || "text-muted-foreground")}>
-                            {STATUS_LABELS[r.status] || r.status}
-                          </span>
+                    <div key={i} className="px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">{r.type}</span>
+                            <span className={cn("text-[10px] font-medium", STATUS_COLORS[r.status] || "text-muted-foreground")}>
+                              {STATUS_LABELS[r.status] || r.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {new Date(r.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {r.location && ` — ${r.location}`}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(r.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          {r.location && ` — ${r.location}`}
-                        </p>
+                        <div className="text-right shrink-0">
+                          {isPerProject ? (
+                            <p className="text-sm font-semibold text-foreground">{formatCurrency(r.amount)}</p>
+                          ) : (
+                            <>
+                              <p className="text-sm font-semibold text-foreground">{formatHours(r.hours)}</p>
+                              <p className="text-[10px] text-muted-foreground">{formatCurrency(r.amount)}</p>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        {isPerProject ? (
-                          <p className="text-sm font-semibold text-foreground">{formatCurrency(r.amount)}</p>
-                        ) : (
-                          <>
-                            <p className="text-sm font-semibold text-foreground">{formatHours(r.hours)}</p>
-                            <p className="text-[10px] text-muted-foreground">{formatCurrency(r.amount)}</p>
-                          </>
-                        )}
-                      </div>
+                      {/* Name each add-on service so it reads as a line item, not a
+                          phantom extra hour, on the client's report. */}
+                      {r.services.length > 0 && (
+                        <div className="mt-2 pl-1 space-y-1">
+                          {r.services.map((s, si) => (
+                            <div key={si} className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground min-w-0 truncate">{s.label}</span>
+                              <span className="text-foreground font-medium tabular-nums shrink-0 ml-2">{formatCurrency(s.price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
