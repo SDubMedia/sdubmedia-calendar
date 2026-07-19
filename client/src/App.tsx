@@ -137,6 +137,10 @@ function Router() {
   const isPartner = role === "partner";
   const isStaff = role === "staff";
   const isFamily = role === "family";
+  // Owner + partner are the internal roles that may see finance/admin pages.
+  // Other roles that navigate to those URLs directly are sent home rather
+  // than shown an empty page shell.
+  const internal = isOwner || isPartner;
 
   // Belt-and-suspenders redirect for family — catches the case where
   // effectiveProfile loads after the initial route match.
@@ -213,32 +217,32 @@ function Router() {
             here are sent to the request queue; everyone else to the calendar. */}
         <Route path="/my-houses">{() => role === "client" ? <MyHousesPage /> : <Redirect to={isOwner ? "/shoot-requests" : "/calendar"} />}</Route>
         {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
-        <Route path="/billing" component={BillingPage} />
-        <Route path="/reports" component={ReportsPage} />
+        <Route path="/billing">{() => internal ? <BillingPage /> : <Redirect to="/" />}</Route>
+        <Route path="/reports">{() => internal ? <ReportsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/crew-report" component={CrewReportPage} />}
-        <Route path="/clients" component={ClientsPage} />
-        <Route path="/brokers" component={BrokersPage} />
+        <Route path="/clients">{() => internal ? <ClientsPage /> : <Redirect to="/" />}</Route>
+        <Route path="/brokers">{() => internal ? <BrokersPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/real-estate" component={RealEstatePage} />}
-        <Route path="/staff" component={StaffPage} />
-        <Route path="/invoices" component={InvoicesPage} />
-        <Route path="/outstanding-payments" component={OutstandingPaymentsPage} />
+        <Route path="/staff">{() => internal ? <StaffPage /> : <Redirect to="/" />}</Route>
+        <Route path="/invoices">{() => internal ? <InvoicesPage /> : <Redirect to="/" />}</Route>
+        <Route path="/outstanding-payments">{() => internal ? <OutstandingPaymentsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/pipeline-analytics" component={PipelineAnalyticsPage} />}
         {isOwner && <Route path="/series" component={SeriesPage} />}
         {isOwner && <Route path="/series/:id/episode/:episodeId" component={EpisodeEditorPage} />}
         {isOwner && <Route path="/series/:id" component={SeriesWorkspacePage} />}
-        <Route path="/marketing-budget" component={MarketingBudgetPage} />
-        <Route path="/client-health" component={ClientHealthPage} />
-        <Route path="/locations" component={LocationsPage} />
+        <Route path="/marketing-budget">{() => internal ? <MarketingBudgetPage /> : <Redirect to="/" />}</Route>
+        <Route path="/client-health">{() => internal ? <ClientHealthPage /> : <Redirect to="/" />}</Route>
+        <Route path="/locations">{() => internal ? <LocationsPage /> : <Redirect to="/" />}</Route>
         <Route path="/mileage" component={MileageReportPage} />
-        <Route path="/profit-loss" component={ProfitLossPage} />
-        <Route path="/expenses" component={BusinessExpensesPage} />
-        <Route path="/contracts" component={ContractsPage} />
+        <Route path="/profit-loss">{() => internal ? <ProfitLossPage /> : <Redirect to="/" />}</Route>
+        <Route path="/expenses">{() => internal ? <BusinessExpensesPage /> : <Redirect to="/" />}</Route>
+        <Route path="/contracts">{() => internal ? <ContractsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/contracts/new" component={NewContractPage} />}
         {isOwner && <Route path="/contracts/:id/edit" component={EditContractPage} />}
-        <Route path="/deliveries" component={DeliveriesPage} />
-        <Route path="/deliveries/:id" component={DeliveriesPage} />
-        <Route path="/proposals" component={ProposalsPage} />
-        <Route path="/pipeline" component={PipelinePage} />
+        <Route path="/deliveries">{() => internal ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
+        <Route path="/deliveries/:id">{() => internal ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
+        <Route path="/proposals">{() => internal ? <ProposalsPage /> : <Redirect to="/" />}</Route>
+        <Route path="/pipeline">{() => internal ? <PipelinePage /> : <Redirect to="/" />}</Route>
         <Route path="/1099" component={ContractorSummaryPage} />
         <Route path="/calendar-sync" component={CalendarSyncPage} />
         <Route path="/help" component={HelpPage} />
