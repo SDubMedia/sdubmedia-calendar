@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { getProjectBillableHours, getProjectInvoiceAmount } from "@/lib/data";
 import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ function formatHours(h: number) {
 
 export default function ClientReportsPage() {
   const { data } = useApp();
+  const { effectiveProfile } = useAuth();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -49,8 +51,11 @@ export default function ClientReportsPage() {
     }).sort((a, b) => a.date.localeCompare(b.date));
   }, [data.projects, year, month]);
 
-  // Determine if this is a per-project client (client portal shows one client)
-  const currentClient = data.clients[0] || null;
+  // Determine the client this report is for. Resolve from the login's own
+  // clientIds so a login tied to more than one account can't report the wrong
+  // one; fall back to the first scoped client.
+  const myClientIds = effectiveProfile?.clientIds ?? [];
+  const currentClient = data.clients.find(c => myClientIds.includes(c.id)) || data.clients[0] || null;
   const isPerProject = currentClient?.billingModel === "per_project";
   // A broker-covered agent never owes a balance — their shoots bill to the
   // brokerage. Show them an activity statement, not an "Amount Due" invoice.
