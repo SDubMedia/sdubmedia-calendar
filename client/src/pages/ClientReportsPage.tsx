@@ -52,6 +52,10 @@ export default function ClientReportsPage() {
   // Determine if this is a per-project client (client portal shows one client)
   const currentClient = data.clients[0] || null;
   const isPerProject = currentClient?.billingModel === "per_project";
+  // A broker-covered agent never owes a balance — their shoots bill to the
+  // brokerage. Show them an activity statement, not an "Amount Due" invoice.
+  const coveredByBroker = currentClient?.clientType === "agent" && !!currentClient?.brokerId;
+  const brokerNameForReport = (coveredByBroker && data.clients.find(c => c.id === currentClient?.brokerId)?.company) || "your brokerage";
 
   // Monthly summary
   const monthlySummary = useMemo(() => {
@@ -208,7 +212,7 @@ export default function ClientReportsPage() {
 
     setPreview({ title: `Client Report — ${currentClient.company} ${monthName} ${yr}`, html: `
       <div class="invoice-header">
-        <h1>${isPerProject ? "Project Activity Report" : "Hourly Activity Report & Project Invoice"}</h1>
+        <h1>${coveredByBroker ? "Activity Report" : isPerProject ? "Project Activity Report" : "Hourly Activity Report & Project Invoice"}</h1>
         <div class="meta-grid">
           <div><div class="meta-label">Report #</div><div class="meta-value">${reportNum}</div></div>
           <div><div class="meta-label">Report Period</div><div class="meta-value">${periodStart} - ${periodEnd}</div></div>
@@ -232,13 +236,15 @@ export default function ClientReportsPage() {
       </div>
 
       <div class="section">
-        <div class="section-header">Payment Summary</div>
+        <div class="section-header">${coveredByBroker ? "Billing" : "Payment Summary"}</div>
         <div class="payment-box">
           <div class="amount-due">
-            <span class="label">Amount Due</span>
-            <span class="value">${formatCurrency(totalInvoice)}</span>
+            <span class="label">${coveredByBroker ? "Billed to " + brokerNameForReport : "Amount Due"}</span>
+            <span class="value">${coveredByBroker ? "$0.00 due from you" : formatCurrency(totalInvoice)}</span>
           </div>
-          <div class="calc">${isPerProject
+          <div class="calc">${coveredByBroker
+            ? `Your shoots are billed to your brokerage — nothing comes out of your pocket.`
+            : isPerProject
             ? `${clientProjects.length} project${clientProjects.length !== 1 ? "s" : ""}`
             : `${totalHours.toFixed(1)} hrs × $${Number(currentClient.billingRatePerHour).toFixed(0)}/hr`
           }</div>
