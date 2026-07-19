@@ -19,8 +19,10 @@ import {
   getProjectServicePayByRole,
   getCrewMemberServicePay,
   calcHoursWorked,
+  activePartnerSplit,
+  getMonthlyEarningsBreakdown,
 } from "../data";
-import type { Client, Project, ProjectCrewEntry } from "../types";
+import type { Client, Project, ProjectCrewEntry, PartnerSplit, BusinessExpense } from "../types";
 
 // ---- Factory helpers ----
 
@@ -726,5 +728,80 @@ describe("getProjectProfit", () => {
     });
     // revenue − 70 crew − 30 Fotello
     expect(getProjectProfit(p, client)).toBe(getProjectInvoiceAmount(p, client) - 70 - 30);
+  });
+});
+
+// ============================================================
+// Regression locks for 2026-07 fixes:
+//  - activePartnerSplit end-date gating (partner split + spending
+//    budget both stop after a partnership ends).
+//  - getMonthlyEarningsBreakdown subtracts month-matched business
+//    expenses from Net Profit (the "real P&L with expenses" fix).
+// ============================================================
+
+function makeSplit(overrides: Partial<PartnerSplit> = {}): PartnerSplit {
+  return {
+    partnerName: "Partner", partnerPercent: 0.45, adminPercent: 0.45, marketingPercent: 0.10,
+    crewSplitThreshold: 0.5, crewMarketingPercent: 0.10, crewRemainderSplit: 0.5,
+    editorPartnerPercent: 0.45, editorAdminPercent: 0.45, editorMarketingPercent: 0.10,
+    spendingBudgetEnabled: true,
+    ...overrides,
+  };
+}
+
+function makeExpense(overrides: Partial<BusinessExpense> = {}): BusinessExpense {
+  return {
+    id: "exp-1", date: "2026-05-10", description: "Test", category: "Software",
+    amount: 100, serialNumber: "", notes: "", chaseCategory: "", createdAt: "2026-05-10T00:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("activePartnerSplit — partnership end-date gating", () => {
+  it("returns the split when there is no end date", () => {
+    const client = makeClient({ partnerSplit: makeSplit() });
+    expect(activePartnerSplit(client, "2026-07-01")).not.toBeNull();
+  });
+
+  it("returns the split for a project on/before the end date", () => {
+    const client = makeClient({ partnerSplit: makeSplit({ endedAt: "2026-04-30" }) });
+    expect(activePartnerSplit(client, "2026-04-30")).not.toBeNull();
+    expect(activePartnerSplit(client, "2026-04-15")).not.toBeNull();
+  });
+
+  it("returns null for a project AFTER the end date (partner + budget stop)", () => {
+    const client = makeClient({ partnerSplit: makeSplit({ endedAt: "2026-04-30" }) });
+    expect(activePartnerSplit(client, "2026-05-01")).toBeNull();
+    expect(activePartnerSplit(client, "2026-07-15")).toBeNull();
+  });
+
+  it("returns null when the client has no partner split", () => {
+    expect(activePartnerSplit(makeClient(), "2026-04-01")).toBeNull();
+    expect(activePartnerSplit(null, "2026-04-01")).toBeNull();
+  });
+});
+
+describe("getMonthlyEarningsBreakdown — business expenses reduce Net Profit", () => {
+  it("sums the month's business expenses and subtracts them from Net Profit", () => {
+    const base = getMonthlyEarningsBreakdown([], [], [], "owner", 2026, 5, []);
+    const withExp = getMonthlyEarningsBreakdown(
+      [], [], [], "owner", 2026, 5,
+      [makeExpense({ date: "2026-05-10", amount: 100 }), makeExpense({ id: "e2", date: "2026-05-20", amount: 40 })],
+    );
+    expect(withExp.businessExpenses).toBe(140);
+    expect(withExp.netProfit).toBeCloseTo(base.netProfit - 140);
+  });
+
+  it("ignores business expenses from other months", () => {
+    const res = getMonthlyEarningsBreakdown(
+      [], [], [], "owner", 2026, 5,
+      [makeExpense({ date: "2026-06-10", amount: 100 })],
+    );
+    expect(res.businessExpenses).toBe(0);
+  });
+
+  it("defaults to zero business expenses when none are passed", () => {
+    const res = getMonthlyEarningsBreakdown([], [], [], "owner", 2026, 5);
+    expect(res.businessExpenses).toBe(0);
   });
 });
