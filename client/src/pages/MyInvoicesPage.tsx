@@ -279,8 +279,9 @@ export default function MyInvoicesPage() {
 
   if (!crewMember) {
     return (
-      <div className="p-6 text-center text-muted-foreground">
-        Your account is not linked to a crew member profile.
+      <div className="p-6 text-center text-muted-foreground max-w-sm mx-auto space-y-1">
+        <p className="font-medium text-foreground">Almost there</p>
+        <p className="text-sm">Your login isn't linked to your crew profile yet, so there are no invoices to show. Ask your admin to finish linking your account, then sign back in.</p>
       </div>
     );
   }

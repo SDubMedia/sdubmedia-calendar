@@ -295,7 +295,7 @@ export default function AvailabilityPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6 text-center">
         <CalendarClock className="w-12 h-12 mb-3 opacity-30" />
-        <p className="text-sm max-w-xs">Your account isn't linked to a crew profile yet, so there's no availability to set. Ask the owner to link you.</p>
+        <p className="text-sm max-w-xs">Your login isn't linked to your crew profile yet, so there's no availability to set. Ask your admin to finish linking your account, then sign back in.</p>
       </div>
     );
   }
