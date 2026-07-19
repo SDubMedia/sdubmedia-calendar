@@ -90,11 +90,15 @@ export default function MySchedulePage() {
         );
         if (isAlsoPhotoEditor) return; // pay handled in postProduction loop
 
+        // Honor flat pay (match StaffDashboard): flat entries pay flatAmount and
+        // don't contribute to the hours stat.
+        const isFlat = c.payType === "flat";
         const hours = Number(c.hoursWorked ?? 0);
         const rate = Number(c.payRatePerHour ?? 0);
-        totalHours += hours;
-        totalPay += hours * rate;
-        entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Shoot", unit: "hrs" });
+        const pay = isFlat ? Number(c.flatAmount ?? 0) : hours * rate;
+        if (!isFlat) totalHours += hours;
+        totalPay += pay;
+        entries.push({ role: c.role, hours: isFlat ? 0 : hours, rate, pay, type: "Shoot", unit: isFlat ? "flat" : "hrs" });
       }
     });
 
@@ -115,11 +119,14 @@ export default function MySchedulePage() {
             unit: "images",
           });
         } else {
+          // Honor flat pay here too (post-production, non photo-editor).
+          const isFlat = c.payType === "flat";
           const hours = Number(c.hoursWorked ?? 0);
           const rate = Number(c.payRatePerHour ?? 0);
-          totalHours += hours;
-          totalPay += hours * rate;
-          entries.push({ role: c.role, hours, rate, pay: hours * rate, type: "Post", unit: "hrs" });
+          const pay = isFlat ? Number(c.flatAmount ?? 0) : hours * rate;
+          if (!isFlat) totalHours += hours;
+          totalPay += pay;
+          entries.push({ role: c.role, hours: isFlat ? 0 : hours, rate, pay, type: "Post", unit: isFlat ? "flat" : "hrs" });
         }
       }
     });
