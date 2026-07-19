@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getAuthToken, supabase } from "@/lib/supabase";
 import { getEffectiveTier } from "@/lib/tier-limits";
+import { expenseKey, markDuplicateRows } from "@/lib/expenseDedup";
 
 const CATEGORIES: BusinessExpenseCategory[] = [
   "Equipment", "Software", "Travel", "Meals", "Advertising",
@@ -41,12 +42,6 @@ interface CsvRow {
   duplicate?: boolean; // already in the ledger (or repeated in this batch)
 }
 
-// Stable key for detecting an expense we've already imported. Guards against
-// accidentally re-uploading the same statement and double-counting.
-function expenseKey(date: string, amount: number, description: string): string {
-  const normDesc = description.trim().replace(/\s+/g, " ").toUpperCase();
-  return `${date}|${Math.round(amount * 100)}|${normDesc}`;
-}
 
 function parseChaseCSV(text: string): CsvRow[] {
   const lines = text.trim().split("\n");
@@ -133,18 +128,7 @@ export default function BusinessExpensesPage() {
 
   // Flag rows that duplicate an existing expense OR repeat earlier in the same
   // batch, and pre-uncheck them so an accidental re-upload imports nothing.
-  function markDuplicates(rows: CsvRow[]): { rows: CsvRow[]; dupCount: number } {
-    const seen = new Set(existingExpenseKeys);
-    let dupCount = 0;
-    const out = rows.map(r => {
-      const key = expenseKey(r.date, r.amount, r.description);
-      const isDup = seen.has(key);
-      if (isDup) dupCount++;
-      else seen.add(key);
-      return { ...r, duplicate: isDup, selected: !isDup };
-    });
-    return { rows: out, dupCount };
-  }
+  const markDuplicates = (rows: CsvRow[]) => markDuplicateRows(rows, existingExpenseKeys);
 
   // All categories: built-in + any custom ones from existing expenses
   const allCategories = useMemo(() => {
