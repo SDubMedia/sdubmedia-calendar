@@ -113,6 +113,11 @@ export default function BusinessExpensesPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  // Guards against a second import firing before the first has saved — the
+  // race that let a rapid double-tap create a full duplicate set. The ref
+  // blocks re-entry synchronously; the state disables the button.
+  const importingRef = useRef(false);
+  const [importing, setImporting] = useState(false);
 
   // Category picker state
   const [catPickerOpen, setCatPickerOpen] = useState(false);
@@ -355,6 +360,9 @@ export default function BusinessExpensesPage() {
 
   // Import selected CSV rows
   async function handleImport() {
+    // Ignore repeat submits while a save is already in flight — closes the
+    // race that produced duplicate imports.
+    if (importingRef.current) return;
     const selected = csvRows.filter(r => r.selected);
     if (selected.length === 0) { toast.error("No transactions selected"); return; }
 
@@ -371,6 +379,8 @@ export default function BusinessExpensesPage() {
     const skipped = selected.length - toImport.length;
     if (toImport.length === 0) { toast.error("All selected transactions are already imported"); return; }
 
+    importingRef.current = true;
+    setImporting(true);
     try {
       // Save category rules for any manually changed categories
       for (const row of toImport) {
@@ -400,6 +410,9 @@ export default function BusinessExpensesPage() {
       // Never fail silently — surface the real reason the save didn't stick.
       console.error("[import] failed to save transactions:", err);
       toast.error(err instanceof Error ? `Import failed: ${err.message}` : "Import failed — transactions were not saved");
+    } finally {
+      importingRef.current = false;
+      setImporting(false);
     }
   }
 
@@ -806,9 +819,9 @@ export default function BusinessExpensesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setCsvRows([]); setShowUpload(false); }}>Cancel</Button>
-            <Button onClick={handleImport}>
-              Import {csvRows.filter(r => r.selected).length} Transactions
+            <Button variant="ghost" disabled={importing} onClick={() => { setCsvRows([]); setShowUpload(false); }}>Cancel</Button>
+            <Button onClick={handleImport} disabled={importing}>
+              {importing ? "Importing…" : `Import ${csvRows.filter(r => r.selected).length} Transactions`}
             </Button>
           </DialogFooter>
         </DialogContent>
