@@ -1114,9 +1114,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const lastFetchAtRef = useRef(0);
+  // True once the first load has completed. Background refreshes (tab focus,
+  // realtime, throttled refetch) must NOT flip the global `loading` flag —
+  // App.tsx renders a full-screen LoadingScreen whenever loading is true,
+  // which unmounts and rebuilds the entire app. Blanking on every refresh
+  // interrupted any in-flight work (e.g. a PDF parse's result landed on the
+  // now-unmounted page). Only the initial load shows the LoadingScreen.
+  const hasLoadedRef = useRef(false);
   const fetchAll = useCallback(async () => {
     lastFetchAtRef.current = Date.now();
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     // Client/agent/broker logins read cost-free VIEWS (crew pay, piece cost,
     // product cost stripped). Routing keys off the REAL session role, not
@@ -1259,12 +1266,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   // profile?.id is included so switching between two same-role accounts
   // (e.g. one client/broker login to another) re-pulls data for the new
   // user — role alone wouldn't change, leaving the previous user's data.
   }, [orgId, profile?.role, profile?.id]);
+
+  // A real account/org switch should show the full-screen loader again;
+  // reset the flag so the next fetch is treated as an initial load. Defined
+  // before the fetch effect so it runs first when these deps change.
+  useEffect(() => { hasLoadedRef.current = false; }, [orgId, profile?.id]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
