@@ -23,7 +23,10 @@ export default function GettingStartedCard() {
 
   const steps: Step[] = [
     { label: "Add your business info", done: !!profile?.guidance?.businessInfoSetupSeen, href: "/manage?tab=settings", cta: "Set up" },
+    { label: "Add your logo", done: !!org?.logoUrl, href: "/manage?tab=settings", cta: "Upload" },
     { label: "Add your services & rates", done: data.services.length > 0, href: "/manage?tab=services", cta: "Add" },
+    { label: "Add your first client", done: data.clients.length > 0, href: "/clients", cta: "Add" },
+    { label: "Add a crew member", done: data.crewMembers.length > 0, href: "/staff", cta: "Add" },
     { label: "Connect Stripe to get paid", done: !!org?.stripeAccountId || !!profile?.guidance?.stripeOptedOut, href: "/manage?tab=settings", cta: "Connect" },
     { label: "Book your first shoot", done: data.projects.length > 0, href: "/calendar", cta: "Book" },
   ];
