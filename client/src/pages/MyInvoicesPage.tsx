@@ -340,6 +340,29 @@ export default function MyInvoicesPage() {
         </div>
       </div>
 
+      {/* Owed vs Paid — reconcile earnings against the invoices you've submitted */}
+      {myInvoices.length > 0 && (() => {
+        const paid = myInvoices.filter(i => i.status === "paid").reduce((s, i) => s + i.total, 0);
+        const awaiting = myInvoices.filter(i => i.status === "sent").reduce((s, i) => s + i.total, 0);
+        const draft = myInvoices.filter(i => i.status === "draft").reduce((s, i) => s + i.total, 0);
+        return (
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-card border border-border rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-green-400 tabular-nums">{formatCurrency(paid)}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Paid</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-amber-400 tabular-nums">{formatCurrency(awaiting)}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Awaiting payment</div>
+            </div>
+            <div className="bg-card border border-border rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-muted-foreground tabular-nums">{formatCurrency(draft)}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Draft (not sent)</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Invoice History */}
       {myInvoices.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
