@@ -62,6 +62,24 @@ export default function ClientReportsPage() {
   const coveredByBroker = currentClient?.clientType === "agent" && !!currentClient?.brokerId;
   const brokerNameForReport = (coveredByBroker && data.clients.find(c => c.id === currentClient?.brokerId)?.company) || "your brokerage";
 
+  // Broker report: break the month's spend down by agent (each agent's shoots
+  // are priced at that agent's own rate, matching how the brokerage is billed).
+  const isBrokerReport = currentClient?.clientType === "broker";
+  const agentBreakdown = useMemo(() => {
+    if (!isBrokerReport) return [];
+    const map = new Map<string, { name: string; count: number; amount: number }>();
+    monthlyProjects.forEach(p => {
+      const agent = data.clients.find(c => c.id === p.clientId);
+      if (!agent) return;
+      const amt = getProjectInvoiceAmount(p, agent);
+      const g = map.get(agent.id) || { name: agent.company || "—", count: 0, amount: 0 };
+      g.count += 1;
+      g.amount += amt;
+      map.set(agent.id, g);
+    });
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }, [isBrokerReport, monthlyProjects, data.clients]);
+
   // Monthly summary
   const monthlySummary = useMemo(() => {
     let totalHours = 0;
@@ -369,6 +387,28 @@ export default function ClientReportsPage() {
                 <p className="text-xs text-muted-foreground mt-1">Total Billed</p>
               </div>
             </div>
+
+            {/* Broker report: spend broken down by agent */}
+            {isBrokerReport && agentBreakdown.length > 0 && (
+              <div className="bg-card border border-border rounded-lg">
+                <div className="px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    By Agent
+                  </h3>
+                </div>
+                <div className="divide-y divide-border">
+                  {agentBreakdown.map((a, i) => (
+                    <div key={i} className="px-4 py-3 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
+                        <p className="text-xs text-muted-foreground">{a.count} shoot{a.count !== 1 ? "s" : ""}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-foreground shrink-0 ml-2">{formatCurrency(a.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Project list */}
             <div className="bg-card border border-border rounded-lg">
