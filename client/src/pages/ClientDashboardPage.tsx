@@ -116,15 +116,17 @@ export default function ClientDashboardPage() {
   }, [coveredByBroker, myClient, broker, data.projects, clientsById]);
   const myShootsBilled = useMemo(() => myBilledShoots.reduce((s, x) => s + x.amt, 0), [myBilledShoots]);
 
-  // "Your photos are ready" nudge: recently-delivered galleries (last 45 days),
-  // so the agent sees it in-app instead of only via email. Capped and time-boxed
-  // so it's a nudge, not a permanent list.
+  // "Your photos are ready" nudge: galleries DELIVERED in the last 45 days, so
+  // the agent sees it in-app instead of only via email. Keyed off when the
+  // gallery was delivered (deliveredAt), not the shoot date — a shoot from
+  // months ago that just got delivered should still show. Time-boxed and
+  // capped so it's a nudge, not a permanent list.
   const readyPhotos = useMemo(() => {
-    const cutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const cutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
     return data.projects
       .map(p => ({ p, g: data.deliveries.find(d => d.projectId === p.id && d.status === "delivered") }))
-      .filter((x): x is { p: Project; g: NonNullable<typeof x.g> } => !!x.g && x.p.date >= cutoff)
-      .sort((a, b) => b.p.date.localeCompare(a.p.date))
+      .filter((x): x is { p: Project; g: NonNullable<typeof x.g> } => !!x.g && (x.g.deliveredAt ?? "") >= cutoff)
+      .sort((a, b) => (b.g.deliveredAt ?? "").localeCompare(a.g.deliveredAt ?? ""))
       .slice(0, 5)
       .map(({ p, g }) => ({
         id: p.id,
