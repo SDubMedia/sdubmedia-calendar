@@ -90,11 +90,12 @@ export default function TimerWidget() {
     return { name: pType?.name || "Project", client: client?.company || "" };
   }, [activeTimer, data.projects, data.projectTypes, data.clients]);
 
-  // Projects this crew member is assigned to
+  // Projects this crew member is assigned to (exclude finished, delivered, and
+  // cancelled — you can't log time against a shoot that isn't happening).
   const myProjects = useMemo(() => {
-    if (!crewMemberId) return data.projects;
+    if (!crewMemberId) return data.projects.filter(p => p.status !== "cancelled");
     return data.projects.filter(p =>
-      p.status !== "editing_done" && p.status !== "delivered" && (
+      p.status !== "editing_done" && p.status !== "delivered" && p.status !== "cancelled" && (
         p.crew.some(c => c.crewMemberId === crewMemberId) ||
         p.postProduction.some(c => c.crewMemberId === crewMemberId)
       )
