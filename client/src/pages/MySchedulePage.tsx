@@ -104,7 +104,10 @@ export default function MySchedulePage() {
 
     project.postProduction.forEach(c => {
       if (c.crewMemberId === crewMemberId) {
-        if (c.role === "Photo Editor" || (project.editorBilling && c.crewMemberId === crewMemberId)) {
+        // Use per-image billing ONLY when this project actually has editorBilling
+        // (mirror StaffDashboard). A Photo Editor with no editorBilling is paid
+        // hourly/flat in the else branch — otherwise the two screens disagree.
+        if (project.editorBilling && (c.role === "Photo Editor" || c.crewMemberId === crewMemberId)) {
           const rate = project.editorBilling?.perImageRate ?? 6;
           const imgs = project.editorBilling?.imageCount ?? 0;
           // Finalized if explicitly set OR project is completed
