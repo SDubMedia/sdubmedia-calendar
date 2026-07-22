@@ -27,7 +27,7 @@ const supabase = createClient(
 const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024; // 200 GB
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
-const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB per single video
+const MAX_VIDEO_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB per single video
 const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — JPEG frame capture is small
 const IMAGE_MIME_PREFIX = "image/";
 // Restrict to the formats the user explicitly asked for (mp4, mov, m4v).
@@ -124,14 +124,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Thumbnails get a distinct path prefix so we can spot/clean them later.
     const baseKey = r2BuildKey(orgId, deliveryId, fileName);
     const storagePath = kind === "thumbnail" ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/thumbnails/`) : baseKey;
+    // 1-hour window so a large upload (videos up to 1 GB) has time to finish
+    // even on a modest office connection before the signed URL expires.
     const uploadUrl = r2PresignedUrl({
       method: "PUT",
       key: storagePath,
-      expiresIn: 900,
+      expiresIn: 3600,
       contentType,
     });
 
-    return res.status(200).json({ ok: true, uploadUrl, storagePath, expiresIn: 900 });
+    return res.status(200).json({ ok: true, uploadUrl, storagePath, expiresIn: 3600 });
   } catch (err) {
     return res.status(500).json({ error: errorMessage(err, "Failed to generate upload URL") });
   }

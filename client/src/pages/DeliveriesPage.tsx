@@ -963,7 +963,7 @@ function DeliveryDetail({ id }: { id: string }) {
           {dragOver ? "Drop to upload" : "Drag photos or videos here, or click to browse"}
         </p>
         <p className="text-[11px] text-slate-500 mb-3">
-          Videos: .mp4, .mov, .m4v · up to 500 MB each. Photos: any image format · up to 50 MB each.
+          Videos: .mp4, .mov, .m4v · up to 1 GB each. Photos: any image format · up to 50 MB each.
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
