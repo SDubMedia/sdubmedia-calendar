@@ -384,7 +384,7 @@ function DeliveryDetail({ id }: { id: string }) {
   // Declared up here (before any early return) to keep hook order stable.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
   const [charging, setCharging] = useState(false);
-  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number; pct: number; name: string } | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
@@ -504,7 +504,7 @@ function DeliveryDetail({ id }: { id: string }) {
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const list = Array.from(fileList);
-    setUploading({ done: 0, total: list.length });
+    setUploading({ done: 0, total: list.length, pct: 0, name: "" });
     let done = 0;
     for (const rawFile of list) {
       try {
@@ -548,13 +548,10 @@ function DeliveryDetail({ id }: { id: string }) {
         const uploadData = await uploadRes.json();
         if (!uploadRes.ok) throw new Error(uploadData.error || "Upload URL failed");
 
-        // 2. PUT to R2
-        const putRes = await fetch(uploadData.uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
+        // 2. PUT to R2 with live progress (per-file percent for the bar)
+        await putFileWithProgress(uploadData.uploadUrl, file, (pct) => {
+          setUploading({ done, total: list.length, pct, name: file.name });
         });
-        if (!putRes.ok) throw new Error(`R2 upload failed: ${putRes.status}`);
 
         // 2b. For videos, upload the auto-captured first-frame thumbnail.
         let thumbnailStoragePath = "";
@@ -583,11 +580,11 @@ function DeliveryDetail({ id }: { id: string }) {
         });
 
         done++;
-        setUploading({ done, total: list.length });
+        setUploading({ done, total: list.length, pct: 0, name: "" });
       } catch (err) {
         toast.error(`Failed: ${rawFile.name}`, { description: err instanceof Error ? err.message : "Try again" });
         done++;
-        setUploading({ done, total: list.length });
+        setUploading({ done, total: list.length, pct: 0, name: "" });
       }
     }
     setUploading(null);
@@ -972,6 +969,20 @@ function DeliveryDetail({ id }: { id: string }) {
         >
           {uploading ? `Uploading ${uploading.done} / ${uploading.total}…` : "Choose files"}
         </button>
+        {uploading && (
+          <div className="mt-3 max-w-md mx-auto text-left">
+            {uploading.name && (
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1 gap-2">
+                <span className="truncate min-w-0">{uploading.name}</span>
+                <span className="shrink-0 tabular-nums">{uploading.pct}%</span>
+              </div>
+            )}
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full bg-[#0088ff] transition-[width] duration-150" style={{ width: `${uploading.pct}%` }} />
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1.5">Keep this tab open until it finishes.</p>
+          </div>
+        )}
       </div>
 
       {/* File grid */}
@@ -1783,6 +1794,27 @@ function projectLabel(p: Project, clients: Client[]): string {
 }
 
 // ---------------------------------------------------------------
+// PUT a file to a signed URL with byte-level upload progress. fetch() can't
+// report upload progress, so we use XMLHttpRequest for the transfer — critical
+// for large videos where the user needs to see it's actually moving.
+function putFileWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress(100); resolve(); }
+      else reject(new Error(`R2 upload failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload — check your connection"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    xhr.send(file);
+  });
+}
+
 // Video helpers — used by the upload flow + thumbnail picker
 // ---------------------------------------------------------------
 
@@ -1916,15 +1948,36 @@ function ThumbnailPicker({ file, videoUrl, onClose, onSaved, uploadThumbnail }: 
 
   const handleCapture = async () => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !videoUrl) return;
     setSaving(true);
+    const targetTime = v.currentTime;
     try {
+      // The visible player loads WITHOUT crossOrigin so playback never breaks.
+      // Drawing that cross-origin frame to a canvas taints it ("operation is
+      // insecure"). So capture from a HIDDEN copy loaded with crossOrigin —
+      // the canvas stays clean and we can read the pixels. Requires the R2
+      // bucket to allow GET from this origin (CORS); if it doesn't, the hidden
+      // video errors and we say so instead of failing cryptically.
+      const cap = document.createElement("video");
+      cap.crossOrigin = "anonymous";
+      cap.muted = true;
+      cap.playsInline = true;
+      cap.src = videoUrl;
+
+      await new Promise<void>((resolve, reject) => {
+        cap.onerror = () => reject(new Error("Couldn't read the video for capture — the storage bucket needs cross-origin (CORS) access enabled."));
+        cap.onloadeddata = () => {
+          cap.currentTime = Math.min(targetTime, Math.max(0, (cap.duration || 0) - 0.05));
+        };
+        cap.onseeked = () => resolve();
+      });
+
       const canvas = document.createElement("canvas");
-      canvas.width = v.videoWidth;
-      canvas.height = v.videoHeight;
+      canvas.width = cap.videoWidth;
+      canvas.height = cap.videoHeight;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Couldn't draw frame");
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(cap, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
       if (!blob) throw new Error("Couldn't capture frame");
       const newUrl = await uploadThumbnail(blob);
