@@ -725,11 +725,20 @@ export default function DeliverGalleryPage() {
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
                     </div>
                   </div>
-                  {f.durationSeconds != null && (
-                    <span className="absolute bottom-3 left-3 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
-                      {Math.floor(f.durationSeconds / 60)}:{String(f.durationSeconds % 60).padStart(2, "0")}
-                    </span>
-                  )}
+                  {/* Video name caption — so the client can reference each clip
+                      by name when asking for changes. Extension stripped. */}
+                  <div className="absolute bottom-0 inset-x-0 px-2.5 py-2 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none">
+                    <div className="flex items-end justify-between gap-2">
+                      <p className="text-[11px] text-white font-medium truncate min-w-0" title={f.originalName}>
+                        {f.originalName.replace(/\.[^.]+$/, "")}
+                      </p>
+                      {f.durationSeconds != null && (
+                        <span className="text-[10px] text-white/85 font-mono shrink-0">
+                          {Math.floor(f.durationSeconds / 60)}:{String(f.durationSeconds % 60).padStart(2, "0")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </>
               ) : (
                 <img

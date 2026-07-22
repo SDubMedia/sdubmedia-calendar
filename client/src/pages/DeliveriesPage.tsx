@@ -1015,11 +1015,6 @@ function DeliveryDetail({ id }: { id: string }) {
                         <Play className="w-6 h-6 text-white fill-white" />
                       </div>
                     </div>
-                    {f.durationSeconds != null && (
-                      <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
-                        {formatDuration(f.durationSeconds)}
-                      </span>
-                    )}
                   </>
                 ) : photo ? (
                   <img src={photo} alt={f.originalName} className="w-full h-full object-cover" loading="lazy" />
@@ -1028,6 +1023,18 @@ function DeliveryDetail({ id }: { id: string }) {
                     {f.originalName}
                   </div>
                 )}
+                {/* Filename caption — so you and the client can reference each
+                    file by name ("change Main Video"). Extension stripped. */}
+                <div className="absolute bottom-0 inset-x-0 px-2 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none">
+                  <div className="flex items-end justify-between gap-2">
+                    <p className="text-[10px] text-white/95 font-medium truncate min-w-0" title={f.originalName}>
+                      {f.originalName.replace(/\.[^.]+$/, "")}
+                    </p>
+                    {isVideo && f.durationSeconds != null && (
+                      <span className="text-[10px] text-white/80 font-mono shrink-0">{formatDuration(f.durationSeconds)}</span>
+                    )}
+                  </div>
+                </div>
                 {sel && (
                   <div className="absolute top-2 left-2 flex items-center gap-1">
                     <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded">♥</span>
