@@ -1843,9 +1843,11 @@ async function readVideoMeta(file: File): Promise<{ width: number; height: numbe
     };
 
     video.onloadedmetadata = () => {
-      // Seek to ~0.5s (or 10% in for very short clips). Some browsers
-      // refuse to capture frame data at exactly 0.
-      const seekTo = Math.min(0.5, video.duration * 0.1);
+      // Default the auto-thumbnail to the FINAL frame. Seek just shy of the
+      // very end — seeking to exactly duration often renders nothing. Falls
+      // back to a tiny offset for zero/unknown-duration clips.
+      const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0.5;
+      const seekTo = Math.max(0, dur - 0.1);
       const onSeeked = () => {
         try {
           const canvas = document.createElement("canvas");
