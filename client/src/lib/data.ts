@@ -439,6 +439,7 @@ export const seedData: AppData = {
   externalCalendars: [],
   externalEvents: [],
   meetings: [],
+  todos: [],
   packages: [],
   proposalImages: [],
   deliveries: [],

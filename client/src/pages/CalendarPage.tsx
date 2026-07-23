@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2, CalendarClock, Inbox } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, DollarSign, Calendar, Heart, Layers, AlertTriangle, CheckCircle2, UserPlus, RefreshCw, Building2, CalendarClock, Inbox, ListChecks } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -435,6 +435,17 @@ export default function CalendarPage() {
     return monthMeetings.filter((m) => m.date === dateStr);
   };
 
+  // To-dos on the calendar: an open to-do shows on its due date. Overdue ones
+  // (due in the past, not done) roll forward and show on TODAY until checked
+  // off, so nothing gets buried in a past day.
+  const getTodosForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const open = data.todos.filter(t => !t.done && t.dueDate);
+    const dueToday = open.filter(t => t.dueDate === dateStr);
+    const overdueRolled = dateStr === todayStr ? open.filter(t => t.dueDate < todayStr) : [];
+    return [...overdueRolled, ...dueToday];
+  };
+
   // Projects filtered by selected date, or scope (month/all) and status
   const filteredProjects = useMemo(() => {
     let projects;
@@ -797,6 +808,7 @@ export default function CalendarPage() {
               const dayEvents = isCurrentMonth ? getPersonalEventsForDay(day) : [];
               const dayExternalEvents = isCurrentMonth ? getExternalEventsForDay(day) : [];
               const dayMeetings = isCurrentMonth ? getMeetingsForDay(day) : [];
+              const dayTodos = isCurrentMonth ? getTodosForDay(day) : [];
 
               // For non-current-month cells, compute the actual date in
               // the previous or next month. Lets us show the real day
@@ -971,6 +983,33 @@ export default function CalendarPage() {
                       })}
                       {dayMeetings.length > 2 && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayMeetings.length - 2} mtg</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* To-do chips — tasks due that day (overdue rolled onto today) */}
+                  {dayTodos.length > 0 && (
+                    <div className="space-y-0.5">
+                      {dayTodos.slice(0, 2).map((t) => {
+                        const overdue = !!t.dueDate && t.dueDate < todayStr;
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={(ev) => { ev.stopPropagation(); navigate("/todos"); }}
+                            onPointerDown={(ev) => ev.stopPropagation()}
+                            className={cn(
+                              "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity border flex items-center gap-1",
+                              overdue ? "bg-red-500/15 text-red-300 border-red-500/30" : "bg-blue-500/15 text-blue-300 border-blue-500/30"
+                            )}
+                            title={t.title}
+                          >
+                            <ListChecks className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{t.title}</span>
+                          </div>
+                        );
+                      })}
+                      {dayTodos.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayTodos.length - 2} to-do</div>
                       )}
                     </div>
                   )}

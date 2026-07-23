@@ -26,6 +26,7 @@ const StaffPage = lazy(() => import("./pages/StaffPage"));
 const MarketingBudgetPage = lazy(() => import("./pages/MarketingBudgetPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const MySchedulePage = lazy(() => import("./pages/MySchedulePage"));
+const TodosPage = lazy(() => import("./pages/TodosPage"));
 const MyInvoicesPage = lazy(() => import("./pages/MyInvoicesPage"));
 const ContractorInvoicesPage = lazy(() => import("./pages/ContractorInvoicesPage"));
 const StaffPaymentsPage = lazy(() => import("./pages/StaffPaymentsPage"));
@@ -194,6 +195,7 @@ function Router() {
         )}
         {/* Role-specific views */}
         {isStaff && <Route path="/my-schedule" component={MySchedulePage} />}
+        <Route path="/todos">{() => (isOwner || isStaff) ? <TodosPage /> : <Redirect to="/" />}</Route>
         {isStaff && <Route path="/my-invoices" component={MyInvoicesPage} />}
         {role === "client" && <Route path="/my-reports" component={ClientReportsPage} />}
 

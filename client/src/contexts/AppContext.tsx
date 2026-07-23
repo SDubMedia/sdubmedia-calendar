@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -122,6 +122,9 @@ interface AppContextValue {
   addMeeting: (m: Omit<Meeting, "id" | "ownerUserId" | "orgId" | "createdAt">) => Promise<Meeting>;
   updateMeeting: (id: string, m: Partial<Meeting>) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
+  addTodo: (t: Omit<Todo, "id" | "createdByUserId" | "orgId" | "createdAt" | "done" | "doneAt">) => Promise<Todo>;
+  updateTodo: (id: string, t: Partial<Todo>) => Promise<void>;
+  deleteTodo: (id: string) => Promise<void>;
   // Packages library
   addPackage: (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<Package>;
   updatePackage: (id: string, p: Partial<Package>) => Promise<void>;
@@ -765,6 +768,22 @@ function rowToMeeting(r: any): Meeting {
   };
 }
 
+function rowToTodo(r: any): Todo {
+  return {
+    id: r.id,
+    title: r.title || "",
+    notes: r.notes || "",
+    assignedCrewMemberId: r.assigned_crew_member_id || null,
+    createdByUserId: r.created_by_user_id || "",
+    projectId: r.project_id || null,
+    dueDate: r.due_date || "",
+    done: r.done ?? false,
+    doneAt: r.done_at || null,
+    orgId: r.org_id || "",
+    createdAt: r.created_at,
+  };
+}
+
 function rowToServiceCategory(r: any): ServiceCategory {
   return {
     id: r.id,
@@ -913,7 +932,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1173,6 +1192,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: shooterPrefsData, error: e7sp },
         { data: staffAgreementsData, error: _eSA },
         { data: shootConfirmationsData, error: _eSC },
+        { data: todosData, error: _eTodo },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1215,6 +1235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("shooter_prefs").select("*"),
         supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
         supabase.from("shoot_confirmations").select("*"),
+        supabase.from("todos").select("*").order("created_at", { ascending: false }),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
@@ -1252,6 +1273,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         externalCalendars: (externalCalendarsData || []).map(rowToExternalCalendar),
         externalEvents: (externalEventsData || []).map(rowToExternalEvent),
         meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
+        todos: (todosData || []).map(r => { try { return rowToTodo(r); } catch { return null; } }).filter(Boolean) as Todo[],
         packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
         proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
@@ -1343,6 +1365,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       external_calendars: { key: "externalCalendars", convert: rowToExternalCalendar },
       external_events: { key: "externalEvents", convert: rowToExternalEvent, sort: (a: any, b: any) => a.startAt.localeCompare(b.startAt) },
       meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
+      todos: { key: "todos", convert: rowToTodo, sort: (a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || "") },
       packages: { key: "packages", convert: rowToPackage, softDelete: true, sort: (a: any, b: any) => a.sortOrder - b.sortOrder },
       proposal_images: { key: "proposalImages", convert: rowToProposalImage, softDelete: true, sort: (a: any, b: any) => b.sortOrder - a.sortOrder },
       deliveries: { key: "deliveries", convert: rowToDelivery },
@@ -1930,6 +1953,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("meetings").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, meetings: d.meetings.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- To-dos ----
+  const addTodo = useCallback(async (t: Omit<Todo, "id" | "createdByUserId" | "orgId" | "createdAt" | "done" | "doneAt">): Promise<Todo> => {
+    if (!profile?.id) throw new Error("Not signed in");
+    const id = `todo_${Date.now()}`;
+    const { data: row, error } = await supabase.from("todos").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      title: t.title,
+      notes: t.notes || "",
+      assigned_crew_member_id: t.assignedCrewMemberId || null,
+      created_by_user_id: profile.id,
+      project_id: t.projectId || null,
+      due_date: t.dueDate || null,
+      done: false,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const todo = rowToTodo(row);
+    setRawData(d => ({ ...d, todos: [todo, ...d.todos] }));
+    return todo;
+  }, [orgId, profile?.id]);
+
+  const updateTodo = useCallback(async (id: string, t: Partial<Todo>) => {
+    const patch: any = {};
+    if (t.title !== undefined) patch.title = t.title;
+    if (t.notes !== undefined) patch.notes = t.notes;
+    if (t.assignedCrewMemberId !== undefined) patch.assigned_crew_member_id = t.assignedCrewMemberId || null;
+    if (t.projectId !== undefined) patch.project_id = t.projectId || null;
+    if (t.dueDate !== undefined) patch.due_date = t.dueDate || null;
+    if (t.done !== undefined) {
+      patch.done = t.done;
+      patch.done_at = t.done ? new Date().toISOString() : null;
+    }
+    const { error } = await supabase.from("todos").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, todos: d.todos.map(x => x.id === id ? { ...x, ...t, ...(t.done !== undefined ? { doneAt: t.done ? new Date().toISOString() : null } : {}) } : x) }));
+  }, []);
+
+  const deleteTodo = useCallback(async (id: string) => {
+    const { error } = await supabase.from("todos").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, todos: d.todos.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Packages library ----
@@ -3286,6 +3352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPipelineLead, updatePipelineLead, deletePipelineLead,
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       addMeeting, updateMeeting, deleteMeeting,
+      addTodo, updateTodo, deleteTodo,
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,

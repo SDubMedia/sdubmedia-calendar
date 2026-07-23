@@ -1473,6 +1473,28 @@ export interface Meeting {
   createdAt: string;
 }
 
+// A to-do task. Owner-managed, assignable to a staff member (or left as the
+// owner's own), optionally tied to a project and/or a due date. Overdue items
+// (dueDate in the past, not done) keep showing until checked off.
+export interface Todo {
+  id: string;
+  title: string;
+  notes: string;
+  // Crew member responsible. null = a general/owner to-do not tied to a staffer.
+  assignedCrewMemberId: string | null;
+  // user_profiles.id of whoever created it — lets the owner tell an assigned
+  // to-do from one a staffer added themselves.
+  createdByUserId: string;
+  // Optional project link (per-project checklist).
+  projectId: string | null;
+  // Optional due date, YYYY-MM-DD. "" = no due date.
+  dueDate: string;
+  done: boolean;
+  doneAt: string | null;
+  orgId: string;
+  createdAt: string;
+}
+
 // ----------------------------------------------------------------------
 // Packages library — reusable services that drop into proposal templates
 // as `package_row` blocks. Owner-administered org-wide list. The icon key
@@ -1638,6 +1660,7 @@ export interface AppData {
   externalCalendars: ExternalCalendar[];
   externalEvents: ExternalEvent[];
   meetings: Meeting[];
+  todos: Todo[];
   packages: Package[];
   proposalImages: ProposalImage[];
   deliveries: Delivery[];
