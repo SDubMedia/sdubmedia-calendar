@@ -85,6 +85,26 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const isStaff = effectiveProfile?.role === "staff";
   // Always read the latest project from context so status updates reflect immediately
   const project = data.projects.find(p => p.id === projectProp.id) ?? projectProp;
+
+  // ---- Client notes (list) — stable handlers so the buttons always fire ----
+  const clientNotesList = project.clientNotes ?? [];
+  const addClientNote = async () => {
+    const text = clientNoteDraft.trim();
+    if (!text) return;
+    const note = { id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text, createdAt: new Date().toISOString() };
+    try { await updateProject(project.id, { clientNotes: [note, ...clientNotesList] }); setClientNoteDraft(""); }
+    catch { toast.error("Couldn't save note"); }
+  };
+  const saveClientNoteEdit = async (id: string) => {
+    const text = editingNoteText.trim();
+    if (!text) return;
+    try { await updateProject(project.id, { clientNotes: clientNotesList.map(n => n.id === id ? { ...n, text } : n) }); setEditingNoteId(null); setEditingNoteText(""); }
+    catch { toast.error("Couldn't save note"); }
+  };
+  const deleteClientNote = async (id: string) => {
+    try { await updateProject(project.id, { clientNotes: clientNotesList.filter(n => n.id !== id) }); }
+    catch { toast.error("Couldn't delete note"); }
+  };
   // Shoot availability confirmation — only flagged crew must confirm.
   const requiresConfirm = (id: string) => data.crewMembers.find(c => c.id === id)?.requiresShootConfirmation ?? false;
   const confirmationFor = (id: string) => data.shootConfirmations.find(sc => sc.projectId === project.id && sc.crewMemberId === id);
@@ -999,32 +1019,12 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
             {/* Client notes — a running list that shows on the client's report.
                 Type one, Save, and it stacks above. Each is editable/deletable. */}
-            {(() => {
-              const notes = project.clientNotes ?? [];
-              const saveNew = async () => {
-                const text = clientNoteDraft.trim();
-                if (!text) return;
-                const note = { id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text, createdAt: new Date().toISOString() };
-                try { await updateProject(project.id, { clientNotes: [note, ...notes] }); setClientNoteDraft(""); }
-                catch { toast.error("Couldn't save note"); }
-              };
-              const saveEdit = async (id: string) => {
-                const text = editingNoteText.trim();
-                if (!text) return;
-                try { await updateProject(project.id, { clientNotes: notes.map(n => n.id === id ? { ...n, text } : n) }); setEditingNoteId(null); setEditingNoteText(""); }
-                catch { toast.error("Couldn't save note"); }
-              };
-              const del = async (id: string) => {
-                try { await updateProject(project.id, { clientNotes: notes.filter(n => n.id !== id) }); }
-                catch { toast.error("Couldn't delete note"); }
-              };
-              return (
                 <div className="space-y-1.5">
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">
                     Client Notes <span className="normal-case text-[10px] text-muted-foreground/70">· show on their report</span>
                   </div>
                   {/* Saved notes stack here (newest first) */}
-                  {notes.map(n => (
+                  {clientNotesList.map(n => (
                     <div key={n.id} className="bg-secondary/50 rounded-md px-3 py-2 text-xs">
                       {editingNoteId === n.id ? (
                         <div className="space-y-2">
@@ -1036,15 +1036,15 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                             autoFocus
                           />
                           <div className="flex gap-2 justify-end">
-                            <button onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }} className="text-[11px] text-muted-foreground hover:text-foreground">Cancel</button>
-                            <button onClick={() => saveEdit(n.id)} disabled={!editingNoteText.trim()} className="text-[11px] px-2 py-0.5 bg-primary text-primary-foreground rounded font-semibold disabled:opacity-50">Save</button>
+                            <button type="button" onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }} className="text-[11px] px-2 py-1 text-muted-foreground hover:text-foreground">Cancel</button>
+                            <button type="button" onClick={() => saveClientNoteEdit(n.id)} disabled={!editingNoteText.trim()} className="text-[11px] px-2.5 py-1 bg-primary text-primary-foreground rounded font-semibold disabled:opacity-50">Save</button>
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-1">
                           <p className="flex-1 min-w-0 text-foreground whitespace-pre-wrap">{n.text}</p>
-                          <button onClick={() => { setEditingNoteId(n.id); setEditingNoteText(n.text); }} className="text-muted-foreground hover:text-primary shrink-0" aria-label="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => del(n.id)} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button type="button" onClick={() => { setEditingNoteId(n.id); setEditingNoteText(n.text); }} className="shrink-0 p-1.5 -m-0.5 rounded text-muted-foreground hover:text-primary hover:bg-muted" aria-label="Edit"><Edit3 className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => deleteClientNote(n.id)} className="shrink-0 p-1.5 -m-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-muted" aria-label="Delete"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       )}
                     </div>
@@ -1058,11 +1058,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                       className="flex-1 min-w-0 bg-secondary/50 border border-border rounded-md px-3 py-2 text-xs text-foreground resize-none"
                       rows={2}
                     />
-                    <button onClick={saveNew} disabled={!clientNoteDraft.trim()} className="shrink-0 self-start px-3 py-2 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50">Save</button>
+                    <button type="button" onClick={addClientNote} disabled={!clientNoteDraft.trim()} className="shrink-0 self-start px-3 py-2 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50">Save</button>
                   </div>
                 </div>
-              );
-            })()}
 
             {/* Project to-dos — a checklist tied to this shoot */}
             <div className="space-y-1.5">
