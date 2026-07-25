@@ -57,7 +57,11 @@ interface ClientBillingStat {
 
 export default function ReportsPage() {
   const { data, loading } = useApp();
-  const { effectiveProfile } = useAuth();
+  const { effectiveProfile, profile } = useAuth();
+  // Provider (SDub Media) contact for the client-facing "Questions?" line —
+  // the owner's email, NOT the client's. Escapes free-text notes for the report.
+  const providerContact = [data.organization?.name || "SDub Media", profile?.email || ""].filter(Boolean).join(" · ");
+  const escReport = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)).replace(/\n/g, "<br>");
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
@@ -888,6 +892,15 @@ export default function ReportsPage() {
     const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
     const locationsList = Array.from(locationSet.values()).join("; ");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
+    // Client notes across the period, labeled by shoot so each is identifiable.
+    const notesHtml = clientProjects
+      .filter(p => (p.clientNotes || []).length > 0)
+      .map(p => {
+        const t = data.projectTypes.find(x => x.id === p.projectTypeId);
+        const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" });
+        const items = (p.clientNotes || []).map(n => `<div style="margin:2px 0;">${escReport(n.text)}</div>`).join("");
+        return `<div style="margin-bottom:12px;"><div style="font-weight:600;font-size:12px;color:#555;margin-bottom:2px;">${dateStr} · ${t?.name || "Project"}</div>${items}</div>`;
+      }).join("");
 
     setPreview({ title: `Client Report — ${client.company} ${monthName} ${yr}`, html: `
       <!-- Header Banner -->
@@ -963,6 +976,13 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      ${notesHtml ? `
+      <!-- Notes -->
+      <div class="section">
+        <div class="section-header">Notes</div>
+        <div class="section-body">${notesHtml}</div>
+      </div>` : ""}
+
       <!-- Projects & Activity -->
       <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 16px; border: none;">Projects & Activity</h2>
       ${projectCards || "<p>No projects this period</p>"}
@@ -984,9 +1004,7 @@ export default function ReportsPage() {
 
       <!-- Footer -->
       <div class="report-footer">
-        <p><strong>Revision Policy:</strong> Two rounds of revisions included</p>
-        <p><strong>Carryover Policy:</strong> Unused hours carry over to the next month</p>
-        <div class="contact">Questions? ${client.email || client.phone || "(contact not provided)"}</div>
+        <div class="contact">Questions? ${providerContact}</div>
       </div>
     ` });
   }
@@ -1336,7 +1354,7 @@ export default function ReportsPage() {
       ` : ""}
 
       <div class="report-footer">
-        <div class="contact">Questions? ${client.email || client.phone || "(contact not provided)"}</div>
+        <div class="contact">Questions? ${providerContact}</div>
       </div>
     ` });
   }
