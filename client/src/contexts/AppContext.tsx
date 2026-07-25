@@ -552,7 +552,7 @@ function rowToProject(r: any): Project {
     paidDate: r.paid_date || null,
     editTypes: r.edit_types || [],
     notes: r.notes || "",
-    clientNote: r.client_note || "",
+    clientNotes: Array.isArray(r.client_notes) ? r.client_notes : [],
     deliverableUrl: r.deliverable_url || "",
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
@@ -2719,7 +2719,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       paid_date: p.paidDate || null,
       edit_types: p.editTypes,
       notes: p.notes,
-      client_note: p.clientNote || "",
+      client_notes: p.clientNotes ?? [],
       deliverable_url: p.deliverableUrl || "",
       cancellation_reason: p.cancellationReason || "",
       cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
@@ -2768,7 +2768,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.paidDate !== undefined) patch.paid_date = p.paidDate;
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
-    if (p.clientNote !== undefined) patch.client_note = p.clientNote;
+    if (p.clientNotes !== undefined) patch.client_notes = p.clientNotes;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
     if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;

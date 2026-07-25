@@ -115,7 +115,7 @@ export default function ShootRequestsPage() {
         billingRate: null,
         editTypes: [],
         notes: [req.isVacant ? "Property is vacant." : "Property is occupied.", req.agentWillMeet ? "Agent will meet on-site." : "", req.notes].filter(Boolean).join(" "),
-        clientNote: "",
+        clientNotes: [],
         deliverableUrl: "",
         cancellationReason: "",
         cancelledAt: null,

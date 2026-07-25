@@ -106,7 +106,7 @@ export default function SeriesWorkspacePage() {
           editorBilling: null,
           editTypes: [],
           notes: `[Series: ${series!.name}] Episode ${ep.episodeNumber}: ${ep.title}\n\n${ep.concept}`,
-          clientNote: "",
+          clientNotes: [],
           deliverableUrl: "",
           cancellationReason: "",
           cancelledAt: null,

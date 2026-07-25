@@ -139,7 +139,7 @@ export default function NewContractPage() {
           paidDate: null,
           editTypes: [],
           notes: "",
-          clientNote: "",
+          clientNotes: [],
           deliverableUrl: "",
           cancellationReason: "",
           cancelledAt: null,

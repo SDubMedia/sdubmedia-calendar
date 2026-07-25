@@ -136,7 +136,6 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [postHoursText, setPostHoursText] = useState<Record<number, string>>({});
   const [editTypes, setEditTypes] = useState<string[]>(project?.editTypes ?? []);
   const [notes, setNotes] = useState(project?.notes ?? defaultNotes ?? "");
-  const [clientNote, setClientNote] = useState(project?.clientNote ?? "");
   const [deliverableUrl, setDeliverableUrl] = useState(project?.deliverableUrl ?? "");
   const [cancellationReason, setCancellationReason] = useState(project?.cancellationReason ?? "");
   const [projectRate, setProjectRate] = useState<number | null>(project?.projectRate ?? null);
@@ -208,7 +207,6 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           setPostProduction(d.postProduction?.length ? d.postProduction : [emptyPostEntry()]);
           setEditTypes(d.editTypes ?? []);
           setNotes(d.notes ?? "");
-          setClientNote(d.clientNote ?? "");
           setDeliverableUrl(d.deliverableUrl ?? "");
           setCancellationReason(d.cancellationReason ?? "");
           setProjectRate(d.projectRate ?? null);
@@ -266,7 +264,6 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setPostProduction((project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]).map(e => fillRate(e, reRates.edit)));
       setEditTypes(project?.editTypes ?? []);
       setNotes(project?.notes ?? "");
-      setClientNote(project?.clientNote ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
       setCancellationReason(project?.cancellationReason ?? "");
       // For new projects, pre-fill project rate from client default
@@ -310,7 +307,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // Snapshot the current form for the "Resume Project" draft.
   const captureDraft = () => ({
     brokerSelectId, clientId, projectTypeId, locationId, propertyAddress,
-    date, startTime, endTime, status, crew, postProduction, editTypes, notes, clientNote,
+    date, startTime, endTime, status, crew, postProduction, editTypes, notes,
     deliverableUrl, cancellationReason, projectRate, billingModelOverride,
     billingRateOverride, billedHours, discountType, discountAmount, discountReason,
     serviceCategoryId, bundleServices, billToId, products,
@@ -791,7 +788,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       billingModel: billingModelOverride,
       billingRate: billingModelOverride ? billingRateOverride : null,
       billedHours,
-      editTypes, notes, clientNote, deliverableUrl,
+      editTypes, notes, clientNotes: project?.clientNotes ?? [], deliverableUrl,
       cancellationReason: status === "cancelled" ? cancellationReason.trim() : "",
       cancelledAt: status === "cancelled" ? (project?.cancelledAt ?? null) : null,
       discountType: discountAmount > 0 ? discountType : null,
@@ -1832,14 +1829,6 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </CollapsibleContent>
             </Collapsible>
           )}
-
-          {/* Client note — shown on the client's report (delivery summary). */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground uppercase tracking-wider">
-              Client Note <span className="normal-case text-[10px] text-muted-foreground/70">· shows on their report</span>
-            </label>
-            <Textarea value={clientNote} onChange={(e) => setClientNote(e.target.value)} placeholder="What to tell the client: revisions, how many videos delivered, who's in them…" className="bg-secondary border-border resize-none" rows={3} />
-          </div>
 
           <Collapsible defaultOpen={!!notes.trim()}>
             <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group">

@@ -74,6 +74,9 @@ interface Props {
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [clientNoteDraft, setClientNoteDraft] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
   const [, setLocation] = useLocation();
   const { effectiveProfile, allProfiles } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
@@ -994,20 +997,72 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             )}
 
-            {/* Client note — the delivery summary that shows on the client's report */}
-            <div className="space-y-1.5">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">
-                Client Note <span className="normal-case text-[10px] text-muted-foreground/70">· shows on their report</span>
-              </div>
-              <textarea
-                key={project.id}
-                defaultValue={project.clientNote || ""}
-                onBlur={(e) => { if (e.target.value !== (project.clientNote || "")) updateProject(project.id, { clientNote: e.target.value }).catch(() => toast.error("Couldn't save note")); }}
-                placeholder="What to tell the client: revisions, how many videos delivered, who's in them…"
-                className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2 text-xs text-foreground resize-none"
-                rows={3}
-              />
-            </div>
+            {/* Client notes — a running list that shows on the client's report.
+                Type one, Save, and it stacks above. Each is editable/deletable. */}
+            {(() => {
+              const notes = project.clientNotes ?? [];
+              const saveNew = async () => {
+                const text = clientNoteDraft.trim();
+                if (!text) return;
+                const note = { id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, text, createdAt: new Date().toISOString() };
+                try { await updateProject(project.id, { clientNotes: [note, ...notes] }); setClientNoteDraft(""); }
+                catch { toast.error("Couldn't save note"); }
+              };
+              const saveEdit = async (id: string) => {
+                const text = editingNoteText.trim();
+                if (!text) return;
+                try { await updateProject(project.id, { clientNotes: notes.map(n => n.id === id ? { ...n, text } : n) }); setEditingNoteId(null); setEditingNoteText(""); }
+                catch { toast.error("Couldn't save note"); }
+              };
+              const del = async (id: string) => {
+                try { await updateProject(project.id, { clientNotes: notes.filter(n => n.id !== id) }); }
+                catch { toast.error("Couldn't delete note"); }
+              };
+              return (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Client Notes <span className="normal-case text-[10px] text-muted-foreground/70">· show on their report</span>
+                  </div>
+                  {/* Saved notes stack here (newest first) */}
+                  {notes.map(n => (
+                    <div key={n.id} className="bg-secondary/50 rounded-md px-3 py-2 text-xs">
+                      {editingNoteId === n.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editingNoteText}
+                            onChange={e => setEditingNoteText(e.target.value)}
+                            className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground resize-none"
+                            rows={2}
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }} className="text-[11px] text-muted-foreground hover:text-foreground">Cancel</button>
+                            <button onClick={() => saveEdit(n.id)} disabled={!editingNoteText.trim()} className="text-[11px] px-2 py-0.5 bg-primary text-primary-foreground rounded font-semibold disabled:opacity-50">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2">
+                          <p className="flex-1 min-w-0 text-foreground whitespace-pre-wrap">{n.text}</p>
+                          <button onClick={() => { setEditingNoteId(n.id); setEditingNoteText(n.text); }} className="text-muted-foreground hover:text-primary shrink-0" aria-label="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => del(n.id)} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {/* Add-a-note box + Save */}
+                  <div className="flex gap-2">
+                    <textarea
+                      value={clientNoteDraft}
+                      onChange={e => setClientNoteDraft(e.target.value)}
+                      placeholder="Add a note for the client: revisions, how many videos, who's in them…"
+                      className="flex-1 min-w-0 bg-secondary/50 border border-border rounded-md px-3 py-2 text-xs text-foreground resize-none"
+                      rows={2}
+                    />
+                    <button onClick={saveNew} disabled={!clientNoteDraft.trim()} className="shrink-0 self-start px-3 py-2 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50">Save</button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Project to-dos — a checklist tied to this shoot */}
             <div className="space-y-1.5">
