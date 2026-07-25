@@ -60,6 +60,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     postProduction: [],
     editTypes: [],
     notes: "",
+    clientNote: "",
     deliverableUrl: "",
     cancellationReason: "",
     cancelledAt: null,

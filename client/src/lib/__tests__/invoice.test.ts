@@ -42,6 +42,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     postProduction: [{ crewMemberId: "c1", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
     editTypes: [],
     notes: "",
+    clientNote: "",
     deliverableUrl: "",
     cancellationReason: "",
     cancelledAt: null,

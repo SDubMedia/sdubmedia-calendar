@@ -522,6 +522,10 @@ export interface Project {
   paidDate?: string | null; // date this project was marked paid (ISO date or null)
   editTypes: string[]; // edit_type IDs
   notes: string;
+  // Client-facing delivery note (revisions, # of videos delivered, who's in
+  // them). Written FOR the client and shown on their report. Separate from the
+  // internal `notes` above so internal notes never leak to clients.
+  clientNote: string;
   deliverableUrl: string; // Google Drive link to final deliverables
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"

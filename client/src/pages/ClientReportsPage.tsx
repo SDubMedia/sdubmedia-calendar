@@ -17,6 +17,12 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+// Escape user-written text before it goes into the printable HTML report, and
+// keep line breaks. Used for the free-form client note.
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)).replace(/\n/g, "<br>");
+}
+
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
 }
@@ -100,6 +106,7 @@ export default function ClientReportsPage() {
         hours: totalBillable,
         amount,
         services: (p.services || []).map(s => ({ label: s.label, price: Number(s.price || 0) })),
+        clientNote: p.clientNote || "",
       };
     });
     return { rows, totalHours, totalAmount };
@@ -224,6 +231,7 @@ export default function ClientReportsPage() {
             </div>
           </div>
           ${(p.services && p.services.length > 0) ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;">${p.services.map(s => `<div style="display:flex;justify-content:space-between;margin:2px 0;"><span style="color:#888;">${s.label}</span><span style="font-weight:600;">${formatCurrency(Number(s.price || 0))}</span></div>`).join("")}</div>` : ""}
+          ${p.clientNote ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;color:#444;line-height:1.5;">${escHtml(p.clientNote)}</div>` : ""}
           ${loc ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;"><span style="color:#888;">Location: </span>${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>` : ""}
         </div>
       `;
@@ -466,6 +474,9 @@ export default function ClientReportsPage() {
                             </div>
                           ))}
                         </div>
+                      )}
+                      {r.clientNote && (
+                        <p className="mt-2 pl-1 text-xs text-muted-foreground whitespace-pre-wrap">{r.clientNote}</p>
                       )}
                     </div>
                   ))

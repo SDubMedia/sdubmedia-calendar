@@ -994,6 +994,21 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             )}
 
+            {/* Client note — the delivery summary that shows on the client's report */}
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                Client Note <span className="normal-case text-[10px] text-muted-foreground/70">· shows on their report</span>
+              </div>
+              <textarea
+                key={project.id}
+                defaultValue={project.clientNote || ""}
+                onBlur={(e) => { if (e.target.value !== (project.clientNote || "")) updateProject(project.id, { clientNote: e.target.value }).catch(() => toast.error("Couldn't save note")); }}
+                placeholder="What to tell the client: revisions, how many videos delivered, who's in them…"
+                className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2 text-xs text-foreground resize-none"
+                rows={3}
+              />
+            </div>
+
             {/* Project to-dos — a checklist tied to this shoot */}
             <div className="space-y-1.5">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">To-Dos</div>
