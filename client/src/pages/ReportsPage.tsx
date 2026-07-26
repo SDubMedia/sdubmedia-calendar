@@ -896,7 +896,9 @@ export default function ReportsPage() {
         })()
       : clientProjects.map(renderCard).join("");
 
-    const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
+    // Crew names only (no role), rendered as a bulleted list like the other
+    // Project Snapshot sections.
+    const crewListItems = Array.from(crewSet.values()).map(([name]) => `<li>${escReport(name)}</li>`).join("");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
 
     setPreview({ title: `Client Report — ${client.company} ${monthName} ${yr}`, html: `
@@ -964,7 +966,7 @@ export default function ReportsPage() {
               <span style="color:#555;text-align:right;">${escReport(r.location)}</span>
             </div>`).join("")}
           </div>
-          <div style="margin-top:14px;"><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
+          <div style="margin-top:14px;"><div class="snapshot-label">Crew</div><ul class="deliverables-list">${crewListItems || "<li>—</li>"}</ul></div>
         </div>
       </div>
 
