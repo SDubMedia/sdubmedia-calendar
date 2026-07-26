@@ -752,14 +752,12 @@ export default function ReportsPage() {
     const periodEnd = `${monthName.slice(0, 3)} ${lastDay}, ${yr}`;
     const issueDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-    // Collect all filming dates, locations, crew, and deliverables
-    const filmingDates = clientProjects.map(p =>
-      new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    );
-    const locationSet = new Map<string, string>();
-    clientProjects.forEach(p => {
+    // One row per shoot: filming date on the left, location NAME (not the full
+    // address) on the right. Rendered as a clean two-column list.
+    const filmingRows = clientProjects.map(p => {
+      const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const loc = data.locations.find(l => l.id === p.locationId);
-      if (loc) locationSet.set(loc.id, `${loc.name} ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}`);
+      return { date: dateStr, location: loc?.name || "—" };
     });
     const crewSet = new Map<string, string[]>();
     clientProjects.forEach(p => {
@@ -890,7 +888,6 @@ export default function ReportsPage() {
       : clientProjects.map(renderCard).join("");
 
     const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
-    const locationsList = Array.from(locationSet.values()).join("; ");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
     // Client notes across the period, labeled by shoot so each is identifiable.
     const notesHtml = clientProjects
@@ -960,11 +957,14 @@ export default function ReportsPage() {
       <div class="section">
         <div class="section-header">Project Snapshot</div>
         <div class="section-body">
-          <div class="snapshot-grid">
-            <div><div class="snapshot-label">Filming Date(s)</div><div class="snapshot-value">${filmingDates.join(", ")}</div></div>
-            <div><div class="snapshot-label">Location(s)</div><div class="snapshot-value">${locationsList || "—"}</div></div>
+          <div class="snapshot-label">Filming Dates &amp; Locations</div>
+          <div style="margin:8px 0 4px;">
+            ${filmingRows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0;border-bottom:1px solid #eee;">
+              <span style="font-weight:600;white-space:nowrap;">${r.date}</span>
+              <span style="color:#555;text-align:right;">${escReport(r.location)}</span>
+            </div>`).join("")}
           </div>
-          <div><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
+          <div style="margin-top:14px;"><div class="snapshot-label">Crew</div><div class="snapshot-value">${crewList || "—"}</div></div>
         </div>
       </div>
 
