@@ -940,7 +940,7 @@ export default function ReportsPage() {
             ? `${clientProjects.length} project${clientProjects.length !== 1 ? "s" : ""} — flat rate billing`
             : `${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr`
           }</div>
-          <div class="note">Make checks payable to ${client.partnerSplit?.partnerName ? client.partnerSplit.partnerName : "SDub Media LLC"} if additional charges apply.</div>
+          <div class="note">Make checks payable to ${client.partnerSplit?.partnerName ? client.partnerSplit.partnerName : "SDub Media LLC"}.</div>
         </div>
       </div>
 
