@@ -792,6 +792,14 @@ export default function ReportsPage() {
         <div class="project-meta-value">${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>
       ` : "";
 
+      // Notes live inside each project card (under Filming Location). Always
+      // render the label; leave the value blank when there are no notes.
+      const noteText = (p.clientNotes || []).map(n => escReport(n.text)).join("<br>");
+      const notesCardHtml = `
+        <div class="project-meta-label">Notes</div>
+        <div class="project-meta-value">${noteText || "&nbsp;"}</div>
+      `;
+
       const deliverables = (p.editTypes || []).map(et => `<li>${data.editTypes.find(t => t.id === et)?.name || et}</li>`).join("");
       const deliverablesHtml = deliverables ? `
         <div class="project-meta-label">Deliverables</div>
@@ -846,6 +854,7 @@ export default function ReportsPage() {
           <hr class="project-card-divider" />
           <div class="project-card-body">
             ${locationHtml}
+            ${notesCardHtml}
             ${deliverablesHtml}
             ${!isPerProject ? `
             <div style="margin-top: 16px;">
@@ -889,15 +898,6 @@ export default function ReportsPage() {
 
     const crewList = Array.from(crewSet.values()).map(([name, role]) => `${name} (${role})`).join(", ");
     const deliverablesList = Array.from(allDeliverables).map(d => `<li>${d}</li>`).join("");
-    // Client notes across the period, labeled by shoot so each is identifiable.
-    const notesHtml = clientProjects
-      .filter(p => (p.clientNotes || []).length > 0)
-      .map(p => {
-        const t = data.projectTypes.find(x => x.id === p.projectTypeId);
-        const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" });
-        const items = (p.clientNotes || []).map(n => `<div style="margin:2px 0;">${escReport(n.text)}</div>`).join("");
-        return `<div style="margin-bottom:12px;"><div style="font-weight:600;font-size:12px;color:#555;margin-bottom:2px;">${dateStr} · ${t?.name || "Project"}</div>${items}</div>`;
-      }).join("");
 
     setPreview({ title: `Client Report — ${client.company} ${monthName} ${yr}`, html: `
       <!-- Header Banner -->
@@ -975,13 +975,6 @@ export default function ReportsPage() {
           <ul class="deliverables-list">${deliverablesList || "<li>No deliverables listed</li>"}</ul>
         </div>
       </div>
-
-      ${notesHtml ? `
-      <!-- Notes -->
-      <div class="section">
-        <div class="section-header">Notes</div>
-        <div class="section-body">${notesHtml}</div>
-      </div>` : ""}
 
       <!-- Projects & Activity -->
       <h2 style="font-size: 18px; font-weight: 700; margin: 28px 0 16px; border: none;">Projects & Activity</h2>
