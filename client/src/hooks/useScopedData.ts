@@ -43,6 +43,8 @@ export function useScopedData() {
         crewLocationDistances: data.crewLocationDistances.filter(d => d.crewMemberId === crewMemberId),
         // Staff see only to-dos assigned to them (matches RLS).
         todos: data.todos.filter(t => t.assignedCrewMemberId === crewMemberId),
+        // Staff see documents only for projects they're assigned to (matches RLS).
+        projectDocuments: data.projectDocuments.filter(doc => myProjectIds.has(doc.projectId)),
       };
     }
 
@@ -62,6 +64,7 @@ export function useScopedData() {
         timeEntries: [],
         crewMembers: [],
         todos: [],
+        projectDocuments: [],
       };
     }
 
@@ -93,6 +96,7 @@ export function useScopedData() {
         series: data.series.filter(s => allowed.has(s.clientId)),
         pipelineLeads: data.pipelineLeads.filter(l => l.clientId && allowed.has(l.clientId)),
         todos: [],
+        projectDocuments: [],
       };
     }
 

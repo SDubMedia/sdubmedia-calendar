@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -125,6 +125,8 @@ interface AppContextValue {
   addTodo: (t: Omit<Todo, "id" | "createdByUserId" | "orgId" | "createdAt" | "done" | "doneAt">) => Promise<Todo>;
   updateTodo: (id: string, t: Partial<Todo>) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
+  addProjectDocument: (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt">) => Promise<ProjectDocument>;
+  deleteProjectDocument: (id: string) => Promise<void>;
   // Packages library
   addPackage: (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<Package>;
   updatePackage: (id: string, p: Partial<Package>) => Promise<void>;
@@ -785,6 +787,20 @@ function rowToTodo(r: any): Todo {
   };
 }
 
+function rowToProjectDocument(r: any): ProjectDocument {
+  return {
+    id: r.id,
+    projectId: r.project_id || "",
+    fileName: r.file_name || "",
+    storagePath: r.storage_path || "",
+    sizeBytes: Number(r.size_bytes || 0),
+    mimeType: r.mime_type || "",
+    uploadedByUserId: r.uploaded_by_user_id || "",
+    orgId: r.org_id || "",
+    createdAt: r.created_at,
+  };
+}
+
 function rowToServiceCategory(r: any): ServiceCategory {
   return {
     id: r.id,
@@ -933,7 +949,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1194,6 +1210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: staffAgreementsData, error: _eSA },
         { data: shootConfirmationsData, error: _eSC },
         { data: todosData, error: _eTodo },
+        { data: projectDocumentsData, error: _eDoc },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1237,6 +1254,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
         supabase.from("shoot_confirmations").select("*"),
         supabase.from("todos").select("*").order("created_at", { ascending: false }),
+        supabase.from("project_documents").select("*").order("created_at", { ascending: false }),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
@@ -1275,6 +1293,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         externalEvents: (externalEventsData || []).map(rowToExternalEvent),
         meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
         todos: (todosData || []).map(r => { try { return rowToTodo(r); } catch { return null; } }).filter(Boolean) as Todo[],
+        projectDocuments: (projectDocumentsData || []).map(r => { try { return rowToProjectDocument(r); } catch { return null; } }).filter(Boolean) as ProjectDocument[],
         packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
         proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
@@ -1367,6 +1386,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       external_events: { key: "externalEvents", convert: rowToExternalEvent, sort: (a: any, b: any) => a.startAt.localeCompare(b.startAt) },
       meetings: { key: "meetings", convert: rowToMeeting, sort: (a: any, b: any) => a.date.localeCompare(b.date) },
       todos: { key: "todos", convert: rowToTodo, sort: (a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || "") },
+      project_documents: { key: "projectDocuments", convert: rowToProjectDocument, sort: (a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || "") },
       packages: { key: "packages", convert: rowToPackage, softDelete: true, sort: (a: any, b: any) => a.sortOrder - b.sortOrder },
       proposal_images: { key: "proposalImages", convert: rowToProposalImage, softDelete: true, sort: (a: any, b: any) => b.sortOrder - a.sortOrder },
       deliveries: { key: "deliveries", convert: rowToDelivery },
@@ -1997,6 +2017,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("todos").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, todos: d.todos.filter(x => x.id !== id) }));
+  }, []);
+
+  // ---- Project documents ---- (file goes to R2 via /api/project-document-url;
+  // this persists the metadata row after a successful upload.)
+  const addProjectDocument = useCallback(async (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt">): Promise<ProjectDocument> => {
+    if (!profile?.id) throw new Error("Not signed in");
+    const id = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const { data: row, error } = await supabase.from("project_documents").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      project_id: doc.projectId,
+      file_name: doc.fileName,
+      storage_path: doc.storagePath,
+      size_bytes: doc.sizeBytes,
+      mime_type: doc.mimeType || "",
+      uploaded_by_user_id: profile.id,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const created = rowToProjectDocument(row);
+    setRawData(d => ({ ...d, projectDocuments: [created, ...d.projectDocuments] }));
+    return created;
+  }, [orgId, profile?.id]);
+
+  const deleteProjectDocument = useCallback(async (id: string) => {
+    const { error } = await supabase.from("project_documents").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, projectDocuments: d.projectDocuments.filter(x => x.id !== id) }));
   }, []);
 
   // ---- Packages library ----
@@ -3356,6 +3403,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       addMeeting, updateMeeting, deleteMeeting,
       addTodo, updateTodo, deleteTodo,
+      addProjectDocument, deleteProjectDocument,
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,

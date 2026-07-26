@@ -506,6 +506,20 @@ export interface ClientNote {
   createdAt: string;
 }
 
+// A document attached to a project (script, shot list, call sheet). File lives
+// in R2; this is the metadata row. Owner + assigned crew see it, not clients.
+export interface ProjectDocument {
+  id: string;
+  projectId: string;
+  fileName: string;
+  storagePath: string;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedByUserId: string;
+  orgId: string;
+  createdAt: string;
+}
+
 export interface Project {
   id: string;
   clientId: string;
@@ -1673,6 +1687,7 @@ export interface AppData {
   externalEvents: ExternalEvent[];
   meetings: Meeting[];
   todos: Todo[];
+  projectDocuments: ProjectDocument[];
   packages: Package[];
   proposalImages: ProposalImage[];
   deliveries: Delivery[];

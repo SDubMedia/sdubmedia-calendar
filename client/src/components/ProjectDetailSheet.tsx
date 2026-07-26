@@ -12,12 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload, FileText
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, ProjectStatus, EpisodeStatus, Invoice } from "@/lib/types";
+import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay } from "@/lib/data";
@@ -72,7 +72,7 @@ interface Props {
 }
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, deleteProjectDocument } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -105,6 +105,47 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     try { await updateProject(project.id, { clientNotes: clientNotesList.filter(n => n.id !== id) }); }
     catch { toast.error("Couldn't delete note"); }
   };
+
+  // ---- Project documents: upload to R2 via the signed-URL API, download, delete ----
+  const uploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setDocUploading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-document-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "upload", projectId: project.id, fileName: file.name, contentType: file.type || "application/octet-stream", sizeBytes: file.size }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Upload failed");
+      const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
+      await addProjectDocument({ projectId: project.id, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      toast.success("Document uploaded");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't upload"); }
+    finally { setDocUploading(false); }
+  };
+  const downloadDoc = async (doc: ProjectDocument) => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-document-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "download", projectId: project.id, storagePath: doc.storagePath, fileName: doc.fileName }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Download failed");
+      window.location.assign(d.downloadUrl);
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't download"); }
+  };
+  const removeDoc = async (doc: ProjectDocument) => {
+    try { await deleteProjectDocument(doc.id); }
+    catch { toast.error("Couldn't delete document"); }
+  };
+  const fmtBytes = (b: number) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
   // Shoot availability confirmation — only flagged crew must confirm.
   const requiresConfirm = (id: string) => data.crewMembers.find(c => c.id === id)?.requiresShootConfirmation ?? false;
   const confirmationFor = (id: string) => data.shootConfirmations.find(sc => sc.projectId === project.id && sc.crewMemberId === id);
@@ -154,6 +195,14 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // an hour of the start; it notifies the agent and locks their edit/cancel.
   const myCrewId = effectiveProfile?.crewMemberId || "";
   const isAssignedShooter = !!myCrewId && (project.crew || []).some(c => c.crewMemberId === myCrewId);
+  // Assigned to this shoot at all (crew or post) — gates the Documents section.
+  const isAssignedToProject = !!myCrewId && (
+    (project.crew || []).some(c => c.crewMemberId === myCrewId) ||
+    (project.postProduction || []).some(c => c.crewMemberId === myCrewId)
+  );
+  const canSeeDocs = isOwner || isAssignedToProject;
+  const [docUploading, setDocUploading] = useState(false);
+  const projectDocs = data.projectDocuments.filter(d => d.projectId === project.id);
   // Assigned crew in a qualifying role (photographer/videographer on the shoot,
   // or an editor in post) can upload the finals straight into this property's
   // gallery — owner still controls delivering it to the client.
@@ -1101,6 +1150,29 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
             </div>
 
             </>)}
+
+            {/* Documents — scripts, shot lists, call sheets. Owner + assigned
+                crew can view/download; owner + staff can upload. */}
+            {canSeeDocs && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Documents</div>
+                {projectDocs.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-2 bg-secondary/50 rounded-md px-3 py-2 text-xs">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <button type="button" onClick={() => downloadDoc(doc)} className="flex-1 min-w-0 text-left text-foreground hover:text-primary truncate" title={`Download ${doc.fileName}`}>
+                      {doc.fileName}
+                    </button>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{fmtBytes(doc.sizeBytes)}</span>
+                    <button type="button" onClick={() => removeDoc(doc)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                {projectDocs.length === 0 && <p className="text-xs text-muted-foreground">No documents yet.</p>}
+                <label className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer", docUploading ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
+                  <Upload className="w-3.5 h-3.5" /> {docUploading ? "Uploading…" : "Upload document"}
+                  <input type="file" className="hidden" disabled={docUploading} onChange={uploadDoc} accept=".pdf,.doc,.docx,.txt,.rtf,.pages,.csv,.xlsx,.key,.ppt,.pptx" />
+                </label>
+              </div>
+            )}
 
             {/* Crew */}
             {isOwner ? (
