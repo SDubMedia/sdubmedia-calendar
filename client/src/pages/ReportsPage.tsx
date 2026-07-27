@@ -757,7 +757,8 @@ export default function ReportsPage() {
     const filmingRows = clientProjects.map(p => {
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const loc = data.locations.find(l => l.id === p.locationId);
-      return { date: dateStr, location: loc?.name || "—" };
+      const title = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "—";
+      return { date: dateStr, title, location: loc?.name || "—" };
     });
     const crewSet = new Map<string, string[]>();
     clientProjects.forEach(p => {
@@ -961,8 +962,9 @@ export default function ReportsPage() {
         <div class="section-body">
           <div class="snapshot-label">Filming Dates &amp; Locations</div>
           <div style="margin:8px 0 4px;">
-            ${filmingRows.map(r => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0;border-bottom:1px solid #eee;">
+            ${filmingRows.map(r => `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #eee;">
               <span style="font-weight:600;white-space:nowrap;">${r.date}</span>
+              <span style="color:#333;text-align:center;">${escReport(r.title)}</span>
               <span style="color:#555;text-align:right;">${escReport(r.location)}</span>
             </div>`).join("")}
           </div>
