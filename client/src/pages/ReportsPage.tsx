@@ -758,7 +758,16 @@ export default function ReportsPage() {
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const loc = data.locations.find(l => l.id === p.locationId);
       const title = data.projectTypes.find(t => t.id === p.projectTypeId)?.name || "—";
-      return { date: dateStr, title, location: loc?.name || "—" };
+      // One-time locations store the whole typed address as the name, which
+      // blows out the column. Trim over-long names at a word boundary (the full
+      // address still shows on each project card below).
+      const shortLoc = (s: string) => {
+        if (s.length <= 26) return s;
+        const cut = s.slice(0, 26);
+        const sp = cut.lastIndexOf(" ");
+        return (sp > 12 ? cut.slice(0, sp) : cut).trimEnd() + "…";
+      };
+      return { date: dateStr, title, location: loc ? shortLoc(loc.name || "—") : "—" };
     });
     const crewSet = new Map<string, string[]>();
     clientProjects.forEach(p => {
@@ -961,13 +970,22 @@ export default function ReportsPage() {
         <div class="section-header">Project Snapshot</div>
         <div class="section-body">
           <div class="snapshot-label">Filming Dates &amp; Locations</div>
-          <div style="margin:8px 0 4px;">
-            ${filmingRows.map(r => `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #eee;">
-              <span style="font-weight:600;white-space:nowrap;">${r.date}</span>
-              <span style="color:#333;text-align:left;">${escReport(r.title)}</span>
-              <span style="color:#555;text-align:left;">${escReport(r.location)}</span>
-            </div>`).join("")}
-          </div>
+          <table style="width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:13px;line-height:1.4;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:0 14px 6px 0;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#98a4b3;white-space:nowrap;">Date</th>
+                <th style="text-align:left;padding:0 14px 6px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#98a4b3;">Project</th>
+                <th style="text-align:left;padding:0 0 6px 14px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#98a4b3;">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filmingRows.map(r => `<tr style="border-top:1px solid #eee;">
+                <td style="text-align:left;padding:7px 14px 7px 0;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:#0a2540;vertical-align:top;">${r.date}</td>
+                <td style="text-align:left;padding:7px 14px;font-weight:600;color:#1f2d3d;vertical-align:top;">${escReport(r.title)}</td>
+                <td style="text-align:left;padding:7px 0 7px 14px;color:#66788a;vertical-align:top;">${escReport(r.location)}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
           <div style="margin-top:14px;"><div class="snapshot-label">Crew</div><ul class="deliverables-list">${crewListItems || "<li>—</li>"}</ul></div>
         </div>
       </div>
