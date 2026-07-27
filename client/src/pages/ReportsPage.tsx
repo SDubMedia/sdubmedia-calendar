@@ -962,10 +962,10 @@ export default function ReportsPage() {
         <div class="section-body">
           <div class="snapshot-label">Filming Dates &amp; Locations</div>
           <div style="margin:8px 0 4px;">
-            ${filmingRows.map(r => `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #eee;">
+            ${filmingRows.map(r => `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid #eee;">
               <span style="font-weight:600;white-space:nowrap;">${r.date}</span>
-              <span style="color:#333;text-align:center;">${escReport(r.title)}</span>
-              <span style="color:#555;text-align:right;">${escReport(r.location)}</span>
+              <span style="color:#333;text-align:left;">${escReport(r.title)}</span>
+              <span style="color:#555;text-align:left;">${escReport(r.location)}</span>
             </div>`).join("")}
           </div>
           <div style="margin-top:14px;"><div class="snapshot-label">Crew</div><ul class="deliverables-list">${crewListItems || "<li>—</li>"}</ul></div>
