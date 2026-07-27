@@ -107,6 +107,7 @@ export default function SeriesWorkspacePage() {
           editTypes: [],
           notes: `[Series: ${series!.name}] Episode ${ep.episodeNumber}: ${ep.title}\n\n${ep.concept}`,
           clientNotes: [],
+          onCameraTalent: [],
           deliverableUrl: "",
           cancellationReason: "",
           cancelledAt: null,

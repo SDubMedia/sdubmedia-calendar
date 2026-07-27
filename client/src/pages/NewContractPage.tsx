@@ -140,6 +140,7 @@ export default function NewContractPage() {
           editTypes: [],
           notes: "",
           clientNotes: [],
+          onCameraTalent: [],
           deliverableUrl: "",
           cancellationReason: "",
           cancelledAt: null,

@@ -43,6 +43,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     editTypes: [],
     notes: "",
     clientNotes: [],
+    onCameraTalent: [],
     deliverableUrl: "",
     cancellationReason: "",
     cancelledAt: null,

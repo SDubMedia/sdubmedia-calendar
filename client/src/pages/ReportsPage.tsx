@@ -810,6 +810,13 @@ export default function ReportsPage() {
         <div class="project-meta-value">${noteText || "&nbsp;"}</div>
       `;
 
+      // On-camera talent — only shown when there are names.
+      const talentNames = (p.onCameraTalent || []).filter(Boolean);
+      const talentHtml = talentNames.length ? `
+        <div class="project-meta-label">On Camera</div>
+        <div class="project-meta-value">${talentNames.map(n => escReport(n)).join(", ")}</div>
+      ` : "";
+
       const deliverables = (p.editTypes || []).map(et => `<li>${data.editTypes.find(t => t.id === et)?.name || et}</li>`).join("");
       const deliverablesHtml = deliverables ? `
         <div class="project-meta-label">Deliverables</div>
@@ -865,6 +872,7 @@ export default function ReportsPage() {
           <div class="project-card-body">
             ${locationHtml}
             ${notesCardHtml}
+            ${talentHtml}
             ${deliverablesHtml}
             ${!isPerProject ? `
             <div style="margin-top: 16px;">

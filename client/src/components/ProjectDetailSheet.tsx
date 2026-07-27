@@ -75,6 +75,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, deleteProjectDocument } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [clientNoteDraft, setClientNoteDraft] = useState("");
+  const [talentDraft, setTalentDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
   const [, setLocation] = useLocation();
@@ -105,6 +106,33 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     try { await updateProject(project.id, { clientNotes: clientNotesList.filter(n => n.id !== id) }); }
     catch { toast.error("Couldn't delete note"); }
   };
+
+  // ---- On-camera talent (list of names). Owner writes directly; assigned crew
+  // go through the service-role endpoint (staff can't write projects via RLS). ----
+  const talentList = project.onCameraTalent ?? [];
+  const saveTalent = async (next: string[]) => {
+    try {
+      if (isOwner) {
+        await updateProject(project.id, { onCameraTalent: next });
+      } else {
+        const token = await getAuthToken();
+        const res = await fetch("/api/project-talent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId: project.id, talent: next }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Failed");
+        await refresh();
+      }
+    } catch { toast.error("Couldn't save on-camera names"); }
+  };
+  const addTalent = async () => {
+    const name = talentDraft.trim();
+    if (!name) return;
+    await saveTalent([...talentList, name]);
+    setTalentDraft("");
+  };
+  const removeTalent = (idx: number) => saveTalent(talentList.filter((_, i) => i !== idx));
 
   // ---- Project documents: upload to R2 via the signed-URL API, download, delete ----
   const uploadDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1150,6 +1178,36 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
             </div>
 
             </>)}
+
+            {/* On-camera talent — names featured on camera; shows on the client
+                report. Owner + assigned crew can edit. */}
+            {(isOwner || isAssignedToProject) && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                  On Camera <span className="normal-case text-[10px] text-muted-foreground/70">· shows on the client report</span>
+                </div>
+                {talentList.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {talentList.map((name, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 bg-secondary/50 rounded-full pl-3 pr-1.5 py-1 text-xs text-foreground">
+                        {name}
+                        <button type="button" onClick={() => removeTalent(i)} className="p-0.5 rounded-full text-muted-foreground hover:text-destructive" aria-label={`Remove ${name}`}><X className="w-3 h-3" /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    value={talentDraft}
+                    onChange={e => setTalentDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTalent(); } }}
+                    placeholder="Add a name on camera…"
+                    className="flex-1 min-w-0 bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground"
+                  />
+                  <button type="button" onClick={addTalent} disabled={!talentDraft.trim()} className="shrink-0 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50">Add</button>
+                </div>
+              </div>
+            )}
 
             {/* Documents — scripts, shot lists, call sheets. Owner + assigned
                 crew can view/download; owner + staff can upload. */}

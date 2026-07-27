@@ -555,6 +555,7 @@ function rowToProject(r: any): Project {
     editTypes: r.edit_types || [],
     notes: r.notes || "",
     clientNotes: Array.isArray(r.client_notes) ? r.client_notes : [],
+    onCameraTalent: Array.isArray(r.on_camera_talent) ? r.on_camera_talent : [],
     deliverableUrl: r.deliverable_url || "",
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
@@ -2767,6 +2768,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       edit_types: p.editTypes,
       notes: p.notes,
       client_notes: p.clientNotes ?? [],
+      on_camera_talent: p.onCameraTalent ?? [],
       deliverable_url: p.deliverableUrl || "",
       cancellation_reason: p.cancellationReason || "",
       cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
@@ -2816,6 +2818,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.editTypes !== undefined) patch.edit_types = p.editTypes;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.clientNotes !== undefined) patch.client_notes = p.clientNotes;
+    if (p.onCameraTalent !== undefined) patch.on_camera_talent = p.onCameraTalent;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
     if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
     if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;

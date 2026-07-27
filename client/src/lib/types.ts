@@ -548,6 +548,9 @@ export interface Project {
   // each individually editable/deletable. Separate from the internal `notes`
   // above so internal notes never leak to clients.
   clientNotes: ClientNote[];
+  // Free-text names of the people featured on camera (agents, clients, guests).
+  // Owner + assigned crew edit it; shows in the report's Projects & Activity.
+  onCameraTalent: string[];
   deliverableUrl: string; // Google Drive link to final deliverables
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"

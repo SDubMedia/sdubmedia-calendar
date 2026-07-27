@@ -107,6 +107,7 @@ export default function ClientReportsPage() {
         amount,
         services: (p.services || []).map(s => ({ label: s.label, price: Number(s.price || 0) })),
         clientNotes: p.clientNotes ?? [],
+        onCameraTalent: (p.onCameraTalent || []).filter(Boolean),
       };
     });
     return { rows, totalHours, totalAmount };
@@ -232,6 +233,7 @@ export default function ClientReportsPage() {
           </div>
           ${(p.services && p.services.length > 0) ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;">${p.services.map(s => `<div style="display:flex;justify-content:space-between;margin:2px 0;"><span style="color:#888;">${s.label}</span><span style="font-weight:600;">${formatCurrency(Number(s.price || 0))}</span></div>`).join("")}</div>` : ""}
           ${(p.clientNotes && p.clientNotes.length > 0) ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;color:#444;line-height:1.5;">${p.clientNotes.map(n => `<div style="margin:3px 0;">${escHtml(n.text)}</div>`).join("")}</div>` : ""}
+          ${(p.onCameraTalent && p.onCameraTalent.filter(Boolean).length > 0) ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;color:#444;"><span style="color:#888;">On Camera: </span>${p.onCameraTalent.filter(Boolean).map(n => escHtml(n)).join(", ")}</div>` : ""}
           ${loc ? `<div style="padding:12px 16px;font-size:12px;border-top:1px solid #e5e5e5;"><span style="color:#888;">Location: </span>${loc.name}, ${loc.address} ${loc.city}, ${loc.state} ${loc.zip}</div>` : ""}
         </div>
       `;
@@ -481,6 +483,9 @@ export default function ClientReportsPage() {
                             <p key={ni} className="text-xs text-muted-foreground whitespace-pre-wrap">{n.text}</p>
                           ))}
                         </div>
+                      )}
+                      {r.onCameraTalent.length > 0 && (
+                        <p className="mt-2 pl-1 text-xs text-muted-foreground"><span className="text-muted-foreground/70">On Camera: </span>{r.onCameraTalent.join(", ")}</p>
                       )}
                     </div>
                   ))

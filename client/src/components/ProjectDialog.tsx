@@ -788,7 +788,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       billingModel: billingModelOverride,
       billingRate: billingModelOverride ? billingRateOverride : null,
       billedHours,
-      editTypes, notes, clientNotes: project?.clientNotes ?? [], deliverableUrl,
+      editTypes, notes, clientNotes: project?.clientNotes ?? [], onCameraTalent: project?.onCameraTalent ?? [], deliverableUrl,
       cancellationReason: status === "cancelled" ? cancellationReason.trim() : "",
       cancelledAt: status === "cancelled" ? (project?.cancelledAt ?? null) : null,
       discountType: discountAmount > 0 ? discountType : null,
