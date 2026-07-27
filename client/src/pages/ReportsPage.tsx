@@ -796,6 +796,16 @@ export default function ReportsPage() {
       const loc = data.locations.find(l => l.id === p.locationId);
       const { crewBillable: crewHours, postBillable: postHours, totalBillable: projTotal } = getProjectBillableHours(p, pricingClientOf(p));
       const dateStr = new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      // Start–end time under the date. 24h "HH:MM" -> "9:00 AM". Skip when the
+      // shoot has no real window (missing or 0-length like 9:00–9:00).
+      const fmt12 = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        if (Number.isNaN(h)) return "";
+        const ampm = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+      };
+      const timeStr = (p.startTime && p.endTime && p.startTime !== p.endTime) ? `${fmt12(p.startTime)} – ${fmt12(p.endTime)}` : "";
 
       const locationHtml = loc ? `
         <div class="project-meta-label">Filming Location</div>
@@ -856,6 +866,7 @@ export default function ReportsPage() {
             <div>
               <div class="project-name">${type}</div>
               <div class="project-date">${dateStr}</div>
+              ${timeStr ? `<div class="project-time">${timeStr}</div>` : ""}
             </div>
             <div style="text-align: right;">
               ${isPerProject ? `

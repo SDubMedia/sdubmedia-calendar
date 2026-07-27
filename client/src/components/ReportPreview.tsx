@@ -72,6 +72,7 @@ const REPORT_STYLES = `
   .project-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px 20px; background: #f2f7fc; border-bottom: 1px solid #dce7f2; }
   .project-card-header .project-name { font-size: 21px; font-weight: 800; color: #0a2540; letter-spacing: -0.01em; }
   .project-card-header .project-date { font-size: 13px; color: #666; margin-top: 2px; }
+  .project-card-header .project-time { font-size: 12px; color: #8a8a8a; margin-top: 1px; }
   .project-card-header .hours-badge { background: #0088ff; color: #fff; font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 6px; }
   .project-card-header .hours-detail { font-size: 12px; color: #888; text-align: right; margin-top: 4px; }
   .project-card-body { padding: 0 20px 20px; }
