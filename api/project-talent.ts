@@ -52,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { error } = await supabaseService.from("projects")
-      .update({ on_camera_talent: clean, updated_at: new Date().toISOString() }).eq("id", projectId);
+      .update({ on_camera_talent: clean }).eq("id", projectId);
     if (error) throw new Error(error.message);
 
     return res.status(200).json({ ok: true, talent: clean });
