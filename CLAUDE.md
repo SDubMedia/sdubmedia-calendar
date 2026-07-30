@@ -84,6 +84,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 **`catch (err: any)` is forbidden.** Use `catch (err)` (TS infers `unknown`) and the shared `errorMessage(err, fallback)` helper from `api/_auth.ts`. Mirrors `err.message || fallback` semantics without the `any` escape hatch.
 
+**Never fire-and-forget async work in a handler.** Vercel freezes the invocation the moment the handler returns its response, killing any fetch still in flight. `doThing().catch(log)` followed by `return res.json(...)` therefore delivers *sometimes* — a race, not a failure you can reproduce. This silently lost a real website inquiry's notification email on 2026-07-29 (`capture-pipeline-lead`) while identical test leads in May had sent fine. For best-effort side effects (emails, push) that must not fail the request, collect them and `await Promise.allSettled([...])`, then log the rejections:
+
+```typescript
+const settled = await Promise.allSettled(sideEffects.map(([, p]) => p));
+settled.forEach((r, i) => {
+  if (r.status === "rejected") console.warn(`[route] ${sideEffects[i][0]} failed: ${errorMessage(r.reason)}`);
+});
+return res.status(200).json({ ok: true });
+```
+
 **Public endpoints** (no auth): `contract-sign.ts`, `proposal-accept.ts`, `proposal-view.ts` — these use token-based verification instead of Bearer auth.
 
 **Error format**: Always `{ error: string }`.
@@ -232,6 +242,8 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't add console.log for debugging.** Remove debug logs before committing.
 - **Don't create new response formats.** API endpoints return `{ error }` or `{ ok/data }`.
 - **Don't silently swallow errors.** Every catch block must either log or return the error.
+- **Don't fire-and-forget async work in an API handler.** `doThing().catch(log); return res.json(...)` is a race — Vercel kills the in-flight fetch when the handler returns, so it delivers intermittently. Collect side effects and `await Promise.allSettled(...)`. We lost a real inquiry notification to this (Jul 2026).
+- **Don't add a column that only the capture API writes without a UI that reads it.** `pipeline_leads.description` held every website visitor's message for months with nothing in the app rendering it, so inquiries were captured but unreadable. If an endpoint persists user-authored text, something must display it.
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.

@@ -162,24 +162,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Best-effort: email the owner so they get the ping immediately, and
     // auto-acknowledge the visitor so they know the message landed. Neither
     // failing ever fails the capture (the lead is already saved).
-    notifyOwner(org, { name, email, phone, projectType, eventDateTime, message }).catch(err =>
-      console.warn(`[capture-pipeline-lead] owner notify failed: ${errorMessage(err)}`)
-    );
-    // Visitor auto-reply is on by default; the owner can switch it off in
-    // Settings (businessInfo.autoReplyToLeads === false).
+    //
+    // These MUST be awaited. Vercel freezes the invocation as soon as the
+    // handler returns its response, which kills any fetch still in flight —
+    // so fire-and-forget here silently loses notifications at random (that's
+    // how a real inquiry on 2026-07-29 landed in the pipeline with no email
+    // while identical May test leads did send). allSettled preserves the
+    // best-effort contract: a rejection is logged, never propagated.
     const autoReplyEnabled =
       ((org.business_info as { autoReplyToLeads?: boolean } | null)?.autoReplyToLeads) !== false;
-    if (autoReplyEnabled) {
-      ackVisitor(org, { name, email }).catch(err =>
-        console.warn(`[capture-pipeline-lead] visitor ack failed: ${errorMessage(err)}`)
-      );
-    }
-    // Best-effort push to the owner's devices. No-ops until APNs creds exist.
-    sendPushToOrg(orgId, {
-      title: "New lead",
-      body: `${name}${projectType ? ` — ${projectType}` : ""}`,
-      data: { type: "lead" },
-    }).catch(err => console.warn(`[capture-pipeline-lead] push failed: ${errorMessage(err)}`));
+
+    const sideEffects: Array<readonly [string, Promise<unknown>]> = [
+      ["owner notify", notifyOwner(org, { name, email, phone, projectType, eventDateTime, message })],
+      // Best-effort push to the owner's devices. No-ops until APNs creds exist.
+      ["push", sendPushToOrg(orgId, {
+        title: "New lead",
+        body: `${name}${projectType ? ` — ${projectType}` : ""}`,
+        data: { type: "lead" },
+      })],
+    ];
+    // Visitor auto-reply is on by default; the owner can switch it off in
+    // Settings (businessInfo.autoReplyToLeads === false).
+    if (autoReplyEnabled) sideEffects.push(["visitor ack", ackVisitor(org, { name, email })]);
+
+    const settled = await Promise.allSettled(sideEffects.map(([, p]) => p));
+    settled.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.warn(`[capture-pipeline-lead] ${sideEffects[i][0]} failed: ${errorMessage(r.reason)}`);
+      }
+    });
 
     return res.status(200).json({ ok: true });
   } catch (err) {
