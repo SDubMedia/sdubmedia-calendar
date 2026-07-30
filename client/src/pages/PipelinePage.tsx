@@ -3,11 +3,12 @@
 // Full lifecycle: Inquiry → Follow-up → Proposal → Signed → Paid → Delivered
 // ============================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import type { PipelineStage, Proposal, Contract } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
+import { formatDayLong } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/DateTimeField";
@@ -56,6 +57,100 @@ interface PipelineEntry {
   draftAge?: number;        // for contract_draft cards: days since draft was created (for the aging indicator)
   paymentLateDays?: number; // max days-late across unpaid past-due milestones on the underlying contract
   paymentLateAmount?: number; // dollar amount of the most-overdue unpaid milestone (for badge tooltip)
+  // Website form submissions fold the visitor's own message into the lead's
+  // `description`. Carried through so the detail dialog can show it — without
+  // this the message is captured to the DB but unreadable anywhere in the app.
+  description?: string;
+  createdAt?: string;
+}
+
+/** Full ISO timestamp into a readable "Jul 29, 2026, 6:36 PM". `formatDayLong`
+ *  only handles bare YYYY-MM-DD, so it can't be reused for created_at. */
+function formatReceived(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+}
+
+/** One label/value row. Stacks under 640px so long emails don't overflow the card. */
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="py-1.5 sm:grid sm:grid-cols-[6.5rem_1fr] sm:gap-3 sm:items-start">
+      <span className="block text-xs text-muted-foreground sm:pt-0.5">{label}</span>
+      <div className="text-sm text-foreground min-w-0 break-words">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Read-only detail view for a pipeline row. Exists because website form
+ * submissions fold the visitor's message into the lead's `description`, and
+ * before this there was no surface in the app that rendered it — the inquiry
+ * was captured but unreadable.
+ */
+function EntryDetailDialog({
+  entry, stageLabel, onClose,
+}: { entry: PipelineEntry | null; stageLabel: string; onClose: () => void }) {
+  if (!entry) return null;
+  const mailto = entry.email
+    ? `mailto:${entry.email}?subject=${encodeURIComponent(`Re: your inquiry${entry.projectType ? ` — ${entry.projectType}` : ""}`)}`
+    : "";
+  return (
+    <Dialog open={!!entry} onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }} className="break-words pr-6">
+            {entry.name || "Untitled"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="divide-y divide-border/50">
+          <DetailRow label="Stage">
+            <span className="text-xs">{stageLabel}</span>
+          </DetailRow>
+          {entry.createdAt && <DetailRow label="Received">{formatReceived(entry.createdAt)}</DetailRow>}
+          {entry.email && (
+            <DetailRow label="Email">
+              <a href={`mailto:${entry.email}`} className="text-blue-400 hover:text-blue-300 underline break-all">{entry.email}</a>
+            </DetailRow>
+          )}
+          {entry.phone && (
+            <DetailRow label="Phone">
+              <a href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`} className="text-blue-400 hover:text-blue-300 underline">{entry.phone}</a>
+            </DetailRow>
+          )}
+          {entry.projectType && <DetailRow label="Project type">{entry.projectType}</DetailRow>}
+          {entry.eventDate && <DetailRow label="Event date">{formatDayLong(entry.eventDate)}</DetailRow>}
+          {entry.location && <DetailRow label="Location">{entry.location}</DetailRow>}
+          {entry.leadSource && <DetailRow label="Source">{entry.leadSource}</DetailRow>}
+          {entry.total != null && entry.total > 0 && <DetailRow label="Total">${entry.total.toFixed(2)}</DetailRow>}
+        </div>
+
+        <div className="mt-1">
+          <span className="block text-xs text-muted-foreground mb-1.5">Message</span>
+          {entry.description ? (
+            <div className="rounded-lg border border-border bg-background/40 p-3 max-h-64 overflow-y-auto">
+              <p className="text-sm whitespace-pre-wrap break-words">{entry.description}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No message was included.</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+          {mailto && (
+            <Button asChild>
+              <a href={mailto}>Reply by email</a>
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function PipelinePage() {
@@ -64,6 +159,7 @@ export default function PipelinePage() {
   const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
   const [activeStage, setActiveStage] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [detailEntry, setDetailEntry] = useState<PipelineEntry | null>(null);
 
   // Send proposal dialog
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -112,6 +208,8 @@ export default function PipelinePage() {
         proposalId: lead.proposalId || undefined,
         paymentLateDays: late?.days,
         paymentLateAmount: late?.amount,
+        description: lead.description,
+        createdAt: lead.createdAt,
       });
     }
 
@@ -144,6 +242,7 @@ export default function PipelinePage() {
         total: prop.total,
         paymentLateDays: late?.days,
         paymentLateAmount: late?.amount,
+        createdAt: prop.createdAt,
       });
     }
 
@@ -176,6 +275,7 @@ export default function PipelinePage() {
         contractId: contract.id,
         total: prop.total,
         draftAge: ageDays,
+        createdAt: contract.createdAt,
       });
     }
 
@@ -398,7 +498,11 @@ export default function PipelinePage() {
               {filtered.map(entry => {
                 const stage = stages.find(s => s.id === entry.pipelineStage);
                 return (
-                  <tr key={entry.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
+                  <tr
+                    key={entry.id}
+                    onClick={() => setDetailEntry(entry)}
+                    className="border-b border-border/50 hover:bg-card/30 transition-colors cursor-pointer"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-foreground">{entry.name}</span>
@@ -426,6 +530,7 @@ export default function PipelinePage() {
                       {entry.type === "lead" ? (
                         <select
                           value={entry.pipelineStage}
+                          onClick={e => e.stopPropagation()}
                           onChange={e => changeStage(entry, e.target.value as PipelineStage)}
                           className={cn("text-[10px] font-semibold px-2 py-1 rounded border bg-transparent", COLOR_MAP[stage?.color || "blue"] || COLOR_MAP.blue)}
                         >
@@ -444,18 +549,18 @@ export default function PipelinePage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       {entry.type === "lead" && !entry.proposalId && (
-                        <button onClick={() => openSendProposal(entry.id)} className="p-1 text-blue-400 hover:text-blue-300" title="Send Proposal">
+                        <button onClick={e => { e.stopPropagation(); openSendProposal(entry.id); }} className="p-1 text-blue-400 hover:text-blue-300" title="Send Proposal">
                           <Send className="w-3.5 h-3.5" />
                         </button>
                       )}
                       {entry.type === "lead" && (
-                        <button onClick={() => deleteLead(entry.id)} className="p-1 text-muted-foreground hover:text-destructive">
+                        <button onClick={e => { e.stopPropagation(); deleteLead(entry.id); }} className="p-1 text-muted-foreground hover:text-destructive">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                       {entry.type === "contract_draft" && entry.contractId && (
                         <button
-                          onClick={() => setLocation(`/contracts/${entry.contractId}/review`)}
+                          onClick={e => { e.stopPropagation(); setLocation(`/contracts/${entry.contractId}/review`); }}
                           className={cn(
                             "px-2 py-1 text-[10px] font-semibold rounded border",
                             (entry.draftAge ?? 0) >= 3
@@ -481,6 +586,13 @@ export default function PipelinePage() {
           <ReShootPipeline heading="Real Estate" />
         </div>
       </div>
+
+      {/* Lead / entry detail — the only place the visitor's message is readable */}
+      <EntryDetailDialog
+        entry={detailEntry}
+        stageLabel={stages.find(s => s.id === detailEntry?.pipelineStage)?.label || detailEntry?.pipelineStage || ""}
+        onClose={() => setDetailEntry(null)}
+      />
 
       {/* Add Lead Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
