@@ -57,6 +57,12 @@ const KNOWN_PROJECT_TYPES = new Set([
   "Event coverage",
   "Brand video",
   "Wedding",
+  // Real estate listing work, captured from the agent form on
+  // sdubmedia.com/real-estate-photography. Kept distinct from "Other" so
+  // listing requests are identifiable in the pipeline at a glance: they need a
+  // different follow-up (quote per listing, then a portal invite) from a
+  // general inquiry.
+  "Listing shoot",
   "Other",
 ]);
 
@@ -245,15 +251,30 @@ async function ackVisitor(
   org: { name?: unknown; business_info?: unknown },
   lead: { name: string; email: string }
 ): Promise<void> {
-  const businessInfo = (org.business_info as { email?: string } | null) || {};
+  const businessInfo = (org.business_info as { email?: string; phone?: string } | null) || {};
   const verifiedFrom = process.env.RESEND_FROM_EMAIL || "noreply@slate.sdubmedia.com";
   const orgName = (org.name as string) || "the team";
   const replyTo = businessInfo.email?.trim() || verifiedFrom;
   const firstName = lead.name.split(/\s+/)[0] || lead.name;
 
+  // Offer the phone number when the org has one on file. Read from the org
+  // record rather than hardcoded, so every Slate customer gets this and nobody
+  // has to remember to update it. tel: needs digits only; the display keeps
+  // whatever formatting the owner typed.
+  const rawPhone = businessInfo.phone?.trim() || "";
+  const telHref = rawPhone.replace(/[^\d+]/g, "");
+  const callLine = rawPhone
+    ? `<p style="font-size:15px;">If it is easier to just talk it through, call or text ${escapeHtml(
+        orgName
+      )} on <a href="tel:${escapeHtml(telHref)}" style="color:#0f766e;font-weight:600;">${escapeHtml(
+        rawPhone
+      )}</a>. A real person answers.</p>`
+    : "";
+
   const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;color:#1e293b;line-height:1.6;">
     <p style="font-size:15px;">Hi ${escapeHtml(firstName)},</p>
     <p style="font-size:15px;">Thanks for reaching out to ${escapeHtml(orgName)} — we got your message and we'll be in touch within 24 hours.</p>
+    ${callLine}
     <p style="font-size:15px;">If anything comes up in the meantime, just reply to this email.</p>
     <p style="font-size:15px;margin-top:24px;">— ${escapeHtml(orgName)}</p>
   </body></html>`;

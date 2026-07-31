@@ -39,6 +39,7 @@ describe("coerceProjectType", () => {
   it("passes a known dropdown value through unchanged", () => {
     expect(coerceProjectType("Event coverage")).toBe("Event coverage");
     expect(coerceProjectType("Wedding")).toBe("Wedding");
+    expect(coerceProjectType("Listing shoot")).toBe("Listing shoot");
   });
 
   it("coerces an unknown non-empty value to Other", () => {
