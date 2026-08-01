@@ -792,6 +792,8 @@ function rowToProjectDocument(r: any): ProjectDocument {
   return {
     id: r.id,
     projectId: r.project_id || "",
+    kind: r.kind === "draft" ? "draft" : "document",
+    version: Number(r.version || 0),
     fileName: r.file_name || "",
     storagePath: r.storage_path || "",
     sizeBytes: Number(r.size_bytes || 0),
@@ -2029,6 +2031,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id,
       ...(orgId ? { org_id: orgId } : {}),
       project_id: doc.projectId,
+      kind: doc.kind || "document",
+      version: doc.version || 0,
       file_name: doc.fileName,
       storage_path: doc.storagePath,
       size_bytes: doc.sizeBytes,

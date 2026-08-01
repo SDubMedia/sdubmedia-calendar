@@ -102,6 +102,23 @@ export default function CalendarPage() {
   const [showAvail, setShowAvail] = useState(false);
   const isOwner = role === "owner";
 
+  // Deep link: /calendar?project=<id> jumps to that job's month and opens it.
+  // Notifications (e.g. "an editor uploaded a draft") point here — without this
+  // the owner lands on the current month and has to hunt for a past shoot.
+  const openedDeepLinkRef = useRef(false);
+  useEffect(() => {
+    if (openedDeepLinkRef.current) return;
+    const wantedId = new URLSearchParams(window.location.search).get("project");
+    if (!wantedId) return;
+    const target = data.projects.find(p => p.id === wantedId);
+    if (!target) return; // data may still be loading — try again on the next pass
+    openedDeepLinkRef.current = true;
+    const [y, m] = target.date.split("-").map(Number);
+    if (y && m) { setYear(y); setMonth(m - 1); }
+    setSelectedDate(target.date);
+    setSelectedProject(target);
+  }, [data.projects]);
+
   // Availability + conflicts overlay (owner + staff only).
   const canSeeAvail = role === "owner" || role === "staff";
   const prefsMap = useMemo(() => {

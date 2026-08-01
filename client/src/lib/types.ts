@@ -506,11 +506,16 @@ export interface ClientNote {
   createdAt: string;
 }
 
-// A document attached to a project (script, shot list, call sheet). File lives
-// in R2; this is the metadata row. Owner + assigned crew see it, not clients.
+// A file attached to a project. File lives in R2; this is the metadata row.
+// Owner + assigned crew see it, never clients.
+//   kind "document" — script, shot list, call sheet
+//   kind "draft"    — a review copy of the edit (usually video), numbered per
+//                     project so the sheet can label it "Draft v3"
 export interface ProjectDocument {
   id: string;
   projectId: string;
+  kind: "document" | "draft";
+  version: number;
   fileName: string;
   storagePath: string;
   sizeBytes: number;

@@ -151,10 +151,69 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       if (!res.ok) throw new Error(d.error || "Upload failed");
       const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
-      await addProjectDocument({ projectId: project.id, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      await addProjectDocument({ projectId: project.id, kind: "document", version: 0, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
       toast.success("Document uploaded");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't upload"); }
     finally { setDocUploading(false); }
+  };
+
+  // ---- Draft cuts: same R2 path as documents, but bigger, video-friendly, and
+  // the owner gets pinged when an editor posts one. Never reaches the client. ----
+  const uploadDraft = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setDraftUploading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-document-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "upload", kind: "draft", projectId: project.id, fileName: file.name, contentType: file.type || "application/octet-stream", sizeBytes: file.size }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Upload failed");
+      const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
+      const version = data.projectDocuments
+        .filter(x => x.projectId === project.id && x.kind === "draft")
+        .reduce((max, x) => Math.max(max, x.version), 0) + 1;
+      await addProjectDocument({ projectId: project.id, kind: "draft", version, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      // Tell the owner it landed — otherwise they'd only find out by looking.
+      // The owner uploading their own draft doesn't need to notify themselves.
+      if (!isOwner) {
+        try {
+          await fetch("/api/notify-project-draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ projectId: project.id, fileName: file.name, version }),
+          });
+        } catch (err) { console.warn("Draft uploaded but the notification failed:", err); }
+      }
+      toast.success(`Draft v${version} uploaded`);
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't upload"); }
+    finally { setDraftUploading(false); }
+  };
+
+  // Play a draft where it sits instead of downloading a 500MB file to review it.
+  const playDraft = async (doc: ProjectDocument) => {
+    if (playingDraftId === doc.id) { setPlayingDraftId(null); setPlayingUrl(null); return; }
+    setPlayingDraftId(doc.id);
+    setPlayingUrl(null);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-document-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "download", projectId: project.id, storagePath: doc.storagePath, fileName: doc.fileName, inline: true }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Couldn't open the draft");
+      setPlayingUrl(d.downloadUrl);
+    } catch (err) {
+      setPlayingDraftId(null);
+      toast.error(err instanceof Error ? err.message : "Couldn't play that draft");
+    }
   };
   const downloadDoc = async (doc: ProjectDocument) => {
     try {
@@ -170,10 +229,26 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't download"); }
   };
   const removeDoc = async (doc: ProjectDocument) => {
-    try { await deleteProjectDocument(doc.id); }
+    try {
+      await deleteProjectDocument(doc.id);
+      // Drop the bytes too — a deleted draft shouldn't keep costing storage.
+      // The row is already gone, so a storage hiccup here is worth a log, not
+      // an error in the user's face.
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-document-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "delete", projectId: project.id, storagePath: doc.storagePath }),
+      });
+      if (!res.ok) console.warn("Row deleted but the file is still in storage:", (await res.json().catch(() => ({}))).error);
+      if (playingDraftId === doc.id) { setPlayingDraftId(null); setPlayingUrl(null); }
+    }
     catch { toast.error("Couldn't delete document"); }
   };
-  const fmtBytes = (b: number) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+  const fmtBytes = (b: number) => b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+  // Who posted a draft. Staff only ever see their own profile row under RLS, so
+  // this resolves for the owner and quietly returns "" for everyone else.
+  const uploaderName = (userId: string) => allProfiles.find(p => p.id === userId)?.name || "";
   // Shoot availability confirmation — only flagged crew must confirm.
   const requiresConfirm = (id: string) => data.crewMembers.find(c => c.id === id)?.requiresShootConfirmation ?? false;
   const confirmationFor = (id: string) => data.shootConfirmations.find(sc => sc.projectId === project.id && sc.crewMemberId === id);
@@ -230,7 +305,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   );
   const canSeeDocs = isOwner || isAssignedToProject;
   const [docUploading, setDocUploading] = useState(false);
-  const projectDocs = data.projectDocuments.filter(d => d.projectId === project.id);
+  const [draftUploading, setDraftUploading] = useState(false);
+  // Which draft is expanded into the inline player, and its signed URL.
+  const [playingDraftId, setPlayingDraftId] = useState<string | null>(null);
+  const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const projectFiles = data.projectDocuments.filter(d => d.projectId === project.id);
+  const projectDocs = projectFiles.filter(d => d.kind !== "draft");
+  // Newest cut first — that's the one being reviewed.
+  const projectDrafts = projectFiles
+    .filter(d => d.kind === "draft")
+    .sort((a, b) => b.version - a.version);
   // Assigned crew in a qualifying role (photographer/videographer on the shoot,
   // or an editor in post) can upload the finals straight into this property's
   // gallery — owner still controls delivering it to the client.
@@ -1232,6 +1316,61 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             )}
 
+            {/* Drafts — review cuts from the editor. Same audience as documents
+                (owner + assigned crew, never the client). Plays in place so a
+                500MB cut doesn't have to be downloaded to be watched. */}
+            {canSeeDocs && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Drafts <span className="normal-case text-[10px] text-muted-foreground/70">· internal review only, never sent to the client</span>
+                </div>
+                {projectDrafts.map(draft => {
+                  const isVideo = draft.mimeType.startsWith("video/");
+                  const isPlaying = playingDraftId === draft.id;
+                  return (
+                    <div key={draft.id} className="bg-secondary/50 rounded-md overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs">
+                        <Film className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-foreground truncate" title={draft.fileName}>
+                            <span className="font-semibold">v{draft.version}</span> · {draft.fileName}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {fmtBytes(draft.sizeBytes)} · {new Date(draft.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {uploaderName(draft.uploadedByUserId) ? ` · ${uploaderName(draft.uploadedByUserId)}` : ""}
+                          </div>
+                        </div>
+                        {isVideo && (
+                          <button type="button" onClick={() => playDraft(draft)} className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-primary/15 text-primary hover:bg-primary/25">
+                            {isPlaying ? "Hide" : "Watch"}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => downloadDoc(draft)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-primary hover:bg-muted" aria-label={`Download ${draft.fileName}`}>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" onClick={() => removeDoc(draft)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                      {isPlaying && (
+                        <div className="px-3 pb-3">
+                          {playingUrl ? (
+                            <video src={playingUrl} controls playsInline className="w-full max-w-full rounded-md bg-black" />
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground">Loading…</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {projectDrafts.length === 0 && <p className="text-xs text-muted-foreground">No drafts yet.</p>}
+                <label className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer", draftUploading ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
+                  <Upload className="w-3.5 h-3.5" /> {draftUploading ? "Uploading…" : "Upload draft"}
+                  <input type="file" className="hidden" disabled={draftUploading} onChange={uploadDraft} accept="video/*,image/*,.mov,.mp4,.m4v" />
+                </label>
+                {draftUploading && <p className="text-[11px] text-muted-foreground">Large files take a while — keep this page open.</p>}
+              </div>
+            )}
+
             {/* Crew */}
             {isOwner ? (
               project.crew.length > 0 && (
@@ -1478,9 +1617,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   <input ref={crewPhotoInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { handleCrewUpload(e.target.files); e.currentTarget.value = ""; }} />
                   <Button onClick={() => crewPhotoInputRef.current?.click()} disabled={!!crewUploading} className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
                     <Upload className="w-4 h-4" />
-                    {crewUploading ? `Uploading ${crewUploading.done}/${crewUploading.total}…` : "Upload final photos"}
+                    {crewUploading ? `Uploading ${crewUploading.done}/${crewUploading.total}…` : "Upload finals (photo or video)"}
                   </Button>
-                  <p className="text-[11px] text-muted-foreground text-center -mt-1">Goes into this property's gallery. Your owner delivers it to the client.</p>
+                  <p className="text-[11px] text-muted-foreground text-center -mt-1">Finished work only — goes into this job's gallery, and the owner delivers it to the client. Review cuts go under Drafts.</p>
                 </>
               )}
               {isOwner && (
