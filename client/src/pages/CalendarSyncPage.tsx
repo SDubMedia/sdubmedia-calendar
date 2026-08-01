@@ -29,24 +29,33 @@ const FEED_OPTIONS: { key: FeedType; label: string; description: string; icon: t
 export default function CalendarSyncPage() {
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
-  const [feedToken, setFeedToken] = useState("");
+  const [myToken, setMyToken] = useState("");
+  const [orgToken, setOrgToken] = useState("");
+  const [scope, setScope] = useState<"mine" | "org">("mine");
   const [loadingToken, setLoadingToken] = useState(true);
   const [feedType, setFeedType] = useState<FeedType>("all");
 
-  // RLS returns nothing here for anyone but the owner — the empty result is the
-  // permission check, not a bug.
+  // Two tokens, two different permission checks, both enforced by RLS rather
+  // than by this component: everyone can read their own personal feed token;
+  // only the owner gets a row back from org_secrets. An empty result is the
+  // permission working, not a failure.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("org_secrets").select("calendar_feed_token").maybeSingle();
+      const [mine, org] = await Promise.all([
+        supabase.from("user_feed_tokens").select("token").maybeSingle(),
+        supabase.from("org_secrets").select("calendar_feed_token").maybeSingle(),
+      ]);
       if (cancelled) return;
-      if (error) console.warn("Couldn't load the calendar feed token:", error.message);
-      setFeedToken(data?.calendar_feed_token || "");
+      if (mine.error) console.warn("Couldn't load your calendar feed token:", mine.error.message);
+      setMyToken(mine.data?.token || "");
+      setOrgToken(org.data?.calendar_feed_token || "");
       setLoadingToken(false);
     })();
     return () => { cancelled = true; };
   }, []);
 
+  const feedToken = scope === "org" ? orgToken : myToken;
   const feedBase = `${window.location.origin}/api/calendar.ics`;
   const feedUrl = `${feedBase}?key=${feedToken}&type=${feedType}`;
   const webcalUrl = feedUrl.replace("https://", "webcal://").replace("http://", "webcal://");
@@ -77,10 +86,41 @@ export default function CalendarSyncPage() {
         <div className="max-w-lg mx-auto space-y-6">
           {!loadingToken && !feedToken && (
             <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-300">
-              {isOwner
-                ? "Your calendar feed is being set up — check back in a moment. If this persists, refresh the app."
-                : "Calendar subscriptions are set up by the account owner. The feed covers the whole company calendar, so it isn't shared with individual accounts."}
+              Your calendar feed is being set up — check back in a moment. If this persists, refresh the app.
             </div>
+          )}
+
+          {/* Whose calendar. Only the owner has a company-wide feed, so the
+              choice only appears for them; everyone else just gets theirs. */}
+          {orgToken && (
+            <div className="bg-card border border-border rounded-xl p-4 sm:p-6 space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Whose calendar?</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">The company feed carries every client and address — keep that link to yourself.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {([["mine", "My schedule"], ["org", "Whole company"]] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setScope(key)}
+                    className={cn(
+                      "px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors",
+                      scope === key
+                        ? "bg-primary/20 border-primary/50 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!isOwner && feedToken && (
+            <p className="text-[11px] text-muted-foreground px-1">
+              This feed shows the jobs you're assigned to. It updates on its own as you're added to work.
+            </p>
           )}
           {/* Everything below hands out a working feed URL, so it only renders
               once we actually have a token — i.e. for the owner. */}
