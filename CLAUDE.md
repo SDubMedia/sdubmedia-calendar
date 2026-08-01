@@ -341,6 +341,46 @@ Things baked into the codebase. Re-using these saves re-discovering them.
 - **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
 - **Idempotency.** Persist last-fired timestamp on the row (`last_reminder_sent_at`, `reminder_sent_at`, etc.) so reruns don't double-send.
 
+### Secrets never live on the `organizations` row
+
+**Every non-owner role can SELECT the whole organizations record** — see
+`members_read_org` in `migrations/2026-04-fix-all-rls-critical.sql`
+(partner/staff/client/family). RLS cannot hide individual columns, so any
+credential added to that table is readable by every login in the org, including
+your clients.
+
+This bit us with `calendar_feed_token` (Aug 2026): added as a column in June,
+plain text, and that token alone pulls the entire company calendar as `.ics` —
+every client, address and time, no password. It also silently defeated the
+staff project lockdown, since a staff member could read the token and pull
+everything anyway.
+
+**Rule: credentials, tokens and API keys go in `org_secrets`** (owner-only RLS,
+`migrations/2026-08-01-org-secrets-a-create.sql`). Only non-sensitive display
+values — `google_drive_email`, logo, business info — belong on `organizations`.
+Before adding a column there, ask: is this something an agent should be able to
+read? If not, it goes in `org_secrets`.
+
+**Moving a column out is a three-step ship, in this order:** create + backfill
+the new home (old column still live) → deploy the code that reads the new home →
+drop the old column. Dropping first breaks the feature mid-deploy for everyone.
+
+### Per-user calendar feeds
+
+`user_feed_tokens` gives each login its own `.ics` token; `api/calendar.ics.ts`
+resolves it and filters the feed. **That endpoint runs under the service role,
+so RLS is NOT filtering it** — the rules are `projectInFeed()` and
+`meetingInFeed()` in that file, covered by
+`client/src/lib/__tests__/calendarFeedScope.test.ts`. Any new event type added
+to the feed needs its own scoping check there; forgetting one fails open (the
+whole org's data on a contractor's phone), and nothing will throw.
+
+### `api/` is not typechecked
+
+`tsconfig.json` includes only `client/src`, `shared`, `server` — so
+`npx tsc --noEmit` **does not check the serverless functions**. A file only gets
+checked if a test imports it. Don't assume a green tsc means `api/` compiles.
+
 ### Branding (org logo + favicon)
 - **Stored as data URLs on the `organizations` row.** No upload endpoint, no R2, no expiring URLs. Logos ≤250KB, favicons ≤50KB.
 - **`<FaviconSync />`** in `App.tsx` reflects `org.faviconUrl` onto the live `<link rel="icon">`. Don't add a separate favicon mechanism.
