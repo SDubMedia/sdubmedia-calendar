@@ -12,7 +12,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { errorMessage, escapeHtml } from "./_auth.js";
+import { errorMessage, escapeHtml, publicBusinessInfo } from "./_auth.js";
 import { verifyPassword } from "./_password.js";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
 
@@ -229,7 +229,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       fileId: s.file_id,
       isPaid: s.is_paid,
     })),
-    org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: org.business_info } : null,
+    org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: publicBusinessInfo(org.business_info) } : null,
   });
 }
 

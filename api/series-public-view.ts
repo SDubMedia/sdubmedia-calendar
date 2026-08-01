@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { publicBusinessInfo } from "./_auth.js";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -47,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       clientReviewedAt: series.client_reviewed_at,
     },
     client: client ? { company: client.company, contactName: client.contact_name } : null,
-    org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: org.business_info } : null,
+    org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: publicBusinessInfo(org.business_info) } : null,
     episodes: (episodes || []).map(e => ({
       id: e.id,
       episodeNumber: e.episode_number,

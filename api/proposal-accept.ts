@@ -8,7 +8,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { errorMessage, escapeHtml } from "./_auth.js";
+import { errorMessage, escapeHtml, publicBusinessInfo } from "./_auth.js";
 import { generateContractContent } from "./_contractGenerator.js";
 import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
 import { nanoid } from "nanoid";
@@ -75,7 +75,8 @@ async function getProposal(token: string, res: VercelResponse) {
       .single();
     orgName = org?.name || "";
     orgLogo = org?.logo_url || "";
-    orgBusinessInfo = (org?.business_info as Record<string, unknown>) || null;
+    // Redacted: this object goes to anyone holding the proposal link.
+    orgBusinessInfo = publicBusinessInfo(org?.business_info);
     stripeConnected = !!org?.stripe_account_id;
   }
 

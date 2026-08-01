@@ -59,6 +59,29 @@ const ALLOWED_DOMAINS = [
   // would be accepted by Stripe/email/auth callbacks.
   ...(process.env.VERCEL_ENV === "production" ? [] : ["localhost", "127.0.0.1"]),
 ];
+/**
+ * Strip an org's `business_info` down to what a no-login visitor may see.
+ *
+ * Public pages (proposal, gallery, series review) were returning the whole
+ * JSONB blob, which carries the org's EIN — so anyone holding a share link
+ * received a business tax id in the response, even though the page only
+ * renders the address and phone. Whitelist, so a field added to business_info
+ * later doesn't quietly join the payload.
+ */
+const PUBLIC_BUSINESS_FIELDS = [
+  "address", "city", "state", "zip", "phone", "email", "website", "ownerName", "companyName", "venmoUsername",
+] as const;
+
+export function publicBusinessInfo(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of PUBLIC_BUSINESS_FIELDS) {
+    if (src[key] !== undefined) out[key] = src[key];
+  }
+  return out;
+}
+
 export function isAllowedUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
