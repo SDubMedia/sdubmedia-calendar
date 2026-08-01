@@ -375,11 +375,27 @@ so RLS is NOT filtering it** — the rules are `projectInFeed()` and
 to the feed needs its own scoping check there; forgetting one fails open (the
 whole org's data on a contractor's phone), and nothing will throw.
 
-### `api/` is not typechecked
+### `api/` IS typechecked (since 2026-08-01) — keep it that way
 
-`tsconfig.json` includes only `client/src`, `shared`, `server` — so
-`npx tsc --noEmit` **does not check the serverless functions**. A file only gets
-checked if a test imports it. Don't assume a green tsc means `api/` compiles.
+`tsconfig.json` now includes `api/**/*`, so `npx tsc --noEmit` covers the
+serverless functions. It didn't until 2026-08-01, and the 43 errors that first
+run surfaced included five live bugs — a query that never selected the `id` it
+went on to use, two Stripe fields that moved in a newer API version, and
+milestones that rendered "undefined" into generated contracts. Don't narrow the
+include list again to make an error go away.
+
+Two gotchas from that work:
+- **`target: es2022` is load-bearing for type-checking only.** Without it tsc
+  assumes ES5 and rejects iterating a `Map`/`Set`. It doesn't affect output —
+  Vite/esbuild does the real transpiling.
+- **tsc's incremental cache serves stale diagnostics after a tsconfig change.**
+  If the error list doesn't match the file you just fixed, delete
+  `node_modules/typescript/tsbuildinfo` and rerun.
+
+`ReturnType<typeof createClient>` is **not** a usable type for a Supabase client
+parameter — it resolves to the default generics, which know no tables, so the
+real client won't assign to it and `.update()` demands `never`. Import
+`type SupabaseClient` and use that.
 
 ### Branding (org logo + favicon)
 - **Stored as data URLs on the `organizations` row.** No upload endpoint, no R2, no expiring URLs. Logos ≤250KB, favicons ≤50KB.
