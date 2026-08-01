@@ -174,9 +174,10 @@ export interface Organization {
   // {first_name} / {company} / {url} get substituted at copy time.
   // Empty = use the built-in default.
   seriesReviewMessageTemplate?: string;
-  // Secret token for the iCal feed (/api/calendar.ics?key=...). Per-org, random,
-  // not the org id — used so the calendar feed can't be pulled by guessing ids.
-  calendarFeedToken: string;
+  // NOTE: the iCal feed token used to live here. It moved to the owner-only
+  // `org_secrets` table, because every member role can read this record and the
+  // token alone pulls the whole company calendar. CalendarSyncPage reads it
+  // directly from org_secrets. Don't add it back.
   // Staff W-9 onboarding: the blank official IRS W-9 the owner uploaded once
   // (storage path in the private w9-documents bucket), and the AcroForm
   // field-name map discovered on upload (semantic key -> real PDF field name).

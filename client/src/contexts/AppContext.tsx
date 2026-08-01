@@ -941,7 +941,7 @@ function rowToOrg(r: any): Organization {
     billingStatus: r.billing_status || "ok",
     testimonialPromptedAt: r.testimonial_prompted_at || null,
     seriesReviewMessageTemplate: r.series_review_message_template || "",
-    calendarFeedToken: r.calendar_feed_token || "",
+    // calendar_feed_token deliberately absent — it lives in org_secrets now.
     w9TemplatePath: r.w9_template_path || "",
     w9FieldMap: (r.w9_field_map && typeof r.w9_field_map === "object") ? r.w9_field_map : {},
     staffAgreementText: r.staff_agreement_text || "",

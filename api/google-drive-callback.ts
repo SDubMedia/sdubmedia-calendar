@@ -29,11 +29,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { refreshToken, email } = await exchangeCode(code);
     if (!refreshToken) return res.redirect(302, settingsUrl("error"));
 
-    const { error } = await supabase.from("organizations").update({
-      google_drive_refresh_token: encryptToken(refreshToken),
-      google_drive_email: email,
-    }).eq("id", orgId);
-    if (error) return res.redirect(302, settingsUrl("error"));
+    // Credential to org_secrets (owner-only), display email to organizations.
+    const [{ error }, { error: secretError }] = await Promise.all([
+      supabase.from("organizations").update({ google_drive_email: email }).eq("id", orgId),
+      supabase.from("org_secrets").upsert(
+        { org_id: orgId, google_drive_refresh_token: encryptToken(refreshToken), updated_at: new Date().toISOString() },
+        { onConflict: "org_id" },
+      ),
+    ]);
+    if (error || secretError) {
+      console.error("google-drive-callback save failed:", error || secretError);
+      return res.redirect(302, settingsUrl("error"));
+    }
 
     return res.redirect(302, settingsUrl("connected"));
   } catch (err) {

@@ -30,8 +30,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!profile || profile.role !== "owner") return res.status(403).json({ error: "Only owners can send to Drive" });
     const orgId = await getUserOrgId(caller.userId);
 
-    const { data: org } = await supabase.from("organizations").select("google_drive_refresh_token").eq("id", orgId).single();
-    const refresh = decryptToken(org?.google_drive_refresh_token || "");
+    // Owner-only table — see migrations/2026-08-01-org-secrets-a-create.sql.
+    const { data: secrets } = await supabase.from("org_secrets").select("google_drive_refresh_token").eq("org_id", orgId).maybeSingle();
+    const refresh = decryptToken(secrets?.google_drive_refresh_token || "");
     if (!refresh) return res.status(400).json({ error: "Connect Google Drive first" });
 
     // The file must belong to this delivery, and the delivery to this org.

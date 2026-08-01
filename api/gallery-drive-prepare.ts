@@ -33,9 +33,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!profile || profile.role !== "owner") return res.status(403).json({ error: "Only owners can send to Drive" });
     const orgId = await getUserOrgId(caller.userId);
 
-    const { data: org } = await supabase
-      .from("organizations").select("google_drive_refresh_token, google_drive_folder_id").eq("id", orgId).single();
-    const refresh = decryptToken(org?.google_drive_refresh_token || "");
+    // The refresh token lives in org_secrets (owner-only); the folder id stays
+    // on organizations, where it's harmless.
+    const [{ data: org }, { data: secrets }] = await Promise.all([
+      supabase.from("organizations").select("google_drive_folder_id").eq("id", orgId).single(),
+      supabase.from("org_secrets").select("google_drive_refresh_token").eq("org_id", orgId).maybeSingle(),
+    ]);
+    const refresh = decryptToken(secrets?.google_drive_refresh_token || "");
     if (!refresh) return res.status(400).json({ error: "Connect Google Drive first (Manage → Settings)." });
 
     const { data: delivery } = await supabase

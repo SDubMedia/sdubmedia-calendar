@@ -23,10 +23,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!profile || profile.role !== "owner") return res.status(403).json({ error: "Only owners can disconnect Google Drive" });
     const orgId = await getUserOrgId(caller.userId);
 
-    const { error } = await supabase.from("organizations").update({
-      google_drive_refresh_token: "", google_drive_folder_id: "", google_drive_email: "",
-    }).eq("id", orgId);
-    if (error) return res.status(500).json({ error: errorMessage(error, "Couldn't disconnect") });
+    const [{ error }, { error: secretError }] = await Promise.all([
+      supabase.from("organizations").update({ google_drive_folder_id: "", google_drive_email: "" }).eq("id", orgId),
+      // Clear the credential in its own table — leaving it behind would keep
+      // the connection alive server-side after the UI says it's gone.
+      supabase.from("org_secrets").update({ google_drive_refresh_token: "", updated_at: new Date().toISOString() }).eq("org_id", orgId),
+    ]);
+    if (error || secretError) return res.status(500).json({ error: errorMessage(error || secretError, "Couldn't disconnect") });
 
     return res.status(200).json({ ok: true });
   } catch (err) {

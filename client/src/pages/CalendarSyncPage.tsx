@@ -1,10 +1,19 @@
 // ============================================================
 // CalendarSyncPage — Subscribe to Slate calendar from any app
-// Available to all roles
+//
+// Owner only, by necessity: the feed token is org-wide, so anyone holding it
+// pulls every client, address and time in the business. It used to ride on the
+// organizations row, which every member role can read — staff and family were
+// handed the whole calendar. The token now lives in the owner-only org_secrets
+// table and is fetched here rather than coming through AppContext.
+//
+// Giving staff their own scoped feed means per-user tokens; that's a separate
+// piece of work, not a tweak to this page.
 // ============================================================
 
-import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { CalendarDays, Copy, ExternalLink, Clapperboard, Heart, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,9 +27,25 @@ const FEED_OPTIONS: { key: FeedType; label: string; description: string; icon: t
 ];
 
 export default function CalendarSyncPage() {
-  const { data } = useApp();
-  const feedToken = data.organization?.calendarFeedToken || "";
+  const { effectiveProfile } = useAuth();
+  const isOwner = effectiveProfile?.role === "owner";
+  const [feedToken, setFeedToken] = useState("");
+  const [loadingToken, setLoadingToken] = useState(true);
   const [feedType, setFeedType] = useState<FeedType>("all");
+
+  // RLS returns nothing here for anyone but the owner — the empty result is the
+  // permission check, not a bug.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("org_secrets").select("calendar_feed_token").maybeSingle();
+      if (cancelled) return;
+      if (error) console.warn("Couldn't load the calendar feed token:", error.message);
+      setFeedToken(data?.calendar_feed_token || "");
+      setLoadingToken(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const feedBase = `${window.location.origin}/api/calendar.ics`;
   const feedUrl = `${feedBase}?key=${feedToken}&type=${feedType}`;
@@ -50,11 +75,17 @@ export default function CalendarSyncPage() {
 
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         <div className="max-w-lg mx-auto space-y-6">
-          {!feedToken && (
+          {!loadingToken && !feedToken && (
             <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4 text-xs text-amber-700 dark:text-amber-300">
-              Your calendar feed is being set up — check back in a moment. If this persists, refresh the app.
+              {isOwner
+                ? "Your calendar feed is being set up — check back in a moment. If this persists, refresh the app."
+                : "Calendar subscriptions are set up by the account owner. The feed covers the whole company calendar, so it isn't shared with individual accounts."}
             </div>
           )}
+          {/* Everything below hands out a working feed URL, so it only renders
+              once we actually have a token — i.e. for the owner. */}
+          {feedToken && (
+          <>
           {/* Feed type picker */}
           <div className="bg-card border border-border rounded-xl p-4 sm:p-6 space-y-3">
             <div>
@@ -156,6 +187,8 @@ export default function CalendarSyncPage() {
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

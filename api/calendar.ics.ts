@@ -48,9 +48,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } else {
     // Org-feed token — resolve the org BY its secret feed token, NEVER by id.
     // (Looking up by id let anyone who knew an org id pull its whole calendar.)
-    const { data: org } = await db.from("organizations").select("id").eq("calendar_feed_token", key).single();
-    if (!org) return res.status(401).send("Unauthorized");
-    callerOrgId = org.id;
+    // The token lives in org_secrets, which only the owner can read; it used to
+    // sit on organizations, where every member login could read it.
+    const { data: secrets } = await db.from("org_secrets").select("org_id").eq("calendar_feed_token", key).single();
+    if (!secrets) return res.status(401).send("Unauthorized");
+    callerOrgId = secrets.org_id;
   }
 
   const calType = (req.query.type as string) || "all";
