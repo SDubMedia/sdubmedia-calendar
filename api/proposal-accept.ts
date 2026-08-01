@@ -141,7 +141,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const now = new Date().toISOString();
 
   // Resolve selected package and milestones
-  type Milestone = { dueType: string; type: "percent" | "fixed"; percent?: number; amount?: number; label: string };
+  // Mirrors PaymentMilestone in client/src/lib/types.ts. It said `amount` for
+  // years while every writer stored `fixedAmount` — harmless only because the
+  // code below happens to read the real field. api/ isn't typechecked, so
+  // nothing caught the mismatch.
+  type Milestone = { dueType: string; type: "percent" | "fixed"; percent?: number; fixedAmount?: number; label: string };
   type Package = { id: string; totalPrice?: number; paymentMilestones?: Milestone[] };
   const packages: Package[] = proposal.packages || [];
   const selectedPkg = selectedPackageId ? packages.find(p => p.id === selectedPackageId) : packages[0] || null;
@@ -234,8 +238,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     if (hasAtSigningMilestone) {
       const ms = resolvedMilestones.find(m => m.dueType === "at_signing")!;
       if (ms.type === "percent") {
-        paymentAmount = Math.round(proposalTotal * (ms.percent / 100) * 100) / 100;
-        paymentLabel = `${ms.label} (${ms.percent}%)`;
+        // Guard the percentage: a milestone saved without one would make this
+        // NaN and fail the checkout with nothing useful to explain why.
+        const pct = Number(ms.percent) || 0;
+        paymentAmount = Math.round(proposalTotal * (pct / 100) * 100) / 100;
+        paymentLabel = `${ms.label} (${pct}%)`;
       } else {
         paymentAmount = ms.fixedAmount || proposalTotal;
         paymentLabel = ms.label;
