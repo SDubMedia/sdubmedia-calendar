@@ -158,7 +158,10 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", orgId).single();
   if (!org?.stripe_account_id) return res.status(400).json({ error: "Stripe not connected" });
 
-  const session = await stripe.checkout.sessions.retrieve(sessionId as string, {
+  const session = await stripe.checkout.sessions.retrieve(sessionId as string, {}, {
+    // Third argument, not second: stripeAccount is a request option, not a
+    // query param. stripe-node accepts it either way (it pops the last object
+    // carrying an option key), but only this form typechecks.
     stripeAccount: org.stripe_account_id,
   });
 

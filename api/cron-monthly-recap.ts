@@ -20,7 +20,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
@@ -163,7 +163,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 // ---- helpers ----
 
 async function stampRecapMonth(
-  supabase: ReturnType<typeof createClient>,
+  // SupabaseClient, not ReturnType<typeof createClient>: the latter resolves
+  // to the default generics, which know no tables — so the real client
+  // wouldn't assign to it and .update() demanded `never`.
+  supabase: SupabaseClient,
   org: OrgRow,
   monthKey: string,
 ): Promise<void> {

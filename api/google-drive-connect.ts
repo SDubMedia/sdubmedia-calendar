@@ -24,6 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", caller.userId).single();
     if (!profile || profile.role !== "owner") return res.status(403).json({ error: "Only owners can connect Google Drive" });
     const orgId = await getUserOrgId(caller.userId);
+    // Without an org there's nothing to sign the state token with — the
+    // callback would reject it anyway, so fail here with a clear reason
+    // instead of sending the user to Google for nothing.
+    if (!orgId) return res.status(403).json({ error: "No organization on this account" });
     return res.status(200).json({ url: consentUrl(orgId) });
   } catch (err) {
     console.error("google-drive-connect error:", err);

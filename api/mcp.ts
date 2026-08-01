@@ -390,6 +390,14 @@ const TOOLS = [
   },
 ];
 
+// Tool arguments arrive as untyped JSON-RPC, so every field is `unknown`.
+// Coerce at the point of use rather than trusting the caller — an MCP client
+// can send anything.
+function asString(v: unknown, fallback = ""): string {
+  if (typeof v === "string") return v;
+  return v == null ? fallback : String(v);
+}
+
 // ---- Tool Handlers ----
 async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
   const db = getDb();
@@ -531,14 +539,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         auth: { user, pass },
       });
 
-      const info = await transporter.sendMail({
+      const info = (await transporter.sendMail({
         from: `SDub Media AI <${user}>`,
-        to: args.to,
-        subject: args.subject,
-        ...(args.html ? { html: args.html } : { text: args.body || "" }),
-      });
+        to: asString(args.to),
+        subject: asString(args.subject),
+        ...(args.html ? { html: asString(args.html) } : { text: asString(args.body) }),
+      })) as { messageId?: string };
 
-      return { success: true, messageId: info.messageId, from: user, to: args.to };
+      return { success: true, messageId: info.messageId, from: user, to: asString(args.to) };
     }
 
     // ---- Invoices ----
@@ -638,7 +646,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
         const params = new URLSearchParams({
           origins: origin,
-          destinations: args.destination_address,
+          destinations: asString(args.destination_address),
           units: "imperial",
           key: apiKey,
         });
@@ -822,6 +830,10 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       if (clientsRes.error) throw new Error(clientsRes.error.message);
       if (mktExpRes.error) throw new Error(mktExpRes.error.message);
 
+      // Date bounds come off the wire as unknown; compare as strings.
+      const fromDate = asString(args.from);
+      const toDate = asString(args.to);
+
       const clients: Record<string, { company: string; revenue: number; crewCosts: number; marketingExpenses: number; projectCount: number }> = {};
       for (const c of clientsRes.data || []) {
         clients[c.id] = { company: c.company, revenue: 0, crewCosts: 0, marketingExpenses: 0, projectCount: 0 };
@@ -829,13 +841,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // Revenue from paid invoices
       for (const inv of invoicesRes.data || []) {
-        if (inv.status !== "paid" || !inv.paid_date || inv.paid_date < args.from || inv.paid_date > args.to) continue;
+        if (inv.status !== "paid" || !inv.paid_date || inv.paid_date < fromDate || inv.paid_date > toDate) continue;
         if (clients[inv.client_id]) clients[inv.client_id].revenue += inv.total || 0;
       }
 
       // Crew costs from projects
       for (const proj of projectsRes.data || []) {
-        if (proj.date < args.from || proj.date > args.to) continue;
+        if (proj.date < fromDate || proj.date > toDate) continue;
         if (!clients[proj.client_id]) continue;
         clients[proj.client_id].projectCount++;
         const allCrew = [...(Array.isArray(proj.crew) ? proj.crew : []), ...(Array.isArray(proj.post_production) ? proj.post_production : [])];
@@ -846,7 +858,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // Marketing expenses
       for (const exp of mktExpRes.data || []) {
-        if (exp.date < args.from || exp.date > args.to) continue;
+        if (exp.date < fromDate || exp.date > toDate) continue;
         if (clients[exp.client_id]) clients[exp.client_id].marketingExpenses += exp.amount || 0;
       }
 
@@ -977,9 +989,13 @@ async function handleJsonRpc(body: JsonRpcRequest): Promise<JsonRpcResponse> {
         break;
 
       case "tools/call": {
-        const { name, arguments: args } = params;
+        // `params` is an optional bag of unknowns off the wire — pull the two
+        // fields out explicitly instead of destructuring a possibly-undefined
+        // record.
+        const callParams = (params || {}) as { name?: string; arguments?: Record<string, unknown> };
+        const name = asString(callParams.name);
         try {
-          const data = await handleToolCall(name, args || {});
+          const data = await handleToolCall(name, callParams.arguments || {});
           result = {
             content: [
               { type: "text", text: JSON.stringify(data, null, 2) },

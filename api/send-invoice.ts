@@ -81,7 +81,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           readable.pipe(busboy);
         } else {
           // req is already a readable stream — VercelRequest extends IncomingMessage which is a Readable
-          (req as unknown as Readable).pipe(busboy);
+          // `Readable` here is the dynamically-imported value, not a type, so
+          // it can't be used in a type position. The stream contract is all
+          // this needs.
+          (req as unknown as NodeJS.ReadableStream).pipe(busboy);
         }
       });
 

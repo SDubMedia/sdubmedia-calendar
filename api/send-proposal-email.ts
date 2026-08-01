@@ -27,14 +27,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Resolve reply-to + full business info from the org so we can render
   // the branded footer with address / phone / email at the bottom.
   let replyToEmail = FROM_EMAIL;
-  let orgBusinessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null = null;
+  // Named, not `typeof orgBusinessInfo` at the cast site: by that line the
+  // variable is narrowed to `null`, which erased the shape and made every
+  // field read after it an error.
+  type OrgBusinessInfo = { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string };
+  let orgBusinessInfo: OrgBusinessInfo | null = null;
   if (supabaseUrl && supabaseServiceKey) {
     try {
       const callerOrgId = await getUserOrgId(user.userId);
       if (callerOrgId) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         const { data: org } = await supabase.from("organizations").select("business_info").eq("id", callerOrgId).single();
-        orgBusinessInfo = (org?.business_info as typeof orgBusinessInfo) || null;
+        orgBusinessInfo = (org?.business_info as OrgBusinessInfo | null) || null;
         if (orgBusinessInfo?.email?.trim()) replyToEmail = orgBusinessInfo.email.trim();
       }
     } catch { /* fall back to FROM_EMAIL */ }

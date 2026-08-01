@@ -145,7 +145,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   // years while every writer stored `fixedAmount` — harmless only because the
   // code below happens to read the real field. api/ isn't typechecked, so
   // nothing caught the mismatch.
-  type Milestone = { dueType: string; type: "percent" | "fixed"; percent?: number; fixedAmount?: number; label: string };
+  type Milestone = { dueType: "at_signing" | "relative_days" | "absolute_date"; type: "percent" | "fixed"; percent?: number; fixedAmount?: number; label: string };
   type Package = { id: string; totalPrice?: number; paymentMilestones?: Milestone[] };
   const packages: Package[] = proposal.packages || [];
   const selectedPkg = selectedPackageId ? packages.find(p => p.id === selectedPackageId) : packages[0] || null;
@@ -180,7 +180,8 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     try {
       const draftId = await generateDraftContractFromProposal(
         proposal,
-        selectedPkg,
+        // find() can come back undefined; the helper takes null for "none".
+        selectedPkg ?? null,
         resolvedMilestones,
         proposalTotal,
       );
@@ -326,7 +327,10 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
 
   if (!org?.stripe_account_id) return res.status(400).json({ error: "Stripe not connected" });
 
-  const session = await stripe.checkout.sessions.retrieve(sessionId as string, {
+  const session = await stripe.checkout.sessions.retrieve(sessionId as string, {}, {
+    // Third argument, not second: stripeAccount is a request option, not a
+    // query param. stripe-node accepts it either way (it pops the last object
+    // carrying an option key), but only this form typechecks.
     stripeAccount: org.stripe_account_id,
   });
 
@@ -398,6 +402,11 @@ async function notifyOwnerContractReady(
 // Phase A — auto-generate draft contract from accepted proposal.
 // ============================================================
 
+/** Coerce an unknown column value to a string for merge-field substitution. */
+function asText(v: unknown): string {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
 interface PartialPackage {
   id: string;
   name?: string;
@@ -433,7 +442,9 @@ async function generateDraftContractFromProposal(
 
   // 3. Load client info if linked
   let clientName = "";
-  let clientEmail = proposal.client_email || "";
+  // `proposal` is a bag of unknowns, so these need coercing before they can
+  // stand in as strings in the merge-field input below.
+  let clientEmail = asText(proposal.client_email);
   let clientAddress = "";
   let clientPhone = "";
   if (proposal.client_id) {
@@ -490,8 +501,21 @@ async function generateDraftContractFromProposal(
   // legacy package-based milestones. Lets the master contract own the
   // payment terms, which is the new flow Geoff wants.
   const blockMilestones = extractPaymentScheduleMilestones(tpl.blocks, eventDate, total);
+  // Both branches get the same defaults. The block branch used to pass its
+  // partials straight through, so a payment_schedule block missing a label or
+  // due type would put "undefined" into the generated contract.
+  const withDefaults = (m: PartialMilestone) => ({
+    label: m.label || "",
+    type: m.type || ("fixed" as const),
+    percent: m.percent,
+    fixedAmount: m.fixedAmount,
+    amount: m.amount,
+    dueType: m.dueType || ("at_signing" as const),
+    dueDays: m.dueDays,
+    dueDate: m.dueDate,
+  });
   const finalMilestones = blockMilestones.length > 0
-    ? blockMilestones
+    ? blockMilestones.map(withDefaults)
     : milestones.map(m => ({
         label: m.label || "",
         type: m.type || "fixed",
@@ -505,7 +529,7 @@ async function generateDraftContractFromProposal(
 
   // Shared input for the merge-field generator.
   const generatorInput = {
-    proposalTitle: proposal.title || "",
+    proposalTitle: asText(proposal.title),
     clientName, clientEmail, clientAddress, clientPhone,
     vendorName: org?.name || businessInfo.companyName || "",
     vendorEmail: businessInfo.email || "",

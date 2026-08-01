@@ -13,7 +13,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { errorMessage } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
 
@@ -100,7 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * appear on any of them.
  */
 async function flagBadAddress(
-  supabase: ReturnType<typeof createClient>,
+  // SupabaseClient, not ReturnType<typeof createClient>: the latter resolves
+  // to the default generics, which know no tables — so the real client
+  // wouldn't assign to it and .update() demanded `never`.
+  supabase: SupabaseClient,
   email: string,
   reason: "bounced" | "complained",
 ): Promise<void> {

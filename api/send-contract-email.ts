@@ -34,7 +34,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let replyToEmail = FROM_EMAIL;
   // Fetch the org's full business info so we can render the branded footer
   // with company address, phone, email, website at the bottom of the email.
-  let orgBusinessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null = null;
+  // Named, not `typeof orgBusinessInfo` at the cast site below: by that line
+  // TypeScript has narrowed the variable to `null`, so the cast erased the
+  // shape and every field read after it was an error.
+  type OrgBusinessInfo = { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string };
+  let orgBusinessInfo: OrgBusinessInfo | null = null;
   if (supabaseUrl && supabaseServiceKey) {
     try {
       const callerOrgId = await getUserOrgId(user.userId);
@@ -45,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select("business_info")
           .eq("id", callerOrgId)
           .single();
-        orgBusinessInfo = (org?.business_info as typeof orgBusinessInfo) || null;
+        orgBusinessInfo = (org?.business_info as OrgBusinessInfo | null) || null;
         if (orgBusinessInfo?.email?.trim()) replyToEmail = orgBusinessInfo.email.trim();
       }
     } catch { /* best-effort — fall back to FROM_EMAIL */ }

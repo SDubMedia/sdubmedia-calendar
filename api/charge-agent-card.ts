@@ -86,7 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         // Declined / needs the agent present (3DS) — remember it and try the
         // next saved card. A declined off-session intent never captures funds.
-        lastErr = (err as Stripe.errors.StripeError)?.message || lastErr;
+        // Stripe.errors.StripeError is a class value, not a type name — only
+        // the message is needed here anyway.
+        lastErr = (err as { message?: string })?.message || lastErr;
       }
     }
 

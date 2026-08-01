@@ -48,7 +48,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err) {
-    const detail = `type=${err?.type} code=${err?.code} status=${err?.statusCode} msg=${errorMessage(err)} raw=${err?.raw?.message}`;
+    // Stripe's error shape, read off `unknown` without the forbidden
+    // `catch (err: any)`. Every field stays optional — this runs for
+    // non-Stripe throws too.
+    const se = err as { type?: string; code?: string; statusCode?: number; raw?: { message?: string } };
+    const detail = `type=${se?.type} code=${se?.code} status=${se?.statusCode} msg=${errorMessage(err)} raw=${se?.raw?.message}`;
     console.error(`[stripe-subscribe] ${detail}`);
     return res.status(500).json({ error: errorMessage(err), detail });
   }
@@ -136,7 +140,10 @@ async function getStatus(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({
     plan: sub.metadata?.plan || org?.plan || "free",
     status: sub.status, // active, trialing, past_due, canceled
-    currentPeriodEnd: sub.current_period_end,
+    // Stripe moved current_period_end off the subscription and onto its items,
+    // so reading it here returned undefined and the billing page had no renewal
+    // date to show.
+    currentPeriodEnd: sub.items?.data?.[0]?.current_period_end ?? null,
     trialEnd: sub.trial_end,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
   });

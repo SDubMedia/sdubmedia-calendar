@@ -1,5 +1,5 @@
 {
-  "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
+  "include": ["client/src/**/*", "shared/**/*", "server/**/*", "api/**/*"],
   "exclude": ["node_modules", "build", "dist", "server/mcp"],
   "compilerOptions": {
     "incremental": true,
@@ -7,6 +7,10 @@
     "noEmit": true,
     "module": "ESNext",
     "strict": true,
+    // Type-checking only (noEmit) — Vite/esbuild does the real transpiling, so
+    // this doesn't change output. Without it tsc assumes ES5 and rejects
+    // iterating a Map/Set, which is why api/ code hit "downlevelIteration".
+    "target": "es2022",
     "lib": ["esnext", "dom", "dom.iterable"],
     "jsx": "preserve",
     "esModuleInterop": true,

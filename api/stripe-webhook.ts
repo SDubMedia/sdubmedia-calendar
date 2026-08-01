@@ -159,7 +159,11 @@ async function handleDeliveryExtrasPaid(session: Stripe.Checkout.Session) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const sig = req.headers["stripe-signature"];
+  // Node types a header as string | string[]; Stripe wants one string. A
+  // repeated header would otherwise reach constructEvent as an array and fail
+  // verification for a reason nothing would explain.
+  const rawSig = req.headers["stripe-signature"];
+  const sig = Array.isArray(rawSig) ? rawSig[0] : rawSig;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
@@ -311,10 +315,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (orgRow?.id) {
             const email = await ownerEmailFor(orgRow.id);
             if (email) {
+              // Stripe removed `price` from invoice line items (it's `pricing`
+              // now, which doesn't carry the recurring interval), so this read
+              // was returning undefined and Scout logged every renewal with no
+              // billing interval. Derive it from the billed period instead —
+              // no extra API call, and it can't drift with the next API bump.
               const line = invoice.lines?.data?.[0];
-              const priceInterval = line?.price?.recurring?.interval === "year"
-                ? "year"
-                : line?.price?.recurring?.interval === "month" ? "month" : null;
+              const periodDays = line?.period
+                ? (line.period.end - line.period.start) / 86400
+                : 0;
+              const priceInterval = periodDays > 300 ? "year" : periodDays > 20 ? "month" : null;
               syncConversionToScout({
                 email,
                 source: "web",
@@ -373,7 +383,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (contractId && milestoneId) {
             const { data: contract } = await supabase
               .from("contracts")
-              .select("payment_milestones, title, client_email, org_id, sign_token")
+              // `id` is read below for the receipt email and the ops alert —
+              // omitting it made both use `undefined`.
+              .select("id, payment_milestones, title, client_email, org_id, sign_token")
               .eq("id", contractId)
               .maybeSingle();
             const ms = (contract?.payment_milestones as Array<Record<string, unknown>> | null) || null;

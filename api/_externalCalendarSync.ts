@@ -31,7 +31,10 @@ interface ParsedEvent {
 // node-ical's recurring event handling is built into the parser —
 // we just enumerate occurrences in a +/- 6-month window from today
 // to keep the cache size bounded.
-function expandToParsedEvents(parsed: Record<string, ical.CalendarComponent>): ParsedEvent[] {
+// CalendarResponse, not Record<string, CalendarComponent>: node-ical's own
+// return type carries a few non-component keys, so the stricter record didn't
+// accept what parseICS actually hands back.
+function expandToParsedEvents(parsed: ical.CalendarResponse): ParsedEvent[] {
   const now = new Date();
   const horizonMs = 1000 * 60 * 60 * 24 * 30 * 6; // ~6 months
   const windowStart = new Date(now.getTime() - horizonMs);
