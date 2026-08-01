@@ -63,6 +63,10 @@ const KNOWN_PROJECT_TYPES = new Set([
   // different follow-up (quote per listing, then a portal invite) from a
   // general inquiry.
   "Listing shoot",
+  // Dance studio and recital work, captured from the main contact form. Like
+  // listing shoots, it is kept out of "Other" because the follow-up is its own
+  // shape: a recital date months out, plus the season-content conversation.
+  "Dance or recital",
   "Other",
 ]);
 

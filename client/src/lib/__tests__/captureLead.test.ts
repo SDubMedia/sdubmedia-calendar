@@ -40,6 +40,15 @@ describe("coerceProjectType", () => {
     expect(coerceProjectType("Event coverage")).toBe("Event coverage");
     expect(coerceProjectType("Wedding")).toBe("Wedding");
     expect(coerceProjectType("Listing shoot")).toBe("Listing shoot");
+    expect(coerceProjectType("Dance or recital")).toBe("Dance or recital");
+  });
+
+  it("still files a near-miss spelling as Other", () => {
+    // The website form has to send this string exactly — a mismatch silently
+    // becomes "Other", which is how you'd end up wondering why dance leads
+    // aren't labelled.
+    expect(coerceProjectType("Dance or Recital")).toBe("Other");
+    expect(coerceProjectType("Dance/recital")).toBe("Other");
   });
 
   it("coerces an unknown non-empty value to Other", () => {

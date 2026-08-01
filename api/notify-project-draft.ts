@@ -56,7 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Best-effort side effects, awaited — a Vercel handler that returns first
     // kills anything still in flight.
-    const sideEffects: [string, Promise<unknown>][] = [];
+    // PromiseLike, not Promise: Supabase's query builder is a thenable without
+    // .catch/.finally. allSettled takes it fine; the type has to say so.
+    const sideEffects: [string, PromiseLike<unknown>][] = [];
     if (rows.length > 0) sideEffects.push(["bell", supabaseService.from("notifications").insert(rows)]);
     sideEffects.push(["push", sendPushToOrg(access.orgId, {
       title: `${label} ready`,
