@@ -574,7 +574,9 @@ export default function DashboardPage() {
               {draftsWaiting.slice(0, 8).map(({ doc, project }) => {
                 const client = data.clients.find(c => c.id === project!.clientId);
                 const pType = data.projectTypes.find(t => t.id === project!.projectTypeId);
-                const days = Math.max(0, Math.round((Date.now() - new Date(doc.createdAt).getTime()) / 86400000));
+                // `today` is computed once per render at the top of the component —
+                // reading the clock here is an impure call during render.
+                const days = Math.max(0, Math.round((today.getTime() - new Date(doc.createdAt).getTime()) / 86400000));
                 return (
                   <div key={doc.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(project!)}>
                     <div className="min-w-0">

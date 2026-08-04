@@ -11,7 +11,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "crypto";
 import { verifyAuth, errorMessage } from "./_auth.js";
 import { supabaseService, verifyCrewOnProject } from "./_crewAccess.js";
-import { sendPushToOrg } from "./_apns.js";
+import { sendPushToUser } from "./_apns.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
@@ -89,11 +89,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // .catch/.finally. allSettled takes it fine; the type has to say so.
     const sideEffects: [string, PromiseLike<unknown>][] = [];
     if (rows.length > 0) sideEffects.push(["bell", supabaseService.from("notifications").insert(rows)]);
-    sideEffects.push(["push", sendPushToOrg(access.orgId, {
-      title: `${label} ready`,
-      body: `${who} · ${job}`,
-      data: { url: `/calendar?project=${projectId}` },
-    })]);
+    // Per recipient, not the whole org: sendPushToOrg hits every device in the
+    // business, so the editor got pushed about his own upload.
+    for (const o of owners) {
+      sideEffects.push([`push:${o.id}`, sendPushToUser(o.id, {
+        title: `${label} ready`,
+        body: `${who} · ${job}`,
+        data: { url: link },
+      })]);
+    }
 
     const settled = await Promise.allSettled(sideEffects.map(([, p]) => p));
     settled.forEach((r, i) => {

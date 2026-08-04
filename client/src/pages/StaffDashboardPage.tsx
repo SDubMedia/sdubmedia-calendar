@@ -78,6 +78,21 @@ export default function StaffDashboardPage() {
   // ---- The edit queue. An editor's work isn't scheduled by shoot date, so
   // "upcoming" tells them nothing. What they need is: what's on me, what am I
   // waiting on, what's settled. All three read the drafts' review state.
+  // What the job is actually for, and whether he's been paid — both already in
+  // the data, neither shown to him anywhere until now.
+  const deliverablesFor = (p: Project) =>
+    (p.editTypes || []).map(id => data.editTypes.find(e => e.id === id)?.name).filter(Boolean).join(" + ");
+  const briefFor = (p: Project) =>
+    (p.notes || "").trim() || (p.clientNotes || []).map(n => n.text).join(" · ").trim();
+  /** Paid / invoiced / not invoiced, from this editor's own contractor invoices. */
+  const payStateFor = (p: Project): { label: string; tone: "paid" | "sent" | "none" } => {
+    const inv = data.contractorInvoices.find(ci =>
+      ci.crewMemberId === crewMemberId && (ci.lineItems || []).some(li => li.projectId === p.id));
+    if (!inv) return { label: "Not invoiced", tone: "none" };
+    if (inv.paidAt) return { label: "Paid", tone: "paid" };
+    return { label: `Invoiced ${inv.invoiceNumber}`, tone: "sent" };
+  };
+
   const editJobs = useMemo(() => {
     if (!crewMemberId) return { needsCut: [] as Project[], inReview: [] as { project: Project; doc: ProjectDocument }[], settled: [] as { project: Project; doc: ProjectDocument }[] };
     const onEdit = data.projects.filter(p =>
@@ -264,9 +279,18 @@ export default function StaffDashboardPage() {
                   <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">{pType?.name || "Project"}{client ? ` · ${client.company}` : ""}</div>
+                      {deliverablesFor(p) && (
+                        <p className="text-xs text-primary mt-0.5 truncate">{deliverablesFor(p)}</p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">Shot {formatDate(p.date)} · no draft posted yet</p>
+                      {briefFor(p) && (
+                        <p className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2">{briefFor(p)}</p>
+                      )}
                     </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">Needs a cut</span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300">Needs a cut</span>
+                      <PayChip {...payStateFor(p)} />
+                    </div>
                   </div>
                 );
               })}
@@ -276,9 +300,15 @@ export default function StaffDashboardPage() {
                   <div key={doc.id} className="px-4 py-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">v{doc.version} · {doc.fileName}</div>
+                      {deliverablesFor(p) && (
+                        <p className="text-xs text-primary mt-0.5 truncate">{deliverablesFor(p)}</p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">{client?.company || "Project"} · sent {formatDate(doc.createdAt.slice(0, 10))}</p>
                     </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-sky-500/40 text-sky-600 dark:text-sky-300 shrink-0">With {orgName || "the owner"}</span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-sky-500/40 text-sky-600 dark:text-sky-300">With {orgName || "the owner"}</span>
+                      <PayChip {...payStateFor(p)} />
+                    </div>
                   </div>
                 );
               })}
@@ -294,13 +324,16 @@ export default function StaffDashboardPage() {
                         {!approved && doc.reviewNote ? ` · ${doc.reviewNote}` : ""}
                       </p>
                     </div>
-                    <span className={cn(
-                      "text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 inline-flex items-center gap-1",
-                      approved ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-300" : "border-border text-muted-foreground",
-                    )}>
-                      {approved && <CheckCircle2 className="w-3 h-3" />}
-                      {approved ? "Approved" : "Set aside"}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={cn(
+                        "text-[10px] font-semibold px-1.5 py-0.5 rounded border inline-flex items-center gap-1",
+                        approved ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-300" : "border-border text-muted-foreground",
+                      )}>
+                        {approved && <CheckCircle2 className="w-3 h-3" />}
+                        {approved ? "Approved" : "Set aside"}
+                      </span>
+                      <PayChip {...payStateFor(p)} />
+                    </div>
                   </div>
                 );
               })}
@@ -497,6 +530,21 @@ export default function StaffDashboardPage() {
 
       </div>
     </div>
+  );
+}
+
+/** Where this job stands for the editor's own pay. Read-only on purpose —
+ *  creating the invoice stays in My Invoices. */
+function PayChip({ label, tone }: { label: string; tone: "paid" | "sent" | "none" }) {
+  return (
+    <span className={cn(
+      "text-[10px] px-1.5 py-0.5 rounded border",
+      tone === "paid" ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+        : tone === "sent" ? "border-sky-500/30 text-sky-600 dark:text-sky-400"
+        : "border-border text-muted-foreground",
+    )}>
+      {label}
+    </span>
   );
 }
 
