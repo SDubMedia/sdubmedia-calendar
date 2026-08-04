@@ -14,7 +14,11 @@ import { cn } from "@/lib/utils";
 
 type Step = "welcome" | "company" | "type" | "team" | "billing" | "partner" | "features" | "done";
 
-const STEPS: Step[] = ["welcome", "company", "type", "team", "billing", "partner", "features", "done"];
+// "partner" is deliberately absent: revenue splits are retired (2026-08-03).
+// Existing orgs that already have the feature keep it — the flag and every
+// past split stay untouched — but no new account can switch it on. The step
+// type is kept so an in-flight session mid-wizard doesn't break.
+const STEPS: Step[] = ["welcome", "company", "type", "team", "billing", "features", "done"];
 
 interface FeatureOption {
   key: keyof OrgFeatures;

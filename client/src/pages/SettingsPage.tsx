@@ -788,7 +788,11 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {FEATURE_TOGGLES.map(ft => (
+                  {/* Partner & Revenue Splits is retired (2026-08-03). Orgs that
+                      already have it keep the row — so it can still be reviewed or
+                      switched off, and past splits stay visible — but a new account
+                      never sees it and can't switch it on. */}
+                  {FEATURE_TOGGLES.filter(ft => ft.key !== "partnerSplits" || org?.features?.partnerSplits === true).map(ft => (
                     <tr key={ft.key} className="border-b border-border/50">
                       <td className="py-2 pr-4">
                         <p className="text-sm text-foreground">{ft.label}</p>
