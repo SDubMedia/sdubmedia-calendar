@@ -847,3 +847,43 @@ describe("owner crew pay excluded from cost", () => {
     expect(getProjectCrewCost(withOwnerAndCrew() as never, "")).toBe(600);
   });
 });
+
+// ---- Monthly P&L: owner labour isn't a cost, partner splits unchanged -------
+// Two rules that pull in opposite directions and both have to hold:
+//   profit must NOT be reduced by the owner's own hours (a draw, not wages),
+//   but partner payouts were computed on gross labour and restating them would
+//   rewrite Jan-Apr 2026 history.
+describe("getMonthlyEarningsBreakdown owner handling", () => {
+  const client = (over: Partial<Client> = {}) => ({
+    ...makeClient(), id: "c1", billingModel: "per_project" as const, ...over,
+  });
+  const proj = (over: Record<string, unknown> = {}) => ({
+    ...makeProject(),
+    id: "p1", clientId: "c1", date: "2026-06-10", status: "delivered",
+    projectRate: 1000,
+    crew: [{ crewMemberId: "owner", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 100 }],
+    postProduction: [{ crewMemberId: "mel", role: "Video Editor", hoursWorked: 1, payRatePerHour: 50 }],
+    ...over,
+  });
+
+  it("keeps the owner's hours out of crew cost", () => {
+    const m = getMonthlyEarningsBreakdown([proj() as never], [client() as never], [], "owner", 2026, 6);
+    expect(m.crewCost).toBe(50); // Melissa only, not Melissa + 200
+  });
+
+  it("still reports what the owner's time was worth", () => {
+    const m = getMonthlyEarningsBreakdown([proj() as never], [client() as never], [], "owner", 2026, 6);
+    expect(m.ownerCrewPay).toBe(200);
+  });
+
+  it("does not reduce gross profit by the owner's hours", () => {
+    const m = getMonthlyEarningsBreakdown([proj() as never], [client() as never], [], "owner", 2026, 6);
+    expect(m.grossProfit).toBe(950); // 1000 - 50, NOT 1000 - 250
+  });
+
+  it("counts everyone when the owner isn't on the job", () => {
+    const m = getMonthlyEarningsBreakdown([proj() as never], [client() as never], [], "someone_else", 2026, 6);
+    expect(m.crewCost).toBe(250);
+    expect(m.ownerCrewPay).toBe(0);
+  });
+});

@@ -237,7 +237,7 @@ export default function ProfitLossPage() {
             <p className="text-xs text-muted-foreground mt-1">Gross Revenue</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300" title="Total paid to all crew except yourself">
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(Math.max(0, annualTotals.crewCost - annualTotals.ownerCrewPay))}</p>
+            <p className="text-2xl font-bold text-foreground">{formatCurrency(Math.max(0, annualTotals.crewCost))}</p>
             <p className="text-xs text-muted-foreground mt-1">Crew Costs (excl. you)</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-4 text-center print:border-gray-300">
@@ -282,7 +282,7 @@ export default function ProfitLossPage() {
                   <th className="text-right px-3 py-2">Projects</th>
                   <th className="text-right px-3 py-2">Revenue</th>
                   <th className="text-right px-3 py-2">Crew</th>
-                  <th className="text-right px-3 py-2" title="Your pay for crew/post work on each project — separate from admin profit">
+                  <th className="text-right px-3 py-2" title="What your own crew/post hours were worth. NOT a payment and NOT deducted from profit — in a pass-through LLC money you take is a draw, not wages. Tracked so you can see what your time is worth on a job.">
                     {(effectiveProfile?.name || "Owner").split(" ")[0]}
                   </th>
                   <th className="text-right px-3 py-2">{showPartnerColumns ? "Spending" : "Marketing"}</th>
@@ -295,11 +295,11 @@ export default function ProfitLossPage() {
               </thead>
               <tbody>
                 {monthlyData.map(m => {
-                  // Crew column = everyone except the owner. The data layer
-                  // returns crewCost as total payroll (incl. owner) and
-                  // ownerCrewPay separately; we subtract here so the row
-                  // stays additive: Crew + Owner = total crew payroll.
-                  const otherCrewCost = Math.max(0, m.crewCost - m.ownerCrewPay);
+                  // crewCost already excludes the owner (the data layer stopped
+                  // counting owner hours as a cost, since a pass-through LLC
+                  // pays its owner draws, not wages). Subtracting ownerCrewPay
+                  // again here would double-count it away.
+                  const otherCrewCost = Math.max(0, m.crewCost);
                   // Spending column: prefer the legacy contract's 10%
                   // spending budget when set (Jan/Feb 2026 partner clients).
                   // Falls back to actual marketing expenses for other months.
@@ -330,7 +330,7 @@ export default function ProfitLossPage() {
                   <td className="px-4 py-3">TOTAL</td>
                   <td className="text-right px-3 py-3">{annualTotals.projectCount}</td>
                   <td className="text-right px-3 py-3">{formatCurrency(annualTotals.revenue)}</td>
-                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(Math.max(0, annualTotals.crewCost - annualTotals.ownerCrewPay))}</td>
+                  <td className="text-right px-3 py-3 text-red-300">{formatCurrency(Math.max(0, annualTotals.crewCost))}</td>
                   <td className="text-right px-3 py-3 text-blue-300">{formatCurrency(annualTotals.ownerCrewPay)}</td>
                   <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.spendingBudget + annualTotals.marketingExpenses)}</td>
                   {showPartnerColumns && <td className="text-right px-3 py-3 text-red-300">{formatCurrency(annualTotals.partnerPayout)}</td>}

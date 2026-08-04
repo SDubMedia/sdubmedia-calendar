@@ -823,11 +823,20 @@ export function getMonthlyEarningsBreakdown(
     if (!client) return;
 
     const projRevenue = getProjectInvoiceAmount(p, client);
+    // Two figures on purpose:
+    //  projCrewCost      — gross labour INCLUDING the owner's own hours. The
+    //                      partner/admin splits below were computed on this
+    //                      basis and the Jan-Apr 2026 payouts must keep reading
+    //                      exactly as they did, so this stays untouched.
+    //  projCrewCostPaid  — what actually left the business. A pass-through LLC
+    //                      doesn't pay its owner wages; money taken is a draw.
+    //                      This is what profit should be measured against.
     const projCrewCost = getProjectCrewCost(p);
+    const projCrewCostPaid = getProjectCrewCost(p, ownerCrewMemberId);
     const projTravelCost = getProjectTravelCost(p);
 
     revenue += projRevenue;
-    totalCrewCost += projCrewCost;
+    totalCrewCost += projCrewCostPaid;
     travelCost += projTravelCost;
 
     // Owner's crew pay (separate from other crew)
@@ -844,8 +853,9 @@ export function getMonthlyEarningsBreakdown(
     const clientSplit = client.partnerSplit;
 
     if (!clientSplit) {
-      // Non-partner client: profit goes to owner
-      nonPartnerProfit += projRevenue - projCrewCost - projTravelCost;
+      // Non-partner client: profit goes to owner — and the owner's own hours
+      // aren't a cost against it.
+      nonPartnerProfit += projRevenue - projCrewCostPaid - projTravelCost;
       return;
     }
 
@@ -854,7 +864,8 @@ export function getMonthlyEarningsBreakdown(
     // date flow through as non-partner — owner keeps everything
     // after costs. Lets a partnership end without rewriting history.
     if (clientSplit.endedAt && p.date > clientSplit.endedAt) {
-      nonPartnerProfit += projRevenue - projCrewCost - projTravelCost;
+      // Post-partnership: the owner keeps it, so their own hours aren't a cost.
+      nonPartnerProfit += projRevenue - projCrewCostPaid - projTravelCost;
       return;
     }
 
