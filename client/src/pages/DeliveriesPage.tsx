@@ -705,6 +705,20 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   };
 
+  // Mark delivered WITHOUT telling the client. For work handed over outside
+  // Slate (WeTransfer, Drive, a hand-off in person) — the job stops showing as
+  // outstanding without anyone receiving a gallery link they don't need.
+  const markDeliveredQuietly = async () => {
+    const ok = await confirm({
+      title: "Mark delivered without notifying?",
+      description: "The client won't be emailed and no link is sent. Use this when you've delivered the work some other way — it just clears the job off your outstanding list.",
+      confirmLabel: "Mark delivered",
+    });
+    if (!ok) return;
+    await setDeliveryStatus(id, "delivered");
+    toast.success("Marked delivered — nothing was sent to the client");
+  };
+
   // Best-effort auto fan-out to the brokerage's managing brokers on delivery.
   const notifyBrokersSilently = async () => {
     try {
@@ -853,6 +867,14 @@ function DeliveryDetail({ id }: { id: string }) {
               <StatusButton current={delivery.status} target="working" onClick={() => setDeliveryStatus(id, "working")} label="Mark in-progress" disabled={delivery.status === "draft"} />
               <StatusButton current={delivery.status} target="delivered" onClick={deliverToAgent} label="Mark delivered" />
             </div>
+            <button
+              onClick={markDeliveredQuietly}
+              disabled={delivery.status === "delivered"}
+              className="mt-2 text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200 disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+              title="Clears the job without emailing the client — for work delivered outside Slate"
+            >
+              Mark delivered without notifying
+            </button>
             {hasBroker && (
               <div className="mt-3 pt-3 border-t border-white/10">
                 <button
