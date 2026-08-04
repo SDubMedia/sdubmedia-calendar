@@ -90,7 +90,17 @@ export async function accessTokenFromRefresh(refreshToken: string): Promise<stri
     body: new URLSearchParams({ refresh_token: refreshToken, client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: "refresh_token" }),
   });
   const body = await res.json();
-  if (!res.ok) throw new Error(body.error_description || body.error || "Token refresh failed");
+  if (!res.ok) {
+    // Google answers a dead refresh token with invalid_grant, whose
+    // error_description is the famously unhelpful "Bad Request". It means one
+    // thing in practice: reconnect. Common causes are the OAuth consent screen
+    // still being in Testing (refresh tokens then expire after 7 days), the
+    // user revoking access, or a password change.
+    if (body.error === "invalid_grant") {
+      throw new Error("Google Drive needs reconnecting — the authorisation expired or was revoked. Manage → Settings → connect Google Drive again.");
+    }
+    throw new Error(body.error_description || body.error || "Token refresh failed");
+  }
   return body.access_token;
 }
 
