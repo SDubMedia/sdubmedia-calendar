@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: doc } = await supabaseService
       .from("project_documents")
-      .select("id, org_id, project_id, kind, version, file_name, storage_path, size_bytes, mime_type")
+      .select("id, org_id, project_id, kind, version, file_name, storage_path, size_bytes, mime_type, duration_seconds")
       .eq("id", documentId).maybeSingle();
     if (!doc) return res.status(404).json({ error: "Draft not found" });
     if (doc.org_id !== orgId) return res.status(403).json({ error: "Not your draft" });
@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       position: count ?? 0,
       media_type: (doc.mime_type || "").startsWith("video/") ? "video" : "image",
       thumbnail_storage_path: "",
-      duration_seconds: null,
+      duration_seconds: doc.duration_seconds ?? null,
     });
     if (fileErr) throw new Error(fileErr.message);
 

@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
@@ -586,6 +586,15 @@ export default function DashboardPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {pType?.name ?? "Project"} · posted {days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+                        {draftQualityLabel(doc.sizeBytes, doc.durationSeconds)}
+                        {(() => {
+                          const rate = draftBitrateMbps(doc.sizeBytes, doc.durationSeconds);
+                          return rate !== null && rate < REVIEW_QUALITY_MBPS
+                            ? <span className="text-amber-500"> · review quality</span>
+                            : null;
+                        })()}
                       </p>
                     </div>
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">Review</span>

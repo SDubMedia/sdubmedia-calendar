@@ -522,6 +522,9 @@ export interface ProjectDocument {
   reviewStatus: "pending" | "approved" | "set_aside";
   reviewNote: string;
   reviewedAt: string | null;
+  // Video runtime, read in the browser at upload. Null when it couldn't be
+  // read — the UI shows size only rather than inventing a bitrate.
+  durationSeconds: number | null;
   fileName: string;
   storagePath: string;
   sizeBytes: number;

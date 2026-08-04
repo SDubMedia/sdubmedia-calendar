@@ -980,3 +980,28 @@ export function getMonthlyEarningsBreakdown(
 export function generateId(): string {
   return nanoid(10);
 }
+
+// ---- Draft quality readout -------------------------------------------------
+/** Average bitrate in megabits per second, or null when the runtime is unknown. */
+export function draftBitrateMbps(sizeBytes: number, durationSeconds: number | null): number | null {
+  if (!durationSeconds || durationSeconds <= 0 || !sizeBytes) return null;
+  return (sizeBytes * 8) / durationSeconds / 1_000_000;
+}
+
+/** Below this, a cut is almost certainly a review export rather than a master.
+ *  A polished 1080p deliverable normally sits around 15-25 Mbps; the 60-second
+ *  43.7 MB cut that prompted this worked out at ~6. */
+export const REVIEW_QUALITY_MBPS = 10;
+
+/** "43.7 MB · 1:00 · 6.1 Mbps" — whatever of that we can actually determine. */
+export function draftQualityLabel(sizeBytes: number, durationSeconds: number | null): string {
+  const mb = sizeBytes >= 1073741824
+    ? `${(sizeBytes / 1073741824).toFixed(1)} GB`
+    : `${(sizeBytes / 1048576).toFixed(1)} MB`;
+  if (!durationSeconds || durationSeconds <= 0) return mb;
+  const mins = Math.floor(durationSeconds / 60);
+  const secs = Math.round(durationSeconds % 60);
+  const runtime = `${mins}:${String(secs).padStart(2, "0")}`;
+  const rate = draftBitrateMbps(sizeBytes, durationSeconds);
+  return rate ? `${mb} · ${runtime} · ${rate.toFixed(1)} Mbps` : `${mb} · ${runtime}`;
+}

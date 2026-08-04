@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument } from "@/lib/types";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
-import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay } from "@/lib/data";
+import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { toUploadableImage } from "@/lib/heic";
@@ -151,7 +151,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       if (!res.ok) throw new Error(d.error || "Upload failed");
       const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
-      await addProjectDocument({ projectId: project.id, kind: "document", version: 0, reviewStatus: "pending", reviewNote: "", fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      await addProjectDocument({ projectId: project.id, kind: "document", version: 0, reviewStatus: "pending", reviewNote: "", durationSeconds: null, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
       toast.success("Document uploaded");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't upload"); }
     finally { setDocUploading(false); }
@@ -159,12 +159,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   // ---- Draft cuts: same R2 path as documents, but bigger, video-friendly, and
   // the owner gets pinged when an editor posts one. Never reaches the client. ----
+  /** Runtime of a video file, read in the browser. Resolves null for
+   *  non-video or anything the browser can't decode (some ProRes/HEVC), in
+   *  which case the row shows size only rather than a made-up bitrate. */
+  const readDuration = (file: File) => new Promise<number | null>((resolve) => {
+    if (!file.type.startsWith("video/")) return resolve(null);
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    const done = (v: number | null) => { URL.revokeObjectURL(el.src); resolve(v); };
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null);
+    el.onerror = () => done(null);
+    // Don't hang the upload on a codec the browser won't parse.
+    setTimeout(() => done(null), 5000);
+    el.src = URL.createObjectURL(file);
+  });
+
   const uploadDraft = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     setDraftUploading(true);
     try {
+      const durationSeconds = await readDuration(file);
       const token = await getAuthToken();
       const res = await fetch("/api/project-document-url", {
         method: "POST",
@@ -178,7 +194,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       const version = data.projectDocuments
         .filter(x => x.projectId === project.id && x.kind === "draft")
         .reduce((max, x) => Math.max(max, x.version), 0) + 1;
-      await addProjectDocument({ projectId: project.id, kind: "draft", version, reviewStatus: "pending", reviewNote: "", fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      await addProjectDocument({ projectId: project.id, kind: "draft", version, reviewStatus: "pending", reviewNote: "", durationSeconds, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
       // Tell the owner it landed — otherwise they'd only find out by looking.
       // The owner uploading their own draft doesn't need to notify themselves.
       if (!isOwner) {
@@ -1378,9 +1394,19 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                             <span className="font-semibold">v{draft.version}</span> · {draft.fileName}
                           </div>
                           <div className="text-[10px] text-muted-foreground">
-                            {fmtBytes(draft.sizeBytes)} · {new Date(draft.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {draftQualityLabel(draft.sizeBytes, draft.durationSeconds)} · {new Date(draft.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             {uploaderName(draft.uploadedByUserId) ? ` · ${uploaderName(draft.uploadedByUserId)}` : ""}
                           </div>
+                          {(() => {
+                            // Warn before approving, not after the client has it.
+                            const rate = draftBitrateMbps(draft.sizeBytes, draft.durationSeconds);
+                            if (rate === null || rate >= REVIEW_QUALITY_MBPS || !isVideo) return null;
+                            return (
+                              <div className="text-[10px] text-amber-500 mt-0.5">
+                                Looks like a review export — {rate.toFixed(1)} Mbps. Ask for the master before delivering.
+                              </div>
+                            );
+                          })()}
                           {draft.reviewStatus === "approved" && (
                             <div className="text-[10px] text-emerald-500 mt-0.5">Approved — in the gallery, not yet delivered</div>
                           )}
