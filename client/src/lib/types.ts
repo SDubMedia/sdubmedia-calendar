@@ -517,6 +517,11 @@ export interface ProjectDocument {
   projectId: string;
   kind: "document" | "draft";
   version: number;
+  // Draft review state. approved ≠ delivered — approving says the cut is
+  // right; delivering the gallery is a separate act the owner controls.
+  reviewStatus: "pending" | "approved" | "set_aside";
+  reviewNote: string;
+  reviewedAt: string | null;
   fileName: string;
   storagePath: string;
   sizeBytes: number;

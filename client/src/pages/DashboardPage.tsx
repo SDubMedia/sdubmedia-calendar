@@ -96,6 +96,16 @@ export default function DashboardPage() {
   }), [data.projects]);
 
   // Ready to deliver — editing finished, not yet sent to the client.
+  // Drafts the editor has posted that the owner hasn't decided on. This is the
+  // whole point of the review state — approve or set aside clears it.
+  const draftsWaiting = useMemo(() => {
+    return data.projectDocuments
+      .filter(d => d.kind === "draft" && d.reviewStatus === "pending")
+      .map(d => ({ doc: d, project: data.projects.find(p => p.id === d.projectId) }))
+      .filter(x => !!x.project)
+      .sort((a, b) => (a.doc.createdAt || "").localeCompare(b.doc.createdAt || ""));
+  }, [data.projectDocuments, data.projects]);
+
   const readyToDeliver = useMemo(
     () => data.projects.filter(p => p.status === "editing_done").sort((a, b) => b.date.localeCompare(a.date)),
     [data.projects],
@@ -550,6 +560,40 @@ export default function DashboardPage() {
         </div>
 
         {/* Ready to Deliver — editing done, not yet sent */}
+        {/* Drafts waiting on you. Always shown when there are any — this is a
+            queue, not a configurable widget; hiding it would defeat the point. */}
+        {draftsWaiting.length > 0 && (
+          <div className="bg-card border border-amber-500/30 rounded-lg" style={{ order: -1 }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Drafts waiting on you
+                <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">{draftsWaiting.length}</span>
+              </h3>
+            </div>
+            <div className="divide-y divide-border">
+              {draftsWaiting.slice(0, 8).map(({ doc, project }) => {
+                const client = data.clients.find(c => c.id === project!.clientId);
+                const pType = data.projectTypes.find(t => t.id === project!.projectTypeId);
+                const days = Math.max(0, Math.round((Date.now() - new Date(doc.createdAt).getTime()) / 86400000));
+                return (
+                  <div key={doc.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(project!)}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground truncate">v{doc.version} · {doc.fileName}</span>
+                        {client && <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground shrink-0">{client.company}</span>}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {pType?.name ?? "Project"} · posted {days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">Review</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {isWidgetEnabled("readyToDeliver") && (
           <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">

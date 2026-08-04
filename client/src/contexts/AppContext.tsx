@@ -125,7 +125,8 @@ interface AppContextValue {
   addTodo: (t: Omit<Todo, "id" | "createdByUserId" | "orgId" | "createdAt" | "done" | "doneAt">) => Promise<Todo>;
   updateTodo: (id: string, t: Partial<Todo>) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
-  addProjectDocument: (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt">) => Promise<ProjectDocument>;
+  addProjectDocument: (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt" | "reviewedAt">) => Promise<ProjectDocument>;
+  updateProjectDocument: (id: string, patch: Partial<Pick<ProjectDocument, "reviewStatus" | "reviewNote">>) => Promise<void>;
   deleteProjectDocument: (id: string) => Promise<void>;
   // Packages library
   addPackage: (p: Omit<Package, "id" | "orgId" | "createdAt" | "updatedAt">) => Promise<Package>;
@@ -794,6 +795,9 @@ function rowToProjectDocument(r: any): ProjectDocument {
     projectId: r.project_id || "",
     kind: r.kind === "draft" ? "draft" : "document",
     version: Number(r.version || 0),
+    reviewStatus: r.review_status === "approved" ? "approved" : r.review_status === "set_aside" ? "set_aside" : "pending",
+    reviewNote: r.review_note || "",
+    reviewedAt: r.reviewed_at || null,
     fileName: r.file_name || "",
     storagePath: r.storage_path || "",
     sizeBytes: Number(r.size_bytes || 0),
@@ -2024,7 +2028,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ---- Project documents ---- (file goes to R2 via /api/project-document-url;
   // this persists the metadata row after a successful upload.)
-  const addProjectDocument = useCallback(async (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt">): Promise<ProjectDocument> => {
+  const addProjectDocument = useCallback(async (doc: Omit<ProjectDocument, "id" | "uploadedByUserId" | "orgId" | "createdAt" | "reviewedAt">): Promise<ProjectDocument> => {
     if (!profile?.id) throw new Error("Not signed in");
     const id = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const { data: row, error } = await supabase.from("project_documents").insert({
@@ -2033,6 +2037,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       project_id: doc.projectId,
       kind: doc.kind || "document",
       version: doc.version || 0,
+      review_status: doc.reviewStatus || "pending",
+      review_note: doc.reviewNote || "",
       file_name: doc.fileName,
       storage_path: doc.storagePath,
       size_bytes: doc.sizeBytes,
@@ -2044,6 +2050,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, projectDocuments: [created, ...d.projectDocuments] }));
     return created;
   }, [orgId, profile?.id]);
+
+  /** Owner review actions on a draft (approve happens server-side in
+   *  project-draft-promote; this covers set-aside and un-setting). */
+  const updateProjectDocument = useCallback(async (id: string, patch: Partial<Pick<ProjectDocument, "reviewStatus" | "reviewNote">>) => {
+    const row: Record<string, unknown> = {};
+    if (patch.reviewStatus !== undefined) {
+      row.review_status = patch.reviewStatus;
+      row.reviewed_at = patch.reviewStatus === "pending" ? null : new Date().toISOString();
+    }
+    if (patch.reviewNote !== undefined) row.review_note = patch.reviewNote;
+    const { error } = await supabase.from("project_documents").update(row).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({
+      ...d,
+      projectDocuments: d.projectDocuments.map(x => x.id === id
+        ? { ...x, ...patch, reviewedAt: patch.reviewStatus === "pending" ? null : new Date().toISOString() }
+        : x),
+    }));
+  }, []);
 
   const deleteProjectDocument = useCallback(async (id: string) => {
     const { error } = await supabase.from("project_documents").delete().eq("id", id);
@@ -3410,7 +3435,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPersonalEvent, updatePersonalEvent, deletePersonalEvent,
       addMeeting, updateMeeting, deleteMeeting,
       addTodo, updateTodo, deleteTodo,
-      addProjectDocument, deleteProjectDocument,
+      addProjectDocument, updateProjectDocument, deleteProjectDocument,
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,

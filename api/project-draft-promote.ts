@@ -76,7 +76,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Idempotent: promoting the same draft twice shouldn't duplicate the file.
     const { data: already } = await supabaseService
       .from("delivery_files").select("id").eq("delivery_id", deliveryId).eq("storage_path", doc.storage_path).maybeSingle();
-    if (already) return res.status(200).json({ ok: true, deliveryId, fileId: already.id, alreadyThere: true });
+    if (already) {
+      await supabaseService.from("project_documents")
+        .update({ review_status: "approved", reviewed_at: new Date().toISOString() }).eq("id", doc.id);
+      return res.status(200).json({ ok: true, deliveryId, fileId: already.id, alreadyThere: true });
+    }
 
     const { count } = await supabaseService
       .from("delivery_files").select("id", { count: "exact", head: true }).eq("delivery_id", deliveryId);
@@ -95,6 +99,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       duration_seconds: null,
     });
     if (fileErr) throw new Error(fileErr.message);
+
+    // Approving is what clears it off the owner's "waiting on you" list.
+    // It does NOT mean the client has it — delivering the gallery is separate.
+    await supabaseService.from("project_documents")
+      .update({ review_status: "approved", reviewed_at: new Date().toISOString() }).eq("id", doc.id);
 
     return res.status(200).json({ ok: true, deliveryId, fileId });
   } catch (err) {

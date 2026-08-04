@@ -72,7 +72,7 @@ interface Props {
 }
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, deleteProjectDocument } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, updateProjectDocument, deleteProjectDocument } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [talentDraft, setTalentDraft] = useState("");
@@ -151,7 +151,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       if (!res.ok) throw new Error(d.error || "Upload failed");
       const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
-      await addProjectDocument({ projectId: project.id, kind: "document", version: 0, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      await addProjectDocument({ projectId: project.id, kind: "document", version: 0, reviewStatus: "pending", reviewNote: "", fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
       toast.success("Document uploaded");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't upload"); }
     finally { setDocUploading(false); }
@@ -178,7 +178,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       const version = data.projectDocuments
         .filter(x => x.projectId === project.id && x.kind === "draft")
         .reduce((max, x) => Math.max(max, x.version), 0) + 1;
-      await addProjectDocument({ projectId: project.id, kind: "draft", version, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+      await addProjectDocument({ projectId: project.id, kind: "draft", version, reviewStatus: "pending", reviewNote: "", fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
       // Tell the owner it landed — otherwise they'd only find out by looking.
       // The owner uploading their own draft doesn't need to notify themselves.
       if (!isOwner) {
@@ -197,6 +197,24 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   // Approved cut → the client's gallery. Same stored file, no re-upload.
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  // Setting a draft aside: it isn't going forward, but the file stays. Clears
+  // it off the owner's "waiting on you" list and tells the editor where it
+  // stands instead of leaving him wondering.
+  const [setAsideFor, setSetAsideFor] = useState<ProjectDocument | null>(null);
+  const [setAsideNote, setSetAsideNote] = useState("");
+  const setAside = async () => {
+    if (!setAsideFor) return;
+    try {
+      await updateProjectDocument(setAsideFor.id, { reviewStatus: "set_aside", reviewNote: setAsideNote.trim() });
+      setSetAsideFor(null);
+      setSetAsideNote("");
+      toast.success("Set aside — it won't show as waiting on you");
+    } catch { toast.error("Couldn't set that aside"); }
+  };
+  const reopenDraft = async (doc: ProjectDocument) => {
+    try { await updateProjectDocument(doc.id, { reviewStatus: "pending", reviewNote: "" }); }
+    catch { toast.error("Couldn't reopen that draft"); }
+  };
   const promoteDraft = async (doc: ProjectDocument) => {
     setPromotingId(doc.id);
     try {
@@ -1363,21 +1381,49 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                             {fmtBytes(draft.sizeBytes)} · {new Date(draft.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             {uploaderName(draft.uploadedByUserId) ? ` · ${uploaderName(draft.uploadedByUserId)}` : ""}
                           </div>
+                          {draft.reviewStatus === "approved" && (
+                            <div className="text-[10px] text-emerald-500 mt-0.5">Approved — in the gallery, not yet delivered</div>
+                          )}
+                          {draft.reviewStatus === "set_aside" && (
+                            <div className="text-[10px] text-muted-foreground/80 mt-0.5">
+                              Set aside{draft.reviewNote ? ` — ${draft.reviewNote}` : ""}
+                            </div>
+                          )}
                         </div>
                         {isVideo && (
                           <button type="button" onClick={() => playDraft(draft)} className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-primary/15 text-primary hover:bg-primary/25">
                             {isPlaying ? "Hide" : "Watch"}
                           </button>
                         )}
-                        {isOwner && (
+                        {isOwner && draft.reviewStatus === "pending" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => promoteDraft(draft)}
+                              disabled={promotingId === draft.id}
+                              title="Approve this cut and put it in the gallery for delivery"
+                              className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/25 disabled:opacity-50"
+                            >
+                              {promotingId === draft.id ? "Moving…" : "Approve → gallery"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setSetAsideFor(draft); setSetAsideNote(""); }}
+                              title="Not going forward — clears it off your waiting list"
+                              className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-secondary text-muted-foreground hover:text-foreground"
+                            >
+                              Set aside
+                            </button>
+                          </>
+                        )}
+                        {isOwner && draft.reviewStatus !== "pending" && (
                           <button
                             type="button"
-                            onClick={() => promoteDraft(draft)}
-                            disabled={promotingId === draft.id}
-                            title="Approve this cut and put it in the gallery for delivery"
-                            className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/25 disabled:opacity-50"
+                            onClick={() => reopenDraft(draft)}
+                            title="Put it back on your waiting list"
+                            className="shrink-0 px-2 py-1 rounded text-[11px] text-muted-foreground hover:text-foreground"
                           >
-                            {promotingId === draft.id ? "Moving…" : "Approve → gallery"}
+                            Reopen
                           </button>
                         )}
                         <button type="button" onClick={() => downloadDoc(draft)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-primary hover:bg-muted" aria-label={`Download ${draft.fileName}`}>
@@ -1858,6 +1904,33 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       </AlertDialog>
 
       {/* Cancel project confirm — captures the reason and stamps cancelled_at */}
+      <AlertDialog open={!!setAsideFor} onOpenChange={(o) => { if (!o) { setSetAsideFor(null); setSetAsideNote(""); } }}>
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Set aside {setAsideFor ? `v${setAsideFor.version}` : "this draft"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              It stops showing as waiting on you, and the editor sees it's been dealt with. The file stays where it is — nothing is deleted, and you can reopen it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5 py-2">
+            <label className="text-xs text-muted-foreground">Reason (optional — the editor sees this)</label>
+            <textarea
+              value={setAsideNote}
+              onChange={(e) => setSetAsideNote(e.target.value)}
+              placeholder="e.g. going with v2, client changed direction, reshooting"
+              rows={2}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep waiting</AlertDialogCancel>
+            <AlertDialogAction onClick={setAside}>Set aside</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <AlertDialogContent className="bg-card border-border text-foreground max-w-md">
           <AlertDialogHeader>

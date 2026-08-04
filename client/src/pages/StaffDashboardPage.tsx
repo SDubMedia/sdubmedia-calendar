@@ -7,8 +7,9 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
-import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase } from "lucide-react";
+import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Project, ProjectDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import StaffAgreementResign from "@/components/StaffAgreementResign";
 import SignedAgreementDialog from "@/components/SignedAgreementDialog";
@@ -73,6 +74,32 @@ export default function StaffDashboardPage() {
       p.postProduction.some(c => c.crewMemberId === crewMemberId)
     );
   }, [data.projects, crewMemberId]);
+
+  // ---- The edit queue. An editor's work isn't scheduled by shoot date, so
+  // "upcoming" tells them nothing. What they need is: what's on me, what am I
+  // waiting on, what's settled. All three read the drafts' review state.
+  const editJobs = useMemo(() => {
+    if (!crewMemberId) return { needsCut: [] as Project[], inReview: [] as { project: Project; doc: ProjectDocument }[], settled: [] as { project: Project; doc: ProjectDocument }[] };
+    const onEdit = data.projects.filter(p =>
+      p.postProduction.some(c => c.crewMemberId === crewMemberId) && p.status !== "cancelled");
+    const needsCut: Project[] = [];
+    const inReview: { project: Project; doc: ProjectDocument }[] = [];
+    const settled: { project: Project; doc: ProjectDocument }[] = [];
+    for (const p of onEdit) {
+      const mine = data.projectDocuments
+        .filter(d => d.projectId === p.id && d.kind === "draft")
+        .sort((a, b) => b.version - a.version);
+      if (mine.length === 0) {
+        // Nothing posted yet, and the shoot has happened — it's on him.
+        if (p.date <= todayStr) needsCut.push(p);
+        continue;
+      }
+      const latest = mine[0];
+      if (latest.reviewStatus === "pending") inReview.push({ project: p, doc: latest });
+      else settled.push({ project: p, doc: latest });
+    }
+    return { needsCut, inReview, settled };
+  }, [data.projects, data.projectDocuments, crewMemberId, todayStr]);
 
   // Upcoming projects
   const upcomingProjects = useMemo(() => {
@@ -218,6 +245,68 @@ export default function StaffDashboardPage() {
             active={expandedSection === "earnings"}
           />
         </div>
+
+        {/* The edit queue — first thing an editor sees, because it answers the
+            three questions they'd otherwise text about: what's on me, did he
+            watch it, what's settled. Hidden entirely for crew who don't edit. */}
+        {(editJobs.needsCut.length > 0 || editJobs.inReview.length > 0 || editJobs.settled.length > 0) && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                <Film className="w-4 h-4 text-primary" /> Your edits
+              </h3>
+            </div>
+            <div className="divide-y divide-border">
+              {editJobs.needsCut.map(p => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                return (
+                  <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">{pType?.name || "Project"}{client ? ` · ${client.company}` : ""}</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">Shot {formatDate(p.date)} · no draft posted yet</p>
+                    </div>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">Needs a cut</span>
+                  </div>
+                );
+              })}
+              {editJobs.inReview.map(({ project: p, doc }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                return (
+                  <div key={doc.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">v{doc.version} · {doc.fileName}</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{client?.company || "Project"} · sent {formatDate(doc.createdAt.slice(0, 10))}</p>
+                    </div>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-sky-500/40 text-sky-600 dark:text-sky-300 shrink-0">With {orgName || "the owner"}</span>
+                  </div>
+                );
+              })}
+              {editJobs.settled.map(({ project: p, doc }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const approved = doc.reviewStatus === "approved";
+                return (
+                  <div key={doc.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">v{doc.version} · {doc.fileName}</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {client?.company || "Project"}
+                        {!approved && doc.reviewNote ? ` · ${doc.reviewNote}` : ""}
+                      </p>
+                    </div>
+                    <span className={cn(
+                      "text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 inline-flex items-center gap-1",
+                      approved ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-300" : "border-border text-muted-foreground",
+                    )}>
+                      {approved && <CheckCircle2 className="w-3 h-3" />}
+                      {approved ? "Approved" : "Set aside"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Expanded Sections */}
         {expandedSection === "upcoming" && (
