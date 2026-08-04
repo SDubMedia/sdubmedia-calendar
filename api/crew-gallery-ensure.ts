@@ -20,7 +20,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!projectId || typeof projectId !== "string") return res.status(400).json({ error: "Missing projectId" });
 
   try {
-    const access = await verifyCrewOnProject(user.userId, projectId);
+    // "shoot": only the people who were on the job can put finals in the
+    // client gallery. Editors post drafts instead.
+    const access = await verifyCrewOnProject(user.userId, projectId, "shoot");
     if (!access.ok) return res.status(access.status).json({ error: access.error });
 
     // Reuse an existing gallery for this project if there is one.

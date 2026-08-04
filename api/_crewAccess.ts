@@ -23,9 +23,20 @@ function memberId(c: CrewEntry): string {
   return c.crewMemberId || c.crew_member_id || "";
 }
 
+/** Which assignment qualifies the caller.
+ *  "any"   — on the shoot OR in post (drafts, status changes)
+ *  "shoot" — on the shoot only. Finals go into the client's gallery, and an
+ *            editor has no business putting anything there; they post drafts
+ *            and the owner promotes the approved cut. */
+export type CrewRequirement = "any" | "shoot";
+
 /** Confirm the caller is staff, linked to a crew member, and assigned to the
- *  project in a qualifying role (photographer / videographer / editor). */
-export async function verifyCrewOnProject(userId: string, projectId: string): Promise<CrewAccess> {
+ *  project in a qualifying role. */
+export async function verifyCrewOnProject(
+  userId: string,
+  projectId: string,
+  require: CrewRequirement = "any",
+): Promise<CrewAccess> {
   const { data: profile } = await supabaseService
     .from("user_profiles").select("role, crew_member_id, org_id").eq("id", userId).single();
   if (!profile || profile.role !== "staff" || !profile.crew_member_id) {
@@ -44,7 +55,11 @@ export async function verifyCrewOnProject(userId: string, projectId: string): Pr
   const onShoot = crew.some(c => memberId(c) === myId && /photograph|videograph/i.test(c.role || ""));
   // Post: anyone in an editor role (photo editor, video editor, etc.).
   const onEdit = post.some(c => memberId(c) === myId && /editor/i.test(c.role || ""));
-  if (!onShoot && !onEdit) {
+  if (require === "shoot") {
+    if (!onShoot) {
+      return { ok: false, status: 403, error: "Editors post drafts — the owner delivers the gallery" };
+    }
+  } else if (!onShoot && !onEdit) {
     return { ok: false, status: 403, error: "You're not assigned to this job" };
   }
 

@@ -195,6 +195,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     finally { setDraftUploading(false); }
   };
 
+  // Approved cut → the client's gallery. Same stored file, no re-upload.
+  const [promotingId, setPromotingId] = useState<string | null>(null);
+  const promoteDraft = async (doc: ProjectDocument) => {
+    setPromotingId(doc.id);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/project-draft-promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+      const d = await res.json().catch(() => ({ error: "Failed" }));
+      if (!res.ok) throw new Error(d.error || "Couldn't move it");
+      await refresh();
+      toast.success(d.alreadyThere ? "Already in the gallery" : `v${doc.version} added to the gallery — deliver when you're ready`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't move that draft");
+    } finally {
+      setPromotingId(null);
+    }
+  };
+
   // Play a draft where it sits instead of downloading a 500MB file to review it.
   const playDraft = async (doc: ProjectDocument) => {
     if (playingDraftId === doc.id) { setPlayingDraftId(null); setPlayingUrl(null); return; }
@@ -318,9 +340,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // Assigned crew in a qualifying role (photographer/videographer on the shoot,
   // or an editor in post) can upload the finals straight into this property's
   // gallery — owner still controls delivering it to the client.
+  // Shooters only. An editor's finished work goes to Drafts; the owner reviews
+  // it and promotes the approved cut into the gallery. Enforced server-side too
+  // (verifyCrewOnProject "shoot") — this just hides the button.
   const canCrewUpload = isStaff && !!myCrewId && (
-    (project.crew || []).some(c => c.crewMemberId === myCrewId && /photograph|videograph/i.test(c.role || "")) ||
-    (project.postProduction || []).some(c => c.crewMemberId === myCrewId && /editor/i.test(c.role || ""))
+    (project.crew || []).some(c => c.crewMemberId === myCrewId && /photograph|videograph/i.test(c.role || ""))
   );
   const crewPhotoInputRef = useRef<HTMLInputElement>(null);
   const [crewUploading, setCrewUploading] = useState<{ done: number; total: number } | null>(null);
@@ -1345,6 +1369,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                             {isPlaying ? "Hide" : "Watch"}
                           </button>
                         )}
+                        {isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => promoteDraft(draft)}
+                            disabled={promotingId === draft.id}
+                            title="Approve this cut and put it in the gallery for delivery"
+                            className="shrink-0 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-600/15 text-emerald-500 hover:bg-emerald-600/25 disabled:opacity-50"
+                          >
+                            {promotingId === draft.id ? "Moving…" : "Approve → gallery"}
+                          </button>
+                        )}
                         <button type="button" onClick={() => downloadDoc(draft)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-primary hover:bg-muted" aria-label={`Download ${draft.fileName}`}>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
@@ -1363,11 +1398,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   );
                 })}
                 {projectDrafts.length === 0 && <p className="text-xs text-muted-foreground">No drafts yet.</p>}
-                <label className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer", draftUploading ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
-                  <Upload className="w-3.5 h-3.5" /> {draftUploading ? "Uploading…" : "Upload draft"}
+                <label className={cn(
+                  "flex items-center justify-center gap-2 w-full h-10 rounded-md text-sm font-semibold cursor-pointer transition-colors",
+                  draftUploading ? "bg-muted text-muted-foreground cursor-default" : "bg-primary text-primary-foreground hover:bg-primary/90",
+                )}>
+                  <Upload className="w-4 h-4" /> {draftUploading ? "Uploading…" : "Upload draft"}
                   <input type="file" className="hidden" disabled={draftUploading} onChange={uploadDraft} accept="video/*,image/*,.mov,.mp4,.m4v" />
                 </label>
-                {draftUploading && <p className="text-[11px] text-muted-foreground">Large files take a while — keep this page open.</p>}
+                <p className="text-[11px] text-muted-foreground text-center">
+                  {draftUploading ? "Large files take a while — keep this page open." : "Post a cut for review. The client never sees these."}
+                </p>
               </div>
             )}
 

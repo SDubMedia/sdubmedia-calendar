@@ -139,6 +139,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "delete") {
       const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
       if (!storagePath || !storagePath.startsWith(`${orgId}/`)) return res.status(400).json({ error: "Bad storagePath" });
+
+      // A promoted draft and its gallery file are the SAME stored object (see
+      // project-draft-promote). Deleting the draft afterwards must not pull the
+      // file out from under the gallery — check before dropping the bytes.
+      const { data: inGallery } = await supabase
+        .from("delivery_files").select("id").eq("storage_path", storagePath).limit(1).maybeSingle();
+      if (inGallery) {
+        return res.status(200).json({ ok: true, keptInStorage: true });
+      }
+
       // The metadata row is deleted client-side under RLS; this drops the bytes
       // so a removed draft stops costing storage.
       await r2DeleteObject(storagePath);

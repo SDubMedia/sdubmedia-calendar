@@ -927,7 +927,10 @@ export default function CalendarPage() {
                     )}>
                       {displayDay}
                     </span>
-                    {!isFamily && calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
+                    {/* Billed/worked hours are owner-only. This used to hide from
+                        family alone, so staff — and clients on their portal
+                        calendar — could read what every job was billed at. */}
+                    {isOwner && calendarMode !== "personal" && dayHours !== null && dayHours.billed > 0 && (
                       <div className="hidden sm:flex flex-col items-end gap-0.5">
                         <span className="text-[9px] font-medium tabular-nums px-1 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-500/10">
                           {dayHours.billed.toFixed(1)}h billed
@@ -1323,7 +1326,10 @@ export default function CalendarPage() {
                         {/* Time + hours */}
                         <div className="text-right flex-shrink-0">
                           <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
-                          {!isFamily && (
+                          {/* Owner only: billed hours, the flat rate, and the paid
+                              marker are all money. Staff see their own pay on the
+                              project sheet; clients see nothing here. */}
+                          {isOwner && (
                             <>
                               <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 justify-end mt-0.5">
                                 <Clock className="w-3 h-3" />
