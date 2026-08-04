@@ -44,14 +44,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("user_profiles").select("id").eq("org_id", access.orgId).in("role", ["owner", "partner"]);
     const owners = recipients || [];
 
+    const link = `/calendar?project=${projectId}`;
+    const title = `${who} uploaded ${label.toLowerCase()}`;
+    const message = `${job}${fileName ? ` · ${fileName}` : ""}`;
+
+    // One alert per job per day. Three versions in an afternoon shouldn't be
+    // three pings — that's how a useful alert becomes one you mute. A second
+    // upload on the same job today updates the existing notification (so it
+    // names the newest cut) and skips the push. A different job still gets its
+    // own alert.
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const { data: alreadyToday } = await supabaseService
+      .from("notifications")
+      .select("id")
+      .eq("type", "project_draft")
+      .eq("link", link)
+      .gte("created_at", startOfDay.toISOString());
+    const isRepeat = (alreadyToday?.length ?? 0) > 0;
+
+    if (isRepeat) {
+      const ids = (alreadyToday || []).map(n => n.id);
+      const { error } = await supabaseService
+        .from("notifications")
+        .update({ title, message, read: false })
+        .in("id", ids);
+      if (error) console.warn(`[notify-project-draft] refresh failed: ${error.message}`);
+      return res.status(200).json({ ok: true, notified: ids.length, batched: true });
+    }
+
     // Bell notification per owner/partner. The link opens the job straight up.
     const rows = owners.map(o => ({
       id: randomUUID(),
       user_id: o.id,
       type: "project_draft",
-      title: `${who} uploaded ${label.toLowerCase()}`,
-      message: `${job}${fileName ? ` · ${fileName}` : ""}`,
-      link: `/calendar?project=${projectId}`,
+      title,
+      message,
+      link,
     }));
 
     // Best-effort side effects, awaited — a Vercel handler that returns first
