@@ -807,3 +807,43 @@ describe("getMonthlyEarningsBreakdown — business expenses reduce Net Profit", 
     expect(res.businessExpenses).toBe(0);
   });
 });
+
+// ---- Owner labour is a draw, not a cost -----------------------------------
+// A pass-through LLC can't pay its owner wages, so the owner's own hours must
+// not reduce a job's profit. The monthly P&L always separated this via
+// ownerCrewPay; profit-per-client and profit-per-broker didn't, so the same job
+// showed two different profits depending on the screen.
+describe("owner crew pay excluded from cost", () => {
+  const withOwnerAndCrew = () => ({
+    ...makeProject(),
+    crew: [
+      { crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 },
+      { crewMemberId: "crew_mel", role: "Main Photographer", hoursWorked: 2, payRatePerHour: 50 },
+    ],
+    postProduction: [
+      { crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 2, payRatePerHour: 100 },
+    ],
+  });
+
+  it("counts everyone when no owner is given", () => {
+    // 300 (Geoff shoot) + 100 (Melissa) + 200 (Geoff edit)
+    expect(getProjectCrewCost(withOwnerAndCrew() as never)).toBe(600);
+  });
+
+  it("leaves out the owner's own hours when asked", () => {
+    expect(getProjectCrewCost(withOwnerAndCrew() as never, "crew_geoff")).toBe(100);
+  });
+
+  it("still counts other crew in full", () => {
+    const cost = getProjectCrewCost(withOwnerAndCrew() as never, "crew_geoff");
+    expect(cost).toBe(100); // Melissa's 2h at 50 — untouched
+  });
+
+  it("is a no-op for an owner who wasn't on the job", () => {
+    expect(getProjectCrewCost(withOwnerAndCrew() as never, "crew_nobody")).toBe(600);
+  });
+
+  it("is a no-op for an empty owner id, so callers can pass '' safely", () => {
+    expect(getProjectCrewCost(withOwnerAndCrew() as never, "")).toBe(600);
+  });
+});

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Building2, User, MapPin, FileText, Pencil, Receipt } from "lucide-react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
+import { useAuth } from "@/contexts/AuthContext";
 import { getProjectPayerId, getProjectInvoiceAmount, getProjectProfit } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import type { Client, Project } from "@/lib/types";
@@ -46,6 +47,8 @@ interface Props {
 
 export default function BrokerDetailSheet({ broker, onClose, onOpenShoot, onGenerate, generating, onOpenInvoices }: Props) {
   const { data } = useApp();
+  const { effectiveProfile } = useAuth();
+  const ownerCrewMemberId = effectiveProfile?.crewMemberId || "";
   const [period, setPeriod] = useState<"month" | "year">("month");
 
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
@@ -72,7 +75,9 @@ export default function BrokerDetailSheet({ broker, onClose, onOpenShoot, onGene
       const agent = clientsById[p.clientId] || broker;
       homes += 1;
       revenue += getProjectInvoiceAmount(p, agent);
-      profit += getProjectProfit(p, agent);
+      // Owner's own hours aren't a cost (pass-through draw, not payroll), so
+      // they don't reduce a brokerage's profit. Same rule as the P&L.
+      profit += getProjectProfit(p, agent, ownerCrewMemberId);
     }
 
     // Group the shoot list by agent.

@@ -491,16 +491,25 @@ function crewEntryCost(e: ProjectCrewEntry | ProjectPostEntry): number {
 /**
  * Get total crew cost for a project, using editorBilling for photo editors.
  */
-export function getProjectCrewCost(project: Project): number {
-  const crewCost = (project.crew || []).filter(e => e.role !== "Travel").reduce(
-    (s, e) => s + crewEntryCost(e), 0
-  );
-  const postCost = (project.postProduction || []).filter(e => e.role !== "Travel").reduce((s, e) => {
-    if (e.role === "Photo Editor" && project.editorBilling) {
-      return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
-    }
-    return s + crewEntryCost(e);
-  }, 0);
+export function getProjectCrewCost(project: Project, excludeCrewMemberId?: string): number {
+  // `excludeCrewMemberId` leaves the owner's own labour out. In a pass-through
+  // LLC the owner isn't paid wages — money taken is a draw, not a deductible
+  // cost — so counting their hours as an expense makes every job they worked
+  // look less profitable than it was. The monthly P&L already separated this
+  // via ownerCrewPay; profit-per-client and profit-per-project didn't, which is
+  // why the two disagreed. Omit the argument to get true gross labour.
+  const skip = (id: string) => !!excludeCrewMemberId && id === excludeCrewMemberId;
+  const crewCost = (project.crew || [])
+    .filter(e => e.role !== "Travel" && !skip(e.crewMemberId))
+    .reduce((s, e) => s + crewEntryCost(e), 0);
+  const postCost = (project.postProduction || [])
+    .filter(e => e.role !== "Travel" && !skip(e.crewMemberId))
+    .reduce((s, e) => {
+      if (e.role === "Photo Editor" && project.editorBilling) {
+        return s + project.editorBilling.imageCount * (project.editorBilling.perImageRate ?? 6);
+      }
+      return s + crewEntryCost(e);
+    }, 0);
   return crewCost + postCost;
 }
 
@@ -728,11 +737,13 @@ export function getCrewMemberServicePay(project: Project, crewMemberId: string):
  * otherwise it falls back to assigned-crew pay. Avoids double-counting.
  * (v1: travel and overhead are intentionally excluded.) Cancelled = $0.
  */
-export function getProjectProfit(project: Project, client: Client): number {
+export function getProjectProfit(project: Project, client: Client, ownerCrewMemberId?: string): number {
   // Labor = what you actually pay assigned crew. Real-estate flat rates are
   // auto-filled into the crew rows from Services, so they flow through here too.
+  // Pass ownerCrewMemberId to leave the owner's own hours out — their labour is
+  // a draw, not an expense, so counting it understates the job's profit.
   return getProjectInvoiceAmount(project, client)
-    - getProjectCrewCost(project)
+    - getProjectCrewCost(project, ownerCrewMemberId)
     - getProjectProductCost(project);
 }
 

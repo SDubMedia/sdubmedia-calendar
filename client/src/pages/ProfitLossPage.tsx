@@ -68,7 +68,11 @@ export default function ProfitLossPage() {
         if (!client) return;
         const existing = map.get(client.id) || { name: client.company, revenue: 0, crewCost: 0, projectCount: 0 };
         existing.revenue += getProjectInvoiceAmount(p, client);
-        existing.crewCost += getProjectCrewCost(p);
+        // Owner's own hours excluded: in a pass-through LLC that's a draw, not
+        // an expense, so counting it made every job Geoff worked look less
+        // profitable than it was. Matches how the monthly P&L already treats
+        // ownerCrewPay.
+        existing.crewCost += getProjectCrewCost(p, ownerCrewMemberId);
         existing.projectCount++;
         map.set(client.id, existing);
       });
@@ -128,6 +132,10 @@ export default function ProfitLossPage() {
         const split = activePartnerSplit(client, p.date);
         if (!client || !split) return;
         const revenue = getProjectInvoiceAmount(p, client);
+        // Deliberately NOT owner-adjusted: partner splits were weighted on
+        // gross profit including owner labour, and the Jan-Apr 2026 partner
+        // figures have to keep reading exactly as they did. Changing the basis
+        // here would silently restate history.
         const crewCost = getProjectCrewCost(p);
         const profit = Math.max(0, revenue - crewCost);
         const weight = profit * (split.partnerPercent ?? 0);
