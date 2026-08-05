@@ -374,11 +374,16 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // Assigned crew in a qualifying role (photographer/videographer on the shoot,
   // or an editor in post) can upload the finals straight into this property's
   // gallery — owner still controls delivering it to the client.
-  // Shooters only. An editor's finished work goes to Drafts; the owner reviews
-  // it and promotes the approved cut into the gallery. Enforced server-side too
-  // (verifyCrewOnProject "shoot") — this just hides the button.
+  // Who can put finals in the client's gallery: anyone who shot it, plus PHOTO
+  // editors — a photo editor's deliverable IS the finished gallery, often
+  // hundreds of frames, so drafts make no sense for that. Video editors are
+  // excluded; they post drafts and the owner promotes the approved cut.
+  // Mirrors verifyCrewOnProject("gallery") server-side — this just hides the
+  // button. A plain "Editor" role counts as photo, the safer reading.
   const canCrewUpload = isStaff && !!myCrewId && (
-    (project.crew || []).some(c => c.crewMemberId === myCrewId && /photograph|videograph/i.test(c.role || ""))
+    (project.crew || []).some(c => c.crewMemberId === myCrewId && /photograph|videograph/i.test(c.role || "")) ||
+    (project.postProduction || []).some(c => c.crewMemberId === myCrewId
+      && /editor/i.test(c.role || "") && !/video/i.test(c.role || ""))
   );
   const crewPhotoInputRef = useRef<HTMLInputElement>(null);
   const [crewUploading, setCrewUploading] = useState<{ done: number; total: number } | null>(null);

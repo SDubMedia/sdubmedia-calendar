@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // "shoot": only the people who were on the job can put finals in the
     // client gallery. Editors post drafts instead.
-    const access = await verifyCrewOnProject(user.userId, projectId, "shoot");
+    const access = await verifyCrewOnProject(user.userId, projectId, "gallery");
     if (!access.ok) return res.status(access.status).json({ error: access.error });
 
     // Reuse an existing gallery for this project if there is one.

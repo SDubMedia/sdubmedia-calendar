@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("deliveries").select("id, project_id, org_id").eq("id", deliveryId).single();
     if (!delivery || !delivery.project_id) return res.status(404).json({ error: "Gallery not found" });
 
-    const access = await verifyCrewOnProject(user.userId, delivery.project_id, "shoot");
+    const access = await verifyCrewOnProject(user.userId, delivery.project_id, "gallery");
     if (!access.ok) return res.status(access.status).json({ error: access.error });
     if (delivery.org_id !== access.orgId) return res.status(403).json({ error: "Not your gallery" });
 

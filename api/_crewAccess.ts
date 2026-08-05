@@ -24,11 +24,13 @@ function memberId(c: CrewEntry): string {
 }
 
 /** Which assignment qualifies the caller.
- *  "any"   — on the shoot OR in post (drafts, status changes)
- *  "shoot" — on the shoot only. Finals go into the client's gallery, and an
- *            editor has no business putting anything there; they post drafts
- *            and the owner promotes the approved cut. */
-export type CrewRequirement = "any" | "shoot";
+ *  "any"     — on the shoot OR in post (drafts, status changes)
+ *  "gallery" — allowed to put finals in the client's gallery: anyone who shot
+ *              it, plus PHOTO editors, whose deliverable IS the finished
+ *              gallery (hundreds of frames — drafts make no sense for that).
+ *              Video editors are excluded: they post drafts for review and the
+ *              owner promotes the approved cut. */
+export type CrewRequirement = "any" | "gallery";
 
 /** Confirm the caller is staff, linked to a crew member, and assigned to the
  *  project in a qualifying role. */
@@ -55,9 +57,16 @@ export async function verifyCrewOnProject(
   const onShoot = crew.some(c => memberId(c) === myId && /photograph|videograph/i.test(c.role || ""));
   // Post: anyone in an editor role (photo editor, video editor, etc.).
   const onEdit = post.some(c => memberId(c) === myId && /editor/i.test(c.role || ""));
-  if (require === "shoot") {
-    if (!onShoot) {
-      return { ok: false, status: 403, error: "Editors post drafts — the owner delivers the gallery" };
+  // Photo editors deliver galleries; video editors deliver drafts. Match the
+  // photo side explicitly so a plain "Editor" role counts as photo too — the
+  // one role that's ambiguous, and stills are the safer reading.
+  const onPhotoEdit = post.some(c => {
+    const role = c.role || "";
+    return memberId(c) === myId && /editor/i.test(role) && !/video/i.test(role);
+  });
+  if (require === "gallery") {
+    if (!onShoot && !onPhotoEdit) {
+      return { ok: false, status: 403, error: "Video editors post drafts — the owner promotes the approved cut" };
     }
   } else if (!onShoot && !onEdit) {
     return { ok: false, status: 403, error: "You're not assigned to this job" };
