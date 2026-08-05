@@ -123,6 +123,16 @@ export default function StaffDashboardPage() {
       if (p.date > todayStr) continue; // not shot yet — nothing to edit
       const gallery = data.deliveries.find(d => d.projectId === p.id);
       const fileCount = gallery ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id).length : 0;
+      // Done means done, however it happened. A job that's been delivered —
+      // marked delivered on the project, or its gallery sent — is not work
+      // waiting on the editor, even when nothing was uploaded through Slate.
+      // Plenty of past jobs were handed over by hand; asking her for finals on
+      // those is noise she can't clear.
+      const isDone = p.status === "delivered" || gallery?.status === "delivered";
+      if (isDone) {
+        if (fileCount > 0) uploaded.push(p);   // she did upload — show it as finished
+        continue;                              // delivered by hand — off her list entirely
+      }
       (fileCount > 0 ? uploaded : needsFinals).push(p);
     }
     return { needsFinals, uploaded };
@@ -141,8 +151,10 @@ export default function StaffDashboardPage() {
         .filter(d => d.projectId === p.id && d.kind === "draft")
         .sort((a, b) => b.version - a.version);
       if (mine.length === 0) {
-        // Nothing posted yet, and the shoot has happened — it's on him.
-        if (p.date <= todayStr) needsCut.push(p);
+        // Nothing posted yet, and the shoot has happened — it's on him. Unless
+        // the job is already delivered, in which case it was handled some other
+        // way and there's nothing left to cut.
+        if (p.date <= todayStr && p.status !== "delivered") needsCut.push(p);
         continue;
       }
       const latest = mine[0];
