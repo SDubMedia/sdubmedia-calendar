@@ -19,7 +19,7 @@ import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -352,6 +352,12 @@ function DeliveryDetail({ id }: { id: string }) {
   // Archive this gallery to the owner's Google Drive — one file per request so
   // large galleries don't time out. Shows live progress.
   const [driveSend, setDriveSend] = useState<{ active: boolean; done: number; total: number }>({ active: false, done: 0, total: 0 });
+  // Rename state lives up here with the other hooks: everything below the
+  // `if (!delivery) return` early exit runs conditionally, and a hook there
+  // changes hook order between renders.
+  const [renaming, setRenaming] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
   const sendToDrive = async () => {
     if (!delivery) return;
     if (!data.organization?.googleDriveEmail) { toast.error("Connect Google Drive first (Manage → Settings)"); return; }
@@ -759,6 +765,21 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   };
 
+  // Rename in place. The title is what the client sees on the page, in the
+  // link preview and in the delivery email, so it needs to be fixable while
+  // organising — not only at creation, which is when it's least known.
+  const saveTitle = async () => {
+    const next = titleDraft.trim();
+    if (!next || next === delivery?.title) { setRenaming(false); return; }
+    setSavingTitle(true);
+    try {
+      await updateDelivery(id, { title: next });
+      setRenaming(false);
+      toast.success("Gallery renamed");
+    } catch { toast.error("Couldn't rename the gallery"); }
+    finally { setSavingTitle(false); }
+  };
+
   // Mark delivered WITHOUT telling the client. For work handed over outside
   // Slate (WeTransfer, Drive, a hand-off in person) — the job stops showing as
   // outstanding without anyone receiving a gallery link they don't need.
@@ -815,7 +836,31 @@ function DeliveryDetail({ id }: { id: string }) {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold truncate" style={{ fontFamily: "'Space Grotesk', system-ui" }}>{delivery.title}</h1>
+            {renaming ? (
+              <input
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); saveTitle(); }
+                  if (e.key === "Escape") { setTitleDraft(delivery.title); setRenaming(false); }
+                }}
+                onBlur={saveTitle}
+                disabled={savingTitle}
+                className="text-2xl font-bold bg-transparent border-b border-white/30 focus:border-white/70 outline-none min-w-0 flex-1"
+                style={{ fontFamily: "'Space Grotesk', system-ui" }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setTitleDraft(delivery.title); setRenaming(true); }}
+                title="Rename this gallery"
+                className="group flex items-center gap-2 min-w-0 text-left"
+              >
+                <h1 className="text-2xl font-bold truncate" style={{ fontFamily: "'Space Grotesk', system-ui" }}>{delivery.title}</h1>
+                <Pencil className="w-3.5 h-3.5 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </button>
+            )}
             <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider border ${statusColor(delivery.status)}`}>{statusLabel(delivery.status)}</span>
           </div>
           {project && <p className="text-sm text-slate-500">Project: {projectLabel(project, data.clients)}</p>}
