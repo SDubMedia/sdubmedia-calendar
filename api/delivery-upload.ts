@@ -58,7 +58,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // "kind" lets the client tell us this is a thumbnail (small JPEG companion
   // to a parent video) rather than a primary deliverable. Thumbnails skip the
   // storage cap (they're trivial) and live under a separate path prefix.
-  const kind = body.kind === "thumbnail" ? "thumbnail" : "file";
+  // "original" = the untouched file kept alongside the compressed copy when a
+  // gallery has keepOriginals on. Same size rules as a normal file; stored
+  // under its own prefix so the two are never confused.
+  const kind = body.kind === "thumbnail" ? "thumbnail" : body.kind === "original" ? "original" : "file";
 
   if (!deliveryId || !fileName || !contentType || sizeBytes <= 0) {
     return res.status(400).json({ error: "Missing deliveryId, fileName, contentType, or sizeBytes" });
@@ -123,7 +126,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4. Generate the signed PUT URL (15 min — plenty for one file).
     // Thumbnails get a distinct path prefix so we can spot/clean them later.
     const baseKey = r2BuildKey(orgId, deliveryId, fileName);
-    const storagePath = kind === "thumbnail" ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/thumbnails/`) : baseKey;
+    const storagePath = kind === "thumbnail"
+      ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/thumbnails/`)
+      : kind === "original"
+        ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/originals/`)
+        : baseKey;
     // 1-hour window so a large upload (videos up to 1 GB) has time to finish
     // even on a modest office connection before the signed URL expires.
     const uploadUrl = r2PresignedUrl({

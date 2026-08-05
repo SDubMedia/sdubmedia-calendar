@@ -553,6 +553,39 @@ function DeliveryDetail({ id }: { id: string }) {
           setUploading({ done, total: list.length, pct, name: file.name });
         });
 
+        // 2a. Portrait work: keep the untouched original next to the
+        // compressed copy. `file` above has been re-encoded to JPEG at 80%
+        // (fast galleries, right for real estate); `rawFile` is exactly what
+        // came off the card, EXIF and colour profile intact. Only stills — a
+        // video is never re-encoded, so its "original" is the same bytes.
+        let originalStoragePath = "";
+        let originalSizeBytes = 0;
+        if (delivery?.keepOriginals && !isVideo && rawFile !== file) {
+          try {
+            const origRes = await fetch("/api/delivery-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+              body: JSON.stringify({
+                deliveryId: id,
+                fileName: rawFile.name,
+                contentType: rawFile.type || "application/octet-stream",
+                sizeBytes: rawFile.size,
+                kind: "original",
+              }),
+            });
+            const origData = await origRes.json();
+            if (!origRes.ok) throw new Error(origData.error || "Original upload URL failed");
+            await putFileWithProgress(origData.uploadUrl, rawFile, () => {});
+            originalStoragePath = origData.storagePath;
+            originalSizeBytes = rawFile.size;
+          } catch (origErr) {
+            // Non-fatal: the client still gets the photo, just the compressed
+            // one. Loud in the console so it isn't silent.
+            console.error("Original upload failed — compressed copy kept", origErr);
+            toast.message(`Kept the compressed copy of ${rawFile.name}`, { description: "The full-quality original didn't upload." });
+          }
+        }
+
         // 2b. For videos, upload the auto-captured first-frame thumbnail.
         let thumbnailStoragePath = "";
         if (isVideo && autoThumbBlob) {
@@ -577,6 +610,8 @@ function DeliveryDetail({ id }: { id: string }) {
           mediaType: isVideo ? "video" : "image",
           thumbnailStoragePath,
           durationSeconds,
+          originalStoragePath,
+          originalSizeBytes,
         });
 
         done++;
@@ -931,6 +966,10 @@ function DeliveryDetail({ id }: { id: string }) {
           <PrivacyPanel
             requireEmail={delivery.requireEmail}
             onUpdate={(v) => updateDelivery(id, { requireEmail: v })}
+          />
+          <QualityPanel
+            keepOriginals={delivery.keepOriginals ?? false}
+            onUpdate={(v) => updateDelivery(id, { keepOriginals: v })}
           />
         </>
       )}
@@ -1687,6 +1726,30 @@ function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUp
         <span>
           <span className="text-sm text-white font-medium block">Allow clients to request prints</span>
           <span className="text-xs text-slate-500">Adds a "Request prints" button to each photo on the public gallery. Requests email you with the photo + size; you handle fulfillment manually for now.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function QualityPanel({ keepOriginals, onUpdate }: { keepOriginals: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Photo quality</h3>
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={keepOriginals}
+          onChange={(e) => onUpdate(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">Keep full-quality originals</span>
+          <span className="text-xs text-slate-500">
+            Photos are normally re-saved at 80% quality so galleries load fast — right for listings, not for portrait work.
+            Turn this on and the untouched file is kept too: the client browses the light version and downloads the original,
+            with its EXIF and colour profile intact. Uses about twice the storage. Applies to photos added from now on.
+          </span>
         </span>
       </label>
     </div>

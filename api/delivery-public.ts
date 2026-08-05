@@ -60,6 +60,7 @@ interface FileRow {
   position: number;
   media_type?: string | null;
   thumbnail_storage_path?: string | null;
+  original_storage_path?: string | null;
   duration_seconds?: number | null;
 }
 
@@ -195,7 +196,18 @@ async function getDelivery(token: string, password: string | undefined, email: s
       mediaType: isVideo ? "video" : "image",
       durationSeconds: f.duration_seconds ?? null,
       url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
-      downloadUrl: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600, responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` } }) : "",
+      // Download serves the untouched original when the gallery kept one
+      // (portrait work); otherwise the single stored file, exactly as before.
+      // `url` above always stays the compressed copy so the grid loads fast —
+      // browsing a folder of 30MB originals would crawl on a phone.
+      downloadUrl: r2Configured()
+        ? r2PresignedUrl({
+            method: "GET",
+            key: f.original_storage_path || f.storage_path,
+            expiresIn: 3600,
+            responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
+          })
+        : "",
       thumbnailUrl: isVideo && f.thumbnail_storage_path && r2Configured()
         ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
         : "",

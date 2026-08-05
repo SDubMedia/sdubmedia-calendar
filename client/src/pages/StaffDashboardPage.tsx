@@ -3,7 +3,7 @@
 // Shows their schedule, hours, and pay
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
@@ -93,10 +93,46 @@ export default function StaffDashboardPage() {
     return { label: `Invoiced ${inv.invoiceNumber}`, tone: "sent" };
   };
 
+  /** Is this person the PHOTO editor on the job, or the VIDEO editor? Their
+   *  next action is completely different: a photo editor uploads the finished
+   *  gallery, a video editor posts a cut for review. Showing one the other's
+   *  queue is noise. A plain "Editor" role reads as photo. */
+  const myEditKind = useCallback((p: Project): "photo" | "video" | null => {
+    const mine = (p.postProduction || []).filter(c => c.crewMemberId === crewMemberId && /editor/i.test(c.role || ""));
+    if (mine.length === 0) return null;
+    return mine.some(c => /video/i.test(c.role || "")) ? "video" : "photo";
+  }, [crewMemberId]);
+
+  /** Everything this person is paid flat for? Then hours are meaningless to
+   *  them and the hours card is just clutter. */
+  const paidFlatOnly = useMemo(() => {
+    if (!crewMemberId) return false;
+    const mine = data.projects.flatMap(p =>
+      [...(p.crew || []), ...(p.postProduction || [])].filter(c => c.crewMemberId === crewMemberId));
+    return mine.length > 0 && mine.every(c => c.payType === "flat");
+  }, [data.projects, crewMemberId]);
+
+  /** Photo-editor work: which galleries still need their finished photos.
+   *  "Ready for you" = the shoot happened and nothing has been uploaded yet. */
+  const photoEditJobs = useMemo(() => {
+    if (!crewMemberId) return { needsFinals: [] as Project[], uploaded: [] as Project[] };
+    const needsFinals: Project[] = [];
+    const uploaded: Project[] = [];
+    for (const p of data.projects) {
+      if (p.status === "cancelled" || myEditKind(p) !== "photo") continue;
+      if (p.date > todayStr) continue; // not shot yet — nothing to edit
+      const gallery = data.deliveries.find(d => d.projectId === p.id);
+      const fileCount = gallery ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id).length : 0;
+      (fileCount > 0 ? uploaded : needsFinals).push(p);
+    }
+    return { needsFinals, uploaded };
+  }, [data.projects, data.deliveries, data.deliveryFiles, crewMemberId, todayStr, myEditKind]);
+
   const editJobs = useMemo(() => {
     if (!crewMemberId) return { needsCut: [] as Project[], inReview: [] as { project: Project; doc: ProjectDocument }[], settled: [] as { project: Project; doc: ProjectDocument }[] };
-    const onEdit = data.projects.filter(p =>
-      p.postProduction.some(c => c.crewMemberId === crewMemberId) && p.status !== "cancelled");
+    // Video-edit assignments only — photo editors get their own section, since
+    // "post a draft for review" isn't their job.
+    const onEdit = data.projects.filter(p => p.status !== "cancelled" && myEditKind(p) === "video");
     const needsCut: Project[] = [];
     const inReview: { project: Project; doc: ProjectDocument }[] = [];
     const settled: { project: Project; doc: ProjectDocument }[] = [];
@@ -114,7 +150,7 @@ export default function StaffDashboardPage() {
       else settled.push({ project: p, doc: latest });
     }
     return { needsCut, inReview, settled };
-  }, [data.projects, data.projectDocuments, crewMemberId, todayStr]);
+  }, [data.projects, data.projectDocuments, crewMemberId, todayStr, myEditKind]);
 
   // Upcoming projects
   const upcomingProjects = useMemo(() => {
@@ -245,6 +281,9 @@ export default function StaffDashboardPage() {
             onClick={() => setExpandedSection(expandedSection === "month" ? null : "month")}
             active={expandedSection === "month"}
           />
+          {/* Hours mean nothing to someone paid a flat rate per job — hidden
+              rather than showing them a number they're not paid on. */}
+          {!paidFlatOnly && (
           <MetricCard icon={Clock} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
             label={totalImages > 0 ? "Hours / Images" : "Hours"}
             value={totalImages > 0 ? `${totalHours > 0 ? (totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)) + "h · " : ""}${totalImages} imgs` : (totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1))}
@@ -252,6 +291,7 @@ export default function StaffDashboardPage() {
             onClick={() => setExpandedSection(expandedSection === "hours" ? null : "hours")}
             active={expandedSection === "hours"}
           />
+          )}
           <MetricCard icon={DollarSign} iconColor="text-green-400" iconBg="bg-green-500/20"
             label="Earnings"
             value={formatCurrency(totalPay)}
@@ -260,6 +300,64 @@ export default function StaffDashboardPage() {
             active={expandedSection === "earnings"}
           />
         </div>
+
+        {/* Photo-editor work. Their next action isn't "post a draft for review",
+            it's "upload the finished gallery" — so this leads with the jobs
+            waiting on them and links straight to the project to do it. */}
+        {(photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
+          <div className="bg-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                <Film className="w-4 h-4 text-primary" /> Photos to edit
+              </h3>
+            </div>
+            <div className="divide-y divide-border">
+              {photoEditJobs.needsFinals.map(p => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const loc = data.locations.find(l => l.id === p.locationId);
+                const deliverables = (p.editTypes || []).map(id => data.editTypes.find(e => e.id === id)?.name).filter(Boolean).join(" + ");
+                return (
+                  <Link key={p.id} href={`/calendar?project=${p.id}`} className="block px-4 py-3 hover:bg-white/[0.03] transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                        </div>
+                        {deliverables && <p className="text-xs text-primary mt-0.5 truncate">{deliverables}</p>}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Shot {formatDate(p.date)}{loc ? ` · ${loc.name}` : ""}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">
+                        Upload finals
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+              {photoEditJobs.uploaded.map(p => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const gallery = data.deliveries.find(d => d.projectId === p.id);
+                const count = gallery ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id).length : 0;
+                return (
+                  <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{count} photo{count === 1 ? "" : "s"} uploaded</p>
+                    </div>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 shrink-0 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Done
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* The edit queue — first thing an editor sees, because it answers the
             three questions they'd otherwise text about: what's on me, did he

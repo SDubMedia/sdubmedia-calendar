@@ -1608,6 +1608,13 @@ export interface DeliveryFile {
   thumbnailStoragePath: string;
   // Video duration in whole seconds. Null for images and unknown.
   durationSeconds: number | null;
+  // The untouched file as it came off the card, stored only when the gallery
+  // has keepOriginals on. Empty means there's just the one stored file — which
+  // is every row created before this existed, and every real-estate gallery.
+  // Download serves this when present; the grid always browses the compressed
+  // copy so galleries stay fast.
+  originalStoragePath?: string;
+  originalSizeBytes?: number;
 }
 
 export interface DeliverySelection {
@@ -1653,6 +1660,12 @@ export interface Delivery {
   // Proofing config
   selectionLimit: number;        // 0 disables proofing entirely
   downloadOnly?: boolean;        // real-estate: no cover/walkthrough/proofing, just Download All
+  // When true, uploads keep the untouched original alongside the compressed
+  // copy the gallery browses, and Download hands over the original — EXIF and
+  // colour profile intact. Off by default: every photo is otherwise re-encoded
+  // to JPEG at 80% to keep galleries fast, which is right for real estate and
+  // wrong for portrait work where the file itself is the product.
+  keepOriginals?: boolean;
   perExtraPhotoCents: number;    // 0 = no per-photo upsell
   buyAllFlatCents: number;       // 0 = no flat unlock-all option
 

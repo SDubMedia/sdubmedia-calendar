@@ -881,6 +881,7 @@ function rowToDelivery(r: any): Delivery {
     expiresAt: r.expires_at || null,
     selectionLimit: Number(r.selection_limit ?? 0),
     downloadOnly: r.download_only === true,
+    keepOriginals: r.keep_originals === true,
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
     buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
     status: (r.status || "draft") as DeliveryStatus,
@@ -913,6 +914,8 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     mediaType,
     thumbnailStoragePath: r.thumbnail_storage_path || "",
     durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+    originalStoragePath: r.original_storage_path || "",
+    originalSizeBytes: Number(r.original_size_bytes || 0),
   };
 }
 
@@ -2168,7 +2171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cover_subtitle: d.coverSubtitle,
       cover_date: d.coverDate,
       token, expires_at: d.expiresAt,
-      selection_limit: d.selectionLimit, download_only: d.downloadOnly ?? false, per_extra_photo_cents: d.perExtraPhotoCents,
+      selection_limit: d.selectionLimit, download_only: d.downloadOnly ?? false, keep_originals: d.keepOriginals ?? false, per_extra_photo_cents: d.perExtraPhotoCents,
       buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
       updated_at: now,
     }).select().single();
@@ -2208,6 +2211,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.expiresAt !== undefined) patch.expires_at = d.expiresAt;
     if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
     if (d.downloadOnly !== undefined) patch.download_only = d.downloadOnly;
+    if (d.keepOriginals !== undefined) patch.keep_originals = d.keepOriginals;
     if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
     if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;
     if (d.status !== undefined) patch.status = d.status;
@@ -2258,6 +2262,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       media_type: f.mediaType ?? "image",
       thumbnail_storage_path: f.thumbnailStoragePath ?? "",
       duration_seconds: f.durationSeconds ?? null,
+      original_storage_path: f.originalStoragePath ?? "",
+      original_size_bytes: f.originalSizeBytes ?? 0,
     }).select().single();
     if (error) throw new Error(error.message);
     const file = rowToDeliveryFile(row);
