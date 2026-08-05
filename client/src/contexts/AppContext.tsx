@@ -2254,6 +2254,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const registerDeliveryFile = useCallback(async (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">): Promise<DeliveryFile> => {
+    // Same filename already in this gallery? Replace it instead of adding a
+    // second copy — re-uploading a session doubled a gallery once, and
+    // re-sending a corrected frame should show the new one, not both. Keeps the
+    // existing row so position and download counts survive.
+    const dupe = rawData.deliveryFiles.find(x => x.deliveryId === f.deliveryId && x.originalName === f.originalName);
+    if (dupe) {
+      const { data: updated, error: updErr } = await supabase.from("delivery_files").update({
+        storage_path: f.storagePath,
+        size_bytes: f.sizeBytes, width: f.width, height: f.height,
+        mime_type: f.mimeType,
+        media_type: f.mediaType ?? "image",
+        thumbnail_storage_path: f.thumbnailStoragePath ?? "",
+        duration_seconds: f.durationSeconds ?? null,
+        original_storage_path: f.originalStoragePath ?? "",
+        original_size_bytes: f.originalSizeBytes ?? 0,
+      }).eq("id", dupe.id).select().single();
+      if (updErr) throw new Error(updErr.message);
+      const replaced = rowToDeliveryFile(updated);
+      setRawData(s2 => ({ ...s2, deliveryFiles: s2.deliveryFiles.map(x => x.id === replaced.id ? replaced : x) }));
+      return replaced;
+    }
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("delivery_files").insert({
       id, delivery_id: f.deliveryId, ...(orgId ? { org_id: orgId } : {}),
@@ -2270,7 +2291,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const file = rowToDeliveryFile(row);
     setRawData(s => ({ ...s, deliveryFiles: [...s.deliveryFiles, file] }));
     return file;
-  }, [orgId]);
+  }, [orgId, rawData.deliveryFiles]);
 
   const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds">>) => {
     const dbPatch: Record<string, unknown> = {};

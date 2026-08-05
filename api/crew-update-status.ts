@@ -9,7 +9,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { verifyAuth, errorMessage } from "./_auth.js";
 import { supabaseService, verifyCrewOnProject } from "./_crewAccess.js";
 
-const ALLOWED = new Set(["upcoming", "filming_done", "in_editing", "editing_done", "delivered"]);
+// Crew move a job as far as "editing done". Delivery is the hand-off to the
+// client and belongs to the owner alone — the UI already hides it from staff,
+// but the rule has to live here too or it isn't a rule, just a hidden button.
+const ALLOWED = new Set(["upcoming", "filming_done", "in_editing", "editing_done"]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -19,6 +22,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { projectId, status } = req.body ?? {};
   if (!projectId || typeof projectId !== "string") return res.status(400).json({ error: "Missing projectId" });
+  if (status === "delivered") {
+    return res.status(403).json({ error: "Only the owner delivers to the client" });
+  }
   if (!ALLOWED.has(status)) return res.status(400).json({ error: "Not an allowed status" });
 
   try {

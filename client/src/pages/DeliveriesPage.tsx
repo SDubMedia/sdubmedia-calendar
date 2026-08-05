@@ -688,6 +688,12 @@ function DeliveryDetail({ id }: { id: string }) {
   const proofingEnabled = delivery.selectionLimit > 0;
   const project = data.projects.find(p => p.id === delivery.projectId);
   const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
+  // "Agent" is real-estate language and reads as a mistake on a portrait,
+  // school or business shoot. Use the client's own name where we have it, and
+  // only fall back to "agent" when they actually are one.
+  const clientNoun = agentClient?.company
+    || (agentClient?.clientType === "agent" ? "the agent" : "the client");
+  const clientNounGeneric = agentClient?.clientType === "agent" ? "the agent" : "the client";
   const hasBroker = agentClient?.clientType === "agent" && !!agentClient.brokerId;
 
   // Self-pay charge on delivery: when the shoot's payer resolves to an agent
@@ -735,7 +741,7 @@ function DeliveryDetail({ id }: { id: string }) {
     const shootClient = project ? data.clients.find(c => c.id === project.clientId) : null;
     const hasBrokerage = shootClient?.clientType === "broker" || (shootClient?.clientType === "agent" && !!shootClient.brokerId);
     if (hasBrokerage) notifyBrokersSilently();
-    if (canChargeOnDelivery && !charging && await confirm({ title: "Charge card on file?", description: `Charge ${payer?.company || "the agent"} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`, confirmLabel: "Charge card" })) {
+    if (canChargeOnDelivery && !charging && await confirm({ title: "Charge card on file?", description: `Charge ${payer?.company || clientNounGeneric} $${chargeAmount.toFixed(2)} to their card on file now? They get the photos either way.`, confirmLabel: "Charge card" })) {
       await chargeOnDelivery();
     }
   };
@@ -782,8 +788,8 @@ function DeliveryDetail({ id }: { id: string }) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't notify");
-      if (d.emailed || d.pushed) toast.success(recipient === "broker" ? "Sent the broker the link" : "Notified the agent");
-      else toast.message(`No email on file for the ${recipient} — add one to notify them.`);
+      if (d.emailed || d.pushed) toast.success(recipient === "broker" ? "Sent the broker the link" : `Notified ${clientNoun}`);
+      else toast.message(`No email on file for ${recipient === "broker" ? "the broker" : clientNoun} — add one to notify them.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't notify");
     }
@@ -834,7 +840,7 @@ function DeliveryDetail({ id }: { id: string }) {
           <div className="mb-6">
             {delivery.status === "delivered" ? (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-emerald-300 flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Delivered — the agent has been notified</span>
+                <span className="text-sm font-medium text-emerald-300 flex items-center gap-2"><Check className="w-4 h-4 shrink-0" /> Delivered — {clientNoun} has been notified</span>
                 <button onClick={() => notifyGallery("agent")} className="text-xs px-3 py-1.5 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/10 whitespace-nowrap">Re-notify</button>
               </div>
             ) : (
@@ -844,7 +850,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 className="w-full bg-emerald-600 text-white rounded-lg py-3 px-4 font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ImageIcon className="w-5 h-5 shrink-0" />
-                {files.length === 0 ? "Upload photos, then deliver" : `Deliver ${files.length} photo${files.length === 1 ? "" : "s"} to ${agentClient?.company || "the agent"}`}
+                {files.length === 0 ? "Upload photos, then deliver" : `Deliver ${files.length} photo${files.length === 1 ? "" : "s"} to ${clientNoun}`}
               </button>
             )}
           </div>
@@ -920,7 +926,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 >
                   Send the broker the link
                 </button>
-                <p className="text-[10px] text-slate-500 mt-1.5">Delivering notifies the agent automatically. Use this only if the brokerage asks for the link.</p>
+                <p className="text-[10px] text-slate-500 mt-1.5">Delivering notifies {clientNounGeneric} automatically. Use this only if the brokerage asks for the link.</p>
               </div>
             )}
           </div>
