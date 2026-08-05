@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
 import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, CheckCircle2, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getCrewMemberProjectPay } from "@/lib/data";
 import type { Project, ProjectDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import StaffAgreementResign from "@/components/StaffAgreementResign";
@@ -103,14 +104,16 @@ export default function StaffDashboardPage() {
     return mine.some(c => /video/i.test(c.role || "")) ? "video" : "photo";
   }, [crewMemberId]);
 
-  /** Everything this person is paid flat for? Then hours are meaningless to
-   *  them and the hours card is just clutter. */
-  const paidFlatOnly = useMemo(() => {
-    if (!crewMemberId) return false;
-    const mine = data.projects.flatMap(p =>
-      [...(p.crew || []), ...(p.postProduction || [])].filter(c => c.crewMemberId === crewMemberId));
-    return mine.length > 0 && mine.every(c => c.payType === "flat");
-  }, [data.projects, crewMemberId]);
+  /** Everything earned this calendar year. Replaces the hours card: an editor
+   *  on a flat rate isn't paid by the hour, so hours were a number that only
+   *  invited questions. Uses the same helper Staff Payments does, so flat,
+   *  hourly and per-image all resolve the same way. */
+  const yearPay = useMemo(() => {
+    if (!crewMemberId) return 0;
+    return data.projects
+      .filter(p => p.status !== "cancelled" && p.date.startsWith(String(currentYear)))
+      .reduce((sum, p) => sum + getCrewMemberProjectPay(p, crewMemberId), 0);
+  }, [data.projects, crewMemberId, currentYear]);
 
   /** Photo-editor work: which galleries still need their finished photos.
    *  "Ready for you" = the shoot happened and nothing has been uploaded yet. */
@@ -183,7 +186,9 @@ export default function StaffDashboardPage() {
   }, [myProjects, currentYear, currentMonth]);
 
   // Hours and pay this month
-  const { totalHours, totalPay, totalImages, projectBreakdown } = useMemo(() => {
+  // totalImages is still computed inside (it drives the per-image pay maths)
+  // but nothing renders it now that the hours card is gone.
+  const { totalHours, totalPay, projectBreakdown } = useMemo(() => {
     let totalHours = 0;
     let totalPay = 0;
     let totalImages = 0;
@@ -293,17 +298,13 @@ export default function StaffDashboardPage() {
             onClick={() => setExpandedSection(expandedSection === "month" ? null : "month")}
             active={expandedSection === "month"}
           />
-          {/* Hours mean nothing to someone paid a flat rate per job — hidden
-              rather than showing them a number they're not paid on. */}
-          {!paidFlatOnly && (
-          <MetricCard icon={Clock} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
-            label={totalImages > 0 ? "Hours / Images" : "Hours"}
-            value={totalImages > 0 ? `${totalHours > 0 ? (totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)) + "h · " : ""}${totalImages} imgs` : (totalHours % 1 === 0 ? String(totalHours) : totalHours.toFixed(1))}
-            sub="Worked this month"
-            onClick={() => setExpandedSection(expandedSection === "hours" ? null : "hours")}
-            active={expandedSection === "hours"}
+          {/* Year-to-date earnings, not hours. Flat-rate crew aren't paid by
+              the hour, so hours were a number they're not measured on. */}
+          <MetricCard icon={DollarSign} iconColor="text-cyan-400" iconBg="bg-cyan-500/20"
+            label={`Earned in ${currentYear}`}
+            value={formatCurrency(yearPay)}
+            sub="Year to date"
           />
-          )}
           <MetricCard icon={DollarSign} iconColor="text-green-400" iconBg="bg-green-500/20"
             label="Earnings"
             value={formatCurrency(totalPay)}
