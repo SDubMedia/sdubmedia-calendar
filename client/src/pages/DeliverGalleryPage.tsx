@@ -712,9 +712,26 @@ export default function DeliverGalleryPage() {
       {/* Status / state banners */}
       {(isWorking || delivery.status === "submitted" || delivery.status === "delivered" || (proofingEnabled && delivery.status === "sent")) && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 py-4">
-          {isWorking && <p className="text-emerald-700 text-xs sm:text-sm uppercase tracking-widest">Your selections are being edited.</p>}
-          {delivery.status === "submitted" && <p className="text-blue-700 text-xs sm:text-sm uppercase tracking-widest">Submitted ✓ · We'll be in touch.</p>}
-          {delivery.status === "delivered" && <p className="text-slate-500 text-xs sm:text-sm uppercase tracking-widest">Final files delivered.</p>}
+          {/* `isWorking` counts "delivered" as in-progress, which is fine for
+              deciding what to render but wrong for a status line — it told a
+              client her photos were being edited AND delivered at the same
+              time. These read off the actual status, and speak to a person
+              rather than a pipeline. */}
+          {delivery.status === "working" && (
+            <p className="text-emerald-700 text-sm sm:text-base">
+              We're editing your picks now — you'll get an email the moment they're ready.
+            </p>
+          )}
+          {delivery.status === "submitted" && (
+            <p className="text-blue-700 text-sm sm:text-base">
+              Thank you — we've got your picks and we'll take it from here.
+            </p>
+          )}
+          {delivery.status === "delivered" && (
+            <p className="text-slate-700 text-sm sm:text-base">
+              Your photos are ready. Download the whole set, or tap <strong>Select photos</strong> to pick out a few — they're yours to keep, so grab them whenever suits you.
+            </p>
+          )}
           {proofingEnabled && delivery.status === "sent" && (
             <p className="text-amber-900 text-xs sm:text-sm">
               <strong>Pick your {delivery.selectionLimit} favorite{delivery.selectionLimit === 1 ? "" : "s"} for editing.</strong>
