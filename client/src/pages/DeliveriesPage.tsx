@@ -734,6 +734,19 @@ function DeliveryDetail({ id }: { id: string }) {
   // agent with a card) offer to charge. Used by the prominent Photos-tab button
   // and the granular Status control.
   const deliverToAgent = async () => {
+    // Delivering emails the client a live link. It can't be unsent, and setting
+    // the gallery back to draft doesn't revoke it — the public link works
+    // whatever the status. So it gets an explicit confirmation naming who and
+    // how many, which is what a one-tap deliver was missing when a gallery went
+    // out by accident.
+    const photoCount = files.length;
+    const emailTarget = agentClient?.email || "";
+    const ok = await confirm({
+      title: `Send this gallery to ${clientNoun}?`,
+      description: `${photoCount} file${photoCount === 1 ? "" : "s"} will be emailed${emailTarget ? ` to ${emailTarget}` : ""} as a live link they can view and download straight away.${hasBroker ? " The brokerage is notified too." : ""} This can't be unsent — putting the gallery back to draft doesn't take the link away.`,
+      confirmLabel: "Send it",
+    });
+    if (!ok) return;
     await setDeliveryStatus(id, "delivered");
     notifyGallery("agent");
     // If this shoot belongs to a brokerage, automatically notify every managing
