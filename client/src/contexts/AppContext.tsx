@@ -558,6 +558,7 @@ function rowToProject(r: any): Project {
     clientNotes: Array.isArray(r.client_notes) ? r.client_notes : [],
     onCameraTalent: Array.isArray(r.on_camera_talent) ? r.on_camera_talent : [],
     deliverableUrl: r.deliverable_url || "",
+    sourceFilesUrl: r.source_files_url || "",
     cancellationReason: r.cancellation_reason || "",
     cancelledAt: r.cancelled_at || null,
     depositPaidAt: r.deposit_paid_at || null,
@@ -793,7 +794,7 @@ function rowToProjectDocument(r: any): ProjectDocument {
   return {
     id: r.id,
     projectId: r.project_id || "",
-    kind: r.kind === "draft" ? "draft" : "document",
+    kind: r.kind === "draft" ? "draft" : r.kind === "source" ? "source" : "document",
     version: Number(r.version || 0),
     reviewStatus: r.review_status === "approved" ? "approved" : r.review_status === "set_aside" ? "set_aside" : "pending",
     reviewNote: r.review_note || "",
@@ -2807,6 +2808,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       client_notes: p.clientNotes ?? [],
       on_camera_talent: p.onCameraTalent ?? [],
       deliverable_url: p.deliverableUrl || "",
+      source_files_url: p.sourceFilesUrl || "",
       cancellation_reason: p.cancellationReason || "",
       cancelled_at: p.status === "cancelled" ? (p.cancelledAt || new Date().toISOString()) : (p.cancelledAt || null),
       discount_type: p.discountType || null,
@@ -2857,6 +2859,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.clientNotes !== undefined) patch.client_notes = p.clientNotes;
     if (p.onCameraTalent !== undefined) patch.on_camera_talent = p.onCameraTalent;
     if (p.deliverableUrl !== undefined) patch.deliverable_url = p.deliverableUrl;
+    if (p.sourceFilesUrl !== undefined) patch.source_files_url = p.sourceFilesUrl;
     if (p.cancellationReason !== undefined) patch.cancellation_reason = p.cancellationReason;
     if (p.cancelledAt !== undefined) patch.cancelled_at = p.cancelledAt;
     if (p.onTheWayAt !== undefined) patch.on_the_way_at = p.onTheWayAt;

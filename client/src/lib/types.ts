@@ -515,7 +515,7 @@ export interface ClientNote {
 export interface ProjectDocument {
   id: string;
   projectId: string;
-  kind: "document" | "draft";
+  kind: "document" | "draft" | "source";
   version: number;
   // Draft review state. approved ≠ delivered — approving says the cut is
   // right; delivering the gallery is a separate act the owner controls.
@@ -565,7 +565,12 @@ export interface Project {
   // Free-text names of the people featured on camera (agents, clients, guests).
   // Owner + assigned crew edit it; shows in the report's Projects & Activity.
   onCameraTalent: string[];
-  deliverableUrl: string; // Google Drive link to final deliverables
+  deliverableUrl: string;
+  // Where the RAW/source files live for whoever is editing this job — a Drive,
+  // Dropbox or WeTransfer link. A session's worth of RAWs is several GB, so a
+  // link is usually the sane handoff; small files can also be uploaded to the
+  // job itself (project_documents kind='source').
+  sourceFilesUrl?: string; // Google Drive link to final deliverables
   cancellationReason: string; // populated when status === "cancelled"
   cancelledAt: string | null; // ISO timestamp of when status flipped to "cancelled"
   depositPaidAt?: string | null; // ISO timestamp stamped when at_signing milestone paid → flips tentative to upcoming

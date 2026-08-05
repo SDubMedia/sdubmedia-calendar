@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "wouter";
-import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, CheckCircle2, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, ProjectDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -317,8 +317,9 @@ export default function StaffDashboardPage() {
                 const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                 const loc = data.locations.find(l => l.id === p.locationId);
                 const deliverables = (p.editTypes || []).map(id => data.editTypes.find(e => e.id === id)?.name).filter(Boolean).join(" + ");
+                const hasSource = !!p.sourceFilesUrl || data.projectDocuments.some(d => d.projectId === p.id && d.kind === "source");
                 return (
-                  <Link key={p.id} href={`/calendar?project=${p.id}`} className="block px-4 py-3 hover:bg-white/[0.03] transition-colors">
+                  <div key={p.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">
@@ -330,10 +331,33 @@ export default function StaffDashboardPage() {
                         </p>
                       </div>
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 shrink-0">
-                        Upload finals
+                        Needs finals
                       </span>
                     </div>
-                  </Link>
+                    {/* Both actions, always — she may need the RAWs again after
+                        she's already uploaded once. */}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {p.sourceFilesUrl ? (
+                        <a href={p.sourceFilesUrl} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/80">
+                          <Download className="w-3.5 h-3.5" /> Download RAWs
+                        </a>
+                      ) : hasSource ? (
+                        <Link href={`/calendar?project=${p.id}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/80">
+                          <Download className="w-3.5 h-3.5" /> Download RAWs
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground border border-border">
+                          <Download className="w-3.5 h-3.5" /> No RAWs yet
+                        </span>
+                      )}
+                      <Link href={`/calendar?project=${p.id}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Upload className="w-3.5 h-3.5" /> Upload to gallery
+                      </Link>
+                    </div>
+                  </div>
                 );
               })}
               {photoEditJobs.uploaded.map(p => {
@@ -349,9 +373,17 @@ export default function StaffDashboardPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{count} photo{count === 1 ? "" : "s"} uploaded</p>
                     </div>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 shrink-0 inline-flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Done
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/40 text-emerald-600 dark:text-emerald-300 inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Done
+                      </span>
+                      {p.sourceFilesUrl && (
+                        <a href={p.sourceFilesUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-[11px] text-primary hover:text-primary/80 inline-flex items-center gap-1">
+                          <Download className="w-3 h-3" /> RAWs
+                        </a>
+                      )}
+                    </div>
                   </div>
                 );
               })}

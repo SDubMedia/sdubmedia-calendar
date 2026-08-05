@@ -5,10 +5,14 @@
 // the OWNER or a crew member assigned to that project (on crew or post-
 // production), matching the project_documents RLS. Clients never reach here.
 //
-// `kind` splits the two things this endpoint carries:
+// `kind` splits what this endpoint carries:
 //   "document" — scripts / shot lists / call sheets. 50 MB.
 //   "draft"    — a review copy of the edit, usually video. 1 GB, and it counts
 //                against the org's storage cap the same way gallery files do.
+//   "source"   — RAW/source files handed to the editor. Same 1 GB ceiling and
+//                long presign as a draft; separate storage prefix. For a whole
+//                session use projects.source_files_url instead — 300 RAW frames
+//                is ~9GB, which no browser upload should be asked to carry.
 //
 // upload:   { action, projectId, kind?, fileName, contentType, sizeBytes } -> { uploadUrl, storagePath }
 // download: { action, projectId, storagePath, fileName, inline? }          -> { downloadUrl }
@@ -90,12 +94,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const fileName = typeof body.fileName === "string" ? body.fileName : "";
       const contentType = typeof body.contentType === "string" ? body.contentType : "application/octet-stream";
       const sizeBytes = typeof body.sizeBytes === "number" ? body.sizeBytes : 0;
-      const isDraft = body.kind === "draft";
+      // Drafts and source files share the same ceiling and the same long
+      // presign — both are big media. They differ only in where they land, so
+      // a RAW handoff isn't filed under "drafts".
+      const isDraft = body.kind === "draft" || body.kind === "source";
+      const prefixDir = body.kind === "source" ? "source" : body.kind === "draft" ? "drafts" : "docs";
       if (!fileName || sizeBytes <= 0) return res.status(400).json({ error: "Missing fileName or sizeBytes" });
 
       const cap = isDraft ? MAX_DRAFT_BYTES : MAX_DOC_BYTES;
       if (sizeBytes > cap) {
-        const label = isDraft ? "Draft" : "Document";
+        const label = body.kind === "source" ? "Source file" : isDraft ? "Draft" : "Document";
         const mb = Math.floor(cap / 1024 / 1024);
         return res.status(413).json({ error: `${label} too large (max ${mb >= 1024 ? `${mb / 1024}GB` : `${mb}MB`})` });
       }
@@ -114,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const prefix = isDraft ? `drafts/${projectId}` : `docs/${projectId}`;
+      const prefix = `${prefixDir}/${projectId}`;
       const storagePath = r2BuildKey(orgId, prefix, fileName);
       // Drafts can be a GB over a slow upstream — give them an hour, like the gallery.
       const uploadUrl = r2PresignedUrl({ method: "PUT", key: storagePath, expiresIn: isDraft ? 3600 : 1800, contentType });

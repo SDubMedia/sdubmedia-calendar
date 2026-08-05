@@ -159,6 +159,50 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   // ---- Draft cuts: same R2 path as documents, but bigger, video-friendly, and
   // the owner gets pinged when an editor posts one. Never reaches the client. ----
+  // ---- Source files: the RAW handoff to whoever is editing. A link covers a
+  // full session (several GB); uploads cover the odd frame. Both stay available
+  // after finals go up so a re-download is always possible. ----
+  const [sourceUploading, setSourceUploading] = useState<{ done: number; total: number } | null>(null);
+  const [sourceUrlDraft, setSourceUrlDraft] = useState(project.sourceFilesUrl || "");
+  const [savingSourceUrl, setSavingSourceUrl] = useState(false);
+  const saveSourceUrl = async () => {
+    setSavingSourceUrl(true);
+    try {
+      await updateProject(project.id, { sourceFilesUrl: sourceUrlDraft.trim() });
+      toast.success(sourceUrlDraft.trim() ? "Link saved — the editor can see it" : "Link removed");
+    } catch { toast.error("Couldn't save the link"); }
+    finally { setSavingSourceUrl(false); }
+  };
+  const uploadSourceFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = Array.from(e.target.files || []);
+    if (list.length === 0) return;
+    e.target.value = "";
+    setSourceUploading({ done: 0, total: list.length });
+    let done = 0, failed = 0;
+    for (const file of list) {
+      try {
+        const token = await getAuthToken();
+        const res = await fetch("/api/project-document-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "upload", kind: "source", projectId: project.id, fileName: file.name, contentType: file.type || "application/octet-stream", sizeBytes: file.size }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Upload failed");
+        const put = await fetch(d.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+        if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
+        await addProjectDocument({ projectId: project.id, kind: "source", version: 0, reviewStatus: "pending", reviewNote: "", durationSeconds: null, fileName: file.name, storagePath: d.storagePath, sizeBytes: file.size, mimeType: file.type || "" });
+        done++;
+      } catch (err) {
+        failed++;
+        toast.error(`Failed: ${file.name}`, { description: err instanceof Error ? err.message : "Try again" });
+      }
+      setSourceUploading({ done: done + failed, total: list.length });
+    }
+    setSourceUploading(null);
+    if (done > 0) toast.success(`${done} source file${done === 1 ? "" : "s"} added`);
+  };
+
   /** Runtime of a video file, read in the browser. Resolves null for
    *  non-video or anything the browser can't decode (some ProRes/HEVC), in
    *  which case the row shows size only rather than a made-up bitrate. */
@@ -366,7 +410,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const [playingDraftId, setPlayingDraftId] = useState<string | null>(null);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const projectFiles = data.projectDocuments.filter(d => d.projectId === project.id);
-  const projectDocs = projectFiles.filter(d => d.kind !== "draft");
+  const projectDocs = projectFiles.filter(d => d.kind !== "draft" && d.kind !== "source");
+  const sourceFiles = projectFiles.filter(d => d.kind === "source");
   // Newest cut first — that's the one being reviewed.
   const projectDrafts = projectFiles
     .filter(d => d.kind === "draft")
@@ -1376,6 +1421,86 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   <Upload className="w-3.5 h-3.5" /> {docUploading ? "Uploading…" : "Upload document"}
                   <input type="file" className="hidden" disabled={docUploading} onChange={uploadDoc} accept=".pdf,.doc,.docx,.txt,.rtf,.pages,.csv,.xlsx,.key,.ppt,.pptx" />
                 </label>
+              </div>
+            )}
+
+            {/* Source files — the RAW handoff. Owner + assigned crew; clients
+                never see this. A link carries a whole session; uploads carry
+                the odd frame. Both stay put after finals so the editor can
+                always re-download. */}
+            {canSeeDocs && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Source files <span className="normal-case text-[10px] text-muted-foreground/70">· RAWs for the editor</span>
+                </div>
+
+                {isOwner ? (
+                  <div className="flex gap-2">
+                    <input
+                      value={sourceUrlDraft}
+                      onChange={e => setSourceUrlDraft(e.target.value)}
+                      placeholder="Paste a Drive / Dropbox / WeTransfer link…"
+                      className="flex-1 min-w-0 bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveSourceUrl}
+                      disabled={savingSourceUrl || sourceUrlDraft.trim() === (project.sourceFilesUrl || "")}
+                      className="shrink-0 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50"
+                    >
+                      {savingSourceUrl ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                ) : project.sourceFilesUrl ? (
+                  <a
+                    href={project.sourceFilesUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 bg-primary/10 border border-primary/20 rounded-md p-3"
+                  >
+                    <ExternalLink className="w-4 h-4 shrink-0" /> Download the RAW files
+                  </a>
+                ) : null}
+
+                {isOwner && project.sourceFilesUrl && (
+                  <a
+                    href={project.sourceFilesUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] text-primary hover:text-primary/80"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Open the link
+                  </a>
+                )}
+
+                {sourceFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-2 bg-secondary/50 rounded-md px-3 py-2 text-xs">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <button type="button" onClick={() => downloadDoc(f)} className="flex-1 min-w-0 text-left text-foreground hover:text-primary truncate" title={`Download ${f.fileName}`}>
+                      {f.fileName}
+                    </button>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{fmtBytes(f.sizeBytes)}</span>
+                    {isOwner && (
+                      <button type="button" onClick={() => removeDoc(f)} className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                    )}
+                  </div>
+                ))}
+
+                {isOwner && (
+                  <label className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer", sourceUploading ? "bg-muted text-muted-foreground" : "bg-secondary text-foreground hover:bg-secondary/80")}>
+                    <Upload className="w-3.5 h-3.5" />
+                    {sourceUploading ? `Uploading ${sourceUploading.done}/${sourceUploading.total}…` : "Upload source files"}
+                    <input type="file" multiple className="hidden" disabled={!!sourceUploading} onChange={uploadSourceFiles} />
+                  </label>
+                )}
+                {isOwner && (
+                  <p className="text-[11px] text-muted-foreground">
+                    A full session of RAWs is several GB — paste a link for those. Uploading suits a handful of frames; 1GB per file.
+                  </p>
+                )}
+                {!isOwner && !project.sourceFilesUrl && sourceFiles.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No source files yet.</p>
+                )}
               </div>
             )}
 
