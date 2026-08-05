@@ -352,6 +352,89 @@ export default function DeliverGalleryPage() {
     }
   }
 
+  /** Fetch photos and hand back one zip. Shared by "download all" and
+   *  "download selected" so there's a single implementation of the batching
+   *  and the CDN load, rather than two that drift. */
+  async function zipPhotos(photos: FileItem[], filename: string) {
+    // Lazy-load JSZip from CDN — no bundle bloat for clients who never download.
+    if (!window.JSZip) {
+      await new Promise<void>((resolve, reject) => {
+        const el = document.createElement("script");
+        el.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+        el.onload = () => resolve();
+        el.onerror = () => reject(new Error("Failed to load ZIP library"));
+        document.head.appendChild(el);
+      });
+    }
+    const JSZipCtor = (window.JSZip as unknown as { new(): { file: (n: string, b: Blob) => void; generateAsync: (o: { type: "blob" }) => Promise<Blob> } });
+    const zip = new JSZipCtor();
+    // Batches of 4 so we don't hammer R2.
+    const batchSize = 4;
+    for (let i = 0; i < photos.length; i += batchSize) {
+      const batch = photos.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (f) => {
+        // downloadUrl serves the full-quality original when the gallery kept
+        // one; url is the compressed copy the grid browses.
+        const r = await fetch(f.downloadUrl || f.url);
+        if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
+        zip.file(f.originalName, await r.blob());
+      }));
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Multi-select download. Separate from `picked`, which is proofing — that's
+  // "these are my favourites", this is "give me these files". Proofing
+  // galleries don't offer downloads at all, so the two never appear together.
+  const [selecting, setSelecting] = useState(false);
+  const [dlPicked, setDlPicked] = useState<Set<string>>(new Set());
+  const toggleDlPick = (id: string) =>
+    setDlPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  async function downloadSelected() {
+    const chosen = files.filter((f) => dlPicked.has(f.id));
+    if (chosen.length === 0) return;
+    // Same split as download-all: videos stream straight to disk, photos get
+    // zipped. But zipping happens in memory, so a big selection of
+    // full-quality originals would blow up a phone — past this size each file
+    // streams individually instead.
+    const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
+    const photos = chosen.filter((f) => f.mediaType !== "video");
+    const videos = chosen.filter((f) => f.mediaType === "video");
+    const photoBytes = photos.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
+    setZipping(true);
+    try {
+      for (const v of videos) {
+        streamToDisk(v.downloadUrl || v.url);
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      if (photos.length > 0 && photoBytes > ZIP_BUDGET_BYTES) {
+        for (const f of photos) {
+          streamToDisk(f.downloadUrl || f.url);
+          await new Promise((r) => setTimeout(r, 600));
+        }
+      } else if (photos.length > 0) {
+        await zipPhotos(photos, `${(delivery?.title || "photos").replace(/[^\w-]+/g, "_")}-selected.zip`);
+      }
+      setSelecting(false);
+      setDlPicked(new Set());
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setZipping(false);
+    }
+  }
+
   async function downloadAll() {
     if (files.length === 0) return;
     // Videos are streamed to disk individually; only photos go through the
@@ -369,36 +452,7 @@ export default function DeliverGalleryPage() {
       }
 
       if (photos.length > 0) {
-        // Lazy-load JSZip from CDN — no bundle bloat for clients who don't use this
-        if (!window.JSZip) {
-          await new Promise<void>((resolve, reject) => {
-            const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
-            s.onload = () => resolve();
-            s.onerror = () => reject(new Error("Failed to load ZIP library"));
-            document.head.appendChild(s);
-          });
-        }
-        const JSZipCtor = (window.JSZip as unknown as { new(): { file: (n: string, b: Blob) => void; generateAsync: (o: { type: "blob" }) => Promise<Blob> } });
-        const zip = new JSZipCtor();
-        // Fetch files in parallel batches of 4 to avoid hammering R2
-        const batchSize = 4;
-        for (let i = 0; i < photos.length; i += batchSize) {
-          const batch = photos.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (f) => {
-            const r = await fetch(f.url);
-            if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
-            const blob = await r.blob();
-            zip.file(f.originalName, blob);
-          }));
-        }
-        const blob = await zip.generateAsync({ type: "blob" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}.zip`;
-        a.click();
-        URL.revokeObjectURL(url);
+        await zipPhotos(photos, `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}.zip`);
       }
     } catch (err) {
       toast.error("Download failed", { description: err instanceof Error ? err.message : "Try again" });
@@ -634,7 +688,14 @@ export default function DeliverGalleryPage() {
       {/* Download-only galleries (e.g. real-estate): one prominent download-all. */}
       {!proofingEnabled && (delivery.status === "delivered" || delivery.status === "sent") && files.length > 0 && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
-          <button onClick={downloadAll} disabled={zipping} className="inline-flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 disabled:opacity-50">
+          <button
+            onClick={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
+            disabled={zipping}
+            className="inline-flex items-center gap-2 border border-slate-300 text-slate-700 px-5 py-2.5 rounded-full text-sm font-medium hover:bg-slate-100 disabled:opacity-50 mr-2"
+          >
+            {selecting ? "Cancel" : "Select photos"}
+          </button>
+          <button onClick={downloadAll} disabled={zipping || selecting} className="inline-flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 disabled:opacity-50">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             {zipping ? "Preparing…" : (() => {
               const v = files.filter((f) => f.mediaType === "video").length;
@@ -708,9 +769,17 @@ export default function DeliverGalleryPage() {
           return (
             <div
               key={f.id}
-              className="relative group cursor-pointer aspect-square overflow-hidden bg-white"
-              onClick={() => setLightboxIdx(i)}
+              className={`relative group cursor-pointer aspect-square overflow-hidden bg-white ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
+              onClick={() => (selecting ? toggleDlPick(f.id) : setLightboxIdx(i))}
             >
+              {/* In select mode the tick is the whole point, so it's always
+                  visible rather than appearing on hover — half these clients
+                  are on a phone with no hover at all. */}
+              {selecting && (
+                <div className={`absolute top-2 left-2 z-20 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${dlPicked.has(f.id) ? "bg-black text-white border-black" : "bg-white/80 border-slate-400 text-transparent"}`}>
+                  ✓
+                </div>
+              )}
               {isVideo ? (
                 <>
                   {f.thumbnailUrl ? (
@@ -807,6 +876,31 @@ export default function DeliverGalleryPage() {
       </div>
 
         {/* Sticky proofing footer */}
+        {/* Selection bar. Fixed to the bottom so it's reachable one-handed on a
+            phone, which is where most of these galleries get opened. */}
+        {selecting && (
+          <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-slate-700 min-w-0">
+              <strong>{dlPicked.size}</strong> selected
+              {dlPicked.size > 0 && (
+                <button
+                  onClick={() => setDlPicked(new Set(files.map(f => f.id)))}
+                  className="ml-3 text-xs underline text-slate-500 hover:text-black"
+                >
+                  Select all
+                </button>
+              )}
+            </div>
+            <button
+              onClick={downloadSelected}
+              disabled={dlPicked.size === 0 || zipping}
+              className="shrink-0 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium disabled:opacity-40"
+            >
+              {zipping ? "Preparing…" : `Download ${dlPicked.size || ""}`.trim()}
+            </button>
+          </div>
+        )}
+
         {proofingEnabled && delivery.status === "sent" && picked.size > 0 && (
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-30">
             <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
