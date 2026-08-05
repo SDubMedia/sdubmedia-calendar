@@ -41,7 +41,9 @@ export async function verifyCrewOnProject(
 ): Promise<CrewAccess> {
   const { data: profile } = await supabaseService
     .from("user_profiles").select("role, crew_member_id, org_id").eq("id", userId).single();
-  if (!profile || profile.role !== "staff" || !profile.crew_member_id) {
+  if (!profile) return { ok: false, status: 403, error: "Only assigned crew can do this" };
+  const isOwner = profile.role === "owner";
+  if (!isOwner && (profile.role !== "staff" || !profile.crew_member_id)) {
     return { ok: false, status: 403, error: "Only assigned crew can do this" };
   }
 
@@ -49,6 +51,19 @@ export async function verifyCrewOnProject(
     .from("projects").select("id, org_id, status, client_id, location_id, crew, post_production").eq("id", projectId).single();
   if (!project) return { ok: false, status: 404, error: "Project not found" };
   if (project.org_id !== profile.org_id) return { ok: false, status: 403, error: "Not your project" };
+
+  // The owner can do anything in their own org, so they're never blocked by an
+  // assignment check. This also makes impersonation usable: "view as Melissa"
+  // switches the screens but every API call still carries the owner's token, so
+  // without this the owner testing an editor's flow is refused by their own app.
+  if (isOwner) {
+    return {
+      ok: true,
+      orgId: profile.org_id,
+      crewMemberId: profile.crew_member_id || "",
+      project: { id: project.id, org_id: project.org_id, status: project.status, client_id: project.client_id, location_id: project.location_id },
+    };
+  }
 
   const myId = profile.crew_member_id;
   const crew: CrewEntry[] = Array.isArray(project.crew) ? project.crew : [];

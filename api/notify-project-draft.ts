@@ -29,6 +29,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const access = await verifyCrewOnProject(user.userId, projectId);
     if (!access.ok) return res.status(access.status).json({ error: access.error });
 
+    // The owner is allowed through verifyCrewOnProject (they can do anything in
+    // their own org, which is also what makes "view as" testable). But they
+    // shouldn't be notified about their own upload — checked against the real
+    // token, not the impersonated view, so it holds either way.
+    const { data: caller } = await supabaseService
+      .from("user_profiles").select("role").eq("id", user.userId).maybeSingle();
+    if (caller?.role === "owner") {
+      return res.status(200).json({ ok: true, notified: 0, skipped: "own upload" });
+    }
+
     // Who uploaded it, and which job it's for.
     const [{ data: uploader }, { data: client }] = await Promise.all([
       supabaseService.from("crew_members").select("name").eq("id", access.crewMemberId).maybeSingle(),
