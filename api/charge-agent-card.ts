@@ -1,8 +1,11 @@
 // ============================================================
-// Charge an AGENT's saved card on file for an invoice the broker didn't cover.
-// Owner-only, off-session (no action needed from the agent — their booking &
-// payment agreement authorizes this). The card + customer live on the org's
-// connected Stripe account. On success the invoice is marked paid and its
+// Charge a client's saved card on file for an invoice. Owner-only, off-session
+// (nothing needed from them at the moment of charge). Two kinds of client save
+// a card: agents, whose booking agreement covers shoots the broker didn't pay
+// for, and photography clients, who are told the card "won't be charged until
+// you receive an invoice ... lets us bill you for work you approve". The card +
+// customer live on the org's connected Stripe account.
+// (Filename says "agent" for history; it serves both.) On success the invoice is marked paid and its
 // linked projects stamped paid_date, mirroring the Checkout/webhook paths.
 // ============================================================
 
@@ -41,13 +44,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (invoice.status === "void") return res.status(400).json({ error: "Invoice is void" });
     if (!(Number(invoice.total) > 0)) return res.status(400).json({ error: "Nothing to charge on this invoice" });
 
-    // The payer must be an agent with a saved card.
+    // The payer must have a saved card. Agents and photography clients both
+    // save one through /api/stripe-save-card, and the photography setup screen
+    // tells them in as many words: "won't be charged until you receive an
+    // invoice ... lets us bill you for work you approve." Charging against an
+    // invoice is exactly that. The endpoint used to refuse anyone who wasn't an
+    // agent, so a card could be collected and never used.
     const { data: agent } = await supabase
       .from("clients").select("id, client_type, card_on_file, stripe_customer_id, company, contact_name")
       .eq("id", invoice.client_id).eq("org_id", orgId).maybeSingle();
-    if (!agent) return res.status(400).json({ error: "This invoice isn't billed to an agent" });
-    if (agent.client_type !== "agent") return res.status(400).json({ error: "Card charging is for agent invoices only" });
-    if (!agent.card_on_file || !agent.stripe_customer_id) return res.status(400).json({ error: "This agent has no card on file" });
+    if (!agent) return res.status(400).json({ error: "Couldn't find who this invoice is billed to" });
+    if (agent.client_type !== "agent" && agent.client_type !== "photography") {
+      return res.status(400).json({ error: "This client type doesn't save a card on file" });
+    }
+    if (!agent.card_on_file || !agent.stripe_customer_id) return res.status(400).json({ error: "This client has no card on file" });
 
     const { data: org } = await supabase.from("organizations").select("stripe_account_id").eq("id", orgId).single();
     if (!org?.stripe_account_id) return res.status(400).json({ error: "Payments aren't set up for this account" });
@@ -61,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { customer: agent.stripe_customer_id as string, type: "card", limit: 10 },
       { stripeAccount: acct }
     );
-    if (pms.data.length === 0) return res.status(400).json({ error: "No saved card found for this agent" });
+    if (pms.data.length === 0) return res.status(400).json({ error: "No saved card found for this client" });
 
     const amount = Math.round(Number(invoice.total) * 100);
     let intent: Stripe.PaymentIntent | null = null;

@@ -75,7 +75,7 @@ export default function InvoicesPage() {
     const inv = data.invoices.find(i => i.id === invoiceId);
     const agent = inv ? data.clients.find(c => c.id === inv.clientId) : null;
     if (!agent) return;
-    if (!(await confirm({ title: "Charge card on file?", description: `Charge ${agent.company || agent.contactName}'s card on file ${inv ? `$${inv.total.toFixed(2)}` : ""}? Their agreement authorizes this for shoots the broker didn't cover.`, confirmLabel: "Charge card" }))) return;
+    if (!(await confirm({ title: "Charge card on file?", description: `Charge ${inv ? `$${inv.total.toFixed(2)}` : ""} to ${agent.company || agent.contactName}'s card on file? They saved it for billing work they've approved${agent.clientType === "agent" ? ", and their agreement covers shoots the broker didn't pay for" : ""}.`, confirmLabel: "Charge card" }))) return;
     setChargingId(invoiceId);
     try {
       const token = await getAuthToken();
@@ -674,7 +674,10 @@ export default function InvoicesPage() {
                     {/* Agent invoice with a saved card → charge it directly */}
                     {(inv.status === "draft" || inv.status === "sent") && (() => {
                       const payer = data.clients.find(c => c.id === inv.clientId);
-                      return payer?.clientType === "agent" && payer.cardOnFile;
+                      // Agents and photography clients both save cards (see
+                      // stripe-save-card), and both were told it's for billing
+                      // approved work. Only agents could be charged.
+                      return (payer?.clientType === "agent" || payer?.clientType === "photography") && payer.cardOnFile;
                     })() && (
                       <button
                         onClick={() => chargeCardOnFile(inv.id)}
