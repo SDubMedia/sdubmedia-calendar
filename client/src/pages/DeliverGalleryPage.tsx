@@ -14,7 +14,7 @@
 //     or routes to Stripe Connect Checkout for the overage
 //   - JSZip via CDN handles "Download all" — no server-side ZIP
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { toast } from "sonner";
 
@@ -355,6 +355,18 @@ export default function DeliverGalleryPage() {
   /** Fetch photos and hand back one zip. Shared by "download all" and
    *  "download selected" so there's a single implementation of the batching
    *  and the CDN load, rather than two that drift. */
+  /** How many 4px grid rows a tile needs to keep its real shape.
+   *  The span is in absolute pixels, so it has to be computed against the
+   *  ACTUAL column width — a fixed guess would make every photo the wrong
+   *  height on a phone, where columns are half the size. `colWidth` is measured
+   *  from a real tile and updates on resize and rotation. */
+  function tileRowSpan(f: FileItem): number {
+    const ROW = 4; // px, matches gridAutoRows
+    const w = f.width && f.width > 0 ? f.width : 3;
+    const h = f.height && f.height > 0 ? f.height : 2;
+    return Math.max(1, Math.round((colWidth * (h / w)) / ROW));
+  }
+
   async function zipPhotos(photos: FileItem[], filename: string) {
     // Lazy-load JSZip from CDN — no bundle bloat for clients who never download.
     if (!window.JSZip) {
@@ -392,6 +404,24 @@ export default function DeliverGalleryPage() {
   // Multi-select download. Separate from `picked`, which is proofing — that's
   // "these are my favourites", this is "give me these files". Proofing
   // galleries don't offer downloads at all, so the two never appear together.
+  // Measured width of one grid column, used to turn each photo's aspect ratio
+  // into a row span. Starts at a sane guess so the first paint isn't wild.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [colWidth, setColWidth] = useState(360);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const measure = () => {
+      const tile = el.querySelector<HTMLElement>("[data-tile]");
+      const w = tile?.offsetWidth;
+      if (w && Math.abs(w - colWidth) > 1) setColWidth(w);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [colWidth, files.length]);
+
   const [selecting, setSelecting] = useState(false);
   const [dlPicked, setDlPicked] = useState<Set<string>>(new Set());
   const toggleDlPick = (id: string) =>
@@ -747,6 +777,14 @@ export default function DeliverGalleryPage() {
 
       {/* PHOTO GRID — flush, full-bleed, no gaps */}
       <div
+        // Masonry, not a square grid. Every photo used to be cropped to a
+        // square, which on portrait work cuts off heads and feet — the frame
+        // the photographer chose is the product. Tiles now span however many
+        // 4px rows their real aspect ratio needs, so nothing is cropped and the
+        // left-to-right order the owner arranged is preserved (CSS columns
+        // would have reflowed it top-to-bottom per column).
+        ref={gridRef}
+        style={{ gridAutoRows: "4px" }}
         className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-px bg-slate-200"
         onContextMenu={(e) => {
           if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
@@ -786,7 +824,12 @@ export default function DeliverGalleryPage() {
           return (
             <div
               key={f.id}
-              className={`relative group cursor-pointer aspect-square overflow-hidden bg-white ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
+              // Height comes from the photo's own proportions. Videos and
+              // anything missing dimensions fall back to 3:2 rather than
+              // collapsing to nothing.
+              data-tile
+              style={{ gridRow: `span ${tileRowSpan(f)}` }}
+              className={`relative group cursor-pointer overflow-hidden bg-white ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
               onClick={() => (selecting ? toggleDlPick(f.id) : setLightboxIdx(i))}
             >
               {/* In select mode the tick is the whole point, so it's always
