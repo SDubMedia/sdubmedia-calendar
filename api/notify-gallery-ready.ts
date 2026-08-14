@@ -49,13 +49,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Gallery link + email body are the same for everyone we notify.
     const galleryUrl = delivery.slug ? `${APP_URL}/g/${delivery.slug}` : `${APP_URL}/deliver/${delivery.token}`;
-    const subject = `Your photos are ready — ${delivery.title || "your listing"}`;
+
+    // Say what is actually in the gallery. This used to be hardcoded to
+    // "photos", so a wedding whose headline deliverable is a 7-minute film was
+    // announced as photos three times over — subject, headline and body.
+    const { data: contents } = await supabase
+      .from("delivery_files").select("media_type").eq("delivery_id", deliveryId);
+    const videoCount = (contents || []).filter(f => f.media_type === "video").length;
+    const photoCount = (contents || []).length - videoCount;
+    // Plural only where the count earns it: "Your video is ready" reads wrong
+    // for three films, and "Your videos are ready" reads wrong for one.
+    const videoWord = videoCount === 1 ? "video" : "videos";
+    const photoWord = photoCount === 1 ? "photo" : "photos";
+    const noun = videoCount && photoCount ? `${photoWord} and ${videoWord}`
+      : videoCount ? videoWord
+      : photoWord;
+    // An empty gallery shouldn't be announced at all, but if it is, "files" is
+    // at least not a lie.
+    const subjectNoun = (videoCount + photoCount) === 0 ? "files" : noun;
+    const isPlural = subjectNoun.includes("and") || subjectNoun.endsWith("s");
+    const verb = isPlural ? "are" : "is";
+
+    const subject = `Your ${subjectNoun} ${verb} ready — ${delivery.title || "your listing"}`;
     const buildHtml = (firstName: string) => `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1e293b;">
-          <h1 style="font-size:24px;font-weight:700;color:#0088ff;margin:0 0 8px;">Your photos are ready</h1>
+          <h1 style="font-size:24px;font-weight:700;color:#0088ff;margin:0 0 8px;">Your ${subjectNoun} ${verb} ready</h1>
           <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml(firstName)},</p>
-          <p style="font-size:15px;line-height:1.6;">The photos for <strong>${escapeHtml(delivery.title || "your listing")}</strong> are ready to view and download.</p>
-          <div style="margin:28px 0;"><a href="${galleryUrl}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View &amp; download photos</a></div>
+          <p style="font-size:15px;line-height:1.6;">The ${subjectNoun} for <strong>${escapeHtml(delivery.title || "your listing")}</strong> ${verb} ready to view and download.</p>
+          <div style="margin:28px 0;"><a href="${galleryUrl}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View &amp; download</a></div>
         </div>`;
 
     // Broker path: fan out to EVERY managing-broker login on the brokerage
