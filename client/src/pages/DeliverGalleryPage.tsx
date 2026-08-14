@@ -44,7 +44,7 @@ interface FileItem {
  *  lightbox keeps addressing files by their position in a single array, so
  *  arrow keys and the slideshow still move to the tile you can see next.
  *
- *  `span 11` at 4px per row ≈ 44px, matching gridAutoRows in the grid below. */
+ *  `span 11` is 11*4px of rows plus 10*1px of gaps = 54px. */
 function GallerySectionHead({ label }: { label: string }) {
   return (
     <div
@@ -397,9 +397,17 @@ export default function DeliverGalleryPage() {
    *  from a real tile and updates on resize and rotation. */
   function tileRowSpan(f: FileItem): number {
     const ROW = 4; // px, matches gridAutoRows
+    const GAP = 1; // px, matches gap-px on the grid
     const w = f.width && f.width > 0 ? f.width : 3;
     const h = f.height && f.height > 0 ? f.height : 2;
-    return Math.max(1, Math.round((colWidth * (h / w)) / ROW));
+    const targetPx = colWidth * (h / w);
+    // Spanning n rows is NOT n*ROW tall — the grid puts a gap between every
+    // row it crosses, so the real height is n*ROW + (n-1)*GAP. Ignoring that
+    // stretched every tile by a quarter: a 16:9 photo at 220px wide should be
+    // 124px tall and was rendering at 154px, so object-cover quietly cropped
+    // the sides off every photo in the gallery. Solve for n instead:
+    //   n*ROW + (n-1)*GAP = target  ->  n = (target + GAP) / (ROW + GAP)
+    return Math.max(1, Math.round((targetPx + GAP) / (ROW + GAP)));
   }
 
   async function zipPhotos(photos: FileItem[], filename: string) {
