@@ -712,8 +712,20 @@ export default function DeliverGalleryPage() {
 
 
   const cover = delivery.coverLayout || "center";
-  // Real-estate galleries open straight to the photos — no cover screen at all.
-  const layoutHasHero = !delivery.downloadOnly && cover !== "minimal" && coverUrl;
+  // A cover that was DELIBERATELY chosen always shows, download-only or not.
+  // It is branding, and the whole point of previewing is to see what the
+  // client will see — a gallery that hides the cover you picked is lying to
+  // you. Download-only used to suppress it outright, which meant the cover
+  // picker happily accepted a choice that could never appear.
+  //
+  // The fallback is treated differently on purpose. With no cover chosen,
+  // coverUrl silently becomes the first file, so honouring it everywhere would
+  // staple a full-screen hero built from a random first photo onto every
+  // real-estate delivery that was never configured to have one. Explicit
+  // choice: shown. Never chosen: unchanged.
+  const hasChosenCover = !!delivery.coverFileId;
+  const layoutHasHero = cover !== "minimal" && !!coverUrl
+    && (hasChosenCover || !delivery.downloadOnly);
 
   return (
     <div className="min-h-screen bg-white text-black">
