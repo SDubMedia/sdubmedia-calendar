@@ -1139,6 +1139,11 @@ function DeliveryDetail({ id }: { id: string }) {
             </button>
             {delivery.hasPassword && <p className="text-[11px] text-slate-500 mt-2">A password is set. Visitors enter it before viewing.</p>}
           </div>
+          <PresentationPanel
+            downloadOnly={delivery.downloadOnly ?? false}
+            hasCover={!!delivery.coverFileId}
+            onUpdate={(v) => updateDelivery(id, { downloadOnly: v })}
+          />
           <PrivacyPanel
             requireEmail={delivery.requireEmail}
             onUpdate={(v) => updateDelivery(id, { requireEmail: v })}
@@ -1931,6 +1936,31 @@ function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUp
         <span>
           <span className="text-sm text-white font-medium block">Allow clients to request prints</span>
           <span className="text-xs text-slate-500">Adds a "Request prints" button to each photo on the public gallery. Requests email you with the photo + size; you handle fulfillment manually for now.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function PresentationPanel({ downloadOnly, hasCover, onUpdate }: { downloadOnly: boolean; hasCover: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Presentation</h3>
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={downloadOnly}
+          onChange={(e) => onUpdate(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">Download only</span>
+          <span className="text-xs text-slate-500">
+            The stripped-back layout built for real estate: the client lands straight on the files, with no proofing or
+            selections. Turn it off for the full client gallery. Galleries created from a real estate shoot start with
+            this on — until now there was no way to change it, so a wedding created that way silently swallowed its cover.
+            {!hasCover && " No cover is set on this gallery, so there's no cover screen either way."}
+          </span>
         </span>
       </label>
     </div>
