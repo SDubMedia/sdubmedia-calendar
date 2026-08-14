@@ -13,7 +13,7 @@ import ExternalCalendarsCard from "@/components/ExternalCalendarsCard";
 import LeadFormEmbedCard from "@/components/LeadFormEmbedCard";
 import { MapPinned } from "lucide-react";
 import GoogleDriveSettings from "@/components/GoogleDriveSettings";
-import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
+import { DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_LABELS, DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES, mergeDashboardWidgets } from "@/lib/types";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -112,13 +112,10 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
   const [faviconUrl, setFaviconUrl] = useState(org?.faviconUrl || "");
   const [logoErr, setLogoErr] = useState<string | null>(null);
   const [faviconErr, setFaviconErr] = useState<string | null>(null);
-  // Merge in any newer default widgets the saved config predates, so new
-  // widgets (e.g. Ready to Deliver, Real Estate) always show up to toggle.
-  const mergeWidgets = (saved?: DashboardWidgetConfig[]): DashboardWidgetConfig[] => {
-    const base = saved && saved.length ? saved : DEFAULT_DASHBOARD_WIDGETS;
-    const have = new Set(base.map(w => w.id));
-    return [...base, ...DEFAULT_DASHBOARD_WIDGETS.filter(w => !have.has(w.id))];
-  };
+  // Shared with DashboardPage so the order dragged here is the order rendered
+  // there, and a widget added to the defaults later lands in its intended
+  // position rather than at the bottom.
+  const mergeWidgets = mergeDashboardWidgets;
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
     () => mergeWidgets(org?.dashboardWidgets)
   );

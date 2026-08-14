@@ -60,7 +60,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
 export type ProductionType = "video" | "photo" | "both";
 
 // Dashboard widget configuration
-export type DashboardWidgetId = "metrics" | "activity" | "upcoming" | "readyToDeliver" | "realEstate" | "invoices" | "mileage" | "revenue";
+export type DashboardWidgetId = "metrics" | "pipeline" | "activity" | "upcoming" | "readyToDeliver" | "realEstate" | "invoices" | "mileage" | "revenue";
 
 export interface DashboardWidgetConfig {
   id: DashboardWidgetId;
@@ -69,6 +69,10 @@ export interface DashboardWidgetConfig {
 
 export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   { id: "metrics", enabled: true },
+  // Pipeline used to be hard-pinned in DashboardPage rather than listed here,
+  // so nothing could be dragged above it. It is a normal widget now; the
+  // Settings order is the single source of truth for dashboard layout.
+  { id: "pipeline", enabled: true },
   { id: "activity", enabled: true },
   { id: "upcoming", enabled: true },
   { id: "readyToDeliver", enabled: true },
@@ -78,8 +82,43 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   { id: "revenue", enabled: true },
 ];
 
+/**
+ * A saved dashboard layout, with any widgets it predates slotted in.
+ *
+ * Used by BOTH the dashboard and Settings, so the order you drag is exactly
+ * the order you get. Missing widgets are inserted at the position they hold in
+ * DEFAULT_DASHBOARD_WIDGETS rather than appended: Pipeline was added to this
+ * list after the fact, and appending would have dropped it to the bottom of
+ * every existing dashboard when it had always been near the top.
+ *
+ * Unknown ids in saved data are dropped — a removed widget would otherwise
+ * occupy an order slot forever.
+ */
+export function mergeDashboardWidgets(saved?: DashboardWidgetConfig[]): DashboardWidgetConfig[] {
+  if (!saved || saved.length === 0) return DEFAULT_DASHBOARD_WIDGETS.map(w => ({ ...w }));
+
+  const known = new Set(DEFAULT_DASHBOARD_WIDGETS.map(w => w.id));
+  const result = saved.filter(w => known.has(w.id)).map(w => ({ ...w }));
+  const have = new Set(result.map(w => w.id));
+
+  DEFAULT_DASHBOARD_WIDGETS.forEach((def, i) => {
+    if (have.has(def.id)) return;
+    // Place it just after the nearest earlier default the user already has.
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const idx = result.findIndex(w => w.id === DEFAULT_DASHBOARD_WIDGETS[j].id);
+      if (idx >= 0) { at = idx + 1; break; }
+    }
+    result.splice(at, 0, { ...def });
+    have.add(def.id);
+  });
+
+  return result;
+}
+
 export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
   metrics: "Status Cards (Upcoming, In Editing, Outstanding, Completed)",
+  pipeline: "Pipeline Summary (lead counts per stage)",
   activity: "Activity Feed (recent client interactions)",
   upcoming: "Upcoming Shoots",
   readyToDeliver: "Ready to Deliver (editing done, not yet delivered)",

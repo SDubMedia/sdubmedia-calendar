@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
-import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/types";
+import { mergeDashboardWidgets } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
 import ProjectDialog from "@/components/ProjectDialog";
@@ -61,7 +61,9 @@ export default function DashboardPage() {
     return (features as any)[key] ?? true;
   };
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const widgetConfig = data.organization?.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS;
+  // Merged, not raw: a saved layout that predates a widget must still place
+  // it sensibly, or orderOf() falls through to 990 and dumps it at the bottom.
+  const widgetConfig = mergeDashboardWidgets(data.organization?.dashboardWidgets);
   const isWidgetEnabled = (id: DashboardWidgetId) => {
     const w = widgetConfig.find(c => c.id === id);
     return w ? w.enabled : true;
@@ -442,11 +444,11 @@ export default function DashboardPage() {
 
         </div>)}
 
-        {/* Pipeline Summary — full width, directly below Ready to Deliver.
-            Both are pinned relative to the metric cards; keep the +2 above any
-            value used by Ready to Deliver or they will swap. */}
-        {isFeatureVisible("pipeline") && (
-        <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 2 }}>
+        {/* Pipeline Summary — full width. Position comes from the Settings
+            drag order like every other widget; it used to be pinned to
+            metrics + 1, which is why nothing could be placed above it. */}
+        {isFeatureVisible("pipeline") && isWidgetEnabled("pipeline") && (
+        <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("pipeline") }}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               <Users className="w-4 h-4 text-primary" />
@@ -607,13 +609,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Pinned directly under the metric cards, ahead of Pipeline. This is
-            the "what needs doing" queue, so it earns the top slot over a
-            summary you only glance at. Pinned rather than positioned by the
-            Settings drag order because Pipeline is itself pinned to
-            metrics + N — a draggable widget could never be placed above it. */}
         {isWidgetEnabled("readyToDeliver") && (
-          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 1 }}>
+          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Ready to Deliver</h3>
               <Link href="/deliveries" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">Galleries <ArrowRight className="w-3 h-3" /></Link>
