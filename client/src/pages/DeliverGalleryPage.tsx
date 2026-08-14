@@ -918,14 +918,17 @@ export default function DeliverGalleryPage() {
         // A low min gives five small columns no matter how high the max is, so
         // 360 is the number that forces three across — the senior-portrait
         // strips are the reference Geoff asked for.
-        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 460px))" }}
+        style={{ gridAutoRows: "4px" }}
         // No grey backdrop: it only ever showed through where there were no
         // tiles, which read as a grey bar down the side of the gallery. Tiles
         // carry their own hairline instead.
         //
         // Capped and centred: with no max width the set floated in a sea of
         // white on a large monitor with nothing holding it together.
-        className="relative grid justify-center gap-1 mx-auto max-w-[1400px] px-4 sm:px-6"
+        // Two across on a phone, auto-fit above 640px. A flat minmax(360px,…)
+        // gave ONE column on a 390px screen — correct by the rules and wrong
+        // for a wedding, where it means scrolling past 200 full-width photos.
+        className="relative grid justify-center gap-1 mx-auto max-w-[1400px] px-4 sm:px-6 grid-cols-2 sm:[grid-template-columns:repeat(auto-fit,minmax(360px,460px))]"
         onContextMenu={(e) => {
           if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
         }}
