@@ -822,8 +822,27 @@ export default function DeliverGalleryPage() {
         </div>
       </header>
 
+      {/* The cover's date and subtitle, carried past the hero.
+          They were set once on the cover and then vanished the moment the
+          client scrolled, so the rest of the page had nothing tying it to the
+          occasion. Only for galleries that HAVE a hero — a bare download list
+          shouldn't grow a title block. */}
+      {layoutHasHero && (delivery.coverDate || delivery.coverSubtitle) && (
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-10 text-center">
+          <p
+            className="text-[13px] uppercase tracking-[0.28em] text-slate-500"
+            style={{ fontFamily: getCoverHeroFontFamily(delivery.coverFont || "") }}
+          >
+            {[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+      )}
+
       {/* Download-only galleries (e.g. real-estate): one prominent download-all. */}
-      {!proofingEnabled && (delivery.status === "delivered" || delivery.status === "sent") && files.length > 0 && (
+      {/* Shown whenever there is something to download. It used to require
+          status delivered/sent, so previewing a draft — the moment you are
+          actually checking the layout — showed no download action at all. */}
+      {!proofingEnabled && files.length > 0 && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
           <button
             onClick={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
@@ -993,20 +1012,10 @@ export default function DeliverGalleryPage() {
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
                     </div>
                   </div>
-                  {/* Video name caption — so the client can reference each clip
-                      by name when asking for changes. Extension stripped. */}
-                  <div className="absolute bottom-0 inset-x-0 px-2.5 py-2 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none">
-                    <div className="flex items-end justify-between gap-2">
-                      <p className="text-[11px] text-white font-medium truncate min-w-0" title={f.originalName}>
-                        {f.originalName.replace(/\.[^.]+$/, "")}
-                      </p>
-                      {f.durationSeconds != null && (
-                        <span className="text-[10px] text-white/85 font-mono shrink-0">
-                          {Math.floor(f.durationSeconds / 60)}:{String(f.durationSeconds % 60).padStart(2, "0")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  {/* The name used to sit inside the frame under a black
+                      gradient, which darkened the last inch of every film and
+                      read like a stock video player. It's a caption on the
+                      page now — see the row emitted after this tile. */}
                 </>
               ) : (
                 <img
@@ -1070,6 +1079,22 @@ export default function DeliverGalleryPage() {
                 </div>
               )}
             </div>
+            {isVideo && (
+              <div
+                style={{ gridColumn: "1 / -1", gridRow: "span 8" }}
+                className="flex items-baseline justify-center gap-3 pt-3 pb-1"
+              >
+                <span
+                  className="text-[13px] text-slate-700"
+                  style={{ fontFamily: getCoverHeroFontFamily(delivery.coverFont || "") }}
+                >{f.originalName.replace(/\.[^.]+$/, "")}</span>
+                {f.durationSeconds != null && (
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {Math.floor(f.durationSeconds / 60)}:{String(f.durationSeconds % 60).padStart(2, "0")}
+                  </span>
+                )}
+              </div>
+            )}
             </Fragment>
           );
         })}
