@@ -45,13 +45,21 @@ interface FileItem {
  *  arrow keys and the slideshow still move to the tile you can see next.
  *
  *  `span 11` is 11*4px of rows plus 10*1px of gaps = 54px. */
-function GallerySectionHead({ label }: { label: string }) {
+function GallerySectionHead({ label, fontFamily }: { label: string; fontFamily?: string }) {
   return (
     <div
-      style={{ gridColumn: "1 / -1", gridRow: "span 11" }}
-      className="flex items-end bg-white px-3 pb-2 pt-4"
+      // span 15 at 4px rows + 14 gaps of 4px = 116px. Deliberately generous:
+      // the old 44px let sections run into each other, so the page read as one
+      // long strip rather than a film section and a photo section.
+      style={{ gridColumn: "1 / -1", gridRow: "span 15" }}
+      className="flex items-end justify-center bg-white pb-5 pt-12"
     >
-      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</span>
+      {/* Set in the cover's typeface so the page reads as one piece — these
+          labels were in the UI sans while the hero was Cormorant. */}
+      <span
+        className="text-[13px] uppercase tracking-[0.3em] text-slate-500"
+        style={{ fontFamily }}
+      >{label}</span>
     </div>
   );
 }
@@ -67,7 +75,7 @@ const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 /** Row height and gap of the masonry grid, in px. gridAutoRows and gap-px in
  *  the grid below must match these — the tile heights are computed from them. */
 const GRID_ROW = 4;
-const GRID_GAP = 1;
+const GRID_GAP = 4; // px, matches gap-1 on the grid
 
 /** How much of the grid's width a film takes. Full-bleed was too dominant for
  *  a single wedding film; 35% reads as a feature without eating the page. */
@@ -877,13 +885,16 @@ export default function DeliverGalleryPage() {
         // auto-fit collapses tracks with nothing in them, and justify-center
         // centres what's left — so a row that doesn't fill the width sits in
         // the middle instead of hugging the left with dead space beside it.
-        // The 260px ceiling stops four photos stretching to billboard size on
-        // a wide screen.
-        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 260px))" }}
+        // Tiles up to 420px, so a wedding shows three across on a laptop rather
+        // than five stamps — the senior-portrait strips are the reference.
+        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 420px))" }}
         // No grey backdrop: it only ever showed through where there were no
         // tiles, which read as a grey bar down the side of the gallery. Tiles
         // carry their own hairline instead.
-        className="relative grid justify-center gap-px"
+        //
+        // Capped and centred: with no max width the set floated in a sea of
+        // white on a large monitor with nothing holding it together.
+        className="relative grid justify-center gap-1 mx-auto max-w-[1400px] px-4 sm:px-6"
         onContextMenu={(e) => {
           if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
         }}
@@ -928,7 +939,7 @@ export default function DeliverGalleryPage() {
             : null;
           return (
             <Fragment key={f.id}>
-            {head && <GallerySectionHead label={head} />}
+            {head && <GallerySectionHead label={head} fontFamily={getCoverHeroFontFamily(delivery.coverFont || "")} />}
             <div
               // Height comes from the photo's own proportions. Videos and
               // anything missing dimensions fall back to 3:2 rather than
