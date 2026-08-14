@@ -576,9 +576,14 @@ function DeliveryDetail({ id }: { id: string }) {
         if (isVideo) {
           const meta = await readVideoMeta(file).catch(() => null);
           if (meta) {
-            width = meta.width;
-            height = meta.height;
-            durationSeconds = meta.duration;
+            // Only accept real numbers. A codec the browser can't decode gives
+            // 0x0, and storing that as if it were true is what makes a tile the
+            // wrong shape — better to leave it unknown than record a lie.
+            if (meta.width > 0 && meta.height > 0) {
+              width = meta.width;
+              height = meta.height;
+            }
+            durationSeconds = meta.duration > 0 ? meta.duration : null;
             autoThumbBlob = meta.thumbBlob;
           }
         } else {
@@ -2401,9 +2406,23 @@ async function readVideoMeta(file: File): Promise<{ width: number; height: numbe
       const seekTo = Math.max(0, dur - 0.1);
       const onSeeked = () => {
         try {
+          // Read the metadata BEFORE cleanup() and hold it in locals.
+          //
+          // cleanup() removes the src and calls load(), which resets the media
+          // element: videoWidth and videoHeight go to 0 and duration to NaN.
+          // This used to resolve with `video.videoWidth` read inside the
+          // toBlob callback, i.e. after cleanup had already run — so every
+          // video ever uploaded was stored as 0x0 with no duration, even
+          // though the thumbnail captured just above came out at full size.
+          // The gallery then fell back to a 3:2 guess and videos were the only
+          // tile with the wrong shape.
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          const vdur = video.duration;
+
           const canvas = document.createElement("canvas");
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          canvas.width = vw;
+          canvas.height = vh;
           const ctx = canvas.getContext("2d");
           if (!ctx) { cleanup(); resolve(null); return; }
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -2411,9 +2430,9 @@ async function readVideoMeta(file: File): Promise<{ width: number; height: numbe
             cleanup();
             if (!blob) { resolve(null); return; }
             resolve({
-              width: video.videoWidth,
-              height: video.videoHeight,
-              duration: Math.round(video.duration),
+              width: vw,
+              height: vh,
+              duration: Number.isFinite(vdur) ? Math.round(vdur) : 0,
               thumbBlob: blob,
             });
           }, "image/jpeg", 0.85);
