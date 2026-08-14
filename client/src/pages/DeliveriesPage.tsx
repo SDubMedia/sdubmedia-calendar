@@ -2040,20 +2040,39 @@ function projectLabel(p: Project, clients: Client[]): string {
 // becomes risky, so ordinary photos and short clips keep the simpler path.
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
 
+// No bytes moved for this long = the connection is dead, whatever it claims.
+// Used by both uploaders. Generous enough that a genuinely slow line is never
+// mistaken for a stall.
+const STALL_TIMEOUT_MS = 60_000;
+
 function putFileWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", file.type);
+
+    // Same stall detection as the multipart path. This used to have an
+    // ontimeout handler and never set xhr.timeout, so the handler was dead
+    // code and a stalled connection hung here forever — no error, no progress,
+    // no way out but reloading the page.
+    let stall: ReturnType<typeof setTimeout>;
+    const armStall = () => {
+      clearTimeout(stall);
+      stall = setTimeout(() => xhr.abort(), STALL_TIMEOUT_MS);
+    };
+    const settle = (fn: () => void) => { clearTimeout(stall); fn(); };
+
     xhr.upload.onprogress = (e) => {
+      armStall();
       if (e.lengthComputable) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
     };
-    xhr.onload = () => {
+    xhr.onload = () => settle(() => {
       if (xhr.status >= 200 && xhr.status < 300) { onProgress(100); resolve(); }
       else reject(new Error(`R2 upload failed: ${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload — check your connection"));
-    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    });
+    xhr.onerror = () => settle(() => reject(new Error("Network error during upload — check your connection")));
+    xhr.onabort = () => settle(() => reject(new Error(`Upload stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`)));
+    armStall();
     xhr.send(file);
   });
 }
@@ -2088,10 +2107,6 @@ async function discardOrphanedUpload(paths: string[], accessToken: string): Prom
 // Kept in localStorage rather than the database: it is per-browser scratch,
 // worthless to any other device (the file lives on this machine), and a schema
 // migration to store it server-side would buy nothing.
-
-// No bytes moved for this long = the connection is dead, whatever it claims.
-// Generous enough that a slow line is never mistaken for a stall.
-const STALL_TIMEOUT_MS = 60_000;
 
 const MPU_PREFIX = "slate:mpu:";
 // Must not exceed the bucket's "abort incomplete multipart uploads" lifecycle
