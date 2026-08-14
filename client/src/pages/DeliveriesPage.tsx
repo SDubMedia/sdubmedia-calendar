@@ -123,9 +123,23 @@ function DeliveriesList() {
   }
 
   const galleries = data.deliveries;
-  // Real-estate galleries (download-only) are listed in their own section.
-  const reGalleries = galleries.filter(d => d.downloadOnly);
-  const clientGalleries = galleries.filter(d => !d.downloadOnly);
+  // Grouped by WHO the shoot is for, not by how the gallery is presented.
+  //
+  // This used to split on downloadOnly, which conflated two unrelated things:
+  // "download only" is a presentation choice, and real estate is a kind of
+  // client. A client gallery set to download-only was therefore filed under
+  // Real Estate — Color War, a Live Event for a church, sat there for exactly
+  // that reason. Same test the dashboard uses: the client is an agent, or the
+  // shoot is billed to a brokerage.
+  const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
+  const isRealEstate = (d: typeof galleries[number]) => {
+    const project = d.projectId ? data.projects.find(p => p.id === d.projectId) : null;
+    if (!project) return false;
+    if (clientsById[project.clientId]?.clientType === "agent") return true;
+    return clientsById[getProjectPayerId(project, clientsById)]?.clientType === "broker";
+  };
+  const reGalleries = galleries.filter(isRealEstate);
+  const clientGalleries = galleries.filter(d => !isRealEstate(d));
 
   const renderGalleryCard = (d: typeof galleries[number]) => {
     const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;

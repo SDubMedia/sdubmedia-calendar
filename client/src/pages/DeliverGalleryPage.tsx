@@ -80,6 +80,8 @@ const GRID_GAP = 4; // px, matches gap-1 on the grid
 /** How much of the grid's width a film takes. Full-bleed was too dominant for
  *  a single wedding film; 35% reads as a feature without eating the page. */
 const FILM_WIDTH = 0.35;
+/** Ceiling in px, so a wide monitor does not inflate the film. */
+const FILM_MAX_PX = 400;
 
 interface DeliveryInfo {
   id: string;
@@ -502,7 +504,10 @@ export default function DeliverGalleryPage() {
   // The floor used to be colWidth ("never narrower than a photo tile"), which
   // worked while tiles were 260px and quietly broke when they grew to 460 —
   // the floor beat the 35% and the film became exactly one tile wide.
-  const filmWidth = Math.round(gridWidth < 640 ? gridWidth : gridWidth * FILM_WIDTH);
+  // Capped as well as proportional. Tier one widened the content area, and 35%
+  // of the new width came out near 485px — bigger than the size Geoff looked
+  // at and approved. The cap holds it there on a large monitor.
+  const filmWidth = Math.round(gridWidth < 640 ? gridWidth : Math.min(gridWidth * FILM_WIDTH, FILM_MAX_PX));
 
   // Films and photos get their own headed sections, but only when the gallery
   // holds both — a photo-only gallery should look exactly as it always has.
