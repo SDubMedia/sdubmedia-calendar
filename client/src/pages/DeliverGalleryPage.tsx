@@ -496,9 +496,13 @@ export default function DeliverGalleryPage() {
     return () => ro.disconnect();
   }, [colWidth, gridWidth, files.length]);
 
-  // Never narrower than a photo tile: 35% of a phone's width would leave the
-  // headline deliverable smaller than the stills around it.
-  const filmWidth = Math.round(Math.min(gridWidth, Math.max(gridWidth * FILM_WIDTH, colWidth)));
+  // 35% on a real screen; full width on a phone, where 35% would leave the
+  // headline deliverable smaller than the stills under it.
+  //
+  // The floor used to be colWidth ("never narrower than a photo tile"), which
+  // worked while tiles were 260px and quietly broke when they grew to 460 —
+  // the floor beat the 35% and the film became exactly one tile wide.
+  const filmWidth = Math.round(gridWidth < 640 ? gridWidth : gridWidth * FILM_WIDTH);
 
   // Films and photos get their own headed sections, but only when the gallery
   // holds both — a photo-only gallery should look exactly as it always has.
@@ -885,9 +889,12 @@ export default function DeliverGalleryPage() {
         // auto-fit collapses tracks with nothing in them, and justify-center
         // centres what's left — so a row that doesn't fill the width sits in
         // the middle instead of hugging the left with dead space beside it.
-        // Tiles up to 420px, so a wedding shows three across on a laptop rather
-        // than five stamps — the senior-portrait strips are the reference.
-        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 420px))" }}
+        // The MIN is what decides how many columns you get: auto-fit packs as
+        // many tracks as fit at the minimum, then grows them toward the max.
+        // A low min gives five small columns no matter how high the max is, so
+        // 360 is the number that forces three across — the senior-portrait
+        // strips are the reference Geoff asked for.
+        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 460px))" }}
         // No grey backdrop: it only ever showed through where there were no
         // tiles, which read as a grey bar down the side of the gallery. Tiles
         // carry their own hairline instead.
