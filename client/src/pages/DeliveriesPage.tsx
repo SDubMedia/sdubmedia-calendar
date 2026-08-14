@@ -2089,6 +2089,10 @@ async function discardOrphanedUpload(paths: string[], accessToken: string): Prom
 // worthless to any other device (the file lives on this machine), and a schema
 // migration to store it server-side would buy nothing.
 
+// No bytes moved for this long = the connection is dead, whatever it claims.
+// Generous enough that a slow line is never mistaken for a stall.
+const STALL_TIMEOUT_MS = 60_000;
+
 const MPU_PREFIX = "slate:mpu:";
 // Must not exceed the bucket's "abort incomplete multipart uploads" lifecycle
 // rule, or we would offer to resume an upload R2 has already reaped.
@@ -2116,8 +2120,18 @@ function mpuLoad(key: string): MpuRecord | null {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const rec = JSON.parse(raw) as MpuRecord;
-    if (!rec?.uploadId || !rec?.storagePath) return null;
-    if (Date.now() - (rec.savedAt || 0) > MPU_RECORD_TTL_MS) { localStorage.removeItem(key); return null; }
+    // Validate rather than trust. This is user-writable storage that survives
+    // across deploys, so a truncated or hand-edited record is possible — and a
+    // partSize of 0 or NaN would compute nonsense offsets and slice the file
+    // wrongly. Anything not obviously sound is discarded and the upload starts
+    // clean, which costs bandwidth and nothing else.
+    const sound = typeof rec?.uploadId === "string" && rec.uploadId.length > 0
+      && typeof rec?.storagePath === "string" && rec.storagePath.length > 0
+      && Number.isInteger(rec?.partSize) && rec.partSize > 0
+      && Number.isInteger(rec?.partCount) && rec.partCount > 0
+      && typeof rec?.savedAt === "number" && Number.isFinite(rec.savedAt);
+    if (!sound) { localStorage.removeItem(key); return null; }
+    if (Date.now() - rec.savedAt > MPU_RECORD_TTL_MS) { localStorage.removeItem(key); return null; }
     return rec;
   } catch { return null; }
 }
@@ -2138,8 +2152,12 @@ function mpuPrune(): void {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(MPU_PREFIX)) continue;
-      const rec = JSON.parse(localStorage.getItem(k) || "{}") as MpuRecord;
-      if (Date.now() - (rec.savedAt || 0) > MPU_RECORD_TTL_MS) dead.push(k);
+      // Parsed per key: one unreadable record used to throw out of the whole
+      // loop, so everything after it stayed forever.
+      try {
+        const rec = JSON.parse(localStorage.getItem(k) || "{}") as MpuRecord;
+        if (Date.now() - (rec?.savedAt || 0) > MPU_RECORD_TTL_MS) dead.push(k);
+      } catch { dead.push(k); }
     }
     dead.forEach(k => localStorage.removeItem(k));
   } catch { /* resume is optional */ }
@@ -2261,16 +2279,36 @@ async function uploadFileMultipart(
     const putPart = (partNumber: number, blob: Blob) => new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", urlMap.get(partNumber)!);
+
+      // Stall detection, NOT a total time limit. xhr.timeout caps the whole
+      // request, which is wrong here: a 32MB part on a slow line legitimately
+      // takes minutes. What is never legitimate is bytes ceasing to move. A
+      // connection that dies without erroring — sleep, dropped wifi, a proxy
+      // holding the socket open — otherwise leaves this promise unsettled and
+      // the progress bar frozen forever, which is exactly how an upload
+      // "gets stuck". Retry handles the rest.
+      let stall: ReturnType<typeof setTimeout>;
+      const armStall = () => {
+        clearTimeout(stall);
+        stall = setTimeout(() => xhr.abort(), STALL_TIMEOUT_MS);
+      };
+      const settle = (fn: () => void) => { clearTimeout(stall); fn(); };
+
       xhr.upload.onprogress = (e) => {
+        armStall();
         if (e.lengthComputable) { sent[partNumber - 1] = e.loaded; report(); }
       };
-      xhr.onload = () => {
+      xhr.onload = () => settle(() => {
         if (xhr.status >= 200 && xhr.status < 300) {
           sent[partNumber - 1] = blob.size; report();
           resolve();
         } else reject(new Error(`Part ${partNumber} failed: ${xhr.status}`));
-      };
-      xhr.onerror = () => reject(new Error(`Network error on part ${partNumber}`));
+      });
+      xhr.onerror = () => settle(() => reject(new Error(`Network error on part ${partNumber}`)));
+      // Without this the abort above resolves nothing and the slot wedges: an
+      // aborted XHR fires neither onload nor onerror.
+      xhr.onabort = () => settle(() => reject(new Error(`Part ${partNumber} stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`)));
+      armStall();
       xhr.send(blob);
     });
 
@@ -2294,9 +2332,11 @@ async function uploadFileMultipart(
       }
     }));
 
-    // expectedParts lets the server refuse to assemble a file with a piece
-    // missing, rather than quietly producing a truncated video.
-    await call({ action: "complete", storagePath, uploadId, expectedParts: partCount });
+    // Sends the file size, not a part count: the server derives how many parts
+    // there should be and how big each must be, then checks R2 against that.
+    // A client that has just failed shouldn't get a vote on whether the upload
+    // is complete.
+    await call({ action: "complete", storagePath, uploadId, sizeBytes: file.size });
     mpuClear(recordKey);
     onProgress(100);
     return storagePath as string;

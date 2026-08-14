@@ -15,6 +15,10 @@ export interface ListedPart {
 /**
  * How big part `n` of this file should be. Every part is `partSize` except the
  * last, which is the remainder.
+ *
+ * The `complete` handler in api/delivery-multipart.ts applies this same formula
+ * server-side to verify what R2 actually stored. Duplicated deliberately (api/
+ * files stay self-contained) — change both together.
  */
 export function expectedPartSize(fileSize: number, partSize: number, n: number): number {
   return Math.min(partSize, fileSize - (n - 1) * partSize);

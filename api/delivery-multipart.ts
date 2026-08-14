@@ -15,12 +15,19 @@
 // FLOW  (body.action)
 //   create   { deliveryId, fileName, contentType, sizeBytes } -> { uploadId, storagePath, partSize, partCount }
 //   sign     { storagePath, uploadId, partNumbers[] }         -> { urls: {partNumber, url}[] }
-//   complete { storagePath, uploadId, parts[] }               -> { ok }
+//   status   { storagePath, uploadId }                        -> { live, partSize, parts: {partNumber,size}[] }
+//   complete { storagePath, uploadId, sizeBytes }             -> { ok }
 //   abort    { storagePath, uploadId }                        -> { ok }
 //
-// The client must call abort (or complete) — an abandoned multipart upload
-// leaves parts in the bucket that still cost money. R2 does not expire them
-// on its own without a lifecycle rule.
+// complete takes the FILE SIZE, not a part list and not a part count. It works
+// out how many parts there should be and how big each one should be, then
+// checks R2 against that. Everything the browser could get wrong or lie about
+// is derived here instead: a client that has just failed is the last thing
+// that should be deciding whether the upload is complete.
+//
+// Uploads are NOT aborted on failure — the stored parts are what makes them
+// resumable. The bucket's "Default Multipart Abort Rule" (7 days) is the
+// cleanup, and it must stay >= MPU_RECORD_TTL_MS in DeliveriesPage.
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -107,9 +114,20 @@ async function ownsDelivery(deliveryId: string, orgId: string): Promise<boolean>
 }
 
 /** A storagePath is only ours to touch if it sits under this org's prefix.
- *  Without this check, sign/complete/abort would accept any key in the bucket. */
+ *  Without this check, sign/complete/abort would accept any key in the bucket.
+ *
+ *  The prefix test alone is not enough: "org_a/../org_b/secret" starts with
+ *  "org_a/" and would pass. Today that fails at R2 (the browser normalises the
+ *  ".." out of the URL before sending, so the signature no longer matches the
+ *  path), but that is luck rather than a decision — a signing change or a
+ *  client that doesn't normalise would turn it into a real cross-tenant write.
+ *  Reject traversal and control characters outright instead of relying on it. */
 function pathBelongsToOrg(storagePath: string, orgId: string): boolean {
-  return typeof storagePath === "string" && storagePath.startsWith(`${orgId}/`);
+  if (typeof storagePath !== "string" || !storagePath.startsWith(`${orgId}/`)) return false;
+  if (storagePath.split("/").some(seg => seg === "." || seg === "..")) return false;
+  // eslint-disable-next-line no-control-regex -- deliberately matching control chars
+  if (/[\u0000-\u001f\u007f]/.test(storagePath)) return false;
+  return true;
 }
 
 async function orgUsedBytes(orgId: string): Promise<number> {
@@ -245,10 +263,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "complete") {
       const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
       const uploadId = typeof body.uploadId === "string" ? body.uploadId : "";
-      const expectedParts = typeof body.expectedParts === "number" ? body.expectedParts : 0;
-      if (!storagePath || !uploadId || expectedParts <= 0) {
-        return res.status(400).json({ error: "Missing storagePath, uploadId or expectedParts" });
+      // Derived from the file size rather than taken from the client. The
+      // browser used to send its own part count, which meant the only thing
+      // standing between a half-uploaded film and a "successful" delivery was
+      // a number the failing client made up.
+      const sizeBytes = typeof body.sizeBytes === "number" ? body.sizeBytes : 0;
+      if (!storagePath || !uploadId || sizeBytes <= 0) {
+        return res.status(400).json({ error: "Missing storagePath, uploadId or sizeBytes" });
       }
+      const expectedParts = Math.ceil(sizeBytes / PART_SIZE);
       if (!pathBelongsToOrg(storagePath, orgId)) return res.status(403).json({ error: "Not your file" });
 
       // The ETags come from ListParts here, NOT from the browser.
@@ -277,6 +300,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // S3 requires parts in ascending order; an out-of-order list is rejected
       // with a confusing InvalidPartOrder rather than being sorted for you.
       const ordered = [...listed.parts].sort((a, b) => a.partNumber - b.partNumber);
+
+      // Counting the parts is not enough. A part stored short — a proxy that
+      // returned 200 on a truncated body, a browser that mis-sliced — leaves
+      // the count correct and the film missing a chunk in the middle. Nothing
+      // downstream would notice: the upload succeeds, the gallery looks right,
+      // and the client finds out when it stops playing. So check every part is
+      // exactly the size it should be, and that they add up to the whole file.
+      // The size formula mirrors expectedPartSize() in client/src/lib/multipart.ts
+      // (which the resume path uses). Duplicated rather than imported, matching
+      // how the rest of api/ stays self-contained — if PART_SIZE or the slicing
+      // ever changes, both must change together.
+      let total = 0;
+      for (let i = 0; i < ordered.length; i++) {
+        const p = ordered[i];
+        const want = Math.min(PART_SIZE, sizeBytes - i * PART_SIZE);
+        if (p.partNumber !== i + 1 || p.size !== want) {
+          console.error(`R2 multipart size mismatch on ${storagePath}: part ${p.partNumber} is ${p.size}, expected part ${i + 1} at ${want}`);
+          return res.status(502).json({ error: "Some of the upload didn't arrive intact. Try again — it will resume." });
+        }
+        total += p.size;
+      }
+      if (total !== sizeBytes) {
+        console.error(`R2 multipart total mismatch on ${storagePath}: ${total} vs ${sizeBytes}`);
+        return res.status(502).json({ error: "Some of the upload didn't arrive intact. Try again — it will resume." });
+      }
       const xml = "<CompleteMultipartUpload>"
         + ordered.map(p =>
             `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlEscape(p.etag)}</ETag></Part>`
