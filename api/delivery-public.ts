@@ -220,6 +220,15 @@ async function getDelivery(token: string, password: string | undefined, email: s
       id: delivery.id,
       title: delivery.title,
       coverFileId: delivery.cover_file_id,
+      // A cover uploaded for this gallery specifically. Signed inline (no
+      // attachment disposition) because it is displayed, not downloaded, and
+      // it takes precedence over coverFileId on the page.
+      coverUrl: (() => {
+        const p = (delivery as unknown as { cover_storage_path?: string }).cover_storage_path || "";
+        return p && r2Configured() ? r2PresignedUrl({ method: "GET", key: p, expiresIn: 3600 }) : "";
+      })(),
+      coverWidth: (delivery as unknown as { cover_width?: number }).cover_width || 0,
+      coverHeight: (delivery as unknown as { cover_height?: number }).cover_height || 0,
       coverLayout: (delivery as unknown as { cover_layout?: string }).cover_layout || "center",
       coverFont: (delivery as unknown as { cover_font?: string }).cover_font || "",
       coverSubtitle: (delivery as unknown as { cover_subtitle?: string }).cover_subtitle || null,

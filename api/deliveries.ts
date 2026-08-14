@@ -36,11 +36,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "delete-file": return await deleteFile(body, orgId, res);
       case "delete-delivery": return await deleteDelivery(body, orgId, res);
       case "signed-urls": return await signedUrls(body, orgId, res);
+      case "cover-url": return await coverUrl(body, orgId, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err) {
     return res.status(500).json({ error: errorMessage(err) });
   }
+}
+
+/** A viewable URL for the delivery's own cover image.
+ *  Separate from signed-urls because the cover is not a delivery_files row —
+ *  it belongs to the delivery itself, which is what lets it outlive the photo
+ *  it was made from. */
+async function coverUrl(body: Record<string, unknown>, orgId: string, res: VercelResponse) {
+  const deliveryId = typeof body.deliveryId === "string" ? body.deliveryId : "";
+  if (!deliveryId) return res.status(400).json({ error: "Missing deliveryId" });
+
+  const { data: row, error } = await supabase
+    .from("deliveries").select("org_id, cover_storage_path").eq("id", deliveryId).maybeSingle();
+  if (error || !row) return res.status(404).json({ error: "Delivery not found" });
+  if (row.org_id !== orgId) return res.status(403).json({ error: "Not your delivery" });
+
+  const path = (row as { cover_storage_path?: string }).cover_storage_path || "";
+  if (!path || !r2Configured()) return res.status(200).json({ ok: true, url: "" });
+  return res.status(200).json({ ok: true, url: r2PresignedUrl({ method: "GET", key: path, expiresIn: 3600 }) });
 }
 
 async function setPassword(body: Record<string, unknown>, orgId: string, res: VercelResponse) {
@@ -132,7 +151,7 @@ async function deleteDelivery(body: Record<string, unknown>, orgId: string, res:
 
   const { data: delivery, error: lookupErr } = await supabase
     .from("deliveries")
-    .select("org_id")
+    .select("org_id, cover_storage_path")
     .eq("id", id)
     .single();
   if (lookupErr || !delivery) return res.status(404).json({ error: "Delivery not found" });
@@ -148,11 +167,15 @@ async function deleteDelivery(body: Record<string, unknown>, orgId: string, res:
   if (error) throw new Error(error.message);
 
   if (r2Configured()) {
-    await Promise.all(
-      (files || []).map((f: { storage_path: string }) =>
+    // The cover is the delivery's own object, so nothing in delivery_files
+    // points at it — deleting only the files would leave it paid for forever.
+    const coverPath = (delivery as { cover_storage_path?: string }).cover_storage_path || "";
+    await Promise.all([
+      ...(files || []).map((f: { storage_path: string }) =>
         r2DeleteObject(f.storage_path).catch(() => { /* swallow per-file */ })
-      )
-    );
+      ),
+      ...(coverPath ? [r2DeleteObject(coverPath).catch(() => { /* swallow */ })] : []),
+    ]);
   }
 
   return res.status(200).json({ ok: true });

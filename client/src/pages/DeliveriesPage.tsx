@@ -285,6 +285,9 @@ interface CreateInput {
   expiresAt: string | null;
   status: DeliveryStatus;
   coverFileId: string | null;
+  coverStoragePath: string;
+  coverWidth: number;
+  coverHeight: number;
   coverLayout: "center" | "vintage" | "minimal";
   coverFont: string;
   coverSubtitle: string | null;
@@ -367,7 +370,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               buyAllFlatCents: Math.round((parseFloat(flatDollars) || 0) * 100),
               expiresAt: expiresAt || null,
               status: "draft",
-              coverFileId: null,
+              coverFileId: null, coverStoragePath: "", coverWidth: 0, coverHeight: 0,
               coverLayout: "center",
               coverFont: "",
               coverSubtitle: null,
@@ -1408,10 +1411,10 @@ export function getCoverFont(value: string) {
 }
 
 interface CoverDesignProps {
-  delivery: { title: string; coverFileId: string | null; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  delivery: { id: string; title: string; coverFileId: string | null; coverStoragePath: string; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
   files: Array<{ id: string; originalName: string }>;
   signedUrls: Map<string, string>;
-  onUpdate: (patch: { coverFileId?: string | null; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+  onUpdate: (patch: { coverFileId?: string | null; coverStoragePath?: string; coverWidth?: number; coverHeight?: number; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
 }
 
 // Stock photos per layout — used in the small chooser thumbnails so each
@@ -1553,7 +1556,67 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
   useEffect(() => { setSlug(delivery.slug || ""); }, [delivery.slug]);
 
   const coverFile = files.find(f => f.id === delivery.coverFileId);
-  const coverUrl = coverFile ? signedUrls.get(coverFile.id) : undefined;
+  const pickedCoverUrl = coverFile ? signedUrls.get(coverFile.id) : undefined;
+  const [ownCoverUrl, setOwnCoverUrl] = useState("");
+  const [uploadingCover, setUploadingCover] = useState(false);
+  // An uploaded cover takes precedence, matching what the client sees.
+  const shownCoverUrl = ownCoverUrl || pickedCoverUrl;
+
+  // Fetch a viewable URL for the delivery's own cover object. It isn't a
+  // delivery_files row, so it isn't in signedUrls with everything else.
+  useEffect(() => {
+    let cancelled = false;
+    const path = delivery.coverStoragePath;
+    if (!path) { setOwnCoverUrl(""); return; }
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const r = await fetch("/api/deliveries", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "cover-url", deliveryId: delivery.id }),
+        });
+        const j = await r.json();
+        if (!cancelled && r.ok && j.url) setOwnCoverUrl(j.url);
+      } catch (err) {
+        console.warn("Couldn't load the cover preview", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [delivery.coverStoragePath, delivery.id]);
+
+  // NOTE: deliberately does NOT run the file through toUploadableImage. Every
+  // gallery photo is re-encoded to JPEG at 80% so galleries stay light, which
+  // is the right trade for a grid of thumbnails and the wrong one for a
+  // full-screen hero — that re-encode is exactly why the cover looked soft.
+  async function uploadCover(file: File) {
+    setUploadingCover(true);
+    try {
+      const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
+      const token = await getAuthToken();
+      const res = await fetch("/api/delivery-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          deliveryId: delivery.id, fileName: file.name,
+          contentType: file.type || "image/jpeg", sizeBytes: file.size, kind: "cover",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      await putFileWithProgress(data.uploadUrl, file, () => {});
+      await onUpdate({
+        coverStoragePath: data.storagePath,
+        coverWidth: dims.width ?? 0,
+        coverHeight: dims.height ?? 0,
+      });
+      toast.success("Cover updated");
+    } catch (err) {
+      toast.error("Couldn't upload the cover", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setUploadingCover(false);
+    }
+  }
 
   const layouts: Array<{ id: CoverLayoutId; label: string; hint: string }> = [
     { id: "center", label: "Center", hint: "Title centered over hero" },
@@ -1632,7 +1695,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
           <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Live preview</div>
           <CoverThumb
             layout={delivery.coverLayout}
-            imageUrl={coverUrl}
+            imageUrl={shownCoverUrl}
             title={delivery.title}
             meta={[delivery.coverDate, delivery.coverSubtitle].filter(Boolean).join(" · ")}
             fontValue={delivery.coverFont}
@@ -1643,23 +1706,52 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
         </div>
       </div>
 
-      {/* Cover image picker */}
+      {/* Cover image */}
       {delivery.coverLayout !== "minimal" && (
         <div className="mb-4">
           <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cover photo</label>
           <button
             onClick={() => setPickerOpen(true)}
-            disabled={files.length === 0}
+            disabled={files.length === 0 && !ownCoverUrl}
             className="w-full aspect-[3/1] bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
           >
-            {coverUrl ? (
-              <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+            {shownCoverUrl ? (
+              <img src={shownCoverUrl} alt="" className="w-full h-full object-cover" />
             ) : files.length === 0 ? (
-              "Upload photos first"
+              "Upload a cover, or add photos first"
             ) : (
               `Pick a cover (defaults to first photo)`
             )}
           </button>
+          {/* Uploading the cover separately is the only way to have one that
+              is full quality AND survives deleting the photo it came from:
+              gallery photos are re-encoded to 80% on upload, and a cover
+              picked from them is just a reference to a row that can go away. */}
+          <div className="flex items-center gap-3 mt-2">
+            <label className="text-xs text-[#0088ff] hover:text-[#0088ff]/80 cursor-pointer">
+              {uploadingCover ? "Uploading…" : ownCoverUrl ? "Replace cover image" : "Upload a cover image"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingCover}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) uploadCover(f); }}
+              />
+            </label>
+            {ownCoverUrl && (
+              <button
+                onClick={() => onUpdate({ coverStoragePath: "", coverWidth: 0, coverHeight: 0 })}
+                className="text-xs text-slate-400 hover:text-white"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {ownCoverUrl
+              ? "Using an uploaded cover — full quality, and it stays even if you delete photos from the gallery."
+              : "A cover picked from the gallery uses the compressed copy and disappears if that photo is deleted."}
+          </p>
         </div>
       )}
 

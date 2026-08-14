@@ -77,6 +77,9 @@ interface DeliveryInfo {
   id: string;
   title: string;
   coverFileId: string | null;
+  coverUrl?: string;
+  coverWidth?: number;
+  coverHeight?: number;
   coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
   coverFont?: string;
   coverSubtitle: string | null;
@@ -566,8 +569,11 @@ export default function DeliverGalleryPage() {
   const lightboxFile = lightboxIdx !== null ? files[lightboxIdx] : null;
 
   // Cover image: explicit pick first, otherwise first uploaded photo.
+  // A cover uploaded for this gallery wins over one picked from the photos.
+  // It is full quality (never re-encoded), isn't listed among the files, and
+  // survives deleting the photo it was made from — the whole point of it.
   const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files[0] || null;
-  const coverUrl = coverFile?.url || "";
+  const coverUrl = delivery?.coverUrl || coverFile?.url || "";
 
   // Kick off a direct, attachment-forced download that the browser streams to
   // disk — no blob held in memory, so it works for files of any size.
@@ -723,7 +729,7 @@ export default function DeliverGalleryPage() {
   // staple a full-screen hero built from a random first photo onto every
   // real-estate delivery that was never configured to have one. Explicit
   // choice: shown. Never chosen: unchanged.
-  const hasChosenCover = !!delivery.coverFileId;
+  const hasChosenCover = !!delivery.coverUrl || !!delivery.coverFileId;
   const layoutHasHero = cover !== "minimal" && !!coverUrl
     && (hasChosenCover || !delivery.downloadOnly);
 

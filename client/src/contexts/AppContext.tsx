@@ -875,6 +875,9 @@ function rowToDelivery(r: any): Delivery {
     collectionId: r.collection_id || null,
     title: r.title || "",
     coverFileId: r.cover_file_id || null,
+    coverStoragePath: r.cover_storage_path || "",
+    coverWidth: r.cover_width || 0,
+    coverHeight: r.cover_height || 0,
     watermarkText: r.watermark_text || null,
     watermarkUseLogo: !!r.watermark_use_logo,
     printsEnabled: !!r.prints_enabled,
@@ -2195,7 +2198,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createReShootGallery = useCallback(async (projectId: string, title: string): Promise<Delivery | null> => {
     return addDelivery({
       projectId, collectionId: null, title: title || "Real Estate Shoot",
-      coverFileId: null, watermarkText: null, watermarkUseLogo: false, printsEnabled: false,
+      coverFileId: null, coverStoragePath: "", coverWidth: 0, coverHeight: 0,
+      watermarkText: null, watermarkUseLogo: false, printsEnabled: false,
       coverLayout: "center", coverFont: "", coverSubtitle: null, coverDate: null,
       slug: null, requireEmail: false, expiresAt: null,
       selectionLimit: 0, downloadOnly: true, perExtraPhotoCents: 0, buyAllFlatCents: 0, status: "draft",
@@ -2206,6 +2210,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const patch: any = { updated_at: new Date().toISOString() };
     if (d.title !== undefined) patch.title = d.title;
     if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
+    if (d.coverStoragePath !== undefined) patch.cover_storage_path = d.coverStoragePath;
+    if (d.coverWidth !== undefined) patch.cover_width = d.coverWidth;
+    if (d.coverHeight !== undefined) patch.cover_height = d.coverHeight;
     if (d.coverLayout !== undefined) patch.cover_layout = d.coverLayout;
     if (d.coverFont !== undefined) patch.cover_font = d.coverFont;
     if (d.coverSubtitle !== undefined) patch.cover_subtitle = d.coverSubtitle;

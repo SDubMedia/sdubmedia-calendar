@@ -96,7 +96,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // "original" = the untouched file kept alongside the compressed copy when a
   // gallery has keepOriginals on. Same size rules as a normal file; stored
   // under its own prefix so the two are never confused.
-  const kind = body.kind === "thumbnail" ? "thumbnail" : body.kind === "original" ? "original" : "file";
+  // "cover" = the gallery's own cover image. Not a delivery_files row, not
+  // listed among the photos, and unaffected when a photo is deleted.
+  const kind = body.kind === "thumbnail" ? "thumbnail" : body.kind === "original" ? "original"
+    : body.kind === "cover" ? "cover" : "file";
 
   if (!deliveryId || !fileName || !contentType || sizeBytes <= 0) {
     return res.status(400).json({ error: "Missing deliveryId, fileName, contentType, or sizeBytes" });
@@ -105,7 +108,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Validate MIME + size based on what's being uploaded.
   const isImage = contentType.startsWith(IMAGE_MIME_PREFIX);
   const isVideo = ALLOWED_VIDEO_MIME.has(contentType);
-  if (kind === "thumbnail") {
+  if (kind === "cover") {
+    if (!isImage) return res.status(400).json({ error: "A cover must be an image" });
+    if (sizeBytes > MAX_IMAGE_SIZE_BYTES) {
+      return res.status(413).json({ error: `Cover too large (max ${Math.floor(MAX_IMAGE_SIZE_BYTES / 1024 / 1024)}MB)` });
+    }
+  } else if (kind === "thumbnail") {
     if (!isImage) return res.status(400).json({ error: "Thumbnail must be an image" });
     if (sizeBytes > MAX_THUMBNAIL_SIZE_BYTES) {
       return res.status(413).json({ error: `Thumbnail too large (max ${Math.floor(MAX_THUMBNAIL_SIZE_BYTES / 1024 / 1024)}MB)` });
@@ -165,7 +173,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/thumbnails/`)
       : kind === "original"
         ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/originals/`)
-        : baseKey;
+        : kind === "cover"
+          ? baseKey.replace(`${orgId}/${deliveryId}/`, `${orgId}/${deliveryId}/cover/`)
+          : baseKey;
     // 1-hour window so a large upload (videos up to 1 GB) has time to finish
     // even on a modest office connection before the signed URL expires.
     const uploadUrl = r2PresignedUrl({

@@ -1688,6 +1688,12 @@ export interface Delivery {
   collectionId: string | null;
   title: string;
   coverFileId: string | null;
+  /** A cover image owned by the delivery itself — uploaded at full quality,
+   *  not listed among the files, and unaffected by deleting a photo. Wins over
+   *  coverFileId when set. "" = none, fall back to coverFileId. */
+  coverStoragePath: string;
+  coverWidth: number;
+  coverHeight: number;
   watermarkText: string | null;
   watermarkUseLogo: boolean;
   printsEnabled: boolean;
