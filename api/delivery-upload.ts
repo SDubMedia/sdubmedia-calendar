@@ -12,7 +12,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
-import { r2BuildKey, r2Configured, r2PresignedUrl } from "./_r2.js";
+import { r2BuildKey, r2Configured, r2DeleteObject, r2PresignedUrl } from "./_r2.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -55,6 +55,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!orgId) return res.status(403).json({ error: "No org" });
 
   const body = (req.body || {}) as Record<string, unknown>;
+
+  // ---- discard-orphan -------------------------------------------------
+  // Bytes land in R2 before the gallery row is written. If that write fails,
+  // the object is stranded: paid for every month, visible to nobody, and not
+  // covered by the multipart lifecycle rule (that only reaps *incomplete*
+  // uploads — this one completed). The client calls this to clean up after
+  // itself when registration fails.
+  if (body.action === "discard-orphan") {
+    const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
+    if (!storagePath || !storagePath.startsWith(`${orgId}/`)) {
+      return res.status(400).json({ error: "Bad storagePath" });
+    }
+
+    // Never pull bytes out from under a file that DID register. Three separate
+    // equality checks rather than one .or() filter: a filename can contain a
+    // comma or a parenthesis, which would corrupt a PostgREST or-string and
+    // silently match nothing — turning this into "delete a live file".
+    for (const column of ["storage_path", "original_storage_path", "thumbnail_storage_path"]) {
+      const { data, error } = await supabase
+        .from("delivery_files").select("id").eq(column, storagePath).limit(1).maybeSingle();
+      if (error) {
+        console.error(`discard-orphan: couldn't check ${column}`, error);
+        return res.status(502).json({ error: "Couldn't verify the file is unused" });
+      }
+      if (data) return res.status(200).json({ ok: true, keptInStorage: true });
+    }
+
+    await r2DeleteObject(storagePath);
+    return res.status(200).json({ ok: true });
+  }
+
   const deliveryId = typeof body.deliveryId === "string" ? body.deliveryId : "";
   const fileName = typeof body.fileName === "string" ? body.fileName : "";
   const contentType = typeof body.contentType === "string" ? body.contentType : "";

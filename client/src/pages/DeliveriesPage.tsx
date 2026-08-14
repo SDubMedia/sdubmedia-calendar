@@ -661,22 +661,35 @@ function DeliveryDetail({ id }: { id: string }) {
           }
         }
 
-        // 3. Register file metadata
-        await registerDeliveryFile({
-          deliveryId: id,
-          storagePath: primaryStoragePath,
-          originalName: file.name,
-          sizeBytes: file.size,
-          width,
-          height,
-          mimeType: file.type,
-          position: files.length + done,
-          mediaType: isVideo ? "video" : "image",
-          thumbnailStoragePath,
-          durationSeconds,
-          originalStoragePath,
-          originalSizeBytes,
-        });
+        // 3. Register file metadata.
+        //
+        // The bytes are already in R2 by this point. If this write fails the
+        // object is stranded — billed monthly, shown to nobody, and outside
+        // the multipart lifecycle rule, which only reaps uploads that never
+        // completed. So clean up before surfacing the error.
+        try {
+          await registerDeliveryFile({
+            deliveryId: id,
+            storagePath: primaryStoragePath,
+            originalName: file.name,
+            sizeBytes: file.size,
+            width,
+            height,
+            mimeType: file.type,
+            position: files.length + done,
+            mediaType: isVideo ? "video" : "image",
+            thumbnailStoragePath,
+            durationSeconds,
+            originalStoragePath,
+            originalSizeBytes,
+          });
+        } catch (regErr) {
+          await discardOrphanedUpload(
+            [primaryStoragePath, originalStoragePath, thumbnailStoragePath],
+            accessToken,
+          );
+          throw regErr;
+        }
 
         done++;
         setUploading({ done, total: list.length, pct: 0, name: "" });
@@ -2043,6 +2056,26 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
     xhr.ontimeout = () => reject(new Error("Upload timed out"));
     xhr.send(file);
   });
+}
+
+/** Delete bytes that reached R2 but never got a gallery row.
+ *
+ *  Best effort by design: the upload has already failed and the user needs
+ *  that error, not a second one about cleanup. The server refuses to delete
+ *  anything a delivery_files row still points at, so a false alarm here cannot
+ *  destroy a live file. */
+async function discardOrphanedUpload(paths: string[], accessToken: string): Promise<void> {
+  for (const storagePath of paths.filter(Boolean)) {
+    try {
+      await fetch("/api/delivery-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ action: "discard-orphan", storagePath }),
+      });
+    } catch (e) {
+      console.warn(`Couldn't clean up orphaned upload ${storagePath}`, e);
+    }
+  }
 }
 
 // Resume bookkeeping for multipart uploads
