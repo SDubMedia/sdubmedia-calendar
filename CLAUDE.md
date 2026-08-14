@@ -331,6 +331,31 @@ Things baked into the codebase. Re-using these saves re-discovering them.
 - **Cover fonts:** Cormorant (default) / Playfair / Marcellus / Inter / Sans / Serif Timeless / Serif Modern. Stored in `cover_font` column. Two parallel arrays keep admin + public in sync (`COVER_FONTS` in DeliveriesPage, `COVER_HERO_FONTS` in DeliverGalleryPage). Update both.
 - **Watermark:** logo (org `logo_url`) tiles at 18% opacity when `watermark_use_logo=true`. Text watermark still works alongside.
 - **Eager cover signed URL.** Cover thumbnails fetch the cover photo's signed URL in a separate fast call before the bulk fetch. Don't regress this — galleries with 200+ photos noticeably degrade.
+- **Files over 100MB use multipart** (`api/delivery-multipart.ts`, 32MB parts, 5GB ceiling). Below that, the single presigned PUT in `delivery-upload.ts`.
+
+#### R2 CORS does NOT expose ETag — never read it in the browser (Aug 2026)
+
+The `slate-deliveries` bucket's CORS config has no `ExposeHeaders`, so a
+cross-origin PUT's `ETag` **is on the wire but invisible to JS**:
+`xhr.getResponseHeader("ETag")` returns `null` in the browser while the same
+request from Node returns it fine. The first multipart build read ETags
+client-side to build the completion XML; every part failed as "no ETag",
+retried 3× (progress bouncing 0%→3%→0%), and the upload died.
+
+**So the server gets the ETags from R2 via ListParts at completion time**, and
+the client only reports part numbers. Don't "simplify" that back to sending
+ETags from the browser — it cannot work against this bucket, and it passes
+every Node-based test because Node ignores CORS.
+
+`listAllParts` returns `null` (never a short list) on failure, and `complete`
+refuses unless the part count matches `expectedParts` from the client. R2 will
+happily assemble whatever parts it has: without that check a missing part
+yields a **truncated video that looks fine until the client presses play.**
+
+S3 API keys can't read or write R2 bucket CORS (`GetBucketCors` → AccessDenied,
+query-auth → InvalidArgument). It's Cloudflare-dashboard-only. See also
+`[[reference_slate_r2_cors_native_uploads]]`: the same config is why native iOS
+uploads fail — `capacitor://localhost` isn't an allowed origin.
 
 ### Calendar
 - **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.

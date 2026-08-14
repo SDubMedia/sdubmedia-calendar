@@ -559,7 +559,7 @@ function DeliveryDetail({ id }: { id: string }) {
     if (!fileList || fileList.length === 0) return;
     const list = Array.from(fileList);
     setUploading({ done: 0, total: list.length, pct: 0, name: "" });
-    let done = 0;
+    let done = 0, failed = 0;
     for (const rawFile of list) {
       try {
         // iPhone HEIC → JPEG so it displays; full quality, full resolution.
@@ -680,13 +680,25 @@ function DeliveryDetail({ id }: { id: string }) {
         done++;
         setUploading({ done, total: list.length, pct: 0, name: "" });
       } catch (err) {
+        console.error(`Upload failed: ${rawFile.name}`, err);
         toast.error(`Failed: ${rawFile.name}`, { description: err instanceof Error ? err.message : "Try again" });
+        failed++;
         done++;
         setUploading({ done, total: list.length, pct: 0, name: "" });
       }
     }
     setUploading(null);
-    toast.success("Upload complete", { description: `${list.length} file${list.length === 1 ? "" : "s"} added.` });
+    // This used to say "Upload complete" unconditionally, so a run where every
+    // single file failed still ended on a green success toast. Say what
+    // actually happened.
+    const added = list.length - failed;
+    if (failed === 0) {
+      toast.success("Upload complete", { description: `${added} file${added === 1 ? "" : "s"} added.` });
+    } else if (added === 0) {
+      toast.error("Nothing uploaded", { description: `All ${failed} file${failed === 1 ? "" : "s"} failed.` });
+    } else {
+      toast.warning("Partly uploaded", { description: `${added} added, ${failed} failed.` });
+    }
   }
 
   async function handleDeleteFile(fileId: string) {
@@ -2082,7 +2094,12 @@ async function uploadFileMultipart(
       onProgress(Math.min(99, Math.round((total / file.size) * 100)));
     };
 
-    const putPart = (partNumber: number, blob: Blob) => new Promise<string>((resolve, reject) => {
+    // Deliberately does NOT read the response ETag. A cross-origin PUT only
+    // exposes the headers the bucket's CORS names, and this one does not name
+    // ETag, so getResponseHeader("ETag") is always null in the browser even
+    // though R2 sent it. The server asks R2 for the ETags at completion time
+    // instead. A 2xx here means the part is stored; that is all we need.
+    const putPart = (partNumber: number, blob: Blob) => new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", urlMap.get(partNumber)!);
       xhr.upload.onprogress = (e) => {
@@ -2090,18 +2107,14 @@ async function uploadFileMultipart(
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          // R2 returns the part's ETag here; completion fails without it.
-          const etag = xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "";
-          if (!etag) return reject(new Error(`Part ${partNumber} returned no ETag`));
           sent[partNumber - 1] = blob.size; report();
-          resolve(etag);
+          resolve();
         } else reject(new Error(`Part ${partNumber} failed: ${xhr.status}`));
       };
       xhr.onerror = () => reject(new Error(`Network error on part ${partNumber}`));
       xhr.send(blob);
     });
 
-    const parts: { partNumber: number; etag: string }[] = [];
     const queue = [...numbers];
     const CONCURRENCY = 4; // enough to saturate a domestic upstream, few enough not to starve each other
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
@@ -2114,7 +2127,7 @@ async function uploadFileMultipart(
         // reason for doing it this way.
         let lastErr: unknown;
         for (let attempt = 0; attempt < 3; attempt++) {
-          try { parts.push({ partNumber, etag: await putPart(partNumber, blob) }); lastErr = null; break; }
+          try { await putPart(partNumber, blob); lastErr = null; break; }
           catch (e) { lastErr = e; sent[partNumber - 1] = 0; report();
             await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); }
         }
@@ -2122,7 +2135,9 @@ async function uploadFileMultipart(
       }
     }));
 
-    await call({ action: "complete", storagePath, uploadId, parts });
+    // expectedParts lets the server refuse to assemble a file with a piece
+    // missing, rather than quietly producing a truncated video.
+    await call({ action: "complete", storagePath, uploadId, expectedParts: partCount });
     onProgress(100);
     return storagePath as string;
   } catch (err) {

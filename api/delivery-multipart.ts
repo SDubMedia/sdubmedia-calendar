@@ -57,6 +57,39 @@ function xmlEscape(s: string): string {
     .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
+/** Every part R2 currently holds for this upload, with the ETags it recorded.
+ *  Pages through the listing: S3 caps ListParts at 1,000 per response, and a
+ *  5GB file is only ~160 parts, but a smaller PART_SIZE later would silently
+ *  truncate the list and complete a partial file. Returns null on any failure
+ *  rather than a short list, so the caller can never mistake "the request
+ *  broke" for "these are all the parts". */
+async function listAllParts(
+  key: string, uploadId: string,
+): Promise<{ partNumber: number; etag: string }[] | null> {
+  const all: { partNumber: number; etag: string }[] = [];
+  let marker = "";
+  for (let page = 0; page < 20; page++) {
+    const query: Record<string, string> = { uploadId, "max-parts": "1000" };
+    if (marker) query["part-number-marker"] = marker;
+    const r = await r2SignedRequest({ method: "GET", key, query });
+    if (r.status >= 300) {
+      console.error("R2 ListParts failed:", r.status, r.text);
+      return null;
+    }
+    for (const block of r.text.match(/<Part>[\s\S]*?<\/Part>/g) || []) {
+      const n = block.match(/<PartNumber>(\d+)<\/PartNumber>/);
+      const e = block.match(/<ETag>([\s\S]*?)<\/ETag>/);
+      if (n && e) all.push({ partNumber: Number(n[1]), etag: e[1].trim() });
+    }
+    if (!/<IsTruncated>true<\/IsTruncated>/.test(r.text)) return all;
+    const next = r.text.match(/<NextPartNumberMarker>(\d+)<\/NextPartNumberMarker>/);
+    if (!next) return all;
+    marker = next[1];
+  }
+  console.error("R2 ListParts did not terminate after 20 pages:", key);
+  return null;
+}
+
 /** The delivery must exist and belong to the caller's org. */
 async function ownsDelivery(deliveryId: string, orgId: string): Promise<boolean> {
   const { data } = await supabase
@@ -180,18 +213,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "complete") {
       const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
       const uploadId = typeof body.uploadId === "string" ? body.uploadId : "";
-      const parts = Array.isArray(body.parts) ? body.parts as { partNumber: number; etag: string }[] : [];
-      if (!storagePath || !uploadId || parts.length === 0) {
-        return res.status(400).json({ error: "Missing storagePath, uploadId or parts" });
+      const expectedParts = typeof body.expectedParts === "number" ? body.expectedParts : 0;
+      if (!storagePath || !uploadId || expectedParts <= 0) {
+        return res.status(400).json({ error: "Missing storagePath, uploadId or expectedParts" });
       }
       if (!pathBelongsToOrg(storagePath, orgId)) return res.status(403).json({ error: "Not your file" });
 
+      // The ETags come from ListParts here, NOT from the browser.
+      //
+      // A cross-origin PUT only exposes the headers named in the bucket's CORS
+      // ExposeHeaders, and this bucket does not name ETag — so R2 sends it on
+      // the wire and the browser hides it from JS. Every part read as "no
+      // ETag", failed, retried and died. Asking R2 what it already holds sinks
+      // the whole problem, and cannot drift from what was actually stored.
+      const listed = await listAllParts(storagePath, uploadId);
+      if (!listed) return res.status(502).json({ error: "Couldn't read the uploaded parts" });
+
+      // R2 assembles whatever parts it has. If one never arrived, completing
+      // anyway would produce a short file that looks perfectly fine — a
+      // truncated wedding video is worse than a failed upload, because nobody
+      // finds out until the client presses play.
+      if (listed.length !== expectedParts) {
+        console.error(`R2 multipart part mismatch on ${storagePath}: have ${listed.length}, expected ${expectedParts}`);
+        return res.status(502).json({ error: `Upload incomplete — ${listed.length} of ${expectedParts} pieces arrived. Try again.` });
+      }
+
       // S3 requires parts in ascending order; an out-of-order list is rejected
       // with a confusing InvalidPartOrder rather than being sorted for you.
-      const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+      const ordered = [...listed].sort((a, b) => a.partNumber - b.partNumber);
       const xml = "<CompleteMultipartUpload>"
         + ordered.map(p =>
-            `<Part><PartNumber>${Number(p.partNumber)}</PartNumber><ETag>${xmlEscape(String(p.etag))}</ETag></Part>`
+            `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlEscape(p.etag)}</ETag></Part>`
           ).join("")
         + "</CompleteMultipartUpload>";
 
