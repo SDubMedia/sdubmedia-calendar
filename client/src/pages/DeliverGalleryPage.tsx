@@ -64,6 +64,11 @@ function sortFilmsFirst(files: FileItem[]): FileItem[] {
 }
 const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 
+/** Row height and gap of the masonry grid, in px. gridAutoRows and gap-px in
+ *  the grid below must match these — the tile heights are computed from them. */
+const GRID_ROW = 4;
+const GRID_GAP = 1;
+
 interface DeliveryInfo {
   id: string;
   title: string;
@@ -396,8 +401,8 @@ export default function DeliverGalleryPage() {
    *  the wrong height on a phone, where columns are half the size. `colWidth`
    *  is measured from the grid's own column track and updates on resize. */
   function tileRowSpan(f: FileItem, widthPx = colWidth): number {
-    const ROW = 4; // px, matches gridAutoRows
-    const GAP = 1; // px, matches gap-px on the grid
+    const ROW = GRID_ROW;
+    const GAP = GRID_GAP;
     const w = f.width && f.width > 0 ? f.width : 3;
     const h = f.height && f.height > 0 ? f.height : 2;
     const targetPx = widthPx * (h / w);
@@ -456,14 +461,19 @@ export default function DeliverGalleryPage() {
     const el = gridRef.current;
     if (!el) return;
     const measure = () => {
-      // Read the column track itself rather than measuring a tile. A tile is
-      // only a reliable stand-in for one column while every tile is one column
-      // wide — films span the full width, and measuring one of those set
-      // colWidth to the whole grid and made every photo below it enormous.
-      const track = parseFloat(getComputedStyle(el).gridTemplateColumns.split(" ")[0] || "");
-      const gw = el.getBoundingClientRect().width;
+      // Read the column tracks rather than measuring a tile. A tile is only a
+      // reliable stand-in for one column while every tile is one column wide —
+      // films span the full width, and measuring one of those set colWidth to
+      // the whole grid and made every photo below it enormous.
+      const tracks = getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).map(parseFloat);
+      const track = tracks[0];
+      // What a full-width tile actually spans: the tracks plus the gaps
+      // between them. NOT the container width — the grid is centred, so the
+      // container is wider than its columns and a film sized from it came out
+      // 6% too tall (1043x619 where 1043x586 is 16:9).
+      const spanned = tracks.length ? tracks.reduce((a, b) => a + b, 0) + (tracks.length - 1) * GRID_GAP : 0;
       if (track && Math.abs(track - colWidth) > 1) setColWidth(track);
-      if (gw && Math.abs(gw - gridWidth) > 1) setGridWidth(gw);
+      if (spanned && Math.abs(spanned - gridWidth) > 1) setGridWidth(spanned);
     };
     measure();
     const ro = new ResizeObserver(measure);
