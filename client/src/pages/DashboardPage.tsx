@@ -442,9 +442,11 @@ export default function DashboardPage() {
 
         </div>)}
 
-        {/* Pipeline Summary — full width (kept just under the metric cards) */}
+        {/* Pipeline Summary — full width, directly below Ready to Deliver.
+            Both are pinned relative to the metric cards; keep the +2 above any
+            value used by Ready to Deliver or they will swap. */}
         {isFeatureVisible("pipeline") && (
-        <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 1 }}>
+        <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 2 }}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               <Users className="w-4 h-4 text-primary" />
@@ -605,8 +607,13 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Pinned directly under the metric cards, ahead of Pipeline. This is
+            the "what needs doing" queue, so it earns the top slot over a
+            summary you only glance at. Pinned rather than positioned by the
+            Settings drag order because Pipeline is itself pinned to
+            metrics + N — a draggable widget could never be placed above it. */}
         {isWidgetEnabled("readyToDeliver") && (
-          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
+          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("metrics") + 1 }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Ready to Deliver</h3>
               <Link href="/deliveries" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">Galleries <ArrowRight className="w-3 h-3" /></Link>
