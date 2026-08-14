@@ -18,8 +18,9 @@ import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/multipart";
+import { baseNameOf, renameFile } from "@/lib/fileName";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import type { Client, DeliveryStatus, Project } from "@/lib/types";
+import type { Client, DeliveryFile, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -447,6 +448,29 @@ function DeliveryDetail({ id }: { id: string }) {
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   // File whose thumbnail the user is currently picking (or null when closed).
   const [thumbnailPickerFileId, setThumbnailPickerFileId] = useState<string | null>(null);
+  // Inline rename of a delivered file. The name is what the client sees in the
+  // gallery and what they get on disk, so this is the label, not the R2 key.
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  function startRename(f: DeliveryFile) {
+    setRenamingFileId(f.id);
+    // Editing without the extension — it's noise, and renameFile() puts it back.
+    setRenameDraft(baseNameOf(f.originalName));
+  }
+
+  async function commitRename(f: DeliveryFile) {
+    setRenamingFileId(null);
+    const next = renameFile(f.originalName, renameDraft);
+    if (!next) { toast.error("That name won't work", { description: "Give it at least one normal character." }); return; }
+    if (next === f.originalName) return;
+    try {
+      await updateDeliveryFile(f.id, { originalName: next });
+      toast.success("Renamed", { description: next });
+    } catch (err) {
+      toast.error("Couldn't rename", { description: err instanceof Error ? err.message : "Try again" });
+    }
+  }
   const [activeTab, setActiveTab] = useState<"photos" | "general" | "cover" | "privacy" | "selections">("photos");
 
   const delivery = data.deliveries.find(d => d.id === id);
@@ -1240,10 +1264,39 @@ function DeliveryDetail({ id }: { id: string }) {
                     file by name ("change Main Video"). Extension stripped. */}
                 <div className="absolute bottom-0 inset-x-0 px-2 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none">
                   <div className="flex items-end justify-between gap-2">
-                    <p className="text-[10px] text-white/95 font-medium truncate min-w-0" title={f.originalName}>
-                      {f.originalName.replace(/\.[^.]+$/, "")}
-                    </p>
-                    {isVideo && f.durationSeconds != null && (
+                    {renamingFileId === f.id ? (
+                      // pointer-events-auto: the caption bar is inert so it
+                      // doesn't eat drags, so anything interactive inside it
+                      // has to switch them back on.
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onBlur={() => commitRename(f)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                          // Escape must clear the id BEFORE blur fires, or the
+                          // blur handler saves the very edit being cancelled.
+                          if (e.key === "Escape") { e.preventDefault(); setRenamingFileId(null); setRenameDraft(""); }
+                        }}
+                        className="pointer-events-auto min-w-0 flex-1 bg-black/70 border border-white/30 rounded px-1.5 py-0.5 text-[11px] text-white outline-none focus:border-[#0088ff]"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startRename(f)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        title={`${f.originalName} — click to rename`}
+                        className="pointer-events-auto group/name flex items-center gap-1 min-w-0 text-left"
+                      >
+                        <span className="text-[10px] text-white/95 font-medium truncate min-w-0">
+                          {baseNameOf(f.originalName)}
+                        </span>
+                        <Pencil className="w-2.5 h-2.5 text-white/70 shrink-0 opacity-0 group-hover/name:opacity-100 [@media(hover:none)]:opacity-70" />
+                      </button>
+                    )}
+                    {isVideo && f.durationSeconds != null && renamingFileId !== f.id && (
                       <span className="text-[10px] text-white/80 font-mono shrink-0">{formatDuration(f.durationSeconds)}</span>
                     )}
                   </div>
