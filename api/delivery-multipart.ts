@@ -34,6 +34,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 import { r2BuildKey, r2Configured, r2PresignedUrl, r2SignedRequest } from "./_r2.js";
+import { buildCompleteXml, xmlTag, xmlUnescape } from "./_multipart.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -51,18 +52,6 @@ const MAX_PARTS = 10000;
 
 const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024;
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024;
-
-/** Pull a single XML tag's text. R2's responses are small and flat, so this
- *  avoids adding an XML parser dependency for two fields. */
-function xmlTag(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
-  return m ? m[1].trim() : "";
-}
-
-function xmlEscape(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
 
 interface StoredPart { partNumber: number; etag: string; size: number }
 
@@ -95,7 +84,7 @@ async function listAllParts(
       const n = block.match(/<PartNumber>(\d+)<\/PartNumber>/);
       const e = block.match(/<ETag>([\s\S]*?)<\/ETag>/);
       const s = block.match(/<Size>(\d+)<\/Size>/);
-      if (n && e) all.push({ partNumber: Number(n[1]), etag: e[1].trim(), size: s ? Number(s[1]) : -1 });
+      if (n && e) all.push({ partNumber: Number(n[1]), etag: xmlUnescape(e[1].trim()), size: s ? Number(s[1]) : -1 });
     }
     if (!/<IsTruncated>true<\/IsTruncated>/.test(r.text)) return { ok: true, parts: all };
     const next = r.text.match(/<NextPartNumberMarker>(\d+)<\/NextPartNumberMarker>/);
@@ -325,11 +314,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error(`R2 multipart total mismatch on ${storagePath}: ${total} vs ${sizeBytes}`);
         return res.status(502).json({ error: "Some of the upload didn't arrive intact. Try again — it will resume." });
       }
-      const xml = "<CompleteMultipartUpload>"
-        + ordered.map(p =>
-            `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlEscape(p.etag)}</ETag></Part>`
-          ).join("")
-        + "</CompleteMultipartUpload>";
+      const xml = buildCompleteXml(ordered);
 
       const r = await r2SignedRequest({
         method: "POST", key: storagePath, query: { uploadId }, body: xml, contentType: "application/xml",

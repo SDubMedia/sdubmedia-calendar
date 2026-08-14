@@ -32,7 +32,13 @@ const supabase = createClient(
 );
 
 const MAX_DOC_BYTES = 50 * 1024 * 1024; // 50 MB per document
-const MAX_DRAFT_BYTES = 1024 * 1024 * 1024; // 1 GB per draft cut — matches the gallery's video cap
+// 1 GB per draft cut. This used to match the gallery's video cap; galleries
+// went to 5 GB in Aug 2026 when they gained multipart uploads, and this path
+// did NOT — it is still a single presigned PUT, which cannot resume. Raising it
+// without multipart would just move the failure later into the transfer. The
+// "1GB per file" wording in ProjectDetailSheet refers to this cap and is
+// correct; don't "fix" it to 5 GB.
+const MAX_DRAFT_BYTES = 1024 * 1024 * 1024;
 // Same ceilings the gallery enforces, so drafts can't quietly blow past them.
 // Geoff's own org is exempt there too (see api/delivery-upload.ts).
 const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024; // 200 GB
