@@ -69,6 +69,10 @@ const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 const GRID_ROW = 4;
 const GRID_GAP = 1;
 
+/** How much of the grid's width a film takes. Full-bleed was too dominant for
+ *  a single wedding film; 35% reads as a feature without eating the page. */
+const FILM_WIDTH = 0.35;
+
 interface DeliveryInfo {
   id: string;
   title: string;
@@ -480,6 +484,10 @@ export default function DeliverGalleryPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [colWidth, gridWidth, files.length]);
+
+  // Never narrower than a photo tile: 35% of a phone's width would leave the
+  // headline deliverable smaller than the stills around it.
+  const filmWidth = Math.round(Math.min(gridWidth, Math.max(gridWidth * FILM_WIDTH, colWidth)));
 
   // Films and photos get their own headed sections, but only when the gallery
   // holds both — a photo-only gallery should look exactly as it always has.
@@ -908,14 +916,15 @@ export default function DeliverGalleryPage() {
               // anything missing dimensions fall back to 3:2 rather than
               // collapsing to nothing.
               data-tile
-              // A film runs the full width of the grid — it is the headline
-              // deliverable, and a lone video tile in a five-column row left a
-              // stripe of empty gallery beside it. Its height is worked out
-              // from the FULL width, not the column width, or a full-bleed
-              // tile would keep a one-column tile's height.
+              // A film gets its own centred row rather than sitting in a
+              // column — a lone video tile in a five-column row left a stripe
+              // of empty gallery beside it. It claims the full row and is
+              // centred within it at FILM_WIDTH of the grid, and its height is
+              // worked out from THAT width: sizing a wide tile by the column
+              // width would letterbox it.
               style={
                 isVideo
-                  ? { gridColumn: "1 / -1", gridRow: `span ${tileRowSpan(f, gridWidth)}` }
+                  ? { gridColumn: "1 / -1", justifySelf: "center", width: filmWidth, gridRow: `span ${tileRowSpan(f, filmWidth)}` }
                   : { gridRow: `span ${tileRowSpan(f)}` }
               }
               className={`relative group cursor-pointer overflow-hidden bg-white outline outline-1 -outline-offset-1 outline-slate-200 ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
