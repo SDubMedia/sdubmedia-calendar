@@ -35,6 +35,10 @@ interface PresignOpts {
   expiresIn?: number;        // seconds, default 3600 (1h)
   contentType?: string;      // for PUT — included in signed headers if set
   responseHeaders?: Record<string, string>; // X-Amz-* response overrides for GET (e.g. Content-Disposition)
+  // Extra query params that must be part of the signature. Multipart part
+  // uploads need ?partNumber=N&uploadId=X, and SigV4 signs the whole query
+  // string — so these cannot simply be appended to the returned URL.
+  query?: Record<string, string>;
 }
 
 export function r2PresignedUrl(opts: PresignOpts): string {
@@ -57,6 +61,7 @@ export function r2PresignedUrl(opts: PresignOpts): string {
   const signedHeaders = signedHeaderList.join(";");
 
   const queryParams: Record<string, string> = {
+    ...(opts.query || {}),
     "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
     "X-Amz-Credential": `${R2_ACCESS_KEY_ID}/${credentialScope}`,
     "X-Amz-Date": amzDate,
@@ -101,6 +106,80 @@ export function r2PresignedUrl(opts: PresignOpts): string {
   const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
 
   return `https://${host}/${R2_BUCKET}/${encodePath(key)}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
+/**
+ * SigV4 *header* signing, for S3 calls that carry a request body and therefore
+ * cannot be presigned: CreateMultipartUpload, CompleteMultipartUpload and
+ * AbortMultipartUpload. Presigned URLs use UNSIGNED-PAYLOAD, which S3 rejects
+ * for these, so the payload hash has to be real and in the signature.
+ */
+export async function r2SignedRequest(opts: {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  key: string;
+  query?: Record<string, string>;
+  body?: string;
+  contentType?: string;
+}): Promise<{ status: number; text: string }> {
+  if (!r2Configured()) throw new Error("R2 not configured");
+  const { method, key, query = {}, body = "", contentType } = opts;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const host = r2Host();
+  const credentialScope = `${dateStamp}/${R2_REGION}/s3/aws4_request`;
+  const payloadHash = createHash("sha256").update(body).digest("hex");
+
+  const headersToSign: Record<string, string> = {
+    host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate,
+  };
+  if (contentType) headersToSign["content-type"] = contentType;
+
+  const signedHeaderList = Object.keys(headersToSign).sort();
+  const signedHeaders = signedHeaderList.join(";");
+  const canonicalHeaders = signedHeaderList.map(h => `${h}:${headersToSign[h]}\n`).join("");
+  const canonicalQueryString = Object.keys(query).sort()
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`).join("&");
+
+  const canonicalRequest = [
+    method,
+    `/${R2_BUCKET}/${encodePath(key)}`,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const stringToSign = [
+    "AWS4-HMAC-SHA256", amzDate, credentialScope,
+    createHash("sha256").update(canonicalRequest).digest("hex"),
+  ].join("\n");
+
+  const dateKey = createHmac("sha256", `AWS4${R2_SECRET_ACCESS_KEY}`).update(dateStamp).digest();
+  const dateRegionKey = createHmac("sha256", dateKey).update(R2_REGION).digest();
+  const dateRegionServiceKey = createHmac("sha256", dateRegionKey).update("s3").digest();
+  const signingKey = createHmac("sha256", dateRegionServiceKey).update("aws4_request").digest();
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS_KEY_ID}/${credentialScope}, `
+    + `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const url = `https://${host}/${R2_BUCKET}/${encodePath(key)}`
+    + (canonicalQueryString ? `?${canonicalQueryString}` : "");
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: authorization,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": amzDate,
+      ...(contentType ? { "Content-Type": contentType } : {}),
+    },
+    body: body || undefined,
+  });
+  return { status: res.status, text: await res.text() };
 }
 
 // Deletes an object from R2 by issuing a signed DELETE request.

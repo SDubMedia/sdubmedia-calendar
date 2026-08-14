@@ -538,26 +538,35 @@ function DeliveryDetail({ id }: { id: string }) {
           height = dims.height;
         }
 
-        // 1. Get signed upload URL for the primary file
+        // 1 + 2. Get the file into R2.
+        //
+        // Anything over MULTIPART_THRESHOLD goes the multipart route: a single
+        // presigned PUT cannot resume and its URL expires, so a 3-5GB film over
+        // a domestic upstream loses the whole transfer to one blip. Below the
+        // threshold the single PUT is fewer round trips and simpler.
         const sess = await supabase.auth.getSession();
         const accessToken = sess.data.session?.access_token || "";
-        const uploadRes = await fetch("/api/delivery-upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({
-            deliveryId: id,
-            fileName: file.name,
-            contentType: file.type,
-            sizeBytes: file.size,
-          }),
-        });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error || "Upload URL failed");
+        const onPct = (pct: number) => setUploading({ done, total: list.length, pct, name: file.name });
+        let primaryStoragePath: string;
 
-        // 2. PUT to R2 with live progress (per-file percent for the bar)
-        await putFileWithProgress(uploadData.uploadUrl, file, (pct) => {
-          setUploading({ done, total: list.length, pct, name: file.name });
-        });
+        if (file.size > MULTIPART_THRESHOLD) {
+          primaryStoragePath = await uploadFileMultipart(id, file, accessToken, onPct);
+        } else {
+          const uploadRes = await fetch("/api/delivery-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({
+              deliveryId: id,
+              fileName: file.name,
+              contentType: file.type,
+              sizeBytes: file.size,
+            }),
+          });
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok) throw new Error(uploadData.error || "Upload URL failed");
+          await putFileWithProgress(uploadData.uploadUrl, file, onPct);
+          primaryStoragePath = uploadData.storagePath;
+        }
 
         // 2a. Portrait work: keep the untouched original next to the
         // compressed copy. `file` above has been re-encoded to JPEG at 80%
@@ -606,7 +615,7 @@ function DeliveryDetail({ id }: { id: string }) {
         // 3. Register file metadata
         await registerDeliveryFile({
           deliveryId: id,
-          storagePath: uploadData.storagePath,
+          storagePath: primaryStoragePath,
           originalName: file.name,
           sizeBytes: file.size,
           width,
@@ -1953,6 +1962,10 @@ function projectLabel(p: Project, clients: Client[]): string {
 // PUT a file to a signed URL with byte-level upload progress. fetch() can't
 // report upload progress, so we use XMLHttpRequest for the transfer — critical
 // for large videos where the user needs to see it's actually moving.
+// Above this, use multipart. 100MB is well under the point where a single PUT
+// becomes risky, so ordinary photos and short clips keep the simpler path.
+const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
+
 function putFileWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1969,6 +1982,107 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
     xhr.ontimeout = () => reject(new Error("Upload timed out"));
     xhr.send(file);
   });
+}
+
+/**
+ * Multipart upload for large files (finished wedding films run 3-5GB).
+ *
+ * A single presigned PUT cannot resume and its URL expires, so one network
+ * blip 40 minutes in loses the whole transfer. This slices the TRANSFER — not
+ * the file — into parts, uploads several at a time, retries a failed part on
+ * its own, and R2 reassembles them into one object. The client downloads a
+ * single intact file.
+ *
+ * On any failure the multipart upload is aborted, because abandoned parts sit
+ * in the bucket costing money and R2 does not clean them up on its own.
+ */
+async function uploadFileMultipart(
+  deliveryId: string,
+  file: File,
+  accessToken: string,
+  onProgress: (pct: number) => void,
+): Promise<string> {
+  const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` };
+  const call = async (payload: Record<string, unknown>) => {
+    const r = await fetch("/api/delivery-multipart", {
+      method: "POST", headers: authHeaders, body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Upload failed");
+    return j;
+  };
+
+  const { uploadId, storagePath, partSize, partCount } = await call({
+    action: "create", deliveryId, fileName: file.name,
+    contentType: file.type || "application/octet-stream", sizeBytes: file.size,
+  });
+
+  try {
+    const numbers = Array.from({ length: partCount }, (_, i) => i + 1);
+    // Signed in batches of 200 — the endpoint's per-request ceiling.
+    const urlMap = new Map<number, string>();
+    for (let i = 0; i < numbers.length; i += 200) {
+      const { urls } = await call({ action: "sign", storagePath, uploadId, partNumbers: numbers.slice(i, i + 200) });
+      (urls as { partNumber: number; url: string }[]).forEach(u => urlMap.set(u.partNumber, u.url));
+    }
+
+    // Progress is tracked per part so the bar reflects real bytes in flight
+    // rather than jumping a whole part at a time.
+    const sent = new Array<number>(partCount).fill(0);
+    const report = () => {
+      const total = sent.reduce((a, b) => a + b, 0);
+      onProgress(Math.min(99, Math.round((total / file.size) * 100)));
+    };
+
+    const putPart = (partNumber: number, blob: Blob) => new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", urlMap.get(partNumber)!);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) { sent[partNumber - 1] = e.loaded; report(); }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // R2 returns the part's ETag here; completion fails without it.
+          const etag = xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "";
+          if (!etag) return reject(new Error(`Part ${partNumber} returned no ETag`));
+          sent[partNumber - 1] = blob.size; report();
+          resolve(etag);
+        } else reject(new Error(`Part ${partNumber} failed: ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error(`Network error on part ${partNumber}`));
+      xhr.send(blob);
+    });
+
+    const parts: { partNumber: number; etag: string }[] = [];
+    const queue = [...numbers];
+    const CONCURRENCY = 4; // enough to saturate a domestic upstream, few enough not to starve each other
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      for (;;) {
+        const partNumber = queue.shift();
+        if (partNumber === undefined) return;
+        const start = (partNumber - 1) * partSize;
+        const blob = file.slice(start, Math.min(start + partSize, file.size));
+        // Retry the individual part rather than the whole file — the entire
+        // reason for doing it this way.
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try { parts.push({ partNumber, etag: await putPart(partNumber, blob) }); lastErr = null; break; }
+          catch (e) { lastErr = e; sent[partNumber - 1] = 0; report();
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); }
+        }
+        if (lastErr) throw lastErr;
+      }
+    }));
+
+    await call({ action: "complete", storagePath, uploadId, parts });
+    onProgress(100);
+    return storagePath as string;
+  } catch (err) {
+    // Best effort — if this fails too, the parts linger but the user still
+    // needs the real error, not the cleanup error.
+    try { await call({ action: "abort", storagePath, uploadId }); } catch { /* ignore */ }
+    throw err;
+  }
 }
 
 // Video helpers — used by the upload flow + thumbnail picker

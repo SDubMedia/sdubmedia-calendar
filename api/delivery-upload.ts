@@ -27,7 +27,11 @@ const supabase = createClient(
 const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024; // 200 GB
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
-const MAX_VIDEO_SIZE_BYTES = 1024 * 1024 * 1024; // 1 GB per single video
+// 5GB is S3's hard ceiling for one object via a single PUT, and the practical
+// ceiling for a finished film. Anything over MULTIPART_THRESHOLD on the client
+// never reaches this endpoint — it goes to /api/delivery-multipart instead.
+// This cap only guards the single-PUT path and direct callers.
+const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB per single video
 const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — JPEG frame capture is small
 const IMAGE_MIME_PREFIX = "image/";
 // Restrict to the formats the user explicitly asked for (mp4, mov, m4v).
