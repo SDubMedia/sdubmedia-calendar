@@ -82,8 +82,43 @@ export default function DeliveriesPage() {
 }
 
 function DeliveriesList() {
-  const { data, addDelivery } = useApp();
+  const { data, addDelivery, deleteDelivery } = useApp();
   const [createOpen, setCreateOpen] = useState(false);
+  const confirm = useConfirm();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Delete from the list, so clearing out a test or duplicate gallery does not
+  // mean opening it, finding the General tab and scrolling to the bottom. Same
+  // two-step as the detail page: the API call unlinks the R2 objects, the
+  // context call removes the row and its files/selections.
+  async function deleteFromList(e: React.MouseEvent, d: { id: string; title: string }) {
+    // The card is a link. Without this, deleting navigates into the gallery.
+    e.preventDefault();
+    e.stopPropagation();
+    const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
+    const ok = await confirm({
+      title: "Delete gallery?",
+      description: `Delete "${d.title || "Untitled"}"?${fileCount ? ` This permanently removes ${fileCount} file${fileCount === 1 ? "" : "s"}.` : ""} If the client has the link, it stops working.`,
+      destructive: true,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    setDeletingId(d.id);
+    try {
+      const accessToken = await getAuthToken();
+      await fetch("/api/deliveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ action: "delete-delivery", id: d.id }),
+      });
+      await deleteDelivery(d.id);
+      toast.success("Gallery deleted");
+    } catch (err) {
+      toast.error("Couldn't delete", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const galleries = data.deliveries;
   // Real-estate galleries (download-only) are listed in their own section.
@@ -96,8 +131,21 @@ function DeliveriesList() {
     const project = data.projects.find(p => p.id === d.projectId);
     return (
       <Link key={d.id} href={`/deliveries/${d.id}`}>
-        <a className="block rounded-xl border border-white/10 bg-white/[0.02] hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
-          <div className="flex items-start justify-between gap-3 mb-3">
+        <a className="group relative block rounded-xl border border-white/10 bg-white/[0.02] hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
+          {/* Hover-reveal on desktop, but ALWAYS visible below md. A phone has
+              no hover, so opacity-0 there would leave an invisible-but-clickable
+              delete sitting over the top-right corner of the card. */}
+          <button
+            type="button"
+            onClick={(e) => deleteFromList(e, d)}
+            disabled={deletingId === d.id}
+            title="Delete gallery"
+            aria-label={`Delete ${d.title || "Untitled"}`}
+            className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg text-slate-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-opacity disabled:opacity-40"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <div className="flex items-start justify-between gap-3 mb-3 pr-7">
             <h3 className="text-base font-semibold text-white truncate">{d.title || "Untitled"}</h3>
             <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider border ${statusColor(d.status)}`}>{statusLabel(d.status)}</span>
           </div>
