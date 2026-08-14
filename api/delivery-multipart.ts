@@ -57,37 +57,46 @@ function xmlEscape(s: string): string {
     .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
-/** Every part R2 currently holds for this upload, with the ETags it recorded.
+interface StoredPart { partNumber: number; etag: string; size: number }
+
+/** Every part R2 currently holds for this upload.
+ *
  *  Pages through the listing: S3 caps ListParts at 1,000 per response, and a
  *  5GB file is only ~160 parts, but a smaller PART_SIZE later would silently
- *  truncate the list and complete a partial file. Returns null on any failure
- *  rather than a short list, so the caller can never mistake "the request
- *  broke" for "these are all the parts". */
+ *  truncate the list and complete a partial file.
+ *
+ *  Never returns a short list on failure — the three outcomes are distinct so
+ *  a caller cannot mistake "the request broke" for "these are all the parts",
+ *  and resume can tell "this upload expired, start over" from "try again". */
 async function listAllParts(
   key: string, uploadId: string,
-): Promise<{ partNumber: number; etag: string }[] | null> {
-  const all: { partNumber: number; etag: string }[] = [];
+): Promise<{ ok: true; parts: StoredPart[] } | { ok: false; gone: boolean }> {
+  const all: StoredPart[] = [];
   let marker = "";
   for (let page = 0; page < 20; page++) {
     const query: Record<string, string> = { uploadId, "max-parts": "1000" };
     if (marker) query["part-number-marker"] = marker;
     const r = await r2SignedRequest({ method: "GET", key, query });
     if (r.status >= 300) {
-      console.error("R2 ListParts failed:", r.status, r.text);
-      return null;
+      // 404/NoSuchUpload means the upload id is dead — aborted, completed, or
+      // reaped by the bucket lifecycle rule. Recoverable: start a fresh one.
+      const gone = r.status === 404 || r.text.includes("NoSuchUpload");
+      if (!gone) console.error("R2 ListParts failed:", r.status, r.text);
+      return { ok: false, gone };
     }
     for (const block of r.text.match(/<Part>[\s\S]*?<\/Part>/g) || []) {
       const n = block.match(/<PartNumber>(\d+)<\/PartNumber>/);
       const e = block.match(/<ETag>([\s\S]*?)<\/ETag>/);
-      if (n && e) all.push({ partNumber: Number(n[1]), etag: e[1].trim() });
+      const s = block.match(/<Size>(\d+)<\/Size>/);
+      if (n && e) all.push({ partNumber: Number(n[1]), etag: e[1].trim(), size: s ? Number(s[1]) : -1 });
     }
-    if (!/<IsTruncated>true<\/IsTruncated>/.test(r.text)) return all;
+    if (!/<IsTruncated>true<\/IsTruncated>/.test(r.text)) return { ok: true, parts: all };
     const next = r.text.match(/<NextPartNumberMarker>(\d+)<\/NextPartNumberMarker>/);
-    if (!next) return all;
+    if (!next) return { ok: true, parts: all };
     marker = next[1];
   }
   console.error("R2 ListParts did not terminate after 20 pages:", key);
-  return null;
+  return { ok: false, gone: false };
 }
 
 /** The delivery must exist and belong to the caller's org. */
@@ -209,6 +218,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, urls });
     }
 
+    // ---- status -------------------------------------------------------
+    // Which parts has R2 already got? This is what makes resume possible: the
+    // browser remembers only an upload id, and asks R2 what actually landed
+    // rather than trusting its own record of what it thinks it sent.
+    if (action === "status") {
+      const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
+      const uploadId = typeof body.uploadId === "string" ? body.uploadId : "";
+      if (!storagePath || !uploadId) return res.status(400).json({ error: "Missing storagePath or uploadId" });
+      if (!pathBelongsToOrg(storagePath, orgId)) return res.status(403).json({ error: "Not your file" });
+
+      const listed = await listAllParts(storagePath, uploadId);
+      // "Gone" is not an error the user should see — it just means resume is
+      // off the table and the caller should start a fresh upload.
+      if (!listed.ok) {
+        if (listed.gone) return res.status(200).json({ ok: true, live: false, parts: [] });
+        return res.status(502).json({ error: "Couldn't read the uploaded parts" });
+      }
+      return res.status(200).json({
+        ok: true, live: true, partSize: PART_SIZE,
+        parts: listed.parts.map(p => ({ partNumber: p.partNumber, size: p.size })),
+      });
+    }
+
     // ---- complete -----------------------------------------------------
     if (action === "complete") {
       const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
@@ -227,20 +259,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ETag", failed, retried and died. Asking R2 what it already holds sinks
       // the whole problem, and cannot drift from what was actually stored.
       const listed = await listAllParts(storagePath, uploadId);
-      if (!listed) return res.status(502).json({ error: "Couldn't read the uploaded parts" });
+      if (!listed.ok) {
+        return res.status(502).json({
+          error: listed.gone ? "That upload expired — start it again." : "Couldn't read the uploaded parts",
+        });
+      }
 
       // R2 assembles whatever parts it has. If one never arrived, completing
       // anyway would produce a short file that looks perfectly fine — a
       // truncated wedding video is worse than a failed upload, because nobody
       // finds out until the client presses play.
-      if (listed.length !== expectedParts) {
-        console.error(`R2 multipart part mismatch on ${storagePath}: have ${listed.length}, expected ${expectedParts}`);
-        return res.status(502).json({ error: `Upload incomplete — ${listed.length} of ${expectedParts} pieces arrived. Try again.` });
+      if (listed.parts.length !== expectedParts) {
+        console.error(`R2 multipart part mismatch on ${storagePath}: have ${listed.parts.length}, expected ${expectedParts}`);
+        return res.status(502).json({ error: `Upload incomplete — ${listed.parts.length} of ${expectedParts} pieces arrived. Try again.` });
       }
 
       // S3 requires parts in ascending order; an out-of-order list is rejected
       // with a confusing InvalidPartOrder rather than being sorted for you.
-      const ordered = [...listed].sort((a, b) => a.partNumber - b.partNumber);
+      const ordered = [...listed.parts].sort((a, b) => a.partNumber - b.partNumber);
       const xml = "<CompleteMultipartUpload>"
         + ordered.map(p =>
             `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlEscape(p.etag)}</ETag></Part>`

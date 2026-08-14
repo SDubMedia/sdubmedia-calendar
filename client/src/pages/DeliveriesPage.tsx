@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
+import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/multipart";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
@@ -2044,6 +2045,73 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
   });
 }
 
+// Resume bookkeeping for multipart uploads
+// ---------------------------------------------------------------
+// All the browser needs to remember is an upload id. Which parts actually
+// landed is asked of R2 at resume time — a local tally of "what I think I
+// sent" can be wrong (a part can fail after the progress event fires), and
+// being wrong here means a silently truncated file.
+//
+// Kept in localStorage rather than the database: it is per-browser scratch,
+// worthless to any other device (the file lives on this machine), and a schema
+// migration to store it server-side would buy nothing.
+
+const MPU_PREFIX = "slate:mpu:";
+// Must not exceed the bucket's "abort incomplete multipart uploads" lifecycle
+// rule, or we would offer to resume an upload R2 has already reaped.
+const MPU_RECORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface MpuRecord {
+  uploadId: string;
+  storagePath: string;
+  partSize: number;
+  partCount: number;
+  savedAt: number;
+}
+
+/** Identifies the exact file. Name alone is not enough — resuming onto a
+ *  different file that happens to share a name would splice two videos
+ *  together and the result would still "complete" cleanly. */
+function mpuKey(deliveryId: string, file: File): string {
+  return `${MPU_PREFIX}${deliveryId}:${file.name}:${file.size}:${file.lastModified}`;
+}
+
+// localStorage throws in private mode and when the quota is full. Resume is a
+// convenience: if the bookkeeping fails, the upload must still work.
+function mpuLoad(key: string): MpuRecord | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const rec = JSON.parse(raw) as MpuRecord;
+    if (!rec?.uploadId || !rec?.storagePath) return null;
+    if (Date.now() - (rec.savedAt || 0) > MPU_RECORD_TTL_MS) { localStorage.removeItem(key); return null; }
+    return rec;
+  } catch { return null; }
+}
+
+function mpuSave(key: string, rec: MpuRecord): void {
+  try { localStorage.setItem(key, JSON.stringify(rec)); } catch { /* resume is optional */ }
+}
+
+function mpuClear(key: string): void {
+  try { localStorage.removeItem(key); } catch { /* resume is optional */ }
+}
+
+/** Drop records past the TTL so a laptop that uploads a lot does not
+ *  accumulate dead keys forever. */
+function mpuPrune(): void {
+  try {
+    const dead: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(MPU_PREFIX)) continue;
+      const rec = JSON.parse(localStorage.getItem(k) || "{}") as MpuRecord;
+      if (Date.now() - (rec.savedAt || 0) > MPU_RECORD_TTL_MS) dead.push(k);
+    }
+    dead.forEach(k => localStorage.removeItem(k));
+  } catch { /* resume is optional */ }
+}
+
 /**
  * Multipart upload for large files (finished wedding films run 3-5GB).
  *
@@ -2053,8 +2121,10 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
  * its own, and R2 reassembles them into one object. The client downloads a
  * single intact file.
  *
- * On any failure the multipart upload is aborted, because abandoned parts sit
- * in the bucket costing money and R2 does not clean them up on its own.
+ * RESUMABLE. A failed or abandoned upload is deliberately NOT aborted: the
+ * parts R2 already holds are the whole point, and dropping the same file on
+ * the same gallery again picks up where it stopped. The bucket's lifecycle
+ * rule reaps anything never resumed (see MPU_RECORD_TTL_MS).
  */
 async function uploadFileMultipart(
   deliveryId: string,
@@ -2072,13 +2142,66 @@ async function uploadFileMultipart(
     return j;
   };
 
-  const { uploadId, storagePath, partSize, partCount } = await call({
-    action: "create", deliveryId, fileName: file.name,
-    contentType: file.type || "application/octet-stream", sizeBytes: file.size,
-  });
+  mpuPrune();
+  const recordKey = mpuKey(deliveryId, file);
+
+  // --- resume, if this exact file was interrupted on this gallery ---
+  let uploadId = "";
+  let storagePath = "";
+  let partSize = 0;
+  let partCount = 0;
+  const alreadyDone = new Set<number>();
+
+  const saved = mpuLoad(recordKey);
+  if (saved) {
+    try {
+      const st = await call({ action: "status", storagePath: saved.storagePath, uploadId: saved.uploadId });
+      // Only resume when R2 still has the upload AND the part size has not
+      // changed under us (a deploy can change PART_SIZE, which would shift
+      // every offset and interleave garbage).
+      if (st.live && st.partSize === saved.partSize) {
+        uploadId = saved.uploadId;
+        storagePath = saved.storagePath;
+        partSize = saved.partSize;
+        partCount = saved.partCount;
+        resumablePartNumbers(file.size, partSize, partCount, st.parts as ListedPart[])
+          .forEach(n => alreadyDone.add(n));
+      } else {
+        // Still live but unusable (part size changed under us). Abort it here
+        // rather than leaving it for the lifecycle rule — this is the one case
+        // where we know for certain the parts will never be wanted.
+        if (st.live) { try { await call({ action: "abort", storagePath: saved.storagePath, uploadId: saved.uploadId }); } catch { /* lifecycle rule will get it */ } }
+        mpuClear(recordKey);
+      }
+    } catch (e) {
+      // Resume is best-effort: fall through to a clean upload rather than
+      // failing the whole thing because a status check hiccupped.
+      console.warn("Couldn't check for a resumable upload — starting fresh", e);
+      mpuClear(recordKey);
+    }
+  }
+
+  if (!uploadId) {
+    const created = await call({
+      action: "create", deliveryId, fileName: file.name,
+      contentType: file.type || "application/octet-stream", sizeBytes: file.size,
+    });
+    ({ uploadId, storagePath, partSize, partCount } = created);
+    alreadyDone.clear();
+  }
+
+  // Written before a single byte goes out: if the tab dies mid-upload, the id
+  // has to already be on disk or those parts are unreachable.
+  mpuSave(recordKey, { uploadId, storagePath, partSize, partCount, savedAt: Date.now() });
 
   try {
-    const numbers = Array.from({ length: partCount }, (_, i) => i + 1);
+    const numbers = Array.from({ length: partCount }, (_, i) => i + 1)
+      .filter(n => !alreadyDone.has(n));
+    if (alreadyDone.size > 0) {
+      toast.message(`Resuming ${file.name}`, {
+        description: `${alreadyDone.size} of ${partCount} pieces already uploaded.`,
+      });
+    }
     // Signed in batches of 200 — the endpoint's per-request ceiling.
     const urlMap = new Map<number, string>();
     for (let i = 0; i < numbers.length; i += 200) {
@@ -2087,8 +2210,11 @@ async function uploadFileMultipart(
     }
 
     // Progress is tracked per part so the bar reflects real bytes in flight
-    // rather than jumping a whole part at a time.
+    // rather than jumping a whole part at a time. Parts recovered from a
+    // previous attempt count as fully sent, so a resumed upload picks the bar
+    // up where it left off instead of restarting at zero.
     const sent = new Array<number>(partCount).fill(0);
+    alreadyDone.forEach(n => { sent[n - 1] = expectedPartSize(file.size, partSize, n); });
     const report = () => {
       const total = sent.reduce((a, b) => a + b, 0);
       onProgress(Math.min(99, Math.round((total / file.size) * 100)));
@@ -2138,13 +2264,17 @@ async function uploadFileMultipart(
     // expectedParts lets the server refuse to assemble a file with a piece
     // missing, rather than quietly producing a truncated video.
     await call({ action: "complete", storagePath, uploadId, expectedParts: partCount });
+    mpuClear(recordKey);
     onProgress(100);
     return storagePath as string;
   } catch (err) {
-    // Best effort — if this fails too, the parts linger but the user still
-    // needs the real error, not the cleanup error.
-    try { await call({ action: "abort", storagePath, uploadId }); } catch { /* ignore */ }
-    throw err;
+    // Deliberately does NOT abort. The parts already in R2 are exactly what
+    // makes this resumable, and throwing them away would mean re-uploading
+    // gigabytes over a connection that just proved it drops. The record stays
+    // on disk so dropping the same file on this gallery again continues from
+    // here; the bucket lifecycle rule reaps whatever is never resumed.
+    const msg = err instanceof Error ? err.message : "Upload failed";
+    throw new Error(`${msg} — drop the same file here again to pick up where it stopped.`, { cause: err });
   }
 }
 

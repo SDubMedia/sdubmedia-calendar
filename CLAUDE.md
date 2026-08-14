@@ -357,6 +357,30 @@ query-auth → InvalidArgument). It's Cloudflare-dashboard-only. See also
 `[[reference_slate_r2_cors_native_uploads]]`: the same config is why native iOS
 uploads fail — `capacitor://localhost` isn't an allowed origin.
 
+#### Multipart uploads resume, and deliberately never abort on failure
+
+Dropping the same file on the same gallery again continues where it stopped.
+The browser stores only the upload id (localStorage, `slate:mpu:` prefix, keyed
+by delivery + name + size + lastModified); **which parts landed is always asked
+of R2** via the `status` action. A local tally of "what I think I sent" can be
+wrong — a part can fail after its last progress event — and being wrong here
+means a silently truncated file.
+
+- **A failed upload is NOT aborted.** The parts already in R2 are the entire
+  point of resuming. Don't "fix" the missing abort — it's load-bearing.
+- **A part only counts as done if R2 reports it at exactly the expected size.**
+  A dropped connection leaves a SHORT part behind and R2 keeps it. Re-PUT
+  overwrites, so re-sending a doubtful part is free; trusting one punches a
+  hole in the middle of the video. Logic + tests:
+  `client/src/lib/multipart.ts`, `client/src/lib/__tests__/multipart.test.ts`.
+- **Changing `PART_SIZE` invalidates every in-flight upload.** Offsets shift,
+  so the client aborts the stale upload and starts fresh. That's why `status`
+  returns `partSize` and the client compares it.
+- **`MPU_RECORD_TTL_MS` (7 days) must stay ≤ the bucket's "abort incomplete
+  multipart uploads" lifecycle rule**, or we offer to resume uploads R2 has
+  already reaped. That rule is the only cleanup: since nothing aborts on
+  failure, abandoned parts are billed until it fires.
+
 ### Calendar
 - **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.
 - **Per-meeting color.** Use `getMeetingColor(value)` from `MeetingDialog.tsx` — same swatch shape as `getEventColor` for personal events. Empty value = slate default.
