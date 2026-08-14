@@ -379,7 +379,10 @@ means a silently truncated file.
 - **`MPU_RECORD_TTL_MS` (7 days) must stay ≤ the bucket's "abort incomplete
   multipart uploads" lifecycle rule**, or we offer to resume uploads R2 has
   already reaped. That rule is the only cleanup: since nothing aborts on
-  failure, abandoned parts are billed until it fires.
+  failure, abandoned parts are billed until it fires. Verified 2026-08-13:
+  `slate-deliveries` has **"Default Multipart Abort Rule", no prefix, abort
+  after 7 days, enabled** — R2 creates it with the bucket, so there was nothing
+  to set up. If `MPU_RECORD_TTL_MS` is ever raised, raise that rule first.
 
 ### Calendar
 - **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.
