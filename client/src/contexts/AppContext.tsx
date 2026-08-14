@@ -171,6 +171,14 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+// Statuses that hand work back to the owner, and the verb the auto-created
+// to-do opens with. Only these two: a to-do on every transition would mostly
+// be noise you tick off immediately. Add a status here to add an automation.
+const STATUS_HANDOFF_TODO = {
+  filming_done: "Edit",
+  editing_done: "Deliver",
+} as const;
+
 // ---- DB row → app type converters ----
 function rowToClient(r: any): Client {
   return {
@@ -2905,6 +2913,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!updated) throw new Error("Update failed — row not returned (possible RLS restriction)");
     const normalized = rowToProject(updated);
     setRawData(d => ({ ...d, projects: d.projects.map(x => x.id === id ? normalized : x) }));
+
+    // Hand-off to-dos. Two moments put the ball back in the owner's court: the
+    // shoot is done and needs editing, and the edit is done and needs sending.
+    // Created here rather than in the UI so every route that moves a project
+    // gets one — detail sheet, status dropdown, anywhere added later.
+    //
+    // Best effort: a to-do that fails to write must not fail the status change
+    // itself, which is the thing the user actually asked for.
+    if (prev && patch.status !== undefined && patch.status !== prev.status) {
+      const handoff = STATUS_HANDOFF_TODO[patch.status as keyof typeof STATUS_HANDOFF_TODO];
+      if (handoff) {
+        try {
+          const client = rawData.clients.find(c => c.id === normalized.clientId);
+          const pType = rawData.projectTypes.find(t => t.id === normalized.projectTypeId);
+          const label = [pType?.name, client?.company].filter(Boolean).join(" — ") || "Project";
+          const title = `${handoff} ${label}`;
+          // Don't stack duplicates when a project is moved back and forth, or
+          // when two tabs both save. Matches the OPEN to-do for this project,
+          // so one already ticked off can legitimately be recreated.
+          //
+          // Checked against the database, not rawData: this callback doesn't
+          // list rawData in its deps, so the copy it closes over can be a
+          // stale snapshot that hasn't seen a recently added to-do.
+          const { data: existing } = await supabase
+            .from("todos").select("id")
+            .eq("project_id", id).eq("title", title).eq("done", false)
+            .limit(1).maybeSingle();
+          if (!existing) {
+            await addTodo({ title, notes: "", assignedCrewMemberId: null, projectId: id, dueDate: "" });
+          }
+        } catch (todoErr) {
+          console.warn("Couldn't create the hand-off to-do", todoErr);
+        }
+      }
+    }
 
     // Audit trail: log status / date / time moves (only real changes).
     if (prev) {

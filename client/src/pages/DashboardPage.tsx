@@ -41,6 +41,16 @@ function formatDate(d: string): string {
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// The three stages a project passes through between the shoot and delivery.
+// Membership of this map is what puts a project in the Current Projects card,
+// so adding a status here is all it takes to surface it. `rank` orders the
+// list: lowest = needs you soonest.
+const CURRENT_STAGE = {
+  editing_done: { rank: 0, label: "Ready", hint: "ready to send", className: "border-teal-500/40 text-teal-600 dark:text-teal-300" },
+  in_editing:   { rank: 1, label: "Editing", hint: "being edited", className: "border-blue-500/40 text-blue-600 dark:text-blue-300" },
+  filming_done: { rank: 2, label: "Needs edit", hint: "filmed, not started", className: "border-amber-500/40 text-amber-600 dark:text-amber-300" },
+} as const;
+
 export default function DashboardPage() {
   const { data } = useApp();
   const { profile, effectiveProfile, viewAsRole, setViewAsRole } = useAuth();
@@ -108,8 +118,16 @@ export default function DashboardPage() {
       .sort((a, b) => (a.doc.createdAt || "").localeCompare(b.doc.createdAt || ""));
   }, [data.projectDocuments, data.projects]);
 
-  const readyToDeliver = useMemo(
-    () => data.projects.filter(p => p.status === "editing_done").sort((a, b) => b.date.localeCompare(a.date)),
+  // Everything actively being worked on: shot but not started, mid-edit, and
+  // finished but not sent. Ordered by what needs you soonest — ready-to-send
+  // first, then in-flight edits, then footage nobody has touched — and within
+  // a stage the OLDEST first, because that's the one going stale.
+  const currentProjects = useMemo(
+    () => data.projects
+      .filter(p => p.status in CURRENT_STAGE)
+      .sort((a, b) =>
+        CURRENT_STAGE[a.status as keyof typeof CURRENT_STAGE].rank - CURRENT_STAGE[b.status as keyof typeof CURRENT_STAGE].rank
+        || a.date.localeCompare(b.date)),
     [data.projects],
   );
 
@@ -609,32 +627,47 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {isWidgetEnabled("readyToDeliver") && (
-          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("readyToDeliver") }}>
+        {/* Current Projects — everything between the shoot and delivery.
+            Replaced the old Ready to Deliver card, which only showed the last
+            of the three stages: a project sitting in editing for three weeks
+            was invisible here until the moment it was finished. */}
+        {isWidgetEnabled("currentProjects") && (
+          <div className="bg-card border border-border rounded-lg" style={{ order: orderOf("currentProjects") }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Ready to Deliver</h3>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Current Projects
+                {currentProjects.length > 0 && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{currentProjects.length}</span>
+                )}
+              </h3>
               <Link href="/deliveries" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">Galleries <ArrowRight className="w-3 h-3" /></Link>
             </div>
             <div className="divide-y divide-border">
-              {readyToDeliver.length === 0 ? (
-                <div className="p-6 text-center text-sm text-muted-foreground">Nothing waiting to be delivered</div>
+              {currentProjects.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">Nothing in progress</div>
               ) : (
-                readyToDeliver.slice(0, 6).map(p => {
+                currentProjects.slice(0, 8).map(p => {
                   const client = data.clients.find(c => c.id === p.clientId);
                   const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                  const stage = CURRENT_STAGE[p.status as keyof typeof CURRENT_STAGE];
                   return (
                     <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/3 cursor-pointer transition-colors" onClick={() => setSelectedProject(p)}>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-medium text-foreground truncate">{pType?.name ?? "Project"}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground shrink-0">{client?.company}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground shrink-0 truncate max-w-[45%]">{client?.company}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">Edited {formatDate(p.date)} · ready to send</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatDate(p.date)} · {stage?.hint}</p>
                       </div>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-teal-500/40 text-teal-600 dark:text-teal-300 shrink-0">Ready</span>
+                      <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", stage?.className)}>{stage?.label}</span>
                     </div>
                   );
                 })
+              )}
+              {currentProjects.length > 8 && (
+                <div className="px-4 py-2 text-center text-xs text-muted-foreground">
+                  and {currentProjects.length - 8} more
+                </div>
               )}
             </div>
           </div>
