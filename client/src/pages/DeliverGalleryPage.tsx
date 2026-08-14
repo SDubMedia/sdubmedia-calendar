@@ -14,7 +14,7 @@
 //     or routes to Stripe Connect Checkout for the overage
 //   - JSZip via CDN handles "Download all" — no server-side ZIP
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { toast } from "sonner";
 
@@ -35,6 +35,34 @@ interface FileItem {
   durationSeconds?: number | null;
   thumbnailUrl?: string;
 }
+
+/** A full-width divider inside the masonry grid.
+ *
+ *  Spans every column so it reads as a section break. Kept as a row IN the
+ *  grid rather than splitting the page into two grids: one grid means one
+ *  watermark layer, one column measurement, and — the part that matters — the
+ *  lightbox keeps addressing files by their position in a single array, so
+ *  arrow keys and the slideshow still move to the tile you can see next.
+ *
+ *  `span 11` at 4px per row ≈ 44px, matching gridAutoRows in the grid below. */
+function GallerySectionHead({ label }: { label: string }) {
+  return (
+    <div
+      style={{ gridColumn: "1 / -1", gridRow: "span 11" }}
+      className="flex items-end bg-white px-3 pb-2 pt-4"
+    >
+      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</span>
+    </div>
+  );
+}
+
+/** Films first, then photos, each group keeping the order the owner arranged.
+ *  A stable sort by one key does exactly that — the relative order of two
+ *  photos never changes, so drag-to-reorder still means something. */
+function sortFilmsFirst(files: FileItem[]): FileItem[] {
+  return [...files].sort((a, b) => rank(a) - rank(b));
+}
+const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 
 interface DeliveryInfo {
   id: string;
@@ -237,7 +265,14 @@ export default function DeliverGalleryPage() {
       setPasswordRequired(false);
       setEmailRequired(false);
       setDelivery(data.delivery);
-      setFiles(data.files || []);
+      // Films first, then photos, each keeping the order the owner arranged.
+      //
+      // Sorted HERE rather than only when rendering, so the array the grid
+      // draws is the array everything else indexes into: the lightbox, its
+      // arrow keys and the slideshow all address files by position, and
+      // splitting them at render time alone would make "next" jump somewhere
+      // that isn't the next tile on screen.
+      setFiles(sortFilmsFirst(data.files || []));
       setServerSelections(data.selections || []);
       setOrg(data.org);
       // Pre-populate local picks from server (client returning to view their picks)
@@ -421,6 +456,11 @@ export default function DeliverGalleryPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [colWidth, files.length]);
+
+  // Films and photos get their own headed sections, but only when the gallery
+  // holds both — a photo-only gallery should look exactly as it always has.
+  const videoCount = useMemo(() => files.filter(f => f.mediaType === "video").length, [files]);
+  const showSectionHeads = videoCount > 0 && videoCount < files.length;
 
   const [selecting, setSelecting] = useState(false);
   const [dlPicked, setDlPicked] = useState<Set<string>>(new Set());
@@ -821,9 +861,17 @@ export default function DeliverGalleryPage() {
           const isPicked = picked.has(f.id);
           const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
           const isVideo = f.mediaType === "video";
+          // files is sorted films-first, so the first video is index 0 and the
+          // first photo is index videoCount. Headings only appear when the
+          // gallery actually holds both — a photo-only gallery is unchanged.
+          const head = !showSectionHeads ? null
+            : i === 0 ? (videoCount === 1 ? "Film" : "Films")
+            : i === videoCount ? "Photos"
+            : null;
           return (
+            <Fragment key={f.id}>
+            {head && <GallerySectionHead label={head} />}
             <div
-              key={f.id}
               // Height comes from the photo's own proportions. Videos and
               // anything missing dimensions fall back to 3:2 rather than
               // collapsing to nothing.
@@ -931,6 +979,7 @@ export default function DeliverGalleryPage() {
                 </div>
               )}
             </div>
+            </Fragment>
           );
         })}
       </div>
