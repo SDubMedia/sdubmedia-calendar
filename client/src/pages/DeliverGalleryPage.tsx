@@ -392,15 +392,15 @@ export default function DeliverGalleryPage() {
    *  and the CDN load, rather than two that drift. */
   /** How many 4px grid rows a tile needs to keep its real shape.
    *  The span is in absolute pixels, so it has to be computed against the
-   *  ACTUAL column width — a fixed guess would make every photo the wrong
-   *  height on a phone, where columns are half the size. `colWidth` is measured
-   *  from a real tile and updates on resize and rotation. */
-  function tileRowSpan(f: FileItem): number {
+   *  ACTUAL width the tile will occupy — a fixed guess would make every photo
+   *  the wrong height on a phone, where columns are half the size. `colWidth`
+   *  is measured from the grid's own column track and updates on resize. */
+  function tileRowSpan(f: FileItem, widthPx = colWidth): number {
     const ROW = 4; // px, matches gridAutoRows
     const GAP = 1; // px, matches gap-px on the grid
     const w = f.width && f.width > 0 ? f.width : 3;
     const h = f.height && f.height > 0 ? f.height : 2;
-    const targetPx = colWidth * (h / w);
+    const targetPx = widthPx * (h / w);
     // Spanning n rows is NOT n*ROW tall — the grid puts a gap between every
     // row it crosses, so the real height is n*ROW + (n-1)*GAP. Ignoring that
     // stretched every tile by a quarter: a 16:9 photo at 220px wide should be
@@ -451,19 +451,25 @@ export default function DeliverGalleryPage() {
   // into a row span. Starts at a sane guess so the first paint isn't wild.
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [colWidth, setColWidth] = useState(360);
+  const [gridWidth, setGridWidth] = useState(1200);
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
     const measure = () => {
-      const tile = el.querySelector<HTMLElement>("[data-tile]");
-      const w = tile?.offsetWidth;
-      if (w && Math.abs(w - colWidth) > 1) setColWidth(w);
+      // Read the column track itself rather than measuring a tile. A tile is
+      // only a reliable stand-in for one column while every tile is one column
+      // wide — films span the full width, and measuring one of those set
+      // colWidth to the whole grid and made every photo below it enormous.
+      const track = parseFloat(getComputedStyle(el).gridTemplateColumns.split(" ")[0] || "");
+      const gw = el.getBoundingClientRect().width;
+      if (track && Math.abs(track - colWidth) > 1) setColWidth(track);
+      if (gw && Math.abs(gw - gridWidth) > 1) setGridWidth(gw);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [colWidth, files.length]);
+  }, [colWidth, gridWidth, files.length]);
 
   // Films and photos get their own headed sections, but only when the gallery
   // holds both — a photo-only gallery should look exactly as it always has.
@@ -832,8 +838,16 @@ export default function DeliverGalleryPage() {
         // left-to-right order the owner arranged is preserved (CSS columns
         // would have reflowed it top-to-bottom per column).
         ref={gridRef}
-        style={{ gridAutoRows: "4px" }}
-        className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-px bg-slate-200"
+        // auto-fit collapses tracks with nothing in them, and justify-center
+        // centres what's left — so a row that doesn't fill the width sits in
+        // the middle instead of hugging the left with dead space beside it.
+        // The 260px ceiling stops four photos stretching to billboard size on
+        // a wide screen.
+        style={{ gridAutoRows: "4px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 260px))" }}
+        // No grey backdrop: it only ever showed through where there were no
+        // tiles, which read as a grey bar down the side of the gallery. Tiles
+        // carry their own hairline instead.
+        className="relative grid justify-center gap-px"
         onContextMenu={(e) => {
           if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
         }}
@@ -884,8 +898,17 @@ export default function DeliverGalleryPage() {
               // anything missing dimensions fall back to 3:2 rather than
               // collapsing to nothing.
               data-tile
-              style={{ gridRow: `span ${tileRowSpan(f)}` }}
-              className={`relative group cursor-pointer overflow-hidden bg-white ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
+              // A film runs the full width of the grid — it is the headline
+              // deliverable, and a lone video tile in a five-column row left a
+              // stripe of empty gallery beside it. Its height is worked out
+              // from the FULL width, not the column width, or a full-bleed
+              // tile would keep a one-column tile's height.
+              style={
+                isVideo
+                  ? { gridColumn: "1 / -1", gridRow: `span ${tileRowSpan(f, gridWidth)}` }
+                  : { gridRow: `span ${tileRowSpan(f)}` }
+              }
+              className={`relative group cursor-pointer overflow-hidden bg-white outline outline-1 -outline-offset-1 outline-slate-200 ${selecting && dlPicked.has(f.id) ? "ring-4 ring-black ring-inset" : ""}`}
               onClick={() => (selecting ? toggleDlPick(f.id) : setLightboxIdx(i))}
             >
               {/* In select mode the tick is the whole point, so it's always
