@@ -309,7 +309,12 @@ export default function ViewProposalPage() {
     : 0;
 
   // Agreement pages
-  const agreementPages = (proposal?.pages || []).filter((p: any) => p.type === "agreement" || p.type === "custom");
+  // Every page, in the order they were authored. This used to filter to
+  // agreement + custom, which silently dropped invoice and payment pages: you
+  // could add them to a template and they simply never appeared, so there was
+  // no way to check what the client would see before sending.
+  const agreementPages = [...(proposal?.pages || [])]
+    .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const hasPages = agreementPages.length > 0;
 
   // Branding extracted once per render — header + footer both consume it.
@@ -436,13 +441,62 @@ export default function ViewProposalPage() {
              were displayed as text in a whitespace-pre-wrap div. */}
         {hasPages && agreementPages.map((page: any) => (
           <div key={page.id} className="space-y-2">
-            <h2 className="text-lg font-bold text-gray-900 px-2">{page.label || "Agreement"}</h2>
-            <ProposalBlockRenderer
-              page={page}
-              libraryPackages={proposal?.libraryPackages || []}
-              selectedPackageIds={selectedPackageIds}
-              onTogglePackage={togglePackageInGroup}
-            />
+            <h2 className="text-lg font-bold text-gray-900 px-2">
+              {page.label || (page.type === "invoice" ? "Invoice" : page.type === "payment" ? "Payment" : "Agreement")}
+            </h2>
+            {/* Invoice and payment pages are generated from what the client
+                actually chose rather than authored block by block — an invoice
+                typed by hand goes stale the moment a package price changes. */}
+            {page.type === "invoice" ? (
+              <div className="bg-white rounded-xl shadow-md border border-border overflow-hidden">
+                <div className="px-8 sm:px-16 py-12 space-y-4 text-gray-800">
+                  {groupChosen.length === 0 ? (
+                    <p className="text-sm text-gray-500">Nothing selected yet — choose your services above and they'll be itemised here.</p>
+                  ) : (
+                    <>
+                      <ul className="divide-y divide-gray-100">
+                        {groupChosen.map((pkg: any) => (
+                          <li key={pkg.id} className="flex items-baseline justify-between gap-4 py-3">
+                            <span className="text-sm text-gray-800">{pkg.name}</span>
+                            <span className="text-sm tabular-nums">${(pkg.defaultPrice || 0).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-baseline justify-between pt-4 border-t border-gray-300">
+                        <span className="text-sm font-semibold">Total</span>
+                        <span className="text-lg font-semibold tabular-nums">${groupTotal.toLocaleString()}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : page.type === "payment" ? (
+              <div className="bg-white rounded-xl shadow-md border border-border overflow-hidden">
+                <div className="px-8 sm:px-16 py-12 space-y-3 text-gray-800">
+                  {milestones.length === 0 ? (
+                    <p className="text-sm text-gray-500">Payment terms appear here once they're set on the template.</p>
+                  ) : (
+                    milestones.map((m: any, i: number) => (
+                      <div key={m.id || i} className="flex items-baseline justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-sm">{m.label}</span>
+                        <span className="text-sm tabular-nums">
+                          {m.type === "percent"
+                            ? `${m.percent}%${total ? ` · $${Math.round(total * (m.percent || 0) / 100).toLocaleString()}` : ""}`
+                            : `$${(m.fixedAmount || 0).toLocaleString()}`}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <ProposalBlockRenderer
+                page={page}
+                libraryPackages={proposal?.libraryPackages || []}
+                selectedPackageIds={selectedPackageIds}
+                onTogglePackage={togglePackageInGroup}
+              />
+            )}
           </div>
         ))}
 

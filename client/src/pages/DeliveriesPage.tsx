@@ -301,6 +301,7 @@ interface CreateInput {
   status: DeliveryStatus;
   coverFileId: string | null;
   coverStoragePath: string;
+  coverFocal: string;
   coverWidth: number;
   coverHeight: number;
   coverLayout: "center" | "vintage" | "minimal";
@@ -385,7 +386,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               buyAllFlatCents: Math.round((parseFloat(flatDollars) || 0) * 100),
               expiresAt: expiresAt || null,
               status: "draft",
-              coverFileId: null, coverStoragePath: "", coverWidth: 0, coverHeight: 0,
+              coverFileId: null, coverStoragePath: "", coverFocal: "center", coverWidth: 0, coverHeight: 0,
               coverLayout: "center",
               coverFont: "",
               coverSubtitle: null,
@@ -1451,10 +1452,10 @@ export function getCoverFont(value: string) {
 }
 
 interface CoverDesignProps {
-  delivery: { id: string; title: string; coverFileId: string | null; coverStoragePath: string; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  delivery: { id: string; title: string; coverFileId: string | null; coverStoragePath: string; coverFocal?: string; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
   files: Array<{ id: string; originalName: string }>;
   signedUrls: Map<string, string>;
-  onUpdate: (patch: { coverFileId?: string | null; coverStoragePath?: string; coverWidth?: number; coverHeight?: number; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+  onUpdate: (patch: { coverFileId?: string | null; coverStoragePath?: string; coverFocal?: string; coverWidth?: number; coverHeight?: number; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
 }
 
 // Stock photos per layout — used in the small chooser thumbnails so each
@@ -1792,6 +1793,33 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
               ? "Using an uploaded cover — full quality, and it stays even if you delete photos from the gallery."
               : "A cover picked from the gallery uses the compressed copy and disappears if that photo is deleted."}
           </p>
+
+          {/* The hero fills the width and crops vertically, so a full-length
+              portrait loses the head and feet and lands on the middle of the
+              subject. This is the dial for that. */}
+          <div className="mt-3">
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Cover framing</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { v: "top", label: "Top", hint: "Keeps faces — right for full-length portraits" },
+                { v: "center", label: "Centre", hint: "Default" },
+                { v: "bottom", label: "Bottom", hint: "Anchors to the lower part of the frame" },
+                { v: "contain", label: "Whole image", hint: "Shows all of it, letterboxed — never crops" },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  title={opt.hint}
+                  onClick={() => onUpdate({ coverFocal: opt.v })}
+                  className={`text-xs px-3 py-1.5 rounded-lg border ${
+                    (delivery.coverFocal || "center") === opt.v
+                      ? "border-[#0088ff] text-white bg-[#0088ff]/10"
+                      : "border-white/10 text-slate-400 hover:text-white hover:border-white/25"
+                  }`}
+                >{opt.label}</button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

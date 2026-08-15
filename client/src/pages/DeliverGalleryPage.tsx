@@ -299,6 +299,7 @@ interface DeliveryInfo {
   title: string;
   coverFileId: string | null;
   coverUrl?: string;
+  coverFocal?: string;
   coverWidth?: number;
   coverHeight?: number;
   coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
@@ -1036,6 +1037,7 @@ export default function DeliverGalleryPage() {
           subtitle={delivery.coverSubtitle}
           date={delivery.coverDate}
           fontValue={delivery.coverFont || ""}
+          focal={delivery.coverFocal || "center"}
         />
       ) : delivery.downloadOnly ? null : (
         // Minimal layout: typography-only on white
@@ -1618,9 +1620,10 @@ const COVER_HERO_FONTS: Record<string, { family: string; weight: number }> = {
 function getCoverHeroFontFamily(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).family; }
 function getCoverHeroFontWeight(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).weight; }
 
-function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue }: {
+function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue, focal = "center" }: {
   layout: CoverLayout;
   imageUrl: string;
+  focal?: string;
   title: string;
   subtitle: string | null;
   date: string | null;
@@ -1705,7 +1708,17 @@ function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue }: {
 
   return (
     <section className="relative w-full overflow-hidden" style={{ height: "min(100vh, 900px)" }}>
-      <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" loading="eager" />
+      {/* A full-length portrait cropped from the centre lands on the middle of
+          the subject — Lissa's cover framed her chest. "top" pulls the crop up
+          to keep faces, "contain" shows the whole frame when any crop is
+          wrong. */}
+      <img
+        src={imageUrl}
+        alt=""
+        className={`absolute inset-0 w-full h-full ${focal === "contain" ? "object-contain bg-black" : "object-cover"}`}
+        style={focal === "contain" ? undefined : { objectPosition: `center ${focal === "top" ? "15%" : focal === "bottom" ? "85%" : "50%"}` }}
+        loading="eager"
+      />
       <div className="absolute inset-0" style={{ background: overlay }} />
       <div className={`absolute inset-0 flex flex-col p-8 sm:p-16 ${wrapAlign}`}>
         {titleEl}

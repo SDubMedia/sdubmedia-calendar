@@ -877,6 +877,7 @@ function rowToDelivery(r: any): Delivery {
     title: r.title || "",
     coverFileId: r.cover_file_id || null,
     coverStoragePath: r.cover_storage_path || "",
+    coverFocal: r.cover_focal || "center",
     coverWidth: r.cover_width || 0,
     coverHeight: r.cover_height || 0,
     watermarkText: r.watermark_text || null,
@@ -2201,7 +2202,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createReShootGallery = useCallback(async (projectId: string, title: string): Promise<Delivery | null> => {
     return addDelivery({
       projectId, collectionId: null, title: title || "Real Estate Shoot",
-      coverFileId: null, coverStoragePath: "", coverWidth: 0, coverHeight: 0,
+      coverFileId: null, coverStoragePath: "", coverWidth: 0, coverHeight: 0, coverFocal: "center",
       watermarkText: null, watermarkUseLogo: false, printsEnabled: false,
       coverLayout: "center", coverFont: "", coverSubtitle: null, coverDate: null,
       slug: null, requireEmail: false, expiresAt: null,
@@ -2214,6 +2215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.title !== undefined) patch.title = d.title;
     if (d.coverFileId !== undefined) patch.cover_file_id = d.coverFileId;
     if (d.coverStoragePath !== undefined) patch.cover_storage_path = d.coverStoragePath;
+    if (d.coverFocal !== undefined) patch.cover_focal = d.coverFocal;
     if (d.coverWidth !== undefined) patch.cover_width = d.coverWidth;
     if (d.coverHeight !== undefined) patch.cover_height = d.coverHeight;
     if (d.coverLayout !== undefined) patch.cover_layout = d.coverLayout;
