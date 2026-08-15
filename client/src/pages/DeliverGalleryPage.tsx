@@ -925,10 +925,12 @@ export default function DeliverGalleryPage() {
         //
         // Capped and centred: with no max width the set floated in a sea of
         // white on a large monitor with nothing holding it together.
-        // Two across on a phone, auto-fit above 640px. A flat minmax(360px,…)
-        // gave ONE column on a 390px screen — correct by the rules and wrong
-        // for a wedding, where it means scrolling past 200 full-width photos.
-        className="relative grid justify-center gap-1 mx-auto max-w-[1400px] px-4 sm:px-6 grid-cols-2 sm:[grid-template-columns:repeat(auto-fit,minmax(360px,460px))]"
+        // Explicit column counts, not auto-fit. auto-fit computes how many
+        // tracks fit using the track's MAX when that max is definite, so
+        // minmax(360px, 460px) produced two 460px columns in a 1352px space
+        // rather than the three the minimum implied — measured, not assumed.
+        // Fixed counts do exactly what they say at every width.
+        className="relative grid justify-center gap-1 mx-auto max-w-[1400px] px-4 sm:px-6 grid-cols-2 lg:grid-cols-3"
         onContextMenu={(e) => {
           if (delivery.watermarkText || (delivery.watermarkUseLogo && org?.logoUrl)) e.preventDefault();
         }}
