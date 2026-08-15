@@ -92,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "request-prints": return await requestPrints(req, res, token);
       case "submit": return await submitSelections(req, res, token);
       case "request-change": return await requestChange(req, res, token);
+      case "track-download": return await trackDownload(req, res, token);
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err) {
@@ -432,6 +433,80 @@ async function requestChange(req: VercelRequest, res: VercelResponse, token: str
       subject: `Revision requested — ${escapeHtml(delivery.title)}`,
       html: `<p><strong>${escapeHtml(delivery.client_name || "Your client")}</strong> requested a change on the gallery <em>${escapeHtml(delivery.title)}</em>.</p>${message ? `<blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#555">${escapeHtml(message)}</blockquote>` : ""}<p>Reply directly to this email to follow up.</p>`,
     }).catch(() => { /* fire-and-forget */ });
+  }
+
+  return res.status(200).json({ ok: true });
+}
+
+/** Record a download, and tell the owner — once, not forty times.
+ *
+ *  deliveries.download_count existed from the start and nothing ever wrote to
+ *  it, so "did the client actually collect their photos" could not be
+ *  answered. Called by the gallery whenever files leave: one file, a zip, or a
+ *  video streamed straight to disk.
+ *
+ *  Deliberately best-effort and never fails the download — if this endpoint is
+ *  down, the client still gets their photos. */
+async function trackDownload(req: VercelRequest, res: VercelResponse, token: string) {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const fileId = typeof body.fileId === "string" ? body.fileId : null;
+  const rawCount = typeof body.fileCount === "number" ? Math.floor(body.fileCount) : 1;
+  // Clamp: this is an unauthenticated endpoint, and the count feeds a running
+  // total. 10,000 is far above any real gallery.
+  const fileCount = Math.max(1, Math.min(rawCount, 10000));
+
+  const { data: delivery } = await supabase
+    .from("deliveries")
+    .select("id, org_id, title, download_count, download_notified_at, require_email, client_name")
+    .eq("token", token).maybeSingle();
+  if (!delivery) return res.status(404).json({ error: "Not found" });
+
+  // A name only when the gallery asked for one. Otherwise this is honestly
+  // "someone with the link" — no IP, no fingerprinting.
+  let visitorEmail = "";
+  if (delivery.require_email) {
+    const claimed = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (claimed) {
+      const { data: visitor } = await supabase.from("gallery_visitors")
+        .select("email").eq("delivery_id", delivery.id).eq("email", claimed).maybeSingle();
+      if (visitor) visitorEmail = visitor.email;
+    }
+  }
+
+  await supabase.from("delivery_downloads").insert({
+    id: `dl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    delivery_id: delivery.id,
+    org_id: delivery.org_id,
+    file_id: fileId,
+    visitor_email: visitorEmail,
+    file_count: fileCount,
+  });
+
+  await supabase.from("deliveries")
+    .update({ download_count: (delivery.download_count || 0) + fileCount })
+    .eq("id", delivery.id);
+
+  // One email per gallery per half hour. Someone saving 40 photos one at a
+  // time is one visit, not forty notifications.
+  const DEBOUNCE_MS = 30 * 60 * 1000;
+  const last = delivery.download_notified_at ? Date.parse(delivery.download_notified_at) : 0;
+  if (Date.now() - last > DEBOUNCE_MS) {
+    await supabase.from("deliveries").update({ download_notified_at: new Date().toISOString() }).eq("id", delivery.id);
+
+    const { data: org } = await supabase.from("organizations").select("name").eq("id", delivery.org_id).single();
+    const { data: profile } = await supabase.from("user_profiles")
+      .select("email").eq("org_id", delivery.org_id).eq("role", "owner").single();
+    if (profile?.email) {
+      const who = visitorEmail || (delivery.client_name ? `${delivery.client_name} (or whoever has the link)` : "Someone with the link");
+      await resend.emails.send({
+        from: `${(org?.name as string) || "Slate"} <${FROM_EMAIL}>`,
+        to: profile.email,
+        subject: `Downloaded — ${delivery.title}`,
+        html: `<p><strong>${escapeHtml(who)}</strong> started downloading from <em>${escapeHtml(delivery.title)}</em>.</p>`
+          + `<p style="color:#555;font-size:14px">Further downloads in the next half hour won't send another email.</p>`
+          + (delivery.require_email ? "" : `<p style="color:#777;font-size:13px">Turn on <strong>Require email</strong> in the gallery's Privacy tab to see who it was.</p>`),
+      }).catch(() => { /* never fail a download over a notification */ });
+    }
   }
 
   return res.status(200).json({ ok: true });

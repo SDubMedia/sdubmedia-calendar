@@ -555,6 +555,7 @@ export default function DeliverGalleryPage() {
   async function downloadSelected() {
     const chosen = files.filter((f) => dlPicked.has(f.id));
     if (chosen.length === 0) return;
+    trackDownload(chosen.length);
     // Same split as download-all: videos stream straight to disk, photos get
     // zipped. But zipping happens in memory, so a big selection of
     // full-quality originals would blow up a phone — past this size each file
@@ -588,6 +589,7 @@ export default function DeliverGalleryPage() {
 
   async function downloadAll() {
     if (files.length === 0) return;
+    trackDownload(files.length);
     // Videos are streamed to disk individually; only photos go through the
     // in-memory client-side ZIP (they're small). This keeps a big video from
     // ever being fetched into memory, which is what breaks download-all today.
@@ -623,6 +625,20 @@ export default function DeliverGalleryPage() {
 
   // Kick off a direct, attachment-forced download that the browser streams to
   // disk — no blob held in memory, so it works for files of any size.
+  /** Tell the server files are leaving. Best-effort by design: the download
+   *  has already started, and a failed metric must never surface to a client
+   *  or block their photos. */
+  function trackDownload(fileCount: number, fileId?: string) {
+    void fetch(`/api/delivery-public?action=track-download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // keepalive so the request survives the tab being closed straight after
+      // a download — otherwise the last download of a visit goes uncounted.
+      keepalive: true,
+      body: JSON.stringify({ token, fileCount, fileId, email: visitorEmail || undefined }),
+    }).catch(() => { /* never bother the client with a metric */ });
+  }
+
   function streamToDisk(url: string) {
     const a = document.createElement("a");
     a.href = url;
@@ -633,6 +649,7 @@ export default function DeliverGalleryPage() {
   }
 
   async function downloadOne(f: FileItem) {
+    trackDownload(1, f.id);
     // Videos stream straight to disk via their attachment link — pulling a
     // multi-hundred-MB video into a blob first would run mobile Safari out of
     // memory. Photos keep the blob path (forces a save even cross-origin).
