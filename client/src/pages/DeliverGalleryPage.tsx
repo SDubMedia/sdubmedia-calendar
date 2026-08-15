@@ -255,9 +255,10 @@ export default function DeliverGalleryPage() {
     }
   }
 
-  async function loadGallery(pwToTry?: string, emailToTry?: string) {
-    setLoading(true);
-    setError(null);
+  async function loadGallery(pwToTry?: string, emailToTry?: string, opts?: { quiet?: boolean }) {
+    // A background refresh must not flip `loading` — that unmounts the gallery
+    // and throws away scroll position and any selection in progress.
+    if (!opts?.quiet) { setLoading(true); setError(null); }
     try {
       // Bundle whatever credentials we have — password (if pwToTry given) or
       // remembered email (from localStorage) — into a single POST so the
@@ -295,6 +296,7 @@ export default function DeliverGalleryPage() {
       // splitting them at render time alone would make "next" jump somewhere
       // that isn't the next tile on screen.
       setFiles(sortFilmsFirst(data.files || []));
+      loadedAtRef.current = Date.now();
       setServerSelections(data.selections || []);
       setOrg(data.org);
       // Pre-populate local picks from server (client returning to view their picks)
@@ -312,6 +314,30 @@ export default function DeliverGalleryPage() {
   useEffect(() => {
     if (token) loadGallery();
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the signed URLs fresh.
+  //
+  // Every image and download link is signed for one hour. Nothing refreshed
+  // them, so a gallery left open longer than that turned every photo into its
+  // filename and every download into a 403 — a client browsing over lunch
+  // watched the page fall apart, with no clue that reloading would fix it.
+  //
+  // Re-fetches quietly in the background at 45 minutes, and again whenever the
+  // tab is brought back to the front after that long away (a laptop that slept
+  // for three hours fires no timers). loadGallery() sets `loading`, which
+  // would blank the page, so the refresh path skips the initial-load flag.
+  useEffect(() => {
+    if (!token || !delivery) return;
+    const REFRESH_MS = 45 * 60 * 1000;
+    const refresh = () => { void loadGallery(undefined, undefined, { quiet: true }); };
+    const timer = setInterval(refresh, REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - loadedAtRef.current >= REFRESH_MS) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [token, delivery]); // eslint-disable-line react-hooks/exhaustive-deps -- re-arm once loaded, not on every data change
 
   const isLocked = delivery?.status === "submitted" || delivery?.status === "working" || delivery?.status === "delivered";
   const isWorking = delivery?.status === "working" || delivery?.status === "delivered";
@@ -471,6 +497,9 @@ export default function DeliverGalleryPage() {
   // galleries don't offer downloads at all, so the two never appear together.
   // Measured width of one grid column, used to turn each photo's aspect ratio
   // into a row span. Starts at a sane guess so the first paint isn't wild.
+  // When the URLs currently on screen were signed. Used to decide whether a
+  // tab returning to the foreground needs fresh ones.
+  const loadedAtRef = useRef<number>(Date.now());
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [colWidth, setColWidth] = useState(360);
   const [gridWidth, setGridWidth] = useState(1200);
