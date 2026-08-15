@@ -256,7 +256,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
         const p = (delivery as unknown as { cover_storage_path?: string }).cover_storage_path || "";
         return p && r2Configured() ? r2PresignedUrl({ method: "GET", key: p, expiresIn: 3600 }) : "";
       })(),
-      coverFocal: (delivery as unknown as { cover_focal?: string }).cover_focal || "center",
+      coverFocal: (delivery as unknown as { cover_focal?: string }).cover_focal || "point",
+      coverFocalX: (delivery as unknown as { cover_focal_x?: number }).cover_focal_x ?? 50,
+      coverFocalY: (delivery as unknown as { cover_focal_y?: number }).cover_focal_y ?? 50,
       coverWidth: (delivery as unknown as { cover_width?: number }).cover_width || 0,
       coverHeight: (delivery as unknown as { cover_height?: number }).cover_height || 0,
       coverLayout: (delivery as unknown as { cover_layout?: string }).cover_layout || "center",

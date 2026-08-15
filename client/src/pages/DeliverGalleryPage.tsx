@@ -300,6 +300,8 @@ interface DeliveryInfo {
   coverFileId: string | null;
   coverUrl?: string;
   coverFocal?: string;
+  coverFocalX?: number;
+  coverFocalY?: number;
   coverWidth?: number;
   coverHeight?: number;
   coverLayout: "center" | "vintage" | "minimal" | "left" | "stripe" | "frame" | "divider" | "stamp";
@@ -1037,7 +1039,9 @@ export default function DeliverGalleryPage() {
           subtitle={delivery.coverSubtitle}
           date={delivery.coverDate}
           fontValue={delivery.coverFont || ""}
-          focal={delivery.coverFocal || "center"}
+          focal={delivery.coverFocal || "point"}
+          focalX={delivery.coverFocalX ?? 50}
+          focalY={delivery.coverFocalY ?? 50}
         />
       ) : delivery.downloadOnly ? null : (
         // Minimal layout: typography-only on white
@@ -1620,10 +1624,12 @@ const COVER_HERO_FONTS: Record<string, { family: string; weight: number }> = {
 function getCoverHeroFontFamily(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).family; }
 function getCoverHeroFontWeight(value: string) { return (COVER_HERO_FONTS[value] || COVER_HERO_FONTS[""]).weight; }
 
-function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue, focal = "center" }: {
+function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue, focal = "point", focalX = 50, focalY = 50 }: {
   layout: CoverLayout;
   imageUrl: string;
   focal?: string;
+  focalX?: number;
+  focalY?: number;
   title: string;
   subtitle: string | null;
   date: string | null;
@@ -1708,15 +1714,15 @@ function CoverHero({ layout, imageUrl, title, subtitle, date, fontValue, focal =
 
   return (
     <section className="relative w-full overflow-hidden" style={{ height: "min(100vh, 900px)" }}>
-      {/* A full-length portrait cropped from the centre lands on the middle of
-          the subject — Lissa's cover framed her chest. "top" pulls the crop up
-          to keep faces, "contain" shows the whole frame when any crop is
-          wrong. */}
+      {/* object-position with percentages keeps the chosen point of the photo
+          at the same relative spot in the frame whatever shape the hero takes
+          — phone, iPad, wide desktop. Pick it once and it holds everywhere,
+          which top/centre/bottom could never do. */}
       <img
         src={imageUrl}
         alt=""
         className={`absolute inset-0 w-full h-full ${focal === "contain" ? "object-contain bg-black" : "object-cover"}`}
-        style={focal === "contain" ? undefined : { objectPosition: `center ${focal === "top" ? "15%" : focal === "bottom" ? "85%" : "50%"}` }}
+        style={focal === "contain" ? undefined : { objectPosition: `${focalX}% ${focalY}%` }}
         loading="eager"
       />
       <div className="absolute inset-0" style={{ background: overlay }} />

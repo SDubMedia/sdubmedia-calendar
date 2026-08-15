@@ -302,6 +302,8 @@ interface CreateInput {
   coverFileId: string | null;
   coverStoragePath: string;
   coverFocal: string;
+  coverFocalX: number;
+  coverFocalY: number;
   coverWidth: number;
   coverHeight: number;
   coverLayout: "center" | "vintage" | "minimal";
@@ -386,7 +388,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               buyAllFlatCents: Math.round((parseFloat(flatDollars) || 0) * 100),
               expiresAt: expiresAt || null,
               status: "draft",
-              coverFileId: null, coverStoragePath: "", coverFocal: "center", coverWidth: 0, coverHeight: 0,
+              coverFileId: null, coverStoragePath: "", coverFocal: "point", coverFocalX: 50, coverFocalY: 50, coverWidth: 0, coverHeight: 0,
               coverLayout: "center",
               coverFont: "",
               coverSubtitle: null,
@@ -1452,10 +1454,10 @@ export function getCoverFont(value: string) {
 }
 
 interface CoverDesignProps {
-  delivery: { id: string; title: string; coverFileId: string | null; coverStoragePath: string; coverFocal?: string; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
+  delivery: { id: string; title: string; coverFileId: string | null; coverStoragePath: string; coverFocal?: string; coverFocalX?: number; coverFocalY?: number; coverLayout: CoverLayoutId; coverFont: string; coverSubtitle: string | null; coverDate: string | null; slug: string | null };
   files: Array<{ id: string; originalName: string }>;
   signedUrls: Map<string, string>;
-  onUpdate: (patch: { coverFileId?: string | null; coverStoragePath?: string; coverFocal?: string; coverWidth?: number; coverHeight?: number; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
+  onUpdate: (patch: { coverFileId?: string | null; coverStoragePath?: string; coverFocal?: string; coverFocalX?: number; coverFocalY?: number; coverWidth?: number; coverHeight?: number; coverLayout?: CoverLayoutId; coverFont?: string; coverSubtitle?: string | null; coverDate?: string | null; slug?: string | null }) => Promise<void>;
 }
 
 // Stock photos per layout — used in the small chooser thumbnails so each
@@ -1794,31 +1796,53 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
               : "A cover picked from the gallery uses the compressed copy and disappears if that photo is deleted."}
           </p>
 
-          {/* The hero fills the width and crops vertically, so a full-length
-              portrait loses the head and feet and lands on the middle of the
-              subject. This is the dial for that. */}
+          {/* Click the photo to choose the point that must stay in frame.
+              Stored as percentages and applied with object-position, so the
+              same point holds on a phone, an iPad and a wide desktop — which
+              a top/centre/bottom setting can never do. */}
           <div className="mt-3">
-            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Cover framing</label>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { v: "top", label: "Top", hint: "Keeps faces — right for full-length portraits" },
-                { v: "center", label: "Centre", hint: "Default" },
-                { v: "bottom", label: "Bottom", hint: "Anchors to the lower part of the frame" },
-                { v: "contain", label: "Whole image", hint: "Shows all of it, letterboxed — never crops" },
-              ].map(opt => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  title={opt.hint}
-                  onClick={() => onUpdate({ coverFocal: opt.v })}
-                  className={`text-xs px-3 py-1.5 rounded-lg border ${
-                    (delivery.coverFocal || "center") === opt.v
-                      ? "border-[#0088ff] text-white bg-[#0088ff]/10"
-                      : "border-white/10 text-slate-400 hover:text-white hover:border-white/25"
-                  }`}
-                >{opt.label}</button>
-              ))}
-            </div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Cover focal point</label>
+            {shownCoverUrl ? (
+              <>
+                <div
+                  className="relative w-full rounded-lg overflow-hidden cursor-crosshair border border-white/10"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const x = Math.round(((e.clientX - r.left) / r.width) * 100);
+                    const y = Math.round(((e.clientY - r.top) / r.height) * 100);
+                    onUpdate({ coverFocal: "point", coverFocalX: Math.min(100, Math.max(0, x)), coverFocalY: Math.min(100, Math.max(0, y)) });
+                  }}
+                >
+                  <img src={shownCoverUrl} alt="" className="w-full max-h-64 object-contain bg-black" />
+                  {(delivery.coverFocal || "point") !== "contain" && (
+                    <span
+                      className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-2 border-white shadow pointer-events-none"
+                      style={{
+                        left: `${delivery.coverFocalX ?? 50}%`,
+                        top: `${delivery.coverFocalY ?? 50}%`,
+                        boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-[11px] text-slate-500">
+                    {(delivery.coverFocal || "point") === "contain"
+                      ? "Showing the whole photo — nothing is cropped."
+                      : "Click the photo to move the point that stays in frame."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onUpdate({ coverFocal: (delivery.coverFocal || "point") === "contain" ? "point" : "contain" })}
+                    className="text-xs text-slate-400 hover:text-white shrink-0"
+                  >
+                    {(delivery.coverFocal || "point") === "contain" ? "Crop to fill" : "Show whole photo"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-slate-500">Set a cover first, then pick the point to keep in frame.</p>
+            )}
           </div>
         </div>
       )}

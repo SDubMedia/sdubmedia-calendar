@@ -1717,9 +1717,12 @@ export interface Delivery {
    *  not listed among the files, and unaffected by deleting a photo. Wins over
    *  coverFileId when set. "" = none, fall back to coverFileId. */
   coverStoragePath: string;
-  /** How the hero crops: "top" | "center" | "bottom" anchor the crop, and
-   *  "contain" shows the whole frame letterboxed. */
+  /** "point" = crop around coverFocalX/Y; "contain" = show the whole frame. */
   coverFocal: string;
+  /** The point of the photo to keep in frame, as percentages. Applied with
+   *  object-position, so it holds at any screen shape. */
+  coverFocalX: number;
+  coverFocalY: number;
   coverWidth: number;
   coverHeight: number;
   watermarkText: string | null;
