@@ -45,6 +45,196 @@ interface FileItem {
  *  arrow keys and the slideshow still move to the tile you can see next.
  *
  *  `span 11` is 11*4px of rows plus 10*1px of gaps = 54px. */
+/** Full-screen viewer.
+ *
+ *  Rebuilt from a plain overlay. What it fixes, in the order clients notice:
+ *   - tapping the photo used to CLOSE it, because click-to-close covered the
+ *     image; the instinct to tap a photo to look closer threw you out
+ *   - swipe on a phone, instead of aiming at small arrow glyphs
+ *   - the neighbouring photos are preloaded, so arrowing through a 4K set
+ *     doesn't sit on black with no spinner
+ *   - download from here, rather than closing and hunting for the tile
+ *   - "12 of 84" and the filename, so a long set has a sense of place
+ *   - pinch or double-tap to zoom, then drag to pan
+ */
+function Lightbox({
+  file, index, total, prevUrl, nextUrl, slideshowPlaying, canPick, isPicked,
+  onPick, onToggleSlideshow, onDownload, onPrev, onNext, onClose,
+}: {
+  file: FileItem;
+  index: number;
+  total: number;
+  prevUrl?: string;
+  nextUrl?: string;
+  slideshowPlaying: boolean;
+  canPick: boolean;
+  isPicked: boolean;
+  onPick: () => void;
+  onToggleSlideshow: () => void;
+  onDownload: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const isVideo = file.mediaType === "video";
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [loaded, setLoaded] = useState(false);
+  // Whether a finger is down, in state rather than read off the ref during
+  // render — reading a ref while rendering breaks React's purity rules and is
+  // banned in this codebase. Drives whether the transform animates: a
+  // transition during a pinch makes it feel like it's lagging behind you.
+  const [gesturing, setGesturing] = useState(false);
+  // Live pointers, for telling a pinch from a drag.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<{ startDist: number; startZoom: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
+
+  // Reset per photo: carrying a 2.5x zoom onto the next image is disorienting.
+  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); setLoaded(false); }, [file.id]);
+
+  // Preload the neighbours so arrowing through feels instant.
+  useEffect(() => {
+    [prevUrl, nextUrl].filter(Boolean).forEach(u => { const img = new Image(); img.src = u as string; });
+  }, [prevUrl, nextUrl]);
+
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    setGesturing(true);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...pointers.current.values()];
+    if (pts.length === 2) {
+      gesture.current = { startDist: dist(pts[0], pts[1]), startZoom: zoom, startX: 0, startY: 0, panX: pan.x, panY: pan.y };
+    } else if (pts.length === 1) {
+      gesture.current = { startDist: 0, startZoom: zoom, startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...pointers.current.values()];
+    const g = gesture.current;
+    if (!g) return;
+    if (pts.length === 2 && g.startDist > 0) {
+      const next = Math.max(1, Math.min(4, g.startZoom * (dist(pts[0], pts[1]) / g.startDist)));
+      setZoom(next);
+      if (next === 1) setPan({ x: 0, y: 0 });
+    } else if (pts.length === 1 && zoom > 1) {
+      // Zoomed in, so a drag pans rather than changing photo.
+      setPan({ x: g.panX + (e.clientX - g.startX), y: g.panY + (e.clientY - g.startY) });
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    const g = gesture.current;
+    const wasSingle = pointers.current.size === 1;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 0) setGesturing(false);
+    if (!g || !wasSingle) { if (pointers.current.size === 0) gesture.current = null; return; }
+    gesture.current = null;
+
+    // Only a single-finger gesture at 1x navigates.
+    if (zoom > 1) return;
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+    const SWIPE = 50;
+    if (Math.abs(dx) > SWIPE && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) onNext(); else onPrev();
+    } else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) {
+      onClose(); // flick down to dismiss, like a phone photo viewer
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/95 z-40 flex items-center justify-center select-none"
+      onClick={onClose}
+      style={{ touchAction: "none" }}
+    >
+      {/* The media itself never closes the viewer — that was the old bug. */}
+      <div
+        className="relative max-w-full max-h-full flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDoubleClick={() => { setZoom(z => (z > 1 ? 1 : 2.5)); setPan({ x: 0, y: 0 }); }}
+      >
+        {isVideo ? (
+          <video src={file.url} controls autoPlay playsInline className="max-w-[100vw] max-h-[100vh]" />
+        ) : (
+          <>
+            {!loaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-white/25 border-t-white/80 rounded-full animate-spin" />
+              </div>
+            )}
+            <img
+              src={file.url}
+              alt={file.originalName}
+              onLoad={() => setLoaded(true)}
+              draggable={false}
+              className="max-w-[100vw] max-h-[100vh] object-contain"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transition: gesturing ? "none" : "transform 160ms ease-out",
+                cursor: zoom > 1 ? "grab" : "zoom-in",
+                opacity: loaded ? 1 : 0,
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Top bar */}
+      <div className="absolute top-0 inset-x-0 flex items-center justify-between p-4 text-white/80" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onToggleSlideshow}
+          className="text-xs uppercase tracking-widest hover:text-white px-2 py-2"
+          aria-label={slideshowPlaying ? "Pause slideshow" : "Play slideshow"}
+        >{slideshowPlaying ? "❚❚ Pause" : "▶ Slideshow"}</button>
+
+        <div className="text-center min-w-0 px-2">
+          <p className="text-[11px] tracking-wider">{index + 1} of {total}</p>
+          <p className="text-[11px] text-white/50 truncate max-w-[50vw]">{file.originalName.replace(/\.[^.]+$/, "")}</p>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button onClick={onDownload} className="p-2 hover:text-white" aria-label="Download this one" title="Download">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button onClick={onClose} className="p-2 text-3xl leading-none hover:text-white" aria-label="Close">×</button>
+        </div>
+      </div>
+
+      {/* Arrows stay for mouse and keyboard; swipe covers touch. */}
+      {index > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPrev(); }}
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl px-4 py-6"
+          aria-label="Previous"
+        >‹</button>
+      )}
+      {index < total - 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl px-4 py-6"
+          aria-label="Next"
+        >›</button>
+      )}
+
+      {canPick && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPick(); }}
+          className={`absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-semibold ${isPicked ? "bg-red-500 text-white" : "bg-white text-black"}`}
+        >{isPicked ? "♥ Picked" : "♡ Pick this one"}</button>
+      )}
+    </div>
+  );
+}
+
 function GallerySectionHead({ label, fontFamily }: { label: string; fontFamily?: string }) {
   return (
     <div
@@ -1262,63 +1452,23 @@ export default function DeliverGalleryPage() {
         })()}
 
         {/* Lightbox */}
-        {lightboxFile && (
-          <div
-            className="fixed inset-0 bg-black/95 z-40 flex items-center justify-center p-4"
-            onClick={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
-          >
-            {lightboxFile.mediaType === "video" ? (
-              <video
-                src={lightboxFile.url}
-                controls
-                autoPlay
-                playsInline
-                className="max-w-full max-h-full"
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <img src={lightboxFile.url} alt={lightboxFile.originalName} className="max-w-full max-h-full object-contain" />
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); setLightboxIdx(null); setSlideshowPlaying(false); }}
-              className="absolute top-4 right-4 text-white/80 text-3xl hover:text-white"
-              aria-label="Close"
-            >
-              ×
-            </button>
-            {/* Slideshow play/pause toggle — top-left */}
-            <button
-              onClick={(e) => { e.stopPropagation(); setSlideshowPlaying(p => !p); }}
-              className="absolute top-4 left-4 text-white/70 hover:text-white px-3 py-2 text-xs uppercase tracking-widest"
-              aria-label={slideshowPlaying ? "Pause slideshow" : "Play slideshow"}
-            >
-              {slideshowPlaying ? "❚❚ Pause" : "▶ Slideshow"}
-            </button>
-            {proofingEnabled && !isLocked && lightboxFile.mediaType !== "video" && (
-              <button
-                onClick={(e) => { e.stopPropagation(); togglePick(lightboxFile.id); }}
-                className={`absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-semibold ${
-                  picked.has(lightboxFile.id) ? "bg-red-500 text-white" : "bg-white text-black"
-                }`}
-              >
-                {picked.has(lightboxFile.id) ? "♥ Picked" : "♡ Pick this one"}
-              </button>
-            )}
-            {lightboxIdx !== null && lightboxIdx > 0 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setLightboxIdx(lightboxIdx - 1); }}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl px-3 py-2"
-                aria-label="Previous"
-              >‹</button>
-            )}
-            {lightboxIdx !== null && lightboxIdx < files.length - 1 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setLightboxIdx(lightboxIdx + 1); }}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-4xl px-3 py-2"
-                aria-label="Next"
-              >›</button>
-            )}
-          </div>
+        {lightboxFile && lightboxIdx !== null && (
+          <Lightbox
+            file={lightboxFile}
+            index={lightboxIdx}
+            total={files.length}
+            prevUrl={files[lightboxIdx - 1]?.url}
+            nextUrl={files[lightboxIdx + 1]?.url}
+            slideshowPlaying={slideshowPlaying}
+            canPick={proofingEnabled && !isLocked && lightboxFile.mediaType !== "video"}
+            isPicked={picked.has(lightboxFile.id)}
+            onPick={() => togglePick(lightboxFile.id)}
+            onToggleSlideshow={() => setSlideshowPlaying(p => !p)}
+            onDownload={() => downloadOne(lightboxFile)}
+            onPrev={() => setLightboxIdx(i => (i === null ? null : Math.max(0, i - 1)))}
+            onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(files.length - 1, i + 1)))}
+            onClose={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
+          />
         )}
 
         {/* Submit modal */}
