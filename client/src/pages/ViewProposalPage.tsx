@@ -30,6 +30,10 @@ export default function ViewProposalPage() {
 
   // Package selection (V2)
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  // Multi-select: a client picks one film collection, then any number of
+  // add-ons. The single field above still drives legacy single-package
+  // proposals; this is what grouped templates use.
+  const [selectedPackageIds, setSelectedPackageIds] = useState<string[]>([]);
 
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
@@ -65,6 +69,7 @@ export default function ViewProposalPage() {
             if (raw) {
               const draft = JSON.parse(raw);
               if (typeof draft.selectedPackageId === "string") restoredPackage = draft.selectedPackageId;
+              if (Array.isArray(draft.selectedPackageIds)) setSelectedPackageIds(draft.selectedPackageIds);
               if (typeof draft.signerEmail === "string") restoredEmail = draft.signerEmail;
             }
           } catch { /* corrupt localStorage — ignore */ }
@@ -93,11 +98,12 @@ export default function ViewProposalPage() {
     try {
       localStorage.setItem(draftKey, JSON.stringify({
         selectedPackageId,
+        selectedPackageIds,
         signerEmail,
         savedAt: Date.now(),
       }));
     } catch { /* private mode / quota — ignore */ }
-  }, [loading, token, accepted, selectedPackageId, signerEmail]);
+  }, [loading, token, accepted, selectedPackageId, selectedPackageIds, signerEmail]);
 
   // Verify payment on return from Stripe
   useEffect(() => {
@@ -162,6 +168,7 @@ export default function ViewProposalPage() {
         body: JSON.stringify({
           token,
           selectedPackageId,
+          selectedPackageIds,
           signature: { name: typedName.trim() || "Client", email: signerEmail, signatureData, signatureType },
         }),
       });
@@ -247,14 +254,48 @@ export default function ViewProposalPage() {
     );
   }
 
+  /** Add or remove a service. A "pick one" group swaps the choice rather than
+   *  accumulating — otherwise a client could buy two full collections by
+   *  clicking twice, and the total would be quietly wrong. */
+  function togglePackageInGroup(packageId: string, group: { selection: "single" | "multiple"; packageIds: string[] }) {
+    setSelectedPackageIds(prev => {
+      const already = prev.includes(packageId);
+      if (already) return prev.filter(id => id !== packageId);
+      if (group.selection === "single") {
+        // Drop anything else from THIS group, leave other groups alone.
+        return [...prev.filter(id => !group.packageIds.includes(id)), packageId];
+      }
+      return [...prev, packageId];
+    });
+  }
+
   // ---- MAIN VIEW ----
   const packages = proposal?.packages || [];
   const hasPackages = packages.length > 0;
   const selectedPkg = hasPackages ? packages.find((p: any) => p.id === selectedPackageId) : null;
 
+  // Everything the client has ticked across all groups, priced from the
+  // library. Grouped selections win when present; a single-package proposal
+  // still totals the old way.
+  const libraryPackages: any[] = proposal?.libraryPackages || [];
+  const groupChosen = libraryPackages.filter(p => selectedPackageIds.includes(p.id));
+  const groupTotal = groupChosen.reduce((sum, p) => sum + (p.defaultPrice || 0), 0);
+
+  // Which groups the client still has to answer. Named so the button can say
+  // WHICH one is missing — "choose an option" is a maddening error when a
+  // proposal has three groups.
+  const allGroups: any[] = (proposal?.pages || [])
+    .flatMap((pg: any) => (pg.blocks || []))
+    .filter((b: any) => b.type === "package_group");
+  const unmetRequired = allGroups.filter((g: any) =>
+    g.requirement === "required" && !g.packageIds.some((id: string) => selectedPackageIds.includes(id)));
+  const hasGroups = allGroups.length > 0;
+
   // Fallback to legacy lineItems if no packages
   const lineItems = selectedPkg?.lineItems || proposal?.lineItems || [];
-  const total = selectedPkg?.totalPrice || proposal?.total || 0;
+  const total = hasGroups && groupChosen.length > 0
+    ? groupTotal
+    : (selectedPkg?.totalPrice || proposal?.total || 0);
   const milestones = selectedPkg?.paymentMilestones || [];
 
   // Legacy payment config fallback
@@ -396,7 +437,12 @@ export default function ViewProposalPage() {
         {hasPages && agreementPages.map((page: any) => (
           <div key={page.id} className="space-y-2">
             <h2 className="text-lg font-bold text-gray-900 px-2">{page.label || "Agreement"}</h2>
-            <ProposalBlockRenderer page={page} libraryPackages={proposal?.libraryPackages || []} />
+            <ProposalBlockRenderer
+              page={page}
+              libraryPackages={proposal?.libraryPackages || []}
+              selectedPackageIds={selectedPackageIds}
+              onTogglePackage={togglePackageInGroup}
+            />
           </div>
         ))}
 

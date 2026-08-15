@@ -40,12 +40,19 @@ interface ProposalBlockRendererProps {
   libraryPackages?: Package[];
   // Optional className override for the outer container.
   className?: string;
+  // Interactive selection — supplied only by the client-facing viewer. When
+  // absent the groups render read-only, which is what the editor preview and
+  // any PDF-style render want.
+  selectedPackageIds?: string[];
+  onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
 }
 
 export function ProposalBlockRenderer({
   page,
   libraryPackages = [],
   className,
+  selectedPackageIds,
+  onTogglePackage,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -62,7 +69,13 @@ export function ProposalBlockRenderer({
       <div className="px-8 sm:px-16 py-12 sm:py-16 space-y-8 text-gray-800 min-h-[600px]">
         {hasBlocks ? (
           page.blocks!.map((block) => (
-            <BlockView key={block.id} block={block} libraryPackages={libraryPackages} />
+            <BlockView
+              key={block.id}
+              block={block}
+              libraryPackages={libraryPackages}
+              selectedPackageIds={selectedPackageIds}
+              onTogglePackage={onTogglePackage}
+            />
           ))
         ) : (
           <LegacyContent content={page.content} />
@@ -94,9 +107,13 @@ function LegacyContent({ content }: { content: string }) {
 function BlockView({
   block,
   libraryPackages,
+  selectedPackageIds,
+  onTogglePackage,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
+  selectedPackageIds?: string[];
+  onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
 }) {
   switch (block.type) {
     case "hero":
@@ -112,7 +129,14 @@ function BlockView({
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
     case "package_group":
-      return <PackageGroupBlock block={block} libraryPackages={libraryPackages} />;
+      return (
+        <PackageGroupBlock
+          block={block}
+          libraryPackages={libraryPackages}
+          selectedPackageIds={selectedPackageIds}
+          onTogglePackage={onTogglePackage}
+        />
+      );
     case "divider":
       return <hr className="border-gray-200 my-2" />;
     case "spacer":
@@ -245,10 +269,15 @@ function ProseBlock({ block }: { block: Extract<ProposalBlock, { type: "prose" }
 function PackageGroupBlock({
   block,
   libraryPackages,
+  selectedPackageIds,
+  onTogglePackage,
 }: {
   block: Extract<ProposalBlock, { type: "package_group" }>;
   libraryPackages: Package[];
+  selectedPackageIds?: string[];
+  onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
 }) {
+  const interactive = typeof onTogglePackage === "function";
   const chosen = block.packageIds
     .map(id => libraryPackages.find(p => p.id === id))
     .filter(Boolean) as Package[];
@@ -269,14 +298,31 @@ function PackageGroupBlock({
         </p>
       ) : (
         <div className="space-y-3">
-          {chosen.map(pkg => (
-            <div key={pkg.id} className="border border-gray-200 rounded-lg p-4">
-              <PackageRowBlock
-                block={{ id: `${block.id}-${pkg.id}`, type: "package_row", packageId: pkg.id }}
-                libraryPackages={libraryPackages}
-              />
-            </div>
-          ))}
+          {chosen.map(pkg => {
+            const isSelected = !!selectedPackageIds?.includes(pkg.id);
+            return (
+              <div
+                key={pkg.id}
+                className={`border rounded-lg p-4 transition-colors ${isSelected ? "border-gray-900 bg-gray-50" : "border-gray-200"}`}
+              >
+                <PackageRowBlock
+                  block={{ id: `${block.id}-${pkg.id}`, type: "package_row", packageId: pkg.id }}
+                  libraryPackages={libraryPackages}
+                />
+                {interactive && (
+                  <div className="flex justify-end mt-3">
+                    <button
+                      type="button"
+                      onClick={() => onTogglePackage!(pkg.id, block)}
+                      className={`px-6 py-2.5 rounded text-sm font-semibold transition-colors ${
+                        isSelected ? "bg-gray-200 text-gray-900 hover:bg-gray-300" : "bg-gray-900 text-white hover:bg-gray-800"
+                      }`}
+                    >{isSelected ? "Selected ✓" : "Select"}</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

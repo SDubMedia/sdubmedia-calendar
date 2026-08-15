@@ -112,7 +112,7 @@ async function getProposal(token: string, res: VercelResponse) {
 async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const { token, signature, selectedPackageId } = req.body;
+  const { token, signature, selectedPackageId, selectedPackageIds } = req.body;
   if (!token || !signature) return res.status(400).json({ error: "Missing token or signature" });
 
   // Verify proposal exists and is in correct status
@@ -151,7 +151,28 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const packages: Package[] = proposal.packages || [];
   const selectedPkg = selectedPackageId ? packages.find(p => p.id === selectedPackageId) : packages[0] || null;
   const resolvedMilestones: Milestone[] = selectedPkg?.paymentMilestones || [];
-  const proposalTotal = selectedPkg?.totalPrice || proposal.total;
+
+  // Grouped selections: price from the org's package library, on the server.
+  // The browser sends ids, never amounts — a total posted by the client is a
+  // total the client can edit, and this one becomes an invoice.
+  const chosenIds: string[] = Array.isArray(selectedPackageIds)
+    ? selectedPackageIds.filter((v: unknown): v is string => typeof v === "string")
+    : [];
+  let groupedTotal = 0;
+  if (chosenIds.length > 0) {
+    const { data: lib } = await supabase
+      .from("packages").select("id, default_price")
+      .eq("org_id", proposal.org_id).in("id", chosenIds)
+      // Deleted packages price as nothing rather than as their old amount.
+      .is("deleted_at", null);
+    groupedTotal = (lib || []).reduce((sum: number, p: { default_price: number | null }) => sum + (p.default_price || 0), 0);
+    // Ids that aren't in this org's library are dropped rather than trusted.
+    if ((lib || []).length !== chosenIds.length) {
+      console.warn(`proposal-accept: ${chosenIds.length - (lib || []).length} unknown package id(s) ignored on ${proposal.id}`);
+    }
+  }
+
+  const proposalTotal = chosenIds.length > 0 ? groupedTotal : (selectedPkg?.totalPrice || proposal.total);
 
   // Update proposal
   const updatePayload: Record<string, unknown> = {
@@ -162,6 +183,10 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     updated_at: now,
   };
   if (selectedPackageId) updatePayload.selected_package_id = selectedPackageId;
+  if (chosenIds.length > 0) {
+    updatePayload.selected_package_ids = chosenIds;
+    updatePayload.total = groupedTotal;
+  }
   if (resolvedMilestones.length > 0) updatePayload.payment_milestones = resolvedMilestones;
   if (selectedPkg) updatePayload.total = proposalTotal;
 
