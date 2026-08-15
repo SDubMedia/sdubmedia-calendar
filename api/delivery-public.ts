@@ -12,7 +12,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { errorMessage, escapeHtml, publicBusinessInfo } from "./_auth.js";
+import { errorMessage, escapeHtml, publicBusinessInfo, verifyAuth, getUserOrgId } from "./_auth.js";
 import { verifyPassword } from "./_password.js";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
 
@@ -81,12 +81,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "get": {
         const body = (req.body || {}) as Record<string, unknown>;
         const email = typeof body.email === "string" ? body.email : (req.query.email as string) || undefined;
-        return await getDelivery(token, undefined, email, res);
+        return await getDelivery(token, undefined, email, res, req);
       }
       case "verify-password": {
         const body = (req.body || {}) as Record<string, unknown>;
         const email = typeof body.email === "string" ? body.email : undefined;
-        return await getDelivery(token, typeof body.password === "string" ? body.password : "", email, res);
+        return await getDelivery(token, typeof body.password === "string" ? body.password : "", email, res, req);
       }
       case "register-email": return await registerEmail(req, res, token);
       case "request-prints": return await requestPrints(req, res, token);
@@ -109,7 +109,7 @@ async function findDelivery(identifier: string) {
   return await supabase.from("deliveries").select("*").eq("slug", identifier).maybeSingle<DeliveryRow>();
 }
 
-async function getDelivery(token: string, password: string | undefined, email: string | undefined, res: VercelResponse) {
+async function getDelivery(token: string, password: string | undefined, email: string | undefined, res: VercelResponse, req?: VercelRequest) {
   const { data: delivery, error } = await findDelivery(token);
   if (error || !delivery) return res.status(404).json({ error: "Gallery not found" });
 
@@ -155,8 +155,36 @@ async function getDelivery(token: string, password: string | undefined, email: s
     }
   }
 
-  // Increment view count (fire-and-forget; we don't fail the request if this fails)
-  supabase.from("deliveries").update({ view_count: delivery.view_count + 1 }).eq("id", delivery.id).then(() => {});
+  // Count the view — unless it's the team looking at their own gallery.
+  //
+  // This page is public and sits on the same domain as the app, so an owner
+  // previewing their own delivery was indistinguishable from a client and got
+  // counted every time. Color War read 17 views having been seen by nobody but
+  // Geoff. If the browser had a Slate session it comes through as a bearer
+  // token; anyone in the gallery's own org is checking their own work, not
+  // viewing it. A client with a login still counts — they're a real visitor.
+  let countThisView = true;
+  const authHeader = req?.headers?.authorization;
+  if (authHeader) {
+    try {
+      const viewer = await verifyAuth(req as VercelRequest);
+      if (viewer) {
+        const viewerOrg = await getUserOrgId(viewer.userId);
+        if (viewerOrg && viewerOrg === delivery.org_id) {
+          const { data: prof } = await supabase.from("user_profiles").select("role").eq("id", viewer.userId).maybeSingle();
+          // Only the people who MAKE the work are excluded. A client or family
+          // login opening the gallery they were sent is a genuine view.
+          if (prof && ["owner", "partner", "staff"].includes(prof.role)) countThisView = false;
+        }
+      }
+    } catch {
+      // A bad or expired token just means we treat them as anonymous.
+    }
+  }
+  if (countThisView) {
+    // Fire-and-forget; a failed counter must not fail the gallery.
+    supabase.from("deliveries").update({ view_count: delivery.view_count + 1 }).eq("id", delivery.id).then(() => {});
+  }
 
   // Load files
   const { data: files } = await supabase

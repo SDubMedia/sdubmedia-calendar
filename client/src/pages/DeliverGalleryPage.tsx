@@ -83,6 +83,27 @@ const FILM_WIDTH = 0.35;
 /** Ceiling in px, so a wide monitor does not inflate the film. */
 const FILM_MAX_PX = 400;
 
+/** The signed-in Slate token, if this browser happens to have one.
+ *
+ *  Read straight from storage rather than importing the auth context: this
+ *  page renders OUTSIDE AuthProvider (it's public, see App.tsx), so there is
+ *  no context to ask. Returns "" for a normal client visitor. */
+async function sessionTokenIfAny(): Promise<string> {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      // supabase-js stores its session under sb-<project-ref>-auth-token.
+      if (!k || !k.startsWith("sb-") || !k.endsWith("-auth-token")) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const t = parsed?.access_token || parsed?.currentSession?.access_token || "";
+      if (typeof t === "string" && t) return t;
+    }
+  } catch { /* a visitor with storage blocked is simply anonymous */ }
+  return "";
+}
+
 interface DeliveryInfo {
   id: string;
   title: string;
@@ -264,13 +285,26 @@ export default function DeliverGalleryPage() {
       // remembered email (from localStorage) — into a single POST so the
       // server can decide which gate(s) to apply.
       const emailForCall = emailToTry !== undefined ? emailToTry : visitorEmail;
+
+      // If whoever is looking happens to be signed in to Slate in this browser,
+      // hand the server their token. This page is public and on the same
+      // domain as the app, so the owner previewing their own gallery is
+      // indistinguishable from a client — which is why the view counter has
+      // been counting Geoff. The server decides: a member of the gallery's own
+      // org doesn't count as a view. Anonymous visitors send nothing and are
+      // unaffected.
+      const viewerToken = await sessionTokenIfAny();
+      const authHeader: Record<string, string> = viewerToken ? { Authorization: `Bearer ${viewerToken}` } : {};
+
       const res = pwToTry !== undefined || emailForCall
         ? await fetch(`/api/delivery-public?action=verify-password`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...authHeader },
             body: JSON.stringify({ token, password: pwToTry, email: emailForCall || undefined }),
           })
-        : await fetch(`/api/delivery-public?action=get&token=${encodeURIComponent(token)}`);
+        : await fetch(`/api/delivery-public?action=get&token=${encodeURIComponent(token)}`, {
+            headers: authHeader,
+          });
       const data = await res.json();
       if (!res.ok && !data.passwordRequired && !data.emailRequired) {
         setError(data.error || "Failed to load gallery");
