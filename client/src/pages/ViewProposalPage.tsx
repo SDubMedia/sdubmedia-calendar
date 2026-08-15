@@ -441,9 +441,14 @@ export default function ViewProposalPage() {
              were displayed as text in a whitespace-pre-wrap div. */}
         {hasPages && agreementPages.map((page: any) => (
           <div key={page.id} className="space-y-2">
-            <h2 className="text-lg font-bold text-gray-900 px-2">
-              {page.label || (page.type === "invoice" ? "Invoice" : page.type === "payment" ? "Payment" : "Agreement")}
-            </h2>
+            {/* The page's own name. It used to fall back to "Agreement",
+                which labelled a client's first page — their Introduction —
+                with a word the owner never typed. No label, no heading. */}
+            {(page.label || page.type === "invoice" || page.type === "payment") && (
+              <h2 className="text-lg font-bold text-gray-900 px-2">
+                {page.label || (page.type === "invoice" ? "Invoice" : "Payment")}
+              </h2>
+            )}
             {/* Invoice and payment pages are generated from what the client
                 actually chose rather than authored block by block — an invoice
                 typed by hand goes stale the moment a package price changes. */}
@@ -489,6 +494,23 @@ export default function ViewProposalPage() {
                   )}
                 </div>
               </div>
+            ) : page.type === "agreement" && proposal?.agreementPreview && !(page.blocks || []).length && !page.content ? (
+              // An empty agreement page is a placeholder for the contract you
+              // linked — so the contract appears HERE, in the agreement
+              // section where you put it, rather than tacked on at the end.
+              (proposal.agreementPreview.pages || []).length > 0 ? (
+                (proposal.agreementPreview.pages as any[])
+                  .slice()
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                  .map((cp: any) => (
+                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} />
+                  ))
+              ) : (
+                <ProposalBlockRenderer
+                  page={{ id: "linked-agreement", type: "agreement", label: "", content: proposal.agreementPreview.content, sortOrder: 0 }}
+                  libraryPackages={proposal?.libraryPackages || []}
+                />
+              )
             ) : (
               <ProposalBlockRenderer
                 page={page}
@@ -505,7 +527,8 @@ export default function ViewProposalPage() {
              instead of it only existing as a generated document afterwards.
              The binding copy is still the one produced on acceptance with
              merge fields resolved; this is the same wording, unfilled. */}
-        {proposal?.agreementPreview && (
+        {proposal?.agreementPreview
+          && !agreementPages.some((p: any) => p.type === "agreement" && !(p.blocks || []).length && !p.content) && (
           <div className="space-y-2">
             <h2 className="text-lg font-bold text-gray-900 px-2">{proposal.agreementPreview.label}</h2>
             {(proposal.agreementPreview.pages || []).length > 0 ? (
