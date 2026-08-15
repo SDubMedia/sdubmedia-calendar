@@ -87,6 +87,7 @@ const STRUCTURAL_TYPES: Array<{
   { type: "spacer", label: "Spacer", icon: Box, description: "Vertical space" },
   { type: "signature", label: "Client signature", icon: PenTool, description: "Where the client signs", presetRole: "client" as const },
   { type: "signature", label: "Vendor signature", icon: PenTool, description: "Where you (vendor) sign", presetRole: "vendor" as const },
+  { type: "package_group", label: "Service group", icon: Box, description: "A set of services the client chooses from — required or optional, one or many" },
   { type: "payment_schedule", label: "Payment schedule", icon: Box, description: "Deposit + balance terms (calculated at signing)", onlyKind: "contract" },
   { type: "merge_field", label: "Merge field", icon: Type, description: "Auto-fill: client name, packages, payment schedule, etc.", onlyKind: "contract" },
 ];
@@ -108,6 +109,10 @@ function emptyBlock(type: ProposalBlock["type"]): ProposalBlock {
       return { id, type, html: "<p></p>" };
     case "package_row":
       return { id, type, packageId: "" };
+    case "package_group":
+      // Defaults to the common case: an optional group the client can pick
+      // several from. A "choose one collection" group is one toggle away.
+      return { id, type, label: "", requirement: "optional", selection: "multiple", packageIds: [] };
     case "divider":
       return { id, type };
     case "spacer":
@@ -456,6 +461,14 @@ function BlockPreview({
         <PackageRowInlineEditable
           block={block}
           libraryPackages={libraryPackages}
+        />
+      );
+    case "package_group":
+      return (
+        <PackageGroupInlineEditable
+          block={block}
+          libraryPackages={libraryPackages}
+          onUpdate={onUpdate}
         />
       );
     case "divider":
@@ -1594,6 +1607,85 @@ function SpacerBlockEditable({
 // modify the master Package in the library — change once, reflected on
 // every template using it. (Per-proposal price overrides are a separate
 // future feature when we ship proposal-level edits.)
+
+/** Authoring a service group: a heading, whether it's required, whether the
+ *  client may pick more than one, and which packages are in it. Everything is
+ *  edited in place — the group is the thing that makes add-ons sellable, so it
+ *  shouldn't be buried in a side panel. */
+function PackageGroupInlineEditable({
+  block,
+  libraryPackages,
+  onUpdate,
+}: {
+  block: Extract<ProposalBlock, { type: "package_group" }>;
+  libraryPackages: Package[];
+  onUpdate: (b: ProposalBlock) => void;
+}) {
+  const inGroup = block.packageIds
+    .map(id => libraryPackages.find(p => p.id === id))
+    .filter(Boolean) as Package[];
+  const available = libraryPackages.filter(p => !block.packageIds.includes(p.id));
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 my-2">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          value={block.label}
+          onChange={(e) => onUpdate({ ...block, label: e.target.value })}
+          placeholder="Group heading, e.g. Film Collection"
+          className="flex-1 min-w-[180px] text-sm font-medium border-b border-gray-200 focus:border-gray-900 outline-none py-1"
+        />
+        <select
+          value={block.requirement}
+          onChange={(e) => onUpdate({ ...block, requirement: e.target.value as "required" | "optional" })}
+          className="text-xs border border-gray-200 rounded px-2 py-1"
+        >
+          <option value="required">Required</option>
+          <option value="optional">Optional</option>
+        </select>
+        <select
+          value={block.selection}
+          onChange={(e) => onUpdate({ ...block, selection: e.target.value as "single" | "multiple" })}
+          className="text-xs border border-gray-200 rounded px-2 py-1"
+        >
+          <option value="single">Pick one</option>
+          <option value="multiple">Pick any</option>
+        </select>
+      </div>
+
+      {inGroup.length === 0 ? (
+        <p className="text-xs text-gray-400 italic mb-2">No services yet — add one below.</p>
+      ) : (
+        <ul className="space-y-1 mb-2">
+          {inGroup.map(pkg => (
+            <li key={pkg.id} className="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
+              <span className="truncate">{pkg.name || "Untitled package"}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-500">${pkg.defaultPrice.toLocaleString()}</span>
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ ...block, packageIds: block.packageIds.filter(id => id !== pkg.id) })}
+                  className="text-xs text-gray-400 hover:text-red-600"
+                >Remove</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {available.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) onUpdate({ ...block, packageIds: [...block.packageIds, e.target.value] }); }}
+          className="text-xs border border-gray-200 rounded px-2 py-1 w-full"
+        >
+          <option value="">Add a service from your library…</option>
+          {available.map(p => <option key={p.id} value={p.id}>{p.name || "Untitled package"}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
 
 function PackageRowInlineEditable({
   block,

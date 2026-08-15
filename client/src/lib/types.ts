@@ -1329,6 +1329,23 @@ export type ProposalBlock =
       icon?: string;
     }
   | {
+      // A group of services the client chooses within: "pick one of these
+      // collections", then "add any of these". package_row offers a single
+      // package on its own; a group is what makes add-ons sellable, because
+      // one selection slot can't hold a collection AND its extras.
+      id: string;
+      type: "package_group";
+      // Shown above the group, e.g. "Film Collection".
+      label: string;
+      // Drives the "Required" / "Optional" marker and whether the client can
+      // continue without choosing.
+      requirement: "required" | "optional";
+      // "single" = radio behaviour (one collection), "multiple" = add-ons.
+      selection: "single" | "multiple";
+      // References the org's Packages library, same as package_row.
+      packageIds: string[];
+    }
+  | {
       id: string;
       type: "divider";
     }
@@ -1426,6 +1443,10 @@ export interface Proposal {
   pages: ProposalPage[];
   packages: ProposalPackage[];
   selectedPackageId: string | null;
+  /** Everything the client picked. The single field above stays for proposals
+   *  already sent and for single-choice templates; this is the source of truth
+   *  whenever it's non-empty. */
+  selectedPackageIds: string[];
   paymentMilestones: PaymentMilestone[];
   pipelineStage: PipelineStage;
   viewedAt: string | null;

@@ -373,6 +373,7 @@ export default function ProposalsPage() {
       // No pre-selection: with more than one package the client picks, and
       // choosing for them defeats the point of offering a choice.
       selectedPackageId: propPackages.length === 1 ? propPackages[0].id : null,
+      selectedPackageIds: [],
       paymentMilestones: defaultDepositMilestones(data.organization),
       sendHistory: [],
       inboundReplies: [],

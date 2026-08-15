@@ -372,6 +372,7 @@ export default function PipelinePage() {
         pages: tpl?.pages || [],
         packages: tpl?.packages || [],
         selectedPackageId: null,
+        selectedPackageIds: [],
         paymentMilestones: defaultDepositMilestones(data.organization),
         sendHistory: [],
         inboundReplies: [],

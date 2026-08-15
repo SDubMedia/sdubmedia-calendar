@@ -346,6 +346,7 @@ function rowToProposal(r: any): Proposal {
     title: r.title || "",
     pages: Array.isArray(r.pages) ? r.pages : [],
     packages: Array.isArray(r.packages) ? r.packages : [],
+    selectedPackageIds: Array.isArray(r.selected_package_ids) ? r.selected_package_ids : [],
     selectedPackageId: r.selected_package_id || null,
     paymentMilestones: Array.isArray(r.payment_milestones) ? r.payment_milestones : [],
     pipelineStage: r.pipeline_stage || "inquiry",

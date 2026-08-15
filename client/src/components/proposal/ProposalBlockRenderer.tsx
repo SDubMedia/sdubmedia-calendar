@@ -111,6 +111,8 @@ function BlockView({
       return <ProseBlock block={block} />;
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
+    case "package_group":
+      return <PackageGroupBlock block={block} libraryPackages={libraryPackages} />;
     case "divider":
       return <hr className="border-gray-200 my-2" />;
     case "spacer":
@@ -232,6 +234,52 @@ function ProseBlock({ block }: { block: Extract<ProposalBlock, { type: "prose" }
       className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
     />
+  );
+}
+
+/** A set of services the client chooses within — "pick one collection", then
+ *  "add any of these". This is display-only here; the interactive version with
+ *  Select buttons and a running total lives in the client-facing proposal
+ *  view. In the editor and in previews it shows the group heading, whether it
+ *  is required, and the cards it contains. */
+function PackageGroupBlock({
+  block,
+  libraryPackages,
+}: {
+  block: Extract<ProposalBlock, { type: "package_group" }>;
+  libraryPackages: Package[];
+}) {
+  const chosen = block.packageIds
+    .map(id => libraryPackages.find(p => p.id === id))
+    .filter(Boolean) as Package[];
+
+  return (
+    <div className="my-4">
+      <div className="flex items-baseline justify-between border-l-2 border-gray-900 pl-3 py-2 mb-3">
+        <span className="text-sm font-medium text-gray-900">
+          {block.label || (block.selection === "single" ? "Select one service below" : "Select one or more services below")}
+        </span>
+        <span className={`text-xs ${block.requirement === "required" ? "text-gray-900" : "text-gray-400"}`}>
+          {block.requirement === "required" ? "*Required" : "Optional"}
+        </span>
+      </div>
+      {chosen.length === 0 ? (
+        <p className="text-xs text-gray-400 italic border border-dashed border-gray-200 rounded p-3">
+          No services added to this group yet
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {chosen.map(pkg => (
+            <div key={pkg.id} className="border border-gray-200 rounded-lg p-4">
+              <PackageRowBlock
+                block={{ id: `${block.id}-${pkg.id}`, type: "package_row", packageId: pkg.id }}
+                libraryPackages={libraryPackages}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
