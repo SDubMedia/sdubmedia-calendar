@@ -142,9 +142,18 @@ export default function TemplateEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing?.id, isNew]);
 
-  // Set initial active page
+  // Open on the first page, and recover if the selected one isn't in this
+  // template.
+  //
+  // This only filled a BLANK selection, so the id survived navigating from one
+  // template to another. The second template then had a selected page id that
+  // belonged to the first, matched nothing, and showed "Select a page from the
+  // sidebar" on a template that plainly had pages — you had to click one every
+  // time. Same on delete, and after a reload that restored a stale id.
   useEffect(() => {
-    if (!activePageId && pages.length > 0) setActivePageId(pages[0].id);
+    if (pages.length === 0) return;
+    const stillHere = pages.some(p => p.id === activePageId);
+    if (!activePageId || !stillHere) setActivePageId(pages[0].id);
   }, [pages, activePageId]);
 
   const activePage = pages.find(p => p.id === activePageId);
