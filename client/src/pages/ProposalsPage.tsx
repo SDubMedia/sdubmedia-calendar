@@ -7,7 +7,7 @@ import { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Proposal, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem } from "@/lib/types";
+import type { Proposal, ProposalStatus, ProposalLineItem, ProposalPaymentConfig, ServiceItem, ProposalPage, ProposalPackage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -210,6 +210,10 @@ export default function ProposalsPage() {
   const [propClientId, setPropClientId] = useState("");
   const [propProjectId, setPropProjectId] = useState("");
   const [propTemplateId, setPropTemplateId] = useState("");
+  // Held from the chosen template until the proposal is created.
+  const [propPages, setPropPages] = useState<ProposalPage[]>([]);
+  const [propPackages, setPropPackages] = useState<ProposalPackage[]>([]);
+  const [propContractTemplateId, setPropContractTemplateId] = useState<string | null>(null);
   const [propLineItems, setPropLineItems] = useState<ProposalLineItem[]>([emptyLineItem()]);
   const [propContractContent, setPropContractContent] = useState("");
   const [propPayment, setPropPayment] = useState<ProposalPaymentConfig>(DEFAULT_PAYMENT);
@@ -292,6 +296,9 @@ export default function ProposalsPage() {
     setPropClientId("");
     setPropProjectId("");
     setPropTemplateId("");
+    setPropPages([]);
+    setPropPackages([]);
+    setPropContractTemplateId(null);
     setPropLineItems([emptyLineItem()]);
     setPropContractContent("");
     setPropPayment(DEFAULT_PAYMENT);
@@ -308,6 +315,15 @@ export default function ProposalsPage() {
       setPropContractContent(tpl.contractContent);
       setPropPayment(tpl.paymentConfig);
       if (!propTitle) setPropTitle(tpl.name);
+      // The designed proposal — the pages you laid out, the packages the client
+      // chooses between, and the contract that gets generated on acceptance.
+      // These were being dropped: a template was flattened to line items and
+      // contract text, so a finished package library could never reach a
+      // client from this screen. That's why "I have all my packages but can't
+      // send a wedding proposal" was a correct description of the software.
+      setPropPages(tpl.pages || []);
+      setPropPackages(tpl.packages || []);
+      setPropContractTemplateId(tpl.contractTemplateId || null);
     }
   }
 
@@ -352,9 +368,11 @@ export default function ProposalsPage() {
       clientId: propClientId,
       projectId: propProjectId || null,
       title: propTitle.trim(),
-      pages: [],
-      packages: [],
-      selectedPackageId: null,
+      pages: propPages,
+      packages: propPackages,
+      // No pre-selection: with more than one package the client picks, and
+      // choosing for them defeats the point of offering a choice.
+      selectedPackageId: propPackages.length === 1 ? propPackages[0].id : null,
       paymentMilestones: defaultDepositMilestones(data.organization),
       sendHistory: [],
       inboundReplies: [],
@@ -362,7 +380,7 @@ export default function ProposalsPage() {
       pipelineStage: "inquiry",
       viewedAt: null,
       leadSource: "",
-      contractTemplateId: null,
+      contractTemplateId: propContractTemplateId,
       lineItems: items,
       subtotal,
       taxRate: 0,
@@ -806,6 +824,19 @@ export default function ProposalsPage() {
                   {data.proposalTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {/* Spell out what's coming across. The designed pages and package
+                  choices used to be silently dropped here, so seeing them named
+                  is how you know the proposal your client opens is the one you
+                  built rather than a bare list of line items. */}
+              {propTemplateId && (
+                <p className="text-[11px] text-muted-foreground">
+                  {propPackages.length > 0
+                    ? `Includes ${propPackages.length} package${propPackages.length === 1 ? "" : "s"} for the client to choose from`
+                    : "This template has no packages — the client sees the line items below"}
+                  {propPages.length > 0 && ` · ${propPages.length} designed page${propPages.length === 1 ? "" : "s"}`}
+                  {propContractTemplateId && " · contract generated on acceptance"}
+                </p>
+              )}
             </div>
 
             <LineItemEditor items={propLineItems} setter={setPropLineItems} services={data.organization?.services} />
