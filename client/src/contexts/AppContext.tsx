@@ -946,6 +946,8 @@ function rowToDeliverySelection(r: any): DeliverySelection {
 function rowToOrg(r: any): Organization {
   return {
     id: r.id, name: r.name, slug: r.slug, logoUrl: r.logo_url || "", faviconUrl: r.favicon_url || "", plan: r.plan,
+    deliveryEmailSubject: r.delivery_email_subject || "",
+    deliveryEmailBody: r.delivery_email_body || "",
     features: { ...DEFAULT_FEATURES, ...(r.features || {}) },
     productionType: r.production_type || "both",
     defaultBillingModel: r.default_billing_model || "hourly",
@@ -2541,6 +2543,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.name !== undefined) patch.name = updates.name;
     if (updates.logoUrl !== undefined) patch.logo_url = updates.logoUrl;
     if (updates.faviconUrl !== undefined) patch.favicon_url = updates.faviconUrl;
+    if (updates.deliveryEmailSubject !== undefined) patch.delivery_email_subject = updates.deliveryEmailSubject;
+    if (updates.deliveryEmailBody !== undefined) patch.delivery_email_body = updates.deliveryEmailBody;
     if (updates.features !== undefined) patch.features = updates.features;
     if (updates.productionType !== undefined) patch.production_type = updates.productionType;
     if (updates.defaultBillingModel !== undefined) patch.default_billing_model = updates.defaultBillingModel;

@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon, KeyRound, Menu as MenuIcon } from "lucide-react";
+import { Settings, Film, Camera, Video, Save, Building2, GripVertical, LayoutDashboard, Mail, CreditCard, ExternalLink, CheckCircle, Plus, X, ArrowUp, ArrowDown, CalendarDays as CalendarIcon, KeyRound, Menu as MenuIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { cn, formatPhoneInput } from "@/lib/utils";
@@ -119,6 +119,8 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(
     () => mergeWidgets(org?.dashboardWidgets)
   );
+  const [deliveryEmailSubject, setDeliveryEmailSubject] = useState(org?.deliveryEmailSubject || "");
+  const [deliveryEmailBody, setDeliveryEmailBody] = useState(org?.deliveryEmailBody || "");
   const [pipelineStages, setPipelineStages] = useState<PipelineStageConfig[]>(
     org?.pipelineStages?.length ? org.pipelineStages : DEFAULT_PIPELINE_STAGES
   );
@@ -280,6 +282,8 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
       setLogoUrl(org.logoUrl || "");
       setFaviconUrl(org.faviconUrl || "");
       setDashboardWidgets(mergeWidgets(org.dashboardWidgets));
+      setDeliveryEmailSubject(org.deliveryEmailSubject || "");
+      setDeliveryEmailBody(org.deliveryEmailBody || "");
     }
   }, [org]);
 
@@ -335,6 +339,8 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
         features: { ...features, staffFeatures, partnerFeatures, clientFeatures },
         businessInfo,
         dashboardWidgets,
+        deliveryEmailSubject,
+        deliveryEmailBody,
         pipelineStages,
         services,
       });
@@ -1119,6 +1125,47 @@ export default function SettingsPage(props?: { embedded?: boolean }) {
                 Reset to defaults
               </button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Delivery email default */}
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <Mail className="w-4 h-4 text-primary" />
+              Delivery email
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              The starting point for every gallery you send. You can still edit the wording in the composer before each delivery — this is just what it opens with.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Subject</label>
+              <Input
+                value={deliveryEmailSubject}
+                onChange={(e) => setDeliveryEmailSubject(e.target.value)}
+                placeholder="Your {{contents}} are ready — {{gallery_title}}"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Message</label>
+              <textarea
+                value={deliveryEmailBody}
+                onChange={(e) => setDeliveryEmailBody(e.target.value)}
+                rows={5}
+                placeholder={"Hi {{first_name}},\n\nThe {{contents}} for {{gallery_title}} are ready to view and download."}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Fields: <span className="font-mono">{"{{first_name}}"}</span>{" "}
+              <span className="font-mono">{"{{gallery_title}}"}</span>{" "}
+              <span className="font-mono">{"{{contents}}"}</span>{" "}
+              <span className="font-mono">{"{{gallery_link}}"}</span>.
+              Leave both blank to use the built-in wording, which adapts to whether the gallery holds photos, video, or both.
+              The download button is added automatically.
+            </p>
           </CardContent>
         </Card>
 

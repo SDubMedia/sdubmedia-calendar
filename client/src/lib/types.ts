@@ -189,6 +189,10 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
+  /** Default delivery email. Plain text with {{merge_fields}}; "" means use
+   *  the built-in wording, which adapts to what the gallery holds. */
+  deliveryEmailSubject: string;
+  deliveryEmailBody: string;
   logoUrl: string;
   faviconUrl: string;
   plan: string;

@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const { deliveryId, recipient } = req.body || {};
+    const { deliveryId, recipient, subject: subjectOverride, body: bodyOverride } = req.body || {};
     if (!deliveryId) return res.status(400).json({ error: "deliveryId required" });
     const who: "agent" | "broker" = recipient === "broker" ? "broker" : "agent";
 
@@ -70,12 +70,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isPlural = subjectNoun.includes("and") || subjectNoun.endsWith("s");
     const verb = isPlural ? "are" : "is";
 
-    const subject = `Your ${subjectNoun} ${verb} ready — ${delivery.title || "your listing"}`;
+    const title = delivery.title || "your listing";
+
+    // Merge fields, mirroring client/src/lib/deliveryEmail.ts. Duplicated
+    // deliberately (api/ files stay self-contained) — change both together, or
+    // the composer's preview stops matching what actually gets sent, which
+    // defeats the point of previewing.
+    const merge = (text: string, firstName: string) => text
+      .replace(/\{\{first_name\}\}/g, firstName)
+      .replace(/\{\{gallery_title\}\}/g, title)
+      .replace(/\{\{contents\}\}/g, subjectNoun)
+      .replace(/\{\{gallery_link\}\}/g, galleryUrl);
+
+    // What the composer sent, falling back to the org default, falling back to
+    // the built-in wording. Trimmed so a textarea of spaces doesn't count as
+    // "the owner wrote something".
+    const { data: orgRow } = await supabase
+      .from("organizations").select("delivery_email_subject, delivery_email_body").eq("id", callerOrgId).maybeSingle();
+    const pick = (override: unknown, saved: string | null | undefined, built: string) => {
+      const o = typeof override === "string" ? override.trim() : "";
+      if (o) return o;
+      const sv = (saved || "").trim();
+      return sv || built;
+    };
+    const subjectTemplate = pick(subjectOverride, orgRow?.delivery_email_subject,
+      `Your ${subjectNoun} ${verb} ready — {{gallery_title}}`);
+    const bodyTemplate = pick(bodyOverride, orgRow?.delivery_email_body,
+      `Hi {{first_name}},\n\nThe ${subjectNoun} for {{gallery_title}} ${verb} ready to view and download.`);
+
+    const subject = merge(subjectTemplate, "there");
+
+    // The body is authored as plain text and escaped here, so nothing typed
+    // into a textarea can break the layout or inject markup. Blank lines become
+    // paragraphs; single newlines become <br>.
+    const bodyHtml = (firstName: string) => merge(bodyTemplate, firstName)
+      .split(/\n{2,}/)
+      .map(para => `<p style="font-size:15px;line-height:1.6;">${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
+      .join("");
+
     const buildHtml = (firstName: string) => `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1e293b;">
           <h1 style="font-size:24px;font-weight:700;color:#0088ff;margin:0 0 8px;">Your ${subjectNoun} ${verb} ready</h1>
-          <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml(firstName)},</p>
-          <p style="font-size:15px;line-height:1.6;">The ${subjectNoun} for <strong>${escapeHtml(delivery.title || "your listing")}</strong> ${verb} ready to view and download.</p>
+          ${bodyHtml(firstName)}
           <div style="margin:28px 0;"><a href="${galleryUrl}" style="display:inline-block;background:#0088ff;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View &amp; download</a></div>
         </div>`;
 

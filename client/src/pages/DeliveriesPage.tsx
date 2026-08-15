@@ -19,6 +19,7 @@ import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/multipart";
 import { baseNameOf, renameFile } from "@/lib/fileName";
+import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryFile, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
@@ -465,6 +466,8 @@ function DeliveryDetail({ id }: { id: string }) {
   const [thumbUrls, setThumbUrls] = useState<Map<string, string>>(new Map());
   // File whose thumbnail the user is currently picking (or null when closed).
   const [thumbnailPickerFileId, setThumbnailPickerFileId] = useState<string | null>(null);
+  // Non-null while the delivery email is being composed.
+  const [composer, setComposer] = useState<{ contents: GalleryContents; subject: string; body: string } | null>(null);
   // Inline rename of a delivered file. The name is what the client sees in the
   // gallery and what they get on disk, so this is the label, not the R2 key.
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
@@ -868,22 +871,28 @@ function DeliveryDetail({ id }: { id: string }) {
   // One-tap deliver: mark delivered, notify the agent, and (for a self-pay
   // agent with a card) offer to charge. Used by the prominent Photos-tab button
   // and the granular Status control.
-  const deliverToAgent = async () => {
-    // Delivering emails the client a live link. It can't be unsent, and setting
-    // the gallery back to draft doesn't revoke it — the public link works
-    // whatever the status. So it gets an explicit confirmation naming who and
-    // how many, which is what a one-tap deliver was missing when a gallery went
-    // out by accident.
-    const photoCount = files.length;
-    const emailTarget = agentClient?.email || "";
-    const ok = await confirm({
-      title: `Send this gallery to ${clientNoun}?`,
-      description: `${photoCount} file${photoCount === 1 ? "" : "s"} will be emailed${emailTarget ? ` to ${emailTarget}` : ""} as a live link they can view and download straight away.${hasBroker ? " The brokerage is notified too." : ""} This can't be unsent — putting the gallery back to draft doesn't take the link away.`,
-      confirmLabel: "Send it",
+  // Opens the composer rather than a yes/no box. A confirmation could only
+  // tell you what was about to go out; this lets you read it and change it,
+  // which is what "preview before you send" has to mean.
+  const deliverToAgent = () => {
+    const contents = {
+      photoCount: files.filter(f => f.mediaType !== "video").length,
+      videoCount: files.filter(f => f.mediaType === "video").length,
+    };
+    const org = data.organization;
+    setComposer({
+      contents,
+      subject: (org?.deliveryEmailSubject || "").trim() || defaultSubject(contents),
+      body: (org?.deliveryEmailBody || "").trim() || defaultBody(contents),
     });
-    if (!ok) return;
+  };
+
+  // Runs after the composer's Send. Everything below is what the old one-tap
+  // deliver did; only the confirmation step changed.
+  const sendDelivery = async (subject: string, body: string) => {
+    setComposer(null);
     await setDeliveryStatus(id, "delivered");
-    notifyGallery("agent");
+    notifyGallery("agent", { subject, body });
     // If this shoot belongs to a brokerage, automatically notify every managing
     // broker too — no button. Fires quietly so a brokerage-less shoot is a no-op.
     const shootClient = project ? data.clients.find(c => c.id === project.clientId) : null;
@@ -941,13 +950,15 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   };
 
-  const notifyGallery = async (recipient: "agent" | "broker") => {
+  const notifyGallery = async (recipient: "agent" | "broker", email?: { subject: string; body: string }) => {
     try {
       const token = await getAuthToken();
       const res = await fetch("/api/notify-gallery-ready", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ deliveryId: id, recipient }),
+        // Omitted entirely when not composing, so the server falls back to the
+        // org default and then the built-in wording.
+        body: JSON.stringify({ deliveryId: id, recipient, ...(email || {}) }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't notify");
@@ -1367,6 +1378,21 @@ function DeliveryDetail({ id }: { id: string }) {
       )}
 
       {/* Video thumbnail picker — opens when admin clicks "Thumbnail" on a video tile */}
+      {composer && (
+        <DeliveryEmailComposer
+          contents={composer.contents}
+          subject={composer.subject}
+          body={composer.body}
+          recipient={agentClient?.email || ""}
+          recipientName={agentClient?.contactName || agentClient?.company || ""}
+          galleryTitle={delivery.title || "your gallery"}
+          galleryUrl={delivery.slug ? `${window.location.origin}/g/${delivery.slug}` : `${window.location.origin}/deliver/${delivery.token}`}
+          alsoBroker={hasBroker}
+          onCancel={() => setComposer(null)}
+          onSend={sendDelivery}
+        />
+      )}
+
       {thumbnailPickerFileId && (() => {
         const file = files.find(f => f.id === thumbnailPickerFileId);
         if (!file) return null;
@@ -2044,6 +2070,130 @@ function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUp
           <span className="text-xs text-slate-500">Adds a "Request prints" button to each photo on the public gallery. Requests email you with the photo + size; you handle fulfillment manually for now.</span>
         </span>
       </label>
+    </div>
+  );
+}
+
+/** Compose the delivery email: read it, edit it, then send.
+ *
+ *  Replaces a yes/no confirmation, which could only describe what was about to
+ *  go out. The preview renders the same merge fields the server will, so what
+ *  you read is what the client gets. */
+function DeliveryEmailComposer({
+  contents, subject: initialSubject, body: initialBody,
+  recipient, recipientName, galleryTitle, galleryUrl, alsoBroker, onCancel, onSend,
+}: {
+  contents: GalleryContents;
+  subject: string;
+  body: string;
+  recipient: string;
+  recipientName: string;
+  galleryTitle: string;
+  galleryUrl: string;
+  alsoBroker: boolean;
+  onCancel: () => void;
+  onSend: (subject: string, body: string) => Promise<void>;
+}) {
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
+  const [sending, setSending] = useState(false);
+
+  // The name the merge field will actually resolve to, so the preview can't
+  // flatter itself with a name the send won't have.
+  const firstName = (recipientName || "").trim().split(/\s+/)[0] || "there";
+  const merged = { firstName, galleryTitle, galleryUrl, contents };
+  const previewSubject = applyMerge(subject, merged);
+  const previewBody = applyMerge(body, merged);
+
+  const send = async () => {
+    if (!subject.trim() || !body.trim()) { toast.error("Subject and message can't be empty"); return; }
+    setSending(true);
+    try { await onSend(subject, body); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-[#0e1116] border border-white/10 rounded-2xl w-full max-w-3xl my-8">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-white">Send this gallery</h2>
+          <button onClick={onCancel} className="text-slate-400 hover:text-white p-1"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="text-xs text-slate-400">
+            To <span className="text-white">{recipient || "— no email on file —"}</span>
+            {alsoBroker && <span> · the brokerage is notified too</span>}
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Subject</label>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Message</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={7}
+              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
+            />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {MERGE_FIELDS.map(f => (
+                <button
+                  key={f.token}
+                  type="button"
+                  onClick={() => setBody(b => `${b}${f.token}`)}
+                  title={f.label}
+                  className="text-[10px] px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/25 font-mono"
+                >{f.token}</button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              The download button is added automatically underneath — you don't need to paste the link unless you want it in the text too.
+            </p>
+          </div>
+
+          {/* Rendered the way the client will see it. */}
+          <div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preview</label>
+            <div className="rounded-lg bg-white p-5 text-[#1e293b]">
+              <p className="text-[11px] text-slate-500 mb-3 pb-3 border-b border-slate-200">
+                <strong className="text-slate-700">Subject:</strong> {previewSubject}
+              </p>
+              <h1 className="text-[20px] font-bold text-[#0088ff] mb-2">
+                Your {contentsNounFor(contents)} {contentsVerbFor(contents)} ready
+              </h1>
+              {previewBody.split(/\n{2,}/).map((para, i) => (
+                <p key={i} className="text-[14px] leading-relaxed mb-2 whitespace-pre-line">{para}</p>
+              ))}
+              <span className="inline-block mt-3 bg-[#0088ff] text-white px-5 py-2.5 rounded-md text-[13px] font-semibold">
+                View &amp; download
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-slate-500">
+            This can't be unsent — putting the gallery back to draft doesn't take the link away.
+          </p>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={onCancel} className="text-xs px-3 py-2 border border-white/10 rounded-lg text-slate-300 hover:bg-white/[0.04]">Cancel</button>
+            <button
+              onClick={send}
+              disabled={sending || !recipient}
+              title={recipient ? "" : "No email on file for this client"}
+              className="text-xs px-4 py-2 rounded-lg bg-[#0088ff] text-white font-semibold disabled:opacity-40"
+            >{sending ? "Sending…" : "Send"}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
