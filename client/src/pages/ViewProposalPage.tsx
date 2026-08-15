@@ -500,6 +500,44 @@ export default function ViewProposalPage() {
           </div>
         ))}
 
+        {/* ---- THE LINKED AGREEMENT ----
+             Read-only, so the client can read the contract BEFORE signing
+             instead of it only existing as a generated document afterwards.
+             The binding copy is still the one produced on acceptance with
+             merge fields resolved; this is the same wording, unfilled. */}
+        {proposal?.agreementPreview && (
+          <div className="space-y-2">
+            <h2 className="text-lg font-bold text-gray-900 px-2">{proposal.agreementPreview.label}</h2>
+            {(proposal.agreementPreview.pages || []).length > 0 ? (
+              (proposal.agreementPreview.pages as any[])
+                .slice()
+                .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                .map((page: any) => (
+                  <ProposalBlockRenderer
+                    key={page.id}
+                    page={page}
+                    libraryPackages={proposal?.libraryPackages || []}
+                  />
+                ))
+            ) : proposal.agreementPreview.content ? (
+              <ProposalBlockRenderer
+                page={{
+                  id: "agreement-preview",
+                  type: "agreement",
+                  label: proposal.agreementPreview.label,
+                  content: proposal.agreementPreview.content,
+                  sortOrder: 0,
+                }}
+                libraryPackages={proposal?.libraryPackages || []}
+              />
+            ) : (
+              <div className="bg-white rounded-xl border border-border px-8 py-10 text-sm text-gray-500">
+                This agreement template has no content yet.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Fallback: legacy contractContent (proposal has no pages array yet) */}
         {!hasPages && proposal?.contractContent && (
           <div className="space-y-2">

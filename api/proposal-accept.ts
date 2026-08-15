@@ -82,7 +82,50 @@ async function getProposal(token: string, res: VercelResponse) {
 
   const alreadyAccepted = !!proposal.accepted_at;
 
+  // The org's package library, in the shape the block renderer expects.
+  // Without this, every package_row and package_group in a proposal rendered
+  // "package not found" for the client and priced at zero — the blocks resolve
+  // packages by id at render time and this payload never carried them.
+  const { data: pkgRows } = await supabase
+    .from("packages")
+    .select("id, name, icon, icon_custom_data_url, description, default_price, discount_from_price, photo_data_url, deliverables")
+    .eq("org_id", proposal.org_id)
+    .is("deleted_at", null);
+  const libraryPackages = (pkgRows || []).map(p => ({
+    id: p.id,
+    name: p.name || "",
+    icon: p.icon || "",
+    iconCustomDataUrl: p.icon_custom_data_url || "",
+    description: p.description || "",
+    defaultPrice: p.default_price || 0,
+    discountFromPrice: p.discount_from_price || 0,
+    photoDataUrl: p.photo_data_url || "",
+    deliverables: Array.isArray(p.deliverables) ? p.deliverables : [],
+  }));
+
+  // The linked agreement, so it can be read BEFORE signing rather than only
+  // appearing as a generated contract afterwards. Read-only here: the binding
+  // copy is still the one generated on acceptance, with merge fields resolved.
+  let agreementPreview: { label: string; pages: unknown[]; content: string } | null = null;
+  if (proposal.contract_template_id) {
+    const { data: ctpl } = await supabase
+      .from("contract_templates")
+      .select("name, pages, blocks, content")
+      .eq("id", proposal.contract_template_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (ctpl) {
+      agreementPreview = {
+        label: ctpl.name || "Agreement",
+        pages: Array.isArray(ctpl.pages) ? ctpl.pages : [],
+        content: typeof ctpl.content === "string" ? ctpl.content : "",
+      };
+    }
+  }
+
   return res.status(200).json({
+    libraryPackages,
+    agreementPreview,
     id: proposal.id,
     title: proposal.title,
     lineItems: proposal.line_items,
