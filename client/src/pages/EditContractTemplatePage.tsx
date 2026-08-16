@@ -487,6 +487,10 @@ function renderBlocksToHtml(blocks: ProposalBlock[]): string {
     blocks,
     sortOrder: 0,
   };
+  // NO resolveMerge here, deliberately. This output is SAVED as the contract's
+  // content, so resolving {{tokens}} would bake the placeholders in and the
+  // merge fields would be gone for good — every future client greeted by a
+  // frozen "Client Name" that never fills.
   return renderToStaticMarkup(<ProposalBlockRenderer page={fakePage} libraryPackages={[]} />);
 }
 

@@ -533,10 +533,10 @@ export default function TemplateEditorPage() {
                         <div className="rounded-lg overflow-hidden border border-border">
                           {linkedPages.length > 0
                             ? linkedPages.map(cp => (
-                                <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={data.packages || []} org={data.organization} className="bg-white" />
+                                <ProposalBlockRenderer resolveMerge key={cp.id} page={cp} libraryPackages={data.packages || []} org={data.organization} className="bg-white" />
                               ))
                             : (
-                              <ProposalBlockRenderer
+                              <ProposalBlockRenderer resolveMerge
                                 page={{ id: "linked", type: "agreement", label: "", content: linked.content || "", sortOrder: 0 }}
                                 libraryPackages={data.packages || []}
                                 org={data.organization}

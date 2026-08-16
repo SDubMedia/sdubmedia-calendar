@@ -667,16 +667,16 @@ export default function ViewProposalPage() {
                   .slice()
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                   .map((cp: any) => (
-                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} onFieldEdit={(field, value) => setClientFields(v => ({ ...v, [field]: value }))} />
+                    <ProposalBlockRenderer resolveMerge key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} onFieldEdit={(field, value) => setClientFields(v => ({ ...v, [field]: value }))} />
                   ))
               ) : (
-                <ProposalBlockRenderer
+                <ProposalBlockRenderer resolveMerge
                   page={{ id: "linked-agreement", type: "agreement", label: "", content: proposal.agreementPreview.content, sortOrder: 0 }}
                   libraryPackages={proposal?.libraryPackages || []}
                 />
               )
             ) : (
-              <ProposalBlockRenderer
+              <ProposalBlockRenderer resolveMerge
                 page={page}
                 libraryPackages={proposal?.libraryPackages || []}
                 selectedPackageIds={selectedPackageIds}
@@ -701,14 +701,14 @@ export default function ViewProposalPage() {
                 .slice()
                 .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                 .map((page: any) => (
-                  <ProposalBlockRenderer
+                  <ProposalBlockRenderer resolveMerge
                     key={page.id}
                     page={page}
                     libraryPackages={proposal?.libraryPackages || []}
                   />
                 ))
             ) : proposal.agreementPreview.content ? (
-              <ProposalBlockRenderer
+              <ProposalBlockRenderer resolveMerge
                 page={{
                   id: "agreement-preview",
                   type: "agreement",
@@ -730,7 +730,7 @@ export default function ViewProposalPage() {
         {!hasPages && proposal?.contractContent && (
           <div className="space-y-2">
             <h2 className="text-lg font-bold text-gray-900 px-2">Agreement</h2>
-            <ProposalBlockRenderer
+            <ProposalBlockRenderer resolveMerge
               page={{
                 id: "legacy",
                 type: "agreement",

@@ -54,6 +54,13 @@ interface ProposalBlockRendererProps {
   /** Supplied only by the client-facing view: makes the client's own fields
    *  editable where they sit in the sentence. */
   onFieldEdit?: (field: string, value: string) => void;
+  /** Turn {{tokens}} into readable text. OPT-IN, and deliberately so: this
+   *  component is also used to SERIALISE blocks into the HTML a contract
+   *  template is saved as (renderBlocksToHtml in EditContractTemplatePage).
+   *  Resolving by default would bake the placeholders into stored content and
+   *  permanently destroy the merge fields — a saved contract would greet every
+   *  future client with a frozen "Client Name" that never fills. */
+  resolveMerge?: boolean;
 }
 
 export function ProposalBlockRenderer({
@@ -65,6 +72,7 @@ export function ProposalBlockRenderer({
   org,
   filledFields,
   onFieldEdit,
+  resolveMerge = false,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -114,10 +122,11 @@ export function ProposalBlockRenderer({
               org={org}
               filledFields={filledFields}
               editable={!!onFieldEdit}
+              resolveMerge={resolveMerge}
             />
           ))
         ) : (
-          <LegacyContent content={page.content} org={org} filledFields={filledFields} editable={!!onFieldEdit} />
+          <LegacyContent content={page.content} org={org} filledFields={filledFields} editable={!!onFieldEdit} resolveMerge={resolveMerge} />
         )}
       </div>
     </div>
@@ -128,7 +137,7 @@ export function ProposalBlockRenderer({
 // Old templates contain raw HTML (the original reported bug was these tags
 // showing as text). With sanitization + dangerouslySetInnerHTML they render
 // as intended without anyone touching them.
-function LegacyContent({ content, org, filledFields, editable }: { content: string; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean }) {
+function LegacyContent({ content, org, filledFields, editable, resolveMerge }: { content: string; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean }) {
   if (!content || !content.trim()) {
     return <p className="text-gray-400 italic text-sm">No content yet.</p>;
   }
@@ -136,7 +145,7 @@ function LegacyContent({ content, org, filledFields, editable }: { content: stri
     <div
       className="contract-html-light text-sm leading-relaxed font-serif"
       style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(content, org, filledFields, editable), { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(content, org, filledFields, editable) : content, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
     />
   );
 }
@@ -151,6 +160,7 @@ function BlockView({
   org,
   filledFields,
   editable,
+  resolveMerge,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
@@ -159,6 +169,7 @@ function BlockView({
   org?: Organization | null;
   filledFields?: Record<string, string>;
   editable?: boolean;
+  resolveMerge?: boolean;
 }) {
   switch (block.type) {
     case "hero":
@@ -170,7 +181,7 @@ function BlockView({
     case "section_divider":
       return <SectionDividerBlock block={block} />;
     case "prose":
-      return <ProseBlock block={block} org={org} filledFields={filledFields} editable={editable} />;
+      return <ProseBlock block={block} org={org} filledFields={filledFields} editable={editable} resolveMerge={resolveMerge} />;
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
     case "package_group":
@@ -297,7 +308,7 @@ function SectionDividerBlock({
   );
 }
 
-function ProseBlock({ block, org, filledFields, editable }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean }) {
+function ProseBlock({ block, org, filledFields, editable, resolveMerge }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean }) {
   // Merge fields become readable text rather than raw braces. A client reading
   // an agreement should see "S-Dub Media" and "Event Date *", never
   // {{vendor_name}} — braces are code leaking into a legal document, and a new
@@ -305,7 +316,7 @@ function ProseBlock({ block, org, filledFields, editable }: { block: Extract<Pro
   return (
     <div
       className="contract-html-light prose prose-sm max-w-none text-gray-700 leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(block.html, org, filledFields, editable), { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(block.html, org, filledFields, editable) : block.html, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
     />
   );
 }
