@@ -39,6 +39,7 @@ export default function ViewProposalPage() {
   // event. Filled here, shown live in the agreement above.
   const [clientFields, setClientFields] = useState<Record<string, string>>({});
   const [showPartner, setShowPartner] = useState(false);
+  const [partnerSignature, setPartnerSignature] = useState("");
 
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
@@ -175,6 +176,9 @@ export default function ViewProposalPage() {
           selectedPackageId,
           selectedPackageIds,
           clientFields,
+          additionalSignature: showPartner && partnerSignature.trim()
+            ? { name: (clientFields.partner_name || "").trim(), email: (clientFields.partner_email || "").trim(), typedName: partnerSignature.trim() }
+            : null,
           signature: { name: typedName.trim() || "Client", email: signerEmail, signatureData, signatureType },
         }),
       });
@@ -366,6 +370,9 @@ export default function ViewProposalPage() {
     ...(showPartner && !(clientFields.partner_name || "").trim()
       ? [{ field: "partner_name", label: "Second person's full name" }]
       : []),
+    ...(showPartner && !partnerSignature.trim()
+      ? [{ field: "partner_signature", label: "Second person's signature" }]
+      : []),
   ];
 
   // Rendered between the introduction and the agreement, not down at the
@@ -415,6 +422,9 @@ export default function ViewProposalPage() {
                 className="text-xs text-gray-500 hover:text-gray-700"
               >Remove</button>
             </div>
+            <p className="text-xs text-gray-500 mb-2">
+              They'll sign the agreement as well, so their name goes on it alongside yours.
+            </p>
             <div className="grid gap-3 sm:grid-cols-3">
               {partnerFields.map(f => (
                 <div key={f.field}>
@@ -430,6 +440,26 @@ export default function ViewProposalPage() {
                   />
                 </div>
               ))}
+            </div>
+
+            {/* Both parties are named on the agreement, so both sign it.
+                Typed rather than drawn: the second person is often on a
+                different device, or reading over a shoulder, and a typed
+                signature is the same option already offered to the first. */}
+            <div className="mt-3">
+              <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
+                Their signature — type their full name <span className="text-red-600">*</span>
+              </label>
+              <input
+                value={partnerSignature}
+                onChange={(e) => setPartnerSignature(e.target.value)}
+                placeholder="Full name"
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                style={{ fontFamily: "'Brush Script MT', cursive", fontSize: "1.1rem" }}
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Typing their name counts as their signature on this agreement.
+              </p>
             </div>
           </>
         )}

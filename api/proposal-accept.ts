@@ -155,7 +155,7 @@ async function getProposal(token: string, res: VercelResponse) {
 async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const { token, signature, selectedPackageId, selectedPackageIds, clientFields } = req.body;
+  const { token, signature, selectedPackageId, selectedPackageIds, clientFields, additionalSignature } = req.body;
   if (!token || !signature) return res.status(400).json({ error: "Missing token or signature" });
 
   // Verify proposal exists and is in correct status
@@ -240,6 +240,24 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     }
     if (Object.keys(clean).length > 0) updatePayload.client_field_values = clean;
   }
+
+  // A second person named on the agreement signs it too. Recorded in the same
+  // shape as the primary signature so the contract can carry both.
+  let extraSigner: { name: string; email: string; signatureData: string; signatureType: string; timestamp: string } | null = null;
+  if (additionalSignature && typeof additionalSignature === "object") {
+    const a = additionalSignature as Record<string, unknown>;
+    const typed = typeof a.typedName === "string" ? a.typedName.trim().slice(0, 200) : "";
+    if (typed) {
+      extraSigner = {
+        name: typeof a.name === "string" ? a.name.trim().slice(0, 200) : typed,
+        email: typeof a.email === "string" ? a.email.trim().slice(0, 200) : "",
+        signatureData: typed,
+        signatureType: "typed",
+        timestamp: now,
+      };
+      updatePayload.additional_signatures = [extraSigner];
+    }
+  }
   if (resolvedMilestones.length > 0) updatePayload.payment_milestones = resolvedMilestones;
   if (selectedPkg) updatePayload.total = proposalTotal;
 
@@ -264,6 +282,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         resolvedMilestones,
         proposalTotal,
         chosenIds,
+        extraSigner,
       );
       // Fire-and-forget owner notification with deep-link to review the draft.
       // Critical for conversion — without it, owners don't know to act.
@@ -506,6 +525,8 @@ async function generateDraftContractFromProposal(
   /** What the client actually bought, so clauses tied to a service are kept
    *  or dropped in the signed copy the same way they were in the proposal. */
   chosenPackageIds: string[] = [],
+  /** A second person named on the agreement who signed it at the same time. */
+  extraSignerForContract: { name: string; email: string; signatureData: string; signatureType: string; timestamp: string } | null = null,
 ): Promise<string> {
   // 1. Load the master contract template
   const { data: tpl, error: tplErr } = await supabase
@@ -687,7 +708,9 @@ async function generateDraftContractFromProposal(
     client_email: clientEmail,
     sign_token: signToken,
     field_values: {},
-    additional_signers: [],
+    // Already signed at acceptance, so no separate signing link is issued —
+    // they signed the same document at the same moment as the first party.
+    additional_signers: extraSignerForContract ? [extraSignerForContract] : [],
     payment_milestones: stampedMilestones,
     pages: contractPages,
     document_expires_at: null,
