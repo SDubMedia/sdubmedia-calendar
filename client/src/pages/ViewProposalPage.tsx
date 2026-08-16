@@ -4,7 +4,7 @@
 // V2: Package selection → Agreement pages → Sign → Pay milestones
 // ============================================================
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch } from "wouter";
 import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
@@ -340,6 +340,42 @@ export default function ViewProposalPage() {
   const requiredClientFields = clientFieldsIn(contractText);
   const missingClientFields = requiredClientFields.filter(f => !(clientFields[f.field] || "").trim());
 
+  // Rendered between the introduction and the agreement, not down at the
+  // signature. Asking first means the contract they then read is already
+  // filled in — they see a finished document with their date and venue in it,
+  // rather than a page of empty boxes they complete afterwards and never
+  // re-read. It also front-loads the only typing in the whole flow.
+  const yourDetailsPanel = requiredClientFields.length > 0 ? (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
+      <h2 className="text-lg font-bold text-gray-900 mb-1">Your details</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        A few things we need for the agreement. They'll appear in it on the next page.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {requiredClientFields.map(f => (
+          <div key={f.field}>
+            <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
+              {f.label} <span className="text-red-600">*</span>
+            </label>
+            <input
+              type={f.field === "event_date" ? "date" : f.field.endsWith("_email") ? "email" : "text"}
+              value={clientFields[f.field] || ""}
+              onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              placeholder={f.label}
+            />
+          </div>
+        ))}
+      </div>
+      {missingClientFields.length > 0 && (
+        <p className="text-xs text-amber-700 mt-3">
+          Still needed: {missingClientFields.map(f => f.label).join(", ")}.
+        </p>
+      )}
+    </div>
+  ) : null;
+
+
 
   // Branding extracted once per render — header + footer both consume it.
   const orgLogo: string = proposal?.orgLogo || "";
@@ -463,8 +499,14 @@ export default function ViewProposalPage() {
              when present and falls back to sanitized page.content for legacy
              templates. Fixes the original rendering bug where raw HTML tags
              were displayed as text in a whitespace-pre-wrap div. */}
-        {hasPages && agreementPages.map((page: any) => (
-          <div key={page.id} className="space-y-2">
+        {hasPages && agreementPages.map((page: any, pageIdx: number) => (
+          <Fragment key={page.id}>
+          {/* Just before the agreement — the last moment it's still "getting
+              ready to read the contract" rather than an interruption. */}
+          {page.type === "agreement"
+            && agreementPages.findIndex((p: any) => p.type === "agreement") === pageIdx
+            && yourDetailsPanel}
+          <div className="space-y-2">
             {/* The page's own name. It used to fall back to "Agreement",
                 which labelled a client's first page — their Introduction —
                 with a word the owner never typed. No label, no heading. */}
@@ -544,6 +586,7 @@ export default function ViewProposalPage() {
               />
             )}
           </div>
+          </Fragment>
         ))}
 
         {/* ---- THE LINKED AGREEMENT ----
@@ -602,45 +645,15 @@ export default function ViewProposalPage() {
           </div>
         )}
 
+        {/* No agreement page to sit in front of — show it here rather than
+            never asking. */}
+        {!agreementPages.some((p: any) => p.type === "agreement") && yourDetailsPanel}
+
         {/* ---- SIGN & ACCEPT ---- */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4">
             {paymentAmount > 0 ? "Sign & Pay" : "Accept Proposal"}
           </h2>
-
-          {/* Your details — the blanks in the agreement. Filling them here
-              fills them in the contract above as you type, and signing is
-              blocked until none are left. A contract signed with empty blanks
-              is worth very little. */}
-          {requiredClientFields.length > 0 && (
-            <div className="mb-5 rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1">Your details</h3>
-              <p className="text-xs text-gray-500 mb-3">
-                These fill in the blanks in the agreement above. All are needed before you can sign.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {requiredClientFields.map(f => (
-                  <div key={f.field}>
-                    <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
-                      {f.label} <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type={f.field === "event_date" ? "date" : f.field.endsWith("_email") ? "email" : "text"}
-                      value={clientFields[f.field] || ""}
-                      onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                      placeholder={f.label}
-                    />
-                  </div>
-                ))}
-              </div>
-              {missingClientFields.length > 0 && (
-                <p className="text-xs text-amber-700 mt-3">
-                  Still needed: {missingClientFields.map(f => f.label).join(", ")}.
-                </p>
-              )}
-            </div>
-          )}
 
           {hasPackages && !selectedPackageId && packages.length > 1 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
