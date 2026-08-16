@@ -463,6 +463,55 @@ export default function TemplateEditorPage() {
                       didn't work" — the contract only appeared to the client
                       after acceptance. This is that contract, read-only:
                       edit it in Contracts, not here. */}
+                  {/* An empty agreement page with nothing linked used to be a
+                      blank canvas with the only relevant control hidden in the
+                      right sidebar. Someone opening this for the first time
+                      had no way to know the choice existed. */}
+                  {activePage.type === "agreement" && !contractTemplateId && (activePage.blocks || []).length === 0 && (
+                    <div className="mb-4 rounded-xl border border-dashed border-border p-6 bg-secondary/30">
+                      <h3 className="text-sm font-semibold text-foreground mb-1">What should this page say?</h3>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        This is the agreement your client reads and signs. Use one you've already written, or write it here.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-border p-3 bg-background">
+                          <p className="text-xs font-medium text-foreground mb-2">Use an existing agreement</p>
+                          {data.contractTemplates.length > 0 ? (
+                            <select
+                              value=""
+                              onChange={e => { if (e.target.value) setContractTemplateId(e.target.value); }}
+                              className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background"
+                            >
+                              <option value="">Choose one…</option>
+                              {data.contractTemplates.map(ct => (
+                                <option key={ct.id} value={ct.id}>{ct.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground">
+                              You don't have any yet — write one here, or create it under Contracts first.
+                            </p>
+                          )}
+                          <p className="text-[10px] text-muted-foreground mt-2">
+                            Stays in step with Contracts, so changing it there updates every proposal using it.
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-border p-3 bg-background">
+                          <p className="text-xs font-medium text-foreground mb-2">Write your own here</p>
+                          <button
+                            onClick={() => updatePageBlocks(activePage.id, [
+                              { id: nanoid(6), type: "prose", html: "<p></p>" },
+                            ])}
+                            className="w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-secondary"
+                          >Start writing</button>
+                          <p className="text-[10px] text-muted-foreground mt-2">
+                            Just for this template. Nothing else changes when you edit it.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {activePage.type === "agreement" && contractTemplateId && (activePage.blocks || []).length === 0 && (() => {
                     const linked = data.contractTemplates.find(ct => ct.id === contractTemplateId);
                     if (!linked) return null;
@@ -473,7 +522,13 @@ export default function TemplateEditorPage() {
                           <p className="text-xs text-muted-foreground">
                             Showing <strong className="text-foreground">{linked.name}</strong> — the contract linked to this template.
                           </p>
-                          <span className="text-[10px] text-muted-foreground">Read-only · edit under Contracts</span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-[10px] text-muted-foreground">Read-only · edit under Contracts</span>
+                            <button
+                              onClick={() => setContractTemplateId(null)}
+                              className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                            >Use a different one</button>
+                          </div>
                         </div>
                         <div className="rounded-lg overflow-hidden border border-border">
                           {linkedPages.length > 0
