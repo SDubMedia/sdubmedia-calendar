@@ -61,22 +61,47 @@ const FIELD_LABELS: Record<string, string> = {
   payment_schedule_block: "Payment Schedule",
 };
 
+/** Who supplies each field.
+ *
+ *  "client" fields are filled in by whoever signs — the event details and
+ *  their own contact information. Everything else is either resolved from
+ *  Settings or generated. Getting this right is what lets a contract show a
+ *  client exactly which boxes are theirs, instead of a wall of identical
+ *  placeholders. */
+const CLIENT_FILLED = new Set([
+  "client_name", "client_email", "client_address", "client_phone",
+  "event_date", "event_location",
+]);
+
+export function fieldFilledBy(field: string): "client" | "auto" {
+  return CLIENT_FILLED.has(field) ? "client" : "auto";
+}
+
 /**
- * Replace {{field}} tokens in a contract template HTML with preview chips.
- * Vendor fields with configured values show the resolved value (green chip);
- * everything else shows the human label (blue dashed chip).
+ * Replace {{field}} tokens with what the reader should actually see.
+ *
+ * A resolved value renders as plain text with a soft underline — a client
+ * reading a contract should see "S-Dub Media", not a green pill and certainly
+ * not {{vendor_name}}. Raw braces are code leaking into a legal document, and
+ * a new owner has no idea what they mean.
+ *
+ * Anything still to be filled renders as its plain-English label in a light
+ * box with an asterisk, so it reads as "something goes here" — and the two
+ * kinds are distinguishable, because a client needs to know which are theirs.
  */
 export function renderTemplatePreviewHtml(rawHtml: string, org?: Organization | null): string {
   return rawHtml.replace(/\{\{([a-z_]+)\}\}/g, (match, field: string) => {
     const resolved = resolveVendorField(field, org);
     if (resolved) {
-      return `<span class="merge-chip merge-chip-resolved">${escapeHtml(resolved)}<span class="merge-chip-marker">*</span></span>`;
+      return `<span class="merge-chip merge-chip-resolved">${escapeHtml(resolved)}</span>`;
     }
     const label = FIELD_LABELS[field];
-    if (!label) return match; // unknown token — leave as-is
-    const isBlock = field.endsWith("_block");
-    const cls = isBlock ? "merge-chip merge-chip-block" : "merge-chip merge-chip-placeholder";
-    return `<span class="${cls}">${escapeHtml(label)}</span>`;
+    if (!label) return match; // unknown token — leave as-is rather than hide it
+    if (field.endsWith("_block")) {
+      return `<span class="merge-chip merge-chip-block">${escapeHtml(label)}</span>`;
+    }
+    const who = fieldFilledBy(field);
+    return `<span class="merge-chip merge-chip-${who}">${escapeHtml(label)}<span class="merge-chip-star">*</span></span>`;
   });
 }
 

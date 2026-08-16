@@ -12,8 +12,9 @@
 // ============================================================
 
 import DOMPurify from "dompurify";
+import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
 import { Image as ImageIcon } from "lucide-react";
-import type { ProposalBlock, ProposalPage, Package } from "@/lib/types";
+import type { ProposalBlock, ProposalPage, Package, Organization } from "@/lib/types";
 import { ICON_VOCABULARY } from "./icons";
 
 function PackageIcon({ icon, customDataUrl }: { icon: string; customDataUrl?: string }) {
@@ -45,6 +46,9 @@ interface ProposalBlockRendererProps {
   // any PDF-style render want.
   selectedPackageIds?: string[];
   onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
+  // Resolves vendor merge fields from Settings → Business Info. Without it the
+  // vendor's own details stay as placeholders.
+  org?: Organization | null;
 }
 
 export function ProposalBlockRenderer({
@@ -53,6 +57,7 @@ export function ProposalBlockRenderer({
   className,
   selectedPackageIds,
   onTogglePackage,
+  org,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -75,10 +80,11 @@ export function ProposalBlockRenderer({
               libraryPackages={libraryPackages}
               selectedPackageIds={selectedPackageIds}
               onTogglePackage={onTogglePackage}
+              org={org}
             />
           ))
         ) : (
-          <LegacyContent content={page.content} />
+          <LegacyContent content={page.content} org={org} />
         )}
       </div>
     </div>
@@ -89,15 +95,15 @@ export function ProposalBlockRenderer({
 // Old templates contain raw HTML (the original reported bug was these tags
 // showing as text). With sanitization + dangerouslySetInnerHTML they render
 // as intended without anyone touching them.
-function LegacyContent({ content }: { content: string }) {
+function LegacyContent({ content, org }: { content: string; org?: Organization | null }) {
   if (!content || !content.trim()) {
     return <p className="text-gray-400 italic text-sm">No content yet.</p>;
   }
   return (
     <div
-      className="text-sm leading-relaxed font-serif"
+      className="contract-html-light text-sm leading-relaxed font-serif"
       style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(content, org)) }}
     />
   );
 }
@@ -109,11 +115,13 @@ function BlockView({
   libraryPackages,
   selectedPackageIds,
   onTogglePackage,
+  org,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
   selectedPackageIds?: string[];
   onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
+  org?: Organization | null;
 }) {
   switch (block.type) {
     case "hero":
@@ -125,7 +133,7 @@ function BlockView({
     case "section_divider":
       return <SectionDividerBlock block={block} />;
     case "prose":
-      return <ProseBlock block={block} />;
+      return <ProseBlock block={block} org={org} />;
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
     case "package_group":
@@ -252,11 +260,15 @@ function SectionDividerBlock({
   );
 }
 
-function ProseBlock({ block }: { block: Extract<ProposalBlock, { type: "prose" }> }) {
+function ProseBlock({ block, org }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null }) {
+  // Merge fields become readable text rather than raw braces. A client reading
+  // an agreement should see "S-Dub Media" and "Event Date *", never
+  // {{vendor_name}} — braces are code leaking into a legal document, and a new
+  // owner has no idea what they mean.
   return (
     <div
-      className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+      className="contract-html-light prose prose-sm max-w-none text-gray-700 leading-relaxed"
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(block.html, org)) }}
     />
   );
 }

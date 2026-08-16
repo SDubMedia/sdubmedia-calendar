@@ -311,35 +311,47 @@
    resolved from Settings, client/event fields shown as labelled placeholders). */
 .contract-html-light .merge-chip {
   display: inline-block;
-  padding: 1px 8px;
   margin: 0 1px;
-  border-radius: 4px;
-  border: 1px solid;
-  font-size: 0.875em;
-  font-weight: 500;
+  font-size: 1em;
   line-height: 1.4;
   white-space: nowrap;
 }
+/* A value that's already known reads as ordinary text with a soft underline —
+   a client should see "S-Dub Media", not a coloured pill and certainly not a
+   raw {{token}}. */
 .contract-html-light .merge-chip-resolved {
-  background: rgb(16 185 129 / 0.10);
-  color: rgb(4 120 87);
-  border-color: rgb(16 185 129 / 0.35);
+  border-bottom: 1px dashed rgb(148 163 184);
+  padding: 0 2px;
 }
-.contract-html-light .merge-chip-resolved .merge-chip-marker {
-  color: rgb(4 120 87 / 0.6);
-  margin-left: 2px;
-  font-size: 0.85em;
-}
+/* Still to be filled: a light box with the plain-English label. Client boxes
+   are the ones the signer completes, so they carry a red asterisk; anything
+   filled from the owner's side is quieter. */
+.contract-html-light .merge-chip-client,
+.contract-html-light .merge-chip-auto,
 .contract-html-light .merge-chip-placeholder {
-  background: rgb(59 130 246 / 0.08);
-  color: rgb(29 78 216);
-  border-color: rgb(59 130 246 / 0.35);
-  border-style: dashed;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: rgb(148 163 184 / 0.14);
+  border-bottom: 1px dashed rgb(148 163 184);
+  color: rgb(71 85 105);
+}
+.contract-html-light .merge-chip-client .merge-chip-star {
+  color: rgb(220 38 38);
+  margin-left: 3px;
+  font-size: 0.9em;
+}
+.contract-html-light .merge-chip-auto .merge-chip-star {
+  color: rgb(148 163 184);
+  margin-left: 3px;
+  font-size: 0.9em;
 }
 .contract-html-light .merge-chip-block {
+  padding: 1px 8px;
+  border-radius: 4px;
   background: rgb(245 158 11 / 0.10);
   color: rgb(146 64 14);
-  border-color: rgb(245 158 11 / 0.40);
+  border: 1px solid rgb(245 158 11 / 0.40);
+  font-size: 0.875em;
 }
 
 /* Preserve empty paragraphs so Enter-to-add-spacing in the builder
