@@ -290,6 +290,14 @@ export default function ProposalsPage() {
   // PDF upload
   const [uploadingPdf, setUploadingPdf] = useState(false);
 
+  /** Jump straight from a template to sending it: switch to Proposals, open
+   *  the new-proposal dialog, and apply the template. */
+  function startProposalFromTemplate(templateId: string) {
+    setTab("proposals");
+    openNewProposal();   // resets the form and opens the dialog
+    applyTemplate(templateId);
+  }
+
   // ---- Proposal CRUD ----
   function openNewProposal() {
     setPropTitle("");
@@ -756,9 +764,18 @@ export default function ProposalsPage() {
                       )}
                       {/* Hover overlay with actions */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        {/* The point of a template is to send one. This was
+                            only reachable by switching tabs, creating a
+                            proposal and remembering to pick the template from
+                            a dropdown — so "how do I send this?" had no
+                            visible answer on the template itself. */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startProposalFromTemplate(tpl.id); }}
+                          className="px-3 py-2 bg-white text-black rounded-lg hover:bg-white/90 text-xs font-semibold"
+                          title="Create a proposal from this template and send it"
+                        >Send to a client</button>
                         <button onClick={(e) => { e.stopPropagation(); setLocation(`/proposals/templates/${tpl.id}/edit`); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Edit"><Edit3 className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await addProposalTemplate({ name: `${tpl.name} (Copy)`, coverImageUrl: tpl.coverImageUrl, pages: tpl.pages, packages: tpl.packages, contractTemplateId: tpl.contractTemplateId ?? null, lineItems: tpl.lineItems, contractContent: tpl.contractContent, paymentConfig: tpl.paymentConfig, notes: tpl.notes }); toast.success("Duplicated"); }} className="p-2 bg-white/20 rounded-lg hover:bg-white/30 text-white" title="Duplicate"><Copy className="w-4 h-4" /></button>
-                        <button onClick={async (e) => { e.stopPropagation(); await addContractTemplate({ name: tpl.name, content: tpl.contractContent || tpl.pages?.find((p: any) => p.type === "agreement")?.content || "" }); await deleteProposalTemplate(tpl.id); toast.success("Moved to Contracts"); }} className="p-2 bg-white/20 rounded-lg hover:bg-blue-500/50 text-white" title="Move to Contracts"><ExternalLink className="w-4 h-4" /></button>
                         <button onClick={async (e) => { e.stopPropagation(); await deleteProposalTemplate(tpl.id); toast.success("Archived — restore from Archive"); }} className="p-2 bg-white/20 rounded-lg hover:bg-red-500/50 text-white" title="Archive"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
