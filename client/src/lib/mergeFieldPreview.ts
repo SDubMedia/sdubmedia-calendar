@@ -129,6 +129,11 @@ export function renderTemplatePreviewHtml(
       }
       return `<span class="merge-chip merge-chip-resolved">${escapeHtml(typed)}</span>`;
     }
+    // A second person is optional, so an unfilled partner field renders as
+    // nothing at all rather than an empty box. A solo booking's contract
+    // shouldn't carry blank "Second Person" placeholders through to signing.
+    if (field.startsWith("partner_")) return "";
+
     const resolved = resolveVendorField(field, org);
     if (resolved) {
       return `<span class="merge-chip merge-chip-resolved">${escapeHtml(resolved)}</span>`;
