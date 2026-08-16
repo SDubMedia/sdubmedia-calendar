@@ -77,6 +77,20 @@ export function fieldFilledBy(field: string): "client" | "auto" {
   return CLIENT_FILLED.has(field) ? "client" : "auto";
 }
 
+/** Every client field a piece of contract text asks for, in the order it
+ *  appears. Drives the "before you sign" form and what must be completed. */
+export function clientFieldsIn(html: string): { field: string; label: string }[] {
+  const seen = new Set<string>();
+  const out: { field: string; label: string }[] = [];
+  for (const m of html.matchAll(/\{\{([a-z_]+)\}\}/g)) {
+    const field = m[1];
+    if (!CLIENT_FILLED.has(field) || seen.has(field)) continue;
+    seen.add(field);
+    out.push({ field, label: FIELD_LABELS[field] || field });
+  }
+  return out;
+}
+
 /**
  * Replace {{field}} tokens with what the reader should actually see.
  *
@@ -89,8 +103,18 @@ export function fieldFilledBy(field: string): "client" | "auto" {
  * box with an asterisk, so it reads as "something goes here" — and the two
  * kinds are distinguishable, because a client needs to know which are theirs.
  */
-export function renderTemplatePreviewHtml(rawHtml: string, org?: Organization | null): string {
+export function renderTemplatePreviewHtml(
+  rawHtml: string,
+  org?: Organization | null,
+  /** Values the signer has typed. A filled field stops looking like a blank
+   *  and reads as part of the sentence, which is the whole point. */
+  filled?: Record<string, string>,
+): string {
   return rawHtml.replace(/\{\{([a-z_]+)\}\}/g, (match, field: string) => {
+    const typed = filled?.[field]?.trim();
+    if (typed) {
+      return `<span class="merge-chip merge-chip-resolved">${escapeHtml(typed)}</span>`;
+    }
     const resolved = resolveVendorField(field, org);
     if (resolved) {
       return `<span class="merge-chip merge-chip-resolved">${escapeHtml(resolved)}</span>`;

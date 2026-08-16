@@ -155,7 +155,7 @@ async function getProposal(token: string, res: VercelResponse) {
 async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
 
-  const { token, signature, selectedPackageId, selectedPackageIds } = req.body;
+  const { token, signature, selectedPackageId, selectedPackageIds, clientFields } = req.body;
   if (!token || !signature) return res.status(400).json({ error: "Missing token or signature" });
 
   // Verify proposal exists and is in correct status
@@ -229,6 +229,16 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (chosenIds.length > 0) {
     updatePayload.selected_package_ids = chosenIds;
     updatePayload.total = groupedTotal;
+  }
+  // The blanks the signer filled — event date, venue, their own details.
+  // Strings only, and capped, because this is an unauthenticated endpoint
+  // whose output ends up inside a legal document.
+  if (clientFields && typeof clientFields === "object" && !Array.isArray(clientFields)) {
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(clientFields as Record<string, unknown>)) {
+      if (typeof v === "string" && /^[a-z_]{1,40}$/.test(k)) clean[k] = v.slice(0, 500);
+    }
+    if (Object.keys(clean).length > 0) updatePayload.client_field_values = clean;
   }
   if (resolvedMilestones.length > 0) updatePayload.payment_milestones = resolvedMilestones;
   if (selectedPkg) updatePayload.total = proposalTotal;

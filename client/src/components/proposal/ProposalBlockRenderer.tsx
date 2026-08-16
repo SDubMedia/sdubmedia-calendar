@@ -49,6 +49,8 @@ interface ProposalBlockRendererProps {
   // Resolves vendor merge fields from Settings → Business Info. Without it the
   // vendor's own details stay as placeholders.
   org?: Organization | null;
+  /** Values the signer has typed, so the contract fills in live. */
+  filledFields?: Record<string, string>;
 }
 
 export function ProposalBlockRenderer({
@@ -58,6 +60,7 @@ export function ProposalBlockRenderer({
   selectedPackageIds,
   onTogglePackage,
   org,
+  filledFields,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -81,10 +84,11 @@ export function ProposalBlockRenderer({
               selectedPackageIds={selectedPackageIds}
               onTogglePackage={onTogglePackage}
               org={org}
+              filledFields={filledFields}
             />
           ))
         ) : (
-          <LegacyContent content={page.content} org={org} />
+          <LegacyContent content={page.content} org={org} filledFields={filledFields} />
         )}
       </div>
     </div>
@@ -95,7 +99,7 @@ export function ProposalBlockRenderer({
 // Old templates contain raw HTML (the original reported bug was these tags
 // showing as text). With sanitization + dangerouslySetInnerHTML they render
 // as intended without anyone touching them.
-function LegacyContent({ content, org }: { content: string; org?: Organization | null }) {
+function LegacyContent({ content, org, filledFields }: { content: string; org?: Organization | null; filledFields?: Record<string, string> }) {
   if (!content || !content.trim()) {
     return <p className="text-gray-400 italic text-sm">No content yet.</p>;
   }
@@ -103,7 +107,7 @@ function LegacyContent({ content, org }: { content: string; org?: Organization |
     <div
       className="contract-html-light text-sm leading-relaxed font-serif"
       style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(content, org)) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(content, org, filledFields)) }}
     />
   );
 }
@@ -116,12 +120,14 @@ function BlockView({
   selectedPackageIds,
   onTogglePackage,
   org,
+  filledFields,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
   selectedPackageIds?: string[];
   onTogglePackage?: (packageId: string, group: Extract<ProposalBlock, { type: "package_group" }>) => void;
   org?: Organization | null;
+  filledFields?: Record<string, string>;
 }) {
   switch (block.type) {
     case "hero":
@@ -133,7 +139,7 @@ function BlockView({
     case "section_divider":
       return <SectionDividerBlock block={block} />;
     case "prose":
-      return <ProseBlock block={block} org={org} />;
+      return <ProseBlock block={block} org={org} filledFields={filledFields} />;
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
     case "package_group":
@@ -260,7 +266,7 @@ function SectionDividerBlock({
   );
 }
 
-function ProseBlock({ block, org }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null }) {
+function ProseBlock({ block, org, filledFields }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null; filledFields?: Record<string, string> }) {
   // Merge fields become readable text rather than raw braces. A client reading
   // an agreement should see "S-Dub Media" and "Event Date *", never
   // {{vendor_name}} — braces are code leaking into a legal document, and a new
@@ -268,7 +274,7 @@ function ProseBlock({ block, org }: { block: Extract<ProposalBlock, { type: "pro
   return (
     <div
       className="contract-html-light prose prose-sm max-w-none text-gray-700 leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(block.html, org)) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderTemplatePreviewHtml(block.html, org, filledFields)) }}
     />
   );
 }

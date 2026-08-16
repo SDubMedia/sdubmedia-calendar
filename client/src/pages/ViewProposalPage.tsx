@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearch } from "wouter";
 import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
+import { clientFieldsIn } from "@/lib/mergeFieldPreview";
 
 export default function ViewProposalPage() {
   const params = useParams<{ token: string }>();
@@ -34,6 +35,9 @@ export default function ViewProposalPage() {
   // add-ons. The single field above still drives legacy single-package
   // proposals; this is what grouped templates use.
   const [selectedPackageIds, setSelectedPackageIds] = useState<string[]>([]);
+  // What the signer types into the contract's blanks — their details and the
+  // event. Filled here, shown live in the agreement above.
+  const [clientFields, setClientFields] = useState<Record<string, string>>({});
 
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
@@ -169,6 +173,7 @@ export default function ViewProposalPage() {
           token,
           selectedPackageId,
           selectedPackageIds,
+          clientFields,
           signature: { name: typedName.trim() || "Client", email: signerEmail, signatureData, signatureType },
         }),
       });
@@ -316,6 +321,25 @@ export default function ViewProposalPage() {
   const agreementPages = [...(proposal?.pages || [])]
     .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const hasPages = agreementPages.length > 0;
+
+  // Every blank the agreement asks the CLIENT to fill, gathered from the
+  // pages and from the linked contract. Derived from the text itself, so a
+  // template that adds a field automatically asks for it.
+  const contractText: string = [
+    ...(agreementPages || []).flatMap((pg: any) => [
+      pg.content || "",
+      ...((pg.blocks || []).map((b: any) => (b.type === "prose" ? b.html : "")) as string[]),
+    ]),
+    proposal?.agreementPreview?.content || "",
+    ...(((proposal?.agreementPreview?.pages || []) as any[]).flatMap((pg: any) => [
+      pg.content || "",
+      ...((pg.blocks || []).map((b: any) => (b.type === "prose" ? b.html : "")) as string[]),
+    ])),
+    proposal?.contractContent || "",
+  ].join(" ");
+  const requiredClientFields = clientFieldsIn(contractText);
+  const missingClientFields = requiredClientFields.filter(f => !(clientFields[f.field] || "").trim());
+
 
   // Branding extracted once per render — header + footer both consume it.
   const orgLogo: string = proposal?.orgLogo || "";
@@ -503,7 +527,7 @@ export default function ViewProposalPage() {
                   .slice()
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                   .map((cp: any) => (
-                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} />
+                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} />
                   ))
               ) : (
                 <ProposalBlockRenderer
@@ -584,6 +608,40 @@ export default function ViewProposalPage() {
             {paymentAmount > 0 ? "Sign & Pay" : "Accept Proposal"}
           </h2>
 
+          {/* Your details — the blanks in the agreement. Filling them here
+              fills them in the contract above as you type, and signing is
+              blocked until none are left. A contract signed with empty blanks
+              is worth very little. */}
+          {requiredClientFields.length > 0 && (
+            <div className="mb-5 rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Your details</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                These fill in the blanks in the agreement above. All are needed before you can sign.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {requiredClientFields.map(f => (
+                  <div key={f.field}>
+                    <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
+                      {f.label} <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type={f.field === "event_date" ? "date" : f.field.endsWith("_email") ? "email" : "text"}
+                      value={clientFields[f.field] || ""}
+                      onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                      placeholder={f.label}
+                    />
+                  </div>
+                ))}
+              </div>
+              {missingClientFields.length > 0 && (
+                <p className="text-xs text-amber-700 mt-3">
+                  Still needed: {missingClientFields.map(f => f.label).join(", ")}.
+                </p>
+              )}
+            </div>
+          )}
+
           {hasPackages && !selectedPackageId && packages.length > 1 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-amber-700">Please select a package above before signing.</p>
@@ -636,7 +694,14 @@ export default function ViewProposalPage() {
 
             <button
               onClick={handleAccept}
-              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim() || (hasPackages && packages.length > 1 && !selectedPackageId)}
+              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim() || (hasPackages && packages.length > 1 && !selectedPackageId) || missingClientFields.length > 0 || unmetRequired.length > 0}
+              title={
+                missingClientFields.length > 0
+                  ? `Fill in: ${missingClientFields.map(f => f.label).join(", ")}`
+                  : unmetRequired.length > 0
+                    ? "Choose from the required service groups above"
+                    : ""
+              }
               className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {submitting ? "Processing..." : (
