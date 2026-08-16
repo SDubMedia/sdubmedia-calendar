@@ -345,6 +345,25 @@
   margin-left: 3px;
   font-size: 0.9em;
 }
+.contract-html-light .merge-chip-editable {
+  cursor: text;
+  outline: none;
+  min-width: 7ch;
+  display: inline-block;
+}
+.contract-html-light .merge-chip-editable:focus {
+  background: rgb(59 130 246 / 0.10);
+  border-bottom-color: rgb(37 99 235);
+}
+/* Empty ones show their label via ::before so the client types into a blank
+   box rather than having to delete the placeholder text first. */
+.contract-html-light .merge-chip-empty::before {
+  content: attr(data-placeholder) " *";
+  color: rgb(100 116 139);
+}
+.contract-html-light .merge-chip-empty:focus::before {
+  content: "";
+}
 .contract-html-light .merge-chip-block {
   padding: 1px 8px;
   border-radius: 4px;

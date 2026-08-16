@@ -349,7 +349,7 @@ export default function ViewProposalPage() {
     <div className="bg-white rounded-xl shadow-sm border p-6">
       <h2 className="text-lg font-bold text-gray-900 mb-1">Your details</h2>
       <p className="text-sm text-gray-500 mb-4">
-        A few things we need for the agreement. They'll appear in it on the next page.
+        A few things we need for the agreement. They'll appear in it on the next page — and you can correct any of them by clicking the word in the contract itself.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {requiredClientFields.map(f => (
@@ -569,7 +569,7 @@ export default function ViewProposalPage() {
                   .slice()
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                   .map((cp: any) => (
-                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} />
+                    <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} onFieldEdit={(field, value) => setClientFields(v => ({ ...v, [field]: value }))} />
                   ))
               ) : (
                 <ProposalBlockRenderer

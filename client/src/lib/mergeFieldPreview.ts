@@ -109,10 +109,18 @@ export function renderTemplatePreviewHtml(
   /** Values the signer has typed. A filled field stops looking like a blank
    *  and reads as part of the sentence, which is the whole point. */
   filled?: Record<string, string>,
+  /** Make the client's own fields editable where they sit in the text, so a
+   *  typo in the venue is fixed by clicking the word rather than scrolling
+   *  back to a form. Only the client-facing view turns this on. */
+  editable?: boolean,
 ): string {
   return rawHtml.replace(/\{\{([a-z_]+)\}\}/g, (match, field: string) => {
     const typed = filled?.[field]?.trim();
+    const isClient = fieldFilledBy(field) === "client" && !field.endsWith("_block");
     if (typed) {
+      if (editable && isClient) {
+        return `<span class="merge-chip merge-chip-resolved merge-chip-editable" contenteditable="true" spellcheck="false" data-merge-field="${escapeHtml(field)}">${escapeHtml(typed)}</span>`;
+      }
       return `<span class="merge-chip merge-chip-resolved">${escapeHtml(typed)}</span>`;
     }
     const resolved = resolveVendorField(field, org);
@@ -125,6 +133,11 @@ export function renderTemplatePreviewHtml(
       return `<span class="merge-chip merge-chip-block">${escapeHtml(label)}</span>`;
     }
     const who = fieldFilledBy(field);
+    if (editable && isClient) {
+      // Empty and clickable: the label is a placeholder attribute rather than
+      // text, or the client would have to delete it before typing.
+      return `<span class="merge-chip merge-chip-client merge-chip-editable merge-chip-empty" contenteditable="true" spellcheck="false" data-merge-field="${escapeHtml(field)}" data-placeholder="${escapeHtml(label)}"></span>`;
+    }
     return `<span class="merge-chip merge-chip-${who}">${escapeHtml(label)}<span class="merge-chip-star">*</span></span>`;
   });
 }
