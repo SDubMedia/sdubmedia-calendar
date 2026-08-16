@@ -263,6 +263,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         selectedPkg ?? null,
         resolvedMilestones,
         proposalTotal,
+        chosenIds,
       );
       // Fire-and-forget owner notification with deep-link to review the draft.
       // Critical for conversion — without it, owners don't know to act.
@@ -502,6 +503,9 @@ async function generateDraftContractFromProposal(
   selectedPkg: PartialPackage | null,
   milestones: PartialMilestone[],
   total: number,
+  /** What the client actually bought, so clauses tied to a service are kept
+   *  or dropped in the signed copy the same way they were in the proposal. */
+  chosenPackageIds: string[] = [],
 ): Promise<string> {
   // 1. Load the master contract template
   const { data: tpl, error: tplErr } = await supabase
@@ -633,6 +637,16 @@ async function generateDraftContractFromProposal(
   // text content to substitute. Each substituted page goes onto the
   // contract row so the client sees the full document with real values.
   const tplPages: Array<{ id: string; type: string; label: string; content?: string; blocks?: unknown[]; sortOrder: number }> = Array.isArray(tpl.pages) ? tpl.pages : [];
+  // Drop clauses whose services weren't bought, before the page is flattened
+  // to HTML. A conditional clause the client never saw must not appear in the
+  // document they signed — that's the difference between a tailored contract
+  // and a wrong one.
+  const applies = (b: unknown) => {
+    const need = (b as { showWhenPackageIds?: string[] })?.showWhenPackageIds;
+    if (!need || need.length === 0) return true;
+    return need.some(id => chosenPackageIds.includes(id));
+  };
+
   const contractPages = tplPages.map(p => {
     if (p.type === "invoice") {
       // Drop blocks too — the invoice page renders without them.
@@ -642,9 +656,10 @@ async function generateDraftContractFromProposal(
       ...generatorInput,
       masterTemplateHtml: p.content || "",
     });
-    // Empty `blocks` so the renderer falls through to the substituted
-    // HTML branch and clients see real values, not literal {{tokens}}.
-    return { ...p, blocks: [], content: substituted };
+    // Blocks are kept, filtered, rather than emptied: the flattened HTML is
+    // what renders today, but throwing the structure away means a
+    // block-based contract template silently loses its conditions.
+    return { ...p, blocks: (p.blocks || []).filter(applies), content: substituted };
   });
 
   // Assign stable IDs to each milestone so the Stripe webhook + payment

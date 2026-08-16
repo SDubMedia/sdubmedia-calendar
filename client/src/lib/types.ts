@@ -1252,7 +1252,7 @@ export interface ProposalPaymentConfig {
 // Future blocks (package_row variants pulling from a reusable Packages library,
 // conditional clauses, etc.) ship in sub-phases 1B+1C — not here.
 
-export type ProposalBlock =
+type ProposalBlockVariant =
   | {
       id: string;
       type: "hero";
@@ -1374,6 +1374,19 @@ export type ProposalBlock =
       // as a styled chip showing the human-readable label.
       field: string;
     };
+
+/**
+ * Any block can be made conditional on what the client bought.
+ *
+ * Empty or absent = always shown, which is every existing block. Listing
+ * services means "only show this when at least one of them is selected" — a
+ * travel clause for destination weddings, a second-shooter clause when an
+ * extra videographer is added. One agreement covers every combination
+ * instead of a separate contract per booking.
+ */
+export type ProposalBlock = ProposalBlockVariant & {
+  showWhenPackageIds?: string[];
+};
 
 export interface ProposalPage {
   id: string;

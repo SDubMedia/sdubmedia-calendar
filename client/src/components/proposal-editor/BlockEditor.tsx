@@ -208,6 +208,18 @@ export function BlockEditor({ blocks, onChange, libraryPackages, kind = "proposa
               libraryPackages={libraryPackages}
               onUpdate={partial => updateBlock(block.id, partial)}
             />
+
+            {/* Conditional clauses: show this block only when the client
+                bought one of these. Empty means always, which is every block
+                until you say otherwise. Lives under the block rather than in
+                a side panel so it's obvious WHY a clause is conditional. */}
+            {libraryPackages.length > 0 && (
+              <ConditionalControl
+                block={block}
+                libraryPackages={libraryPackages}
+                onUpdate={partial => updateBlock(block.id, partial)}
+              />
+            )}
           </div>
         ))}
 
@@ -1612,6 +1624,72 @@ function SpacerBlockEditable({
  *  client may pick more than one, and which packages are in it. Everything is
  *  edited in place — the group is the thing that makes add-ons sellable, so it
  *  shouldn't be buried in a side panel. */
+/** "Only show this when they buy…" — the control that turns one agreement
+ *  into every version of itself. */
+function ConditionalControl({
+  block,
+  libraryPackages,
+  onUpdate,
+}: {
+  block: ProposalBlock;
+  libraryPackages: Package[];
+  onUpdate: (partial: Partial<ProposalBlock>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = block.showWhenPackageIds || [];
+  const names = selected
+    .map(id => libraryPackages.find(p => p.id === id)?.name)
+    .filter(Boolean) as string[];
+
+  return (
+    <div className="mt-1 mb-2 pl-1">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`text-[10px] ${selected.length > 0 ? "text-amber-700" : "text-muted-foreground/60 hover:text-muted-foreground"}`}
+      >
+        {selected.length > 0
+          ? `Only shown with: ${names.join(", ") || `${selected.length} service(s)`}`
+          : "Always shown · set a condition"}
+      </button>
+
+      {open && (
+        <div className="mt-1 p-2 rounded-lg border border-border bg-secondary/40 max-w-md">
+          <p className="text-[10px] text-muted-foreground mb-1.5">
+            Tick the services this clause applies to. Untick everything to show it in every contract.
+          </p>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {libraryPackages.map(pkg => {
+              const on = selected.includes(pkg.id);
+              return (
+                <label key={pkg.id} className="flex items-center gap-2 text-[11px] cursor-pointer py-0.5">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => onUpdate({
+                      showWhenPackageIds: on
+                        ? selected.filter(id => id !== pkg.id)
+                        : [...selected, pkg.id],
+                    })}
+                  />
+                  <span className="truncate">{pkg.name || "Untitled package"}</span>
+                </label>
+              );
+            })}
+          </div>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onUpdate({ showWhenPackageIds: [] })}
+              className="text-[10px] text-muted-foreground hover:text-foreground mt-1.5"
+            >Always show this</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PackageGroupInlineEditable({
   block,
   libraryPackages,

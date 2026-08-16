@@ -93,7 +93,18 @@ export function ProposalBlockRenderer({
         onBlur={onFieldEdit ? commitEdit : undefined}
       >
         {hasBlocks ? (
-          page.blocks!.map((block) => (
+          page.blocks!
+            // A conditional block only appears when one of its services is
+            // selected. With no selection state at all (editor preview, PDF)
+            // everything shows — hiding clauses from the owner would make the
+            // template look broken.
+            .filter((block) => {
+              const need = block.showWhenPackageIds;
+              if (!need || need.length === 0) return true;
+              if (!selectedPackageIds) return true;
+              return need.some((id) => selectedPackageIds.includes(id));
+            })
+            .map((block) => (
             <BlockView
               key={block.id}
               block={block}
