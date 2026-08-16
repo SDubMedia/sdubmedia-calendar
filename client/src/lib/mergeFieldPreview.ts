@@ -53,6 +53,9 @@ const FIELD_LABELS: Record<string, string> = {
   vendor_phone: "Vendor Phone",
   event_date: "Event Date",
   event_location: "Event Location",
+  partner_name: "Second Person's Full Name",
+  partner_email: "Second Person's Email",
+  partner_phone: "Second Person's Phone",
   contract_signed_date: "Date Signed (today)",
   total_due_date: "Total Due Date",
   project_title: "Project Title",
@@ -71,6 +74,9 @@ const FIELD_LABELS: Record<string, string> = {
 const CLIENT_FILLED = new Set([
   "client_name", "client_email", "client_address", "client_phone",
   "event_date", "event_location",
+  // A wedding usually has two people on the hook, and it isn't always a
+  // couple — sometimes it's a parent paying. Kept generic for that reason.
+  "partner_name", "partner_email", "partner_phone",
 ]);
 
 export function fieldFilledBy(field: string): "client" | "auto" {

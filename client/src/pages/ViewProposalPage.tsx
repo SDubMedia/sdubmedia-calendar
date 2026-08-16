@@ -38,6 +38,7 @@ export default function ViewProposalPage() {
   // What the signer types into the contract's blanks — their details and the
   // event. Filled here, shown live in the agreement above.
   const [clientFields, setClientFields] = useState<Record<string, string>>({});
+  const [showPartner, setShowPartner] = useState(false);
 
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
@@ -337,8 +338,35 @@ export default function ViewProposalPage() {
     ])),
     proposal?.contractContent || "",
   ].join(" ");
-  const requiredClientFields = clientFieldsIn(contractText);
-  const missingClientFields = requiredClientFields.filter(f => !(clientFields[f.field] || "").trim());
+  // What the agreement itself asks for.
+  const fromContract = clientFieldsIn(contractText);
+
+  // Plus the booking details, always. A proposal is for a job on a date at a
+  // place — Geoff's agreement doesn't happen to reference them, and without
+  // this there was nowhere to say when or where the wedding is.
+  const ALWAYS: { field: string; label: string }[] = [
+    { field: "event_date", label: "Event Date" },
+    { field: "event_location", label: "Event Location" },
+  ];
+  const requiredClientFields = [
+    ...fromContract.filter(f => !f.field.startsWith("partner_")),
+    ...ALWAYS.filter(a => !fromContract.some(f => f.field === a.field)),
+  ];
+
+  // The second person is optional to add, but once added their name is
+  // needed — half a set of details is worse than none. Not always a fiancé:
+  // often a parent, so the wording stays neutral.
+  const partnerFields = [
+    { field: "partner_name", label: "Full name" },
+    { field: "partner_email", label: "Email" },
+    { field: "partner_phone", label: "Phone" },
+  ];
+  const missingClientFields = [
+    ...requiredClientFields.filter(f => !(clientFields[f.field] || "").trim()),
+    ...(showPartner && !(clientFields.partner_name || "").trim()
+      ? [{ field: "partner_name", label: "Second person's full name" }]
+      : []),
+  ];
 
   // Rendered between the introduction and the agreement, not down at the
   // signature. Asking first means the contract they then read is already
@@ -367,6 +395,46 @@ export default function ViewProposalPage() {
           </div>
         ))}
       </div>
+      {/* Weddings usually have two people on the agreement, and it isn't
+          always a couple — sometimes a parent is paying. Optional, because a
+          corporate booking has exactly one. */}
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        {!showPartner ? (
+          <button
+            type="button"
+            onClick={() => setShowPartner(true)}
+            className="text-sm text-blue-600 hover:text-blue-700"
+          >+ Add a second person (partner, fiancé or parent)</button>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-900">Second person</h3>
+              <button
+                type="button"
+                onClick={() => { setShowPartner(false); setClientFields(v => ({ ...v, partner_name: "", partner_email: "", partner_phone: "" })); }}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >Remove</button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {partnerFields.map(f => (
+                <div key={f.field}>
+                  <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
+                    {f.label}{f.field === "partner_name" && <span className="text-red-600"> *</span>}
+                  </label>
+                  <input
+                    type={f.field.endsWith("_email") ? "email" : "text"}
+                    value={clientFields[f.field] || ""}
+                    onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    placeholder={f.label}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       {missingClientFields.length > 0 && (
         <p className="text-xs text-amber-700 mt-3">
           Still needed: {missingClientFields.map(f => f.label).join(", ")}.
