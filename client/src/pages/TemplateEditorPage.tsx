@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
+import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 import { LibraryPanel, type LibraryDragData } from "@/components/proposal-editor/LibraryPanel";
 import type { ProposalBlock } from "@/lib/types";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -91,6 +92,7 @@ export default function TemplateEditorPage() {
   // Master contract that auto-generates a draft on client acceptance.
   const [contractTemplateId, setContractTemplateId] = useState<string | null>(null);
   const [activePageId, setActivePageId] = useState<string>("");
+  const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [showProperties, setShowProperties] = useState(true);
@@ -377,7 +379,29 @@ export default function TemplateEditorPage() {
                   )}
                 >
                   <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate flex-1">{page.label}</span>
+                  {/* Double-click to rename. updatePageLabel existed but was
+                      never wired to anything, so a page was stuck with the
+                      name its type gave it — a client's opening page said
+                      "Agreement" with no way to change it. */}
+                  {renamingPageId === page.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={page.label}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => { updatePageLabel(page.id, e.target.value.trim() || page.label); setRenamingPageId(null); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setRenamingPageId(null);
+                      }}
+                      className="flex-1 min-w-0 bg-background border border-border rounded px-1 py-0.5 text-xs"
+                    />
+                  ) : (
+                    <span
+                      className="truncate flex-1"
+                      title="Double-click to rename"
+                      onDoubleClick={(e) => { e.stopPropagation(); setRenamingPageId(page.id); }}
+                    >{page.label}</span>
+                  )}
                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
                     <button onClick={(e) => { e.stopPropagation(); movePage(page.id, -1); }} className="p-0.5 hover:text-foreground"><ChevronUp className="w-3 h-3" /></button>
                     <button onClick={(e) => { e.stopPropagation(); movePage(page.id, 1); }} className="p-0.5 hover:text-foreground"><ChevronDown className="w-3 h-3" /></button>
@@ -425,6 +449,44 @@ export default function TemplateEditorPage() {
                 <>
                   {/* Merge field reference — copy a token into a Text block to
                       have it filled with the client's data when sent. */}
+                  {/* An empty agreement page is a placeholder for the contract
+                      you linked, so show it here. Picking a Linked Contract
+                      saved the link but rendered nothing, which read as "it
+                      didn't work" — the contract only appeared to the client
+                      after acceptance. This is that contract, read-only:
+                      edit it in Contracts, not here. */}
+                  {activePage.type === "agreement" && contractTemplateId && (activePage.blocks || []).length === 0 && (() => {
+                    const linked = data.contractTemplates.find(ct => ct.id === contractTemplateId);
+                    if (!linked) return null;
+                    const linkedPages = (linked.pages || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                    return (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs text-muted-foreground">
+                            Showing <strong className="text-foreground">{linked.name}</strong> — the contract linked to this template.
+                          </p>
+                          <span className="text-[10px] text-muted-foreground">Read-only · edit under Contracts</span>
+                        </div>
+                        <div className="rounded-lg overflow-hidden border border-border">
+                          {linkedPages.length > 0
+                            ? linkedPages.map(cp => (
+                                <ProposalBlockRenderer key={cp.id} page={cp} libraryPackages={data.packages || []} className="bg-white" />
+                              ))
+                            : (
+                              <ProposalBlockRenderer
+                                page={{ id: "linked", type: "agreement", label: "", content: linked.content || "", sortOrder: 0 }}
+                                libraryPackages={data.packages || []}
+                                className="bg-white"
+                              />
+                            )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-2">
+                          Add blocks below to put your own wording above it, or leave the page empty to show the contract alone.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   {activePage.type === "agreement" && (
                     <details className="mb-3 text-xs">
                       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
