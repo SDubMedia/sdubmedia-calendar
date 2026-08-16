@@ -41,7 +41,7 @@ const PAGE_ICONS = {
 };
 
 function emptyPage(type: ProposalPage["type"] = "agreement", order: number = 0): ProposalPage {
-  const labels = { agreement: "Agreement", invoice: "Invoice", payment: "Payment", custom: "Custom Page" };
+  const labels = { agreement: "Agreement", invoice: "Invoice", payment: "Payment", custom: "Introduction" };
   return { id: nanoid(6), type, label: labels[type], content: "", sortOrder: order };
 }
 
@@ -135,9 +135,17 @@ export default function TemplateEditorPage() {
       }
       setLegacyPayment(existing.paymentConfig || { option: "none", depositPercent: 50, depositAmount: 0 });
     } else if (isNew) {
-      const p = emptyPage("agreement", 0);
-      setPages([p, emptyPage("invoice", 1), emptyPage("payment", 2)]);
-      setActivePageId(p.id);
+      // Four pages, in the order a client reads them: your own opening page,
+      // then the agreement, the invoice and payment.
+      //
+      // A new template used to open on an AGREEMENT page, so the natural move
+      // was to build the introduction onto it. That left the first page titled
+      // "Agreement" and no empty agreement page for the linked contract to
+      // appear on — the exact tangle Geoff hit. Starting with an Introduction
+      // page keeps the contract's page free for the contract.
+      const intro = emptyPage("custom", 0);
+      setPages([intro, emptyPage("agreement", 1), emptyPage("invoice", 2), emptyPage("payment", 3)]);
+      setActivePageId(intro.id);
     }
     // Deliberately narrow deps: re-running on every realtime update of `existing`
     // would clobber the user's in-progress edits.
