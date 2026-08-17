@@ -22,7 +22,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { escapeHtml, errorMessage } from "./_auth.js";
-import { sendPushToOrg } from "./_apns.js";
+import { sendPushToOwner } from "./_apns.js";
 
 // The Vercel project's service-role key env var is the (historically
 // misspelled) SUPABASE_SERVICE_ROLL_KEY; every other endpoint reads both
@@ -185,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sideEffects: Array<readonly [string, Promise<unknown>]> = [
       ["owner notify", notifyOwner(org, { name, email, phone, projectType, eventDateTime, message })],
       // Best-effort push to the owner's devices. No-ops until APNs creds exist.
-      ["push", sendPushToOrg(orgId, {
+      ["push", sendPushToOwner(orgId, {
         title: "New lead",
         body: `${name}${projectType ? ` — ${projectType}` : ""}`,
         data: { type: "lead" },

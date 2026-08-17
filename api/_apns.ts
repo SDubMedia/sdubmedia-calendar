@@ -56,27 +56,52 @@ export interface PushPayload {
 
 interface SendResult { sent: number; pruned: number; errors: string[] }
 
-// Send a push to every device registered to an org. Best-effort: never
-// throws, so a push failure can't break the action that triggered it.
-export async function sendPushToOrg(orgId: string, payload: PushPayload): Promise<SendResult> {
+/**
+ * Send a push to the people in an org who hold one of `roles`.
+ *
+ * There is deliberately NO "send to the whole org" function. Every caller
+ * that used one had a comment saying "push the owner" directly above it, and
+ * every one of them was in fact pushing to every device registered to the
+ * org — which by August 2026 meant three staff and two CLIENTS receiving
+ * "Payment received — Invoice 1042, $2,400 paid" and every new website
+ * inquiry. A client's phone is not a place to broadcast another client's
+ * money. Pushes are addressed by role now, and the role is not optional.
+ *
+ * Fails closed: no matching profile, no push.
+ */
+export async function sendPushToRoles(orgId: string, roles: string[], payload: PushPayload): Promise<SendResult> {
   const result: SendResult = { sent: 0, pruned: 0, errors: [] };
   if (!apnsConfigured()) return result;            // dormant until creds exist
   if (!supabaseUrl || !supabaseServiceKey) return result;
+  if (!orgId || roles.length === 0) return result;
 
-  return sendToTokens(await tokensFor("org_id", orgId), payload);
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const { data: profiles } = await supabase
+    .from("user_profiles").select("id").eq("org_id", orgId).in("role", roles);
+  const userIds = (profiles as { id: string }[] | null)?.map(p => p.id).filter(Boolean) ?? [];
+  if (userIds.length === 0) return result;
+
+  // Scoped by BOTH user and org: a token row carries its own org_id, and a
+  // stale one from a previous org shouldn't ride along on the user match.
+  const { data: rows } = await supabase
+    .from("device_tokens").select("token").eq("org_id", orgId).in("user_id", userIds);
+  const tokens = (rows as { token: string }[] | null)?.map(r => r.token).filter(Boolean) ?? [];
+  return sendToTokens(tokens, payload);
+}
+
+/** The overwhelmingly common case: this is the owner's business, tell them. */
+export async function sendPushToOwner(orgId: string, payload: PushPayload): Promise<SendResult> {
+  return sendPushToRoles(orgId, ["owner"], payload);
 }
 
 // Send to ONE user's devices (e.g. notify a single agent, not the whole org).
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<SendResult> {
   if (!apnsConfigured() || !supabaseUrl || !supabaseServiceKey) return { sent: 0, pruned: 0, errors: [] };
-  return sendToTokens(await tokensFor("user_id", userId), payload);
-}
-
-async function tokensFor(col: "org_id" | "user_id", val: string): Promise<string[]> {
-  if (!supabaseUrl || !supabaseServiceKey) return [];
+  if (!userId) return { sent: 0, pruned: 0, errors: [] };
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const { data: rows } = await supabase.from("device_tokens").select("token").eq(col, val);
-  return (rows as { token: string }[] | null)?.map(r => r.token).filter(Boolean) ?? [];
+  const { data: rows } = await supabase.from("device_tokens").select("token").eq("user_id", userId);
+  const tokens = (rows as { token: string }[] | null)?.map(r => r.token).filter(Boolean) ?? [];
+  return sendToTokens(tokens, payload);
 }
 
 async function sendToTokens(tokens: string[], payload: PushPayload): Promise<SendResult> {

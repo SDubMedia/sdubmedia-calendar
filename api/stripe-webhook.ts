@@ -33,7 +33,7 @@ import { sendOpsAlert as sendOpsAlertShared } from "./_opsAlert.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 import { syncConversionToScout } from "./_scoutSync.js";
-import { sendPushToOrg } from "./_apns.js";
+import { sendPushToOwner } from "./_apns.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -365,7 +365,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           // Push the owner: invoice paid. No-ops until APNs creds exist.
           if (invoice?.org_id) {
-            sendPushToOrg(invoice.org_id as string, {
+            sendPushToOwner(invoice.org_id as string, {
               title: "Payment received",
               body: `Invoice ${invoice.invoice_number || ""} — $${Number(invoice.total || 0).toLocaleString("en-US")} paid`.trim(),
               data: { type: "payment" },
@@ -410,7 +410,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
               // Push the owner once, on the real first-payment transition.
               if (!wasAlreadyPaid && contract?.org_id) {
-                sendPushToOrg(contract.org_id as string, {
+                sendPushToOwner(contract.org_id as string, {
                   title: "Payment received",
                   body: `${contract.title || "Contract"} — payment received`,
                   data: { type: "payment" },

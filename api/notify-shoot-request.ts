@@ -11,7 +11,7 @@ import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { verifyAuth, getUserOrgId, escapeHtml, errorMessage } from "./_auth.js";
-import { sendPushToOrg } from "./_apns.js";
+import { sendPushToRoles } from "./_apns.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -94,7 +94,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Push the org (owners' devices). No-op until APNs is configured.
     let pushed = 0;
     try {
-      const r = await sendPushToOrg(callerOrgId || "", { title: "New shoot request", body: `${agentName} — ${addr}`, data: { url: "/shoot-requests" } });
+      // Owner AND partner, matching exactly who the email above goes to.
+      const r = await sendPushToRoles(callerOrgId || "", ["owner", "partner"], { title: "New shoot request", body: `${agentName} — ${addr}`, data: { url: "/shoot-requests" } });
       pushed = r.sent;
     } catch (e) { console.error("Shoot-request push failed:", e); }
 

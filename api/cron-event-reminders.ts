@@ -16,7 +16,7 @@ import { Resend } from "resend";
 import { errorMessage, escapeHtml } from "./_auth.js";
 import { sendOpsAlert } from "./_opsAlert.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
-import { sendPushToOrg } from "./_apns.js";
+import { sendPushToOwner } from "./_apns.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -156,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // shares the once-per-day idempotency above.
       if (daysUntilEvent === 1) {
         const who = client.company || client.contact_name || "";
-        sendPushToOrg(p.org_id, {
+        sendPushToOwner(p.org_id, {
           title: "Shoot tomorrow",
           body: `${projectTypeName}${who ? ` — ${who}` : ""}`,
           data: { type: "event" },

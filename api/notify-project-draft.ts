@@ -99,8 +99,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // .catch/.finally. allSettled takes it fine; the type has to say so.
     const sideEffects: [string, PromiseLike<unknown>][] = [];
     if (rows.length > 0) sideEffects.push(["bell", supabaseService.from("notifications").insert(rows)]);
-    // Per recipient, not the whole org: sendPushToOrg hits every device in the
-    // business, so the editor got pushed about his own upload.
+    // Per recipient, not by role: addressed to named people, so the editor
+    // doesn't get pushed about his own upload.
     for (const o of owners) {
       sideEffects.push([`push:${o.id}`, sendPushToUser(o.id, {
         title: `${label} ready`,
