@@ -371,7 +371,13 @@ function ContractDocumentBody({ contract }: { contract: any }) {
                 intro="The contract is ready for review and signature."
               />
             )}
-            {Array.isArray(page.blocks) && page.blocks.length > 0 ? (
+            {/* The substituted `content` wins over `blocks` here, and only
+                here. By this point the server has resolved every merge field
+                — including the packages and payment amounts — into that HTML,
+                while `blocks` still carry the raw {{tokens}} they were
+                authored with. Rendering the blocks would show a signer
+                "{{client_name}}" in the document they're about to sign. */}
+            {Array.isArray(page.blocks) && page.blocks.length > 0 && !html ? (
               <div className="px-6 sm:px-10 py-8">
                 <ProposalBlockRenderer
                   page={{ id: page.id, type: (page.type as any), label: page.label, content: page.content || "", blocks: page.blocks as any, sortOrder: page.sortOrder }}

@@ -942,6 +942,8 @@ export default function ProposalsPage() {
                     .filter(p => p.type === "agreement" || p.type === "custom")
                     .map(page => (
                       <ProposalBlockRenderer
+                        resolveMerge
+                        org={data.organization}
                         key={page.id}
                         page={page}
                         libraryPackages={data.packages}
@@ -949,6 +951,8 @@ export default function ProposalsPage() {
                     ))
                 ) : viewProposal.contractContent ? (
                   <ProposalBlockRenderer
+                    resolveMerge
+                    org={data.organization}
                     page={{
                       id: "legacy",
                       type: "agreement",

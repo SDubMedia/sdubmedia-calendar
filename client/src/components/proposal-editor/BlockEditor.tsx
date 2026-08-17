@@ -18,6 +18,7 @@ import DOMPurify from "dompurify";
 import { cleanPastedText } from "@/lib/cleanPaste";
 import { registerProseEditor, saveProseSelection, clearActiveProse } from "./proseFocusRegistry";
 import { tokensToChips, chipsToTokens } from "./chipTransform";
+import { summarizeMilestone, summarizeBalance } from "@/lib/paymentSchedule";
 import {
   Image as ImageIcon,
   Type,
@@ -1483,34 +1484,7 @@ function PaymentScheduleBlockEditable({
   );
 }
 
-function summarizeMilestone(
-  d: Extract<ProposalBlock, { type: "payment_schedule" }>["deposit"],
-  defaultLabel: string,
-): string {
-  const amount = d.kind === "percent" ? `${d.value}%` : `$${d.value}`;
-  let due: string;
-  if (d.dueType === "at_signing") due = "at signing";
-  else if (d.dueType === "relative_days") due = `${d.dueDays ?? 0} days after signing`;
-  else if (d.dueType === "absolute_date" && d.dueDate) due = `on ${d.dueDate}`;
-  else due = "—";
-  return `${d.label || defaultLabel}: ${amount} due ${due}`;
-}
 
-function summarizeBalance(
-  b: Extract<ProposalBlock, { type: "payment_schedule" }>["balance"],
-  d: Extract<ProposalBlock, { type: "payment_schedule" }>["deposit"],
-): string {
-  const remainder = d.kind === "percent"
-    ? `${Math.max(0, 100 - d.value)}%`
-    : "Remaining balance";
-  let due: string;
-  if (b.dueType === "at_signing") due = "at signing";
-  else if (b.dueType === "on_event_date") due = "on the event date";
-  else if (b.dueType === "relative_days") due = `${b.dueDays ?? 0} days before event`;
-  else if (b.dueType === "absolute_date" && b.dueDate) due = `on ${b.dueDate}`;
-  else due = "—";
-  return `${b.label || "Balance"}: ${remainder} due ${due}`;
-}
 
 // ---- Signature block — editor preview ----
 // Shows a colored badge identifying client vs. vendor, an auto-filled

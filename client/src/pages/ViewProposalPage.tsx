@@ -318,6 +318,14 @@ export default function ViewProposalPage() {
     : paymentConfig.option === "deposit" ? Math.round(total * (paymentConfig.depositPercent / 100) * 100) / 100
     : 0;
 
+  /** The vendor's own details, so the agreement prints "S-Dub Media" and a
+   *  real address instead of boxes labelled "Vendor Name". The public payload
+   *  carries a whitelisted copy of Settings → Business Info; there's no
+   *  AppContext out here. */
+  const publicOrg = proposal
+    ? ({ name: proposal.orgName, businessInfo: proposal.orgBusinessInfo || {} } as any)
+    : null;
+
   // Agreement pages
   // Every page, in the order they were authored. This used to filter to
   // agreement + custom, which silently dropped invoice and payment pages: you
@@ -326,6 +334,21 @@ export default function ViewProposalPage() {
   const agreementPages = [...(proposal?.pages || [])]
     .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const hasPages = agreementPages.length > 0;
+
+  /** Everything the agreement needs to read as a finished document rather
+   *  than a template: the vendor's details, what the client has ticked (which
+   *  also decides the conditional clauses), what they've typed, and the total
+   *  the payment terms are a percentage of. Shared so the six places an
+   *  agreement can appear can't drift apart. */
+  const agreementProps = {
+    resolveMerge: true,
+    org: publicOrg,
+    total,
+    selectedPackageIds,
+    filledFields: clientFields,
+    onFieldEdit: (field: string, value: string) =>
+      setClientFields(v => ({ ...v, [field]: value })),
+  } as const;
 
   // Every blank the agreement asks the CLIENT to fill, gathered from the
   // pages and from the linked contract. Derived from the text itself, so a
@@ -667,19 +690,18 @@ export default function ViewProposalPage() {
                   .slice()
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                   .map((cp: any) => (
-                    <ProposalBlockRenderer resolveMerge key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} filledFields={clientFields} onFieldEdit={(field, value) => setClientFields(v => ({ ...v, [field]: value }))} />
+                    <ProposalBlockRenderer {...agreementProps} key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} />
                   ))
               ) : (
-                <ProposalBlockRenderer resolveMerge
+                <ProposalBlockRenderer {...agreementProps}
                   page={{ id: "linked-agreement", type: "agreement", label: "", content: proposal.agreementPreview.content, sortOrder: 0 }}
                   libraryPackages={proposal?.libraryPackages || []}
                 />
               )
             ) : (
-              <ProposalBlockRenderer resolveMerge
+              <ProposalBlockRenderer {...agreementProps}
                 page={page}
                 libraryPackages={proposal?.libraryPackages || []}
-                selectedPackageIds={selectedPackageIds}
                 onTogglePackage={togglePackageInGroup}
               />
             )}
@@ -701,14 +723,14 @@ export default function ViewProposalPage() {
                 .slice()
                 .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                 .map((page: any) => (
-                  <ProposalBlockRenderer resolveMerge
+                  <ProposalBlockRenderer {...agreementProps}
                     key={page.id}
                     page={page}
                     libraryPackages={proposal?.libraryPackages || []}
                   />
                 ))
             ) : proposal.agreementPreview.content ? (
-              <ProposalBlockRenderer resolveMerge
+              <ProposalBlockRenderer {...agreementProps}
                 page={{
                   id: "agreement-preview",
                   type: "agreement",
@@ -730,7 +752,7 @@ export default function ViewProposalPage() {
         {!hasPages && proposal?.contractContent && (
           <div className="space-y-2">
             <h2 className="text-lg font-bold text-gray-900 px-2">Agreement</h2>
-            <ProposalBlockRenderer resolveMerge
+            <ProposalBlockRenderer {...agreementProps}
               page={{
                 id: "legacy",
                 type: "agreement",

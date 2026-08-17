@@ -13,6 +13,7 @@
 
 import DOMPurify from "dompurify";
 import { renderTemplatePreviewHtml } from "@/lib/mergeFieldPreview";
+import { summarizeMilestone, summarizeBalance, formatMoney } from "@/lib/paymentSchedule";
 import { Image as ImageIcon } from "lucide-react";
 import type { ProposalBlock, ProposalPage, Package, Organization } from "@/lib/types";
 import { ICON_VOCABULARY } from "./icons";
@@ -61,6 +62,10 @@ interface ProposalBlockRendererProps {
    *  permanently destroy the merge fields — a saved contract would greet every
    *  future client with a frozen "Client Name" that never fills. */
   resolveMerge?: boolean;
+  /** What the client has actually chosen, so the payment terms can state
+   *  dollars instead of bare percentages. Absent in the builder, where
+   *  nothing has been sold yet. */
+  total?: number;
 }
 
 export function ProposalBlockRenderer({
@@ -73,6 +78,7 @@ export function ProposalBlockRenderer({
   filledFields,
   onFieldEdit,
   resolveMerge = false,
+  total,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -112,19 +118,31 @@ export function ProposalBlockRenderer({
               if (!selectedPackageIds) return true;
               return need.some((id) => selectedPackageIds.includes(id));
             })
-            .map((block) => (
-            <BlockView
-              key={block.id}
-              block={block}
-              libraryPackages={libraryPackages}
-              selectedPackageIds={selectedPackageIds}
-              onTogglePackage={onTogglePackage}
-              org={org}
-              filledFields={filledFields}
-              editable={!!onFieldEdit}
-              resolveMerge={resolveMerge}
-            />
-          ))
+            .reduce(groupPartyLines, [])
+            .map((run) => {
+              const views = run.blocks.map((block) => (
+                <BlockView
+                  key={block.id}
+                  block={block}
+                  libraryPackages={libraryPackages}
+                  selectedPackageIds={selectedPackageIds}
+                  onTogglePackage={onTogglePackage}
+                  org={org}
+                  filledFields={filledFields}
+                  editable={!!onFieldEdit}
+                  resolveMerge={resolveMerge}
+                  total={total}
+                />
+              ));
+              if (!run.tight) return views[0];
+              return (
+                <div key={run.key} className="space-y-0.5">
+                  {run.blocks.map((block, i) => (
+                    <div key={block.id}>{views[i]}</div>
+                  ))}
+                </div>
+              );
+            })
         ) : (
           <LegacyContent content={page.content} org={org} filledFields={filledFields} editable={!!onFieldEdit} resolveMerge={resolveMerge} />
         )}
@@ -150,6 +168,28 @@ function LegacyContent({ content, org, filledFields, editable, resolveMerge }: {
   );
 }
 
+/**
+ * A run of plain merge fields is one address block, not a list of sections.
+ *
+ * Every block sits in a `space-y-8` column, which is right for sections and
+ * absurd for the four lines of a party's contact details — name, address,
+ * email and phone arrived a third of a screen apart. Consecutive inline
+ * fields collapse into one tight stack, which is how the Parties header is
+ * meant to read.
+ */
+type BlockRun = { key: string; blocks: ProposalBlock[]; tight: boolean };
+
+function groupPartyLines(runs: BlockRun[], block: ProposalBlock): BlockRun[] {
+  const isInlineField = block.type === "merge_field" && !block.field?.endsWith("_block");
+  const last = runs[runs.length - 1];
+  if (isInlineField && last?.tight) {
+    last.blocks.push(block);
+    return runs;
+  }
+  runs.push({ key: block.id, blocks: [block], tight: isInlineField });
+  return runs;
+}
+
 // ---- Per-block renderers ----
 
 function BlockView({
@@ -161,6 +201,7 @@ function BlockView({
   filledFields,
   editable,
   resolveMerge,
+  total,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
@@ -170,6 +211,7 @@ function BlockView({
   filledFields?: Record<string, string>;
   editable?: boolean;
   resolveMerge?: boolean;
+  total?: number;
 }) {
   switch (block.type) {
     case "hero":
@@ -200,19 +242,139 @@ function BlockView({
     case "signature":
       return <SignatureBlock block={block} />;
     case "merge_field":
-      // Renders inline as the literal token `{{field}}` so the contract
-      // generator's server-side substitution finds and replaces it.
-      return <span>{`{{${block.field}}}`}</span>;
+      // Without resolveMerge this is serialisation, not reading: the literal
+      // token has to survive into the saved HTML so the contract generator
+      // can substitute it later.
+      if (!resolveMerge) return <span>{`{{${block.field}}}`}</span>;
+      if (block.field === "packages_block") {
+        return (
+          <SelectedServicesBlock
+            libraryPackages={libraryPackages}
+            selectedPackageIds={selectedPackageIds}
+          />
+        );
+      }
+      return (
+        <MergeFieldInline
+          field={block.field}
+          org={org}
+          filledFields={filledFields}
+          editable={editable}
+        />
+      );
     case "payment_schedule":
-      // Renders as the same merge token used elsewhere; the server reads
-      // the structured block from `template.blocks` to compute amounts.
-      return <span>{"{{payment_schedule_block}}"}</span>;
+      if (!resolveMerge) return <span>{"{{payment_schedule_block}}"}</span>;
+      return <PaymentTermsBlock block={block} total={total} />;
     default: {
       // Exhaustive check — unreachable if all variants are handled.
       const _never: never = block;
       return null;
     }
   }
+}
+
+/**
+ * One merge field, shown the way its reader should see it.
+ *
+ * Runs the same token→text pass as prose, so a field means the same thing
+ * whether it was typed into a paragraph or dropped in as its own block. The
+ * Parties header is built from these blocks, and it used to print
+ * `{{vendor_name}}{{vendor_address}}` at the top of every agreement.
+ *
+ * Renders nothing when the helper returns nothing — that's the optional
+ * second person on a booking that only has one.
+ */
+function MergeFieldInline({
+  field,
+  org,
+  filledFields,
+  editable,
+}: {
+  field: string;
+  org?: Organization | null;
+  filledFields?: Record<string, string>;
+  editable?: boolean;
+}) {
+  const html = renderTemplatePreviewHtml(`{{${field}}}`, org, filledFields, editable);
+  if (!html.trim()) return null;
+  return (
+    <span
+      className="contract-html-light"
+      dangerouslySetInnerHTML={{
+        __html: DOMPurify.sanitize(html, { ADD_ATTR: ["contenteditable", "spellcheck"] }),
+      }}
+    />
+  );
+}
+
+/**
+ * What `{{packages_block}}` stands for once the client has ticked their
+ * services. Same sentence the signed contract will carry (see
+ * renderPackagesBlock in api/_contractGenerator.ts) so the agreement they
+ * read is the agreement they get.
+ */
+function SelectedServicesBlock({
+  libraryPackages,
+  selectedPackageIds,
+}: {
+  libraryPackages: Package[];
+  selectedPackageIds?: string[];
+}) {
+  const chosen = (selectedPackageIds || [])
+    .map((id) => libraryPackages.find((p) => p.id === id))
+    .filter((p): p is Package => !!p);
+
+  if (chosen.length === 0) {
+    return (
+      <p className="text-sm text-gray-500 italic">
+        The services you choose above will be listed here.
+      </p>
+    );
+  }
+
+  const total = chosen.reduce((sum, p) => sum + (p.defaultPrice || 0), 0);
+  return (
+    <div className="space-y-3">
+      {chosen.map((pkg) => (
+        <div key={pkg.id} className="border-t border-gray-200 pt-3">
+          <p className="font-semibold text-gray-900">
+            1 of {pkg.name} at {formatMoney(pkg.defaultPrice || 0)} for a total of{" "}
+            {formatMoney(pkg.defaultPrice || 0)}
+          </p>
+          {pkg.description && (
+            <p className="text-sm text-gray-700 mt-1">{pkg.description}</p>
+          )}
+          {!!pkg.discountFromPrice && pkg.discountFromPrice > (pkg.defaultPrice || 0) && (
+            <p className="text-xs text-gray-600 mt-1">
+              This is a discounted rate from <strong>{formatMoney(pkg.discountFromPrice)}</strong>
+            </p>
+          )}
+        </div>
+      ))}
+      {chosen.length > 1 && (
+        <div className="border-t border-gray-300 pt-2 flex items-center justify-between font-semibold text-gray-900">
+          <span>Total</span>
+          <span>{formatMoney(total)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The deposit and balance in words, with real dollars once a total exists. */
+function PaymentTermsBlock({
+  block,
+  total,
+}: {
+  block: Extract<ProposalBlock, { type: "payment_schedule" }>;
+  total?: number;
+}) {
+  return (
+    <div className="space-y-1 text-gray-800">
+      <p>{summarizeMilestone(block.deposit, "Deposit", total)}</p>
+      <p>{summarizeBalance(block.balance, block.deposit, total)}</p>
+    </div>
+  );
 }
 
 function HeroBlock({ block }: { block: Extract<ProposalBlock, { type: "hero" }> }) {
