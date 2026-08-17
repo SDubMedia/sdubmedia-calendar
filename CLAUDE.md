@@ -243,6 +243,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't create new response formats.** API endpoints return `{ error }` or `{ ok/data }`.
 - **Don't silently swallow errors.** Every catch block must either log or return the error.
 - **Don't fire-and-forget async work in an API handler.** `doThing().catch(log); return res.json(...)` is a race — Vercel kills the in-flight fetch when the handler returns, so it delivers intermittently. Collect side effects and `await Promise.allSettled(...)`. We lost a real inquiry notification to this (Jul 2026).
+- **Don't push to a whole org.** `sendPushToOrg` is gone; `device_tokens` holds staff, client and family devices too, so an org-wide push puts another client's payment amounts on a client's phone. Use `sendPushToOwner` / `sendPushToRoles` / `sendPushToUser` and name the audience.
 - **Don't add a column that only the capture API writes without a UI that reads it.** `pipeline_leads.description` held every website visitor's message for months with nothing in the app rendering it, so inquiries were captured but unreadable. If an endpoint persists user-authored text, something must display it.
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
@@ -392,6 +393,24 @@ means a silently truncated file.
 - **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
 - **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
 - **Idempotency.** Persist last-fired timestamp on the row (`last_reminder_sent_at`, `reminder_sent_at`, etc.) so reruns don't double-send.
+
+### Push notifications are addressed by role, never to an org
+
+`api/_apns.ts` exposes exactly three senders: `sendPushToOwner`,
+`sendPushToRoles(orgId, roles, …)` and `sendPushToUser`. There is no
+"whole org" sender and reintroducing one fails
+`client/src/lib/__tests__/pushScoping.test.ts`.
+
+The deleted `sendPushToOrg` looked up `device_tokens` by `org_id` alone, and
+**every role registers a device** — staff, clients, family. Six endpoints
+called it with a comment saying "push the owner" directly above the line. In
+`org_sdubmedia` that meant two clients received "Payment received — Invoice
+1042, $2,400 paid", "Contract signed", and every website inquiry (Aug 2026).
+
+Nothing surfaces this from our side: the send succeeds, the pipeline row is
+correct, and the wrong person's phone is the only evidence. So when adding a
+notification, name its audience — and if you're adding a role to the app,
+check what pushes that role now receives.
 
 ### Secrets never live on the `organizations` row
 
