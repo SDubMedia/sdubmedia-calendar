@@ -32,12 +32,12 @@ const PUBLIC_BASE = typeof window !== "undefined" ? window.location.origin : "ht
 // One draggable photo tile. Drag to reorder (mouse: move ~6px; touch: press &
 // hold ~0.2s, so normal scrolling still works). The tile's own buttons stop the
 // drag from starting so taps still delete / mark / pick a thumbnail.
-function SortablePhoto({ id, children }: { id: string; children: React.ReactNode }) {
+function SortablePhoto({ id, children, dimmed }: { id: string; children: React.ReactNode; dimmed?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.4 : dimmed ? 0.45 : 1,
     zIndex: isDragging ? 30 : undefined,
   };
   return (
@@ -508,6 +508,10 @@ function DeliveryDetail({ id }: { id: string }) {
    *  which on a slow line is not stopping. */
   const cancelUploadRef = useRef(false);
   const [stopping, setStopping] = useState(false);
+  /** Tiles ticked for bulk delete, and the anchor shift-click ranges from. */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pickAnchor, setPickAnchor] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
@@ -550,6 +554,15 @@ function DeliveryDetail({ id }: { id: string }) {
 
   // Drag-to-reorder: mouse drags after a small move; touch needs a short press
   // (so the gallery still scrolls normally on phones).
+  /** Only ticks that still have a tile. A file deleted by its own trash button
+   *  leaves its id behind, and a toolbar reading "3 selected" over two photos
+   *  is a lie that becomes a wrong delete count. */
+  const pickedIds = useMemo(() => files.filter(f => picked.has(f.id)).map(f => f.id), [files, picked]);
+
+  // Switching galleries starts clean — carrying a selection across would put
+  // the toolbar over a grid it doesn't belong to.
+  useEffect(() => { setPicked(new Set()); setPickAnchor(null); }, [id]);
+
   const dragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
@@ -828,6 +841,70 @@ function DeliveryDetail({ id }: { id: string }) {
     } else {
       toast.warning("Partly uploaded", { description: `${added} added, ${failed} failed.` });
     }
+  }
+
+  /** Tick a tile. Shift extends from the last one ticked, the way every file
+   *  browser behaves — culling 400 frames one click at a time is not a job. */
+  function togglePick(fileId: string, shiftKey: boolean) {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (shiftKey && pickAnchor) {
+        const a = files.findIndex(f => f.id === pickAnchor);
+        const b = files.findIndex(f => f.id === fileId);
+        if (a >= 0 && b >= 0) {
+          // The anchor's own state decides the range's, so shift-clicking after
+          // an untick clears a run instead of re-selecting it.
+          const selecting = prev.has(pickAnchor);
+          for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
+            if (selecting) next.add(files[i].id); else next.delete(files[i].id);
+          }
+          return next;
+        }
+      }
+      if (next.has(fileId)) next.delete(fileId); else next.add(fileId);
+      return next;
+    });
+    setPickAnchor(fileId);
+  }
+
+  async function handleDeletePicked() {
+    const ids = pickedIds;
+    if (ids.length === 0) return;
+    if (!(await confirm({
+      title: `Delete ${ids.length} file${ids.length === 1 ? "" : "s"}?`,
+      description: "This removes them from the client gallery too. It can't be undone.",
+      destructive: true,
+      confirmLabel: `Delete ${ids.length}`,
+    }))) return;
+
+    setBulkDeleting(true);
+    const sess = await supabase.auth.getSession();
+    const accessToken = sess.data.session?.access_token || "";
+    let failed = 0;
+    // Four at a time: a few hundred sequential round trips is a minute of
+    // staring at a spinner, and R2 doesn't need protecting from four.
+    const queue = [...ids];
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+      for (;;) {
+        const fileId = queue.shift();
+        if (fileId === undefined) return;
+        try {
+          await fetch("/api/deliveries", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ action: "delete-file", fileId }),
+          });
+          await deleteDeliveryFile(fileId);
+        } catch { failed++; }
+      }
+    }));
+    setBulkDeleting(false);
+    setPicked(new Set());
+    setPickAnchor(null);
+    const gone = ids.length - failed;
+    if (failed === 0) toast.success(`Deleted ${gone} file${gone === 1 ? "" : "s"}`);
+    else if (gone === 0) toast.error("Nothing deleted", { description: `All ${failed} failed.` });
+    else toast.warning("Partly deleted", { description: `${gone} removed, ${failed} failed.` });
   }
 
   async function handleDeleteFile(fileId: string) {
@@ -1355,6 +1432,35 @@ function DeliveryDetail({ id }: { id: string }) {
       {files.length === 0 ? (
         <p className="text-center text-sm text-slate-500 py-8">No photos or videos yet.</p>
       ) : (
+        <>
+        {pickedIds.length > 0 && (
+          <div className="sticky top-0 z-20 -mx-1 mb-3 px-3 py-2 rounded-lg bg-[#0a0e17] border border-white/15 flex flex-wrap items-center justify-between gap-2 shadow-lg">
+            <span className="text-sm text-white min-w-0">
+              <strong>{pickedIds.length}</strong> selected
+            </span>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={() => setPicked(new Set(files.map(f => f.id)))}
+                className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+              >
+                Select all {files.length}
+              </button>
+              <button
+                onClick={() => { setPicked(new Set()); setPickAnchor(null); }}
+                className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleDeletePicked}
+                disabled={bulkDeleting}
+                className="text-xs px-3 py-1.5 rounded bg-red-500 text-white font-semibold hover:bg-red-600 disabled:opacity-50"
+              >
+                {bulkDeleting ? "Deleting…" : `Delete ${pickedIds.length}`}
+              </button>
+            </div>
+          </div>
+        )}
         <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handlePhotoDragEnd}>
         <SortableContext items={files.map(f => f.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -1363,8 +1469,24 @@ function DeliveryDetail({ id }: { id: string }) {
             const isVideo = f.mediaType === "video";
             const thumb = thumbUrls.get(f.id);
             const photo = signedUrls.get(f.id);
+            const isPicked = picked.has(f.id);
             return (
-              <SortablePhoto key={f.id} id={f.id}>
+              <SortablePhoto key={f.id} id={f.id} dimmed={picked.size > 0 && !isPicked}>
+                {/* Top-left: the other three corners already hold Mark edited,
+                    Thumbnail and Delete. stopPropagation on pointerdown so the
+                    tick doesn't start a drag. */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); togglePick(f.id, e.shiftKey); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  aria-label={isPicked ? "Deselect" : "Select"}
+                  className={`absolute top-2 left-2 z-10 w-6 h-6 rounded flex items-center justify-center border transition-colors ${
+                    isPicked
+                      ? "bg-[#0088ff] border-[#0088ff] text-white"
+                      : "bg-black/50 border-white/40 text-transparent hover:border-white opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
                 {isVideo ? (
                   // Video tile: show thumbnail (or fallback) + play overlay + duration
                   <>
@@ -1471,6 +1593,7 @@ function DeliveryDetail({ id }: { id: string }) {
         </div>
         </SortableContext>
         </DndContext>
+        </>
       )}
 
       {/* Video thumbnail picker — opens when admin clicks "Thumbnail" on a video tile */}
