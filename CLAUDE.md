@@ -243,6 +243,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't create new response formats.** API endpoints return `{ error }` or `{ ok/data }`.
 - **Don't silently swallow errors.** Every catch block must either log or return the error.
 - **Don't fire-and-forget async work in an API handler.** `doThing().catch(log); return res.json(...)` is a race — Vercel kills the in-flight fetch when the handler returns, so it delivers intermittently. Collect side effects and `await Promise.allSettled(...)`. We lost a real inquiry notification to this (Jul 2026).
+- **Don't drop an RLS policy without grepping for policies that subquery that table.** A policy's `USING` subquery runs under RLS too, so removing a read policy silently empties every policy that leans on it. Dropping `client_read_projects` blanked client galleries. Use a `SECURITY DEFINER` lookup instead.
 - **Don't push to a whole org.** `sendPushToOrg` is gone; `device_tokens` holds staff, client and family devices too, so an org-wide push puts another client's payment amounts on a client's phone. Use `sendPushToOwner` / `sendPushToRoles` / `sendPushToUser` and name the audience.
 - **Don't add a column that only the capture API writes without a UI that reads it.** `pipeline_leads.description` held every website visitor's message for months with nothing in the app rendering it, so inquiries were captured but unreadable. If an endpoint persists user-authored text, something must display it.
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
@@ -393,6 +394,28 @@ means a silently truncated file.
 - **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
 - **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
 - **Idempotency.** Persist last-fired timestamp on the row (`last_reminder_sent_at`, `reminder_sent_at`, etc.) so reruns don't double-send.
+
+### A subquery inside an RLS policy is itself filtered by RLS
+
+`client_read_own_project_deliveries` decides access with
+`EXISTS (SELECT 1 FROM projects WHERE …)`. Dropping the client read policy on
+`projects` (correctly — it leaked crew pay rates) therefore emptied that
+subquery, the EXISTS went false, and **every signed-in client's gallery list
+went blank**. Nothing errored; the tables just looked empty (Aug 2026).
+
+So: when you remove or narrow a policy, grep for other policies whose `USING`
+clause reads that same table. Their access silently collapses with it.
+
+The fix is a `SECURITY DEFINER STABLE` lookup that answers the membership
+question outside RLS, bounded by the caller's own org and ids —
+`public.client_project_ids()` and `public.staff_assigned_projects()` are the
+two in use. Feed policies from those, not from a bare subquery.
+
+Verify role changes by signing in as the role, not by reading the SQL. The
+harness that caught this: create an auth user, wait for the signup trigger to
+write its profile, THEN upsert the role/org you want (the trigger overwrites
+it and spawns a stray org — delete both afterwards), sign in with the anon
+key, and count rows per table against service-role totals.
 
 ### Push notifications are addressed by role, never to an org
 
