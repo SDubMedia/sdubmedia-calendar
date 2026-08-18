@@ -1697,7 +1697,19 @@ export interface DeliveryFile {
   // copy so galleries stay fast.
   originalStoragePath?: string;
   originalSizeBytes?: number;
+  /** Which half of the job this file belongs to.
+   *
+   *  "proof"  — what the client picks from. On a raw shoot that's the preview
+   *             pulled out of the raw, with the raw itself as the original.
+   *  "final"  — the finished file that gets delivered.
+   *
+   *  Defaults to "final" everywhere, because every file that existed before
+   *  proofing IS a deliverable — a real-estate gallery has no proofing phase
+   *  and must keep behaving exactly as it did. */
+  stage: DeliveryFileStage;
 }
+
+export type DeliveryFileStage = "proof" | "final";
 
 export interface DeliverySelection {
   id: string;

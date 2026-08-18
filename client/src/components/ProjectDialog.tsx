@@ -454,6 +454,8 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           deliveryId: gid, storagePath: upData.storagePath, originalName: file.name, sizeBytes: file.size,
           width, height, mimeType: file.type, position: startPos + done,
           mediaType: isVideo ? "video" : "image", thumbnailStoragePath: "", durationSeconds: null,
+          // Uploaded straight onto a project — there's no proofing round here.
+          stage: "final",
         });
         done++;
       } catch (e) {

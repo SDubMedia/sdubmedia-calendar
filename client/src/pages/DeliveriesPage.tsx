@@ -22,7 +22,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import type { Client, DeliveryFile, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
+import type { Client, DeliveryFile, DeliveryFileStage, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -522,6 +522,12 @@ function DeliveryDetail({ id }: { id: string }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [pickAnchor, setPickAnchor] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  /** Which half of the job a drag-and-drop lands in. Explicit rather than
+   *  inferred: "am I uploading proofs or finals" is the question that has no
+   *  answer today, and guessing it wrong puts the client's rejects in their
+   *  delivery. Seeded from the phase, changeable before you drop. */
+  const [uploadStageOverride, setUploadStageOverride] = useState<DeliveryFileStage | null>(null);
+  const [fileViewOverride, setFileViewOverride] = useState<"proofs" | "finals" | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
@@ -851,6 +857,7 @@ function DeliveryDetail({ id }: { id: string }) {
             durationSeconds,
             originalStoragePath,
             originalSizeBytes,
+            stage: uploadStage,
           });
         } catch (regErr) {
           await discardOrphanedUpload(
@@ -902,14 +909,16 @@ function DeliveryDetail({ id }: { id: string }) {
     setPicked(prev => {
       const next = new Set(prev);
       if (shiftKey && pickAnchor) {
-        const a = files.findIndex(f => f.id === pickAnchor);
-        const b = files.findIndex(f => f.id === fileId);
+        // Ranges span what's on screen. Anchoring into a hidden half would
+        // select tiles you can't see and then delete them.
+        const a = gridFiles.findIndex(f => f.id === pickAnchor);
+        const b = gridFiles.findIndex(f => f.id === fileId);
         if (a >= 0 && b >= 0) {
           // The anchor's own state decides the range's, so shift-clicking after
           // an untick clears a run instead of re-selecting it.
           const selecting = prev.has(pickAnchor);
           for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
-            if (selecting) next.add(files[i].id); else next.delete(files[i].id);
+            if (selecting) next.add(gridFiles[i].id); else next.delete(gridFiles[i].id);
           }
           return next;
         }
@@ -1020,6 +1029,46 @@ function DeliveryDetail({ id }: { id: string }) {
   }
 
   const proofingEnabled = delivery.selectionLimit > 0;
+
+  /** Where this gallery is in the job. Derived, not stored — a second source
+   *  of truth for something already implied by the limit, the submission and
+   *  the files would only drift. */
+  const proofs = files.filter(f => f.stage === "proof");
+  const finals = files.filter(f => f.stage !== "proof");
+  const phase: "collecting" | "picking" | "editing" | "done" =
+    !proofingEnabled ? "done"
+    : delivery.status === "delivered" ? "done"
+    : delivery.submittedAt ? "editing"
+    : proofs.length > 0 ? "picking"
+    : "collecting";
+
+  // Which half you're looking at. Follows the phase unless you say otherwise:
+  // while proofs are being loaded or picked you want the proofs, afterwards
+  // you want what's going out.
+  const fileView: "proofs" | "finals" =
+    fileViewOverride ?? (phase === "editing" || phase === "done" ? "finals" : "proofs");
+
+  // Default the drop target to whatever this phase is for. Before the client
+  // has picked, you're adding proofs; after, you're adding finished files.
+  const uploadStage: DeliveryFileStage = readOnly
+    ? "final"
+    : uploadStageOverride ?? (!proofingEnabled ? "final" : phase === "editing" || phase === "done" ? "final" : "proof");
+
+  /** What the grid shows.
+   *
+   *  An editor opening a 198-frame proofing gallery needs the fifteen she's
+   *  working on, not all 198 — "download only those raws" is the entire ask.
+   *  So for staff the proofs narrow to what the client actually chose, while
+   *  finals stay whole (that's her own output).
+   *
+   *  The owner sees everything, split into two tabs, because he needs to know
+   *  what he loaded as well as what came back. */
+  const pickedFileIds = new Set(selections.map(s2 => s2.fileId));
+  const visibleProofs = readOnly ? proofs.filter(f => pickedFileIds.has(f.id)) : proofs;
+  const hasBothStages = proofs.length > 0 && finals.length > 0;
+  const gridFiles = !proofingEnabled ? files
+    : fileView === "proofs" ? visibleProofs
+    : finals;
   const project = data.projects.find(p => p.id === delivery.projectId);
   const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
   // "Agent" is real-estate language and reads as a mistake on a portrait,
@@ -1424,12 +1473,58 @@ function DeliveryDetail({ id }: { id: string }) {
       <>
       {readOnly && (
         <p className="text-xs text-slate-400 mb-4 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
-          You're viewing this gallery for a job you're assigned to. Picked photos are
-          outlined — open <strong>Selections</strong> for the list and filenames.
+          {phase === "editing"
+            ? <>The client picked <strong>{selections.length}</strong>. Download them below — a raw shoot hands back the raw file — then drag the finished versions here to add them as finals. You can't change or remove the client's photos.</>
+            : <>You're viewing this gallery for a job you're assigned to. Picked photos are outlined — open <strong>Selections</strong> for the list and filenames.</>}
         </p>
       )}
-      {/* Upload zone — drag-drop OR click to browse */}
-      {!readOnly && (
+
+      {/* Where this job is, and what happens next. The single most useful
+          thing a proofing gallery can say: without it, "drag photos here" is
+          the same instruction whether you're loading 400 proofs or 15 finished
+          files, and getting it wrong puts the client's rejects in their
+          delivery. */}
+      {!readOnly && proofingEnabled && (
+        <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {([
+              ["collecting", "1. Load proofs"],
+              ["picking", "2. Client picks"],
+              ["editing", "3. Edit + upload finals"],
+              ["done", "4. Delivered"],
+            ] as const).map(([key, label], i) => {
+              const order = ["collecting", "picking", "editing", "done"];
+              const at = order.indexOf(phase);
+              const isNow = key === phase;
+              const isPast = order.indexOf(key) < at;
+              return (
+                <span
+                  key={key}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border ${
+                    isNow ? "bg-[#0088ff] border-[#0088ff] text-white font-semibold"
+                    : isPast ? "border-emerald-500/40 text-emerald-400"
+                    : "border-white/10 text-slate-500"
+                  }`}
+                >
+                  {isPast ? "✓ " : ""}{label}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-400">
+            {phase === "collecting" && <>Load the shots she'll choose from. She can pick <strong>{delivery.selectionLimit}</strong>. Raws are fine — the gallery shows the preview inside them and keeps the raw for your editor.</>}
+            {phase === "picking" && <><strong>{proofs.length}</strong> proof{proofs.length === 1 ? "" : "s"} loaded. Send her the link — you'll get an email and a push when she submits her {delivery.selectionLimit}.</>}
+            {phase === "editing" && <>She picked <strong>{selections.length}</strong>. Your editor can open this gallery and download those raws. Upload the finished files here as <strong>Finals</strong>, then deliver.</>}
+            {phase === "done" && <>Delivered. The client sees the {finals.length} final file{finals.length === 1 ? "" : "s"}.</>}
+          </p>
+        </div>
+      )}
+
+      {/* Upload zone — drag-drop OR click to browse.
+          The editor gets it too, but only ever adding finals: the database
+          policy pins her inserts to stage='final', so proofs stay the owner's.
+          Hiding the switch matches what she's actually allowed to do. */}
+      {(!readOnly || phase === "editing") && (
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1452,9 +1547,31 @@ function DeliveryDetail({ id }: { id: string }) {
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
+        {proofingEnabled && !readOnly && (
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">Adding</span>
+            {(["proof", "final"] as const).map(st => (
+              <button
+                key={st}
+                onClick={(e) => { e.stopPropagation(); setUploadStageOverride(st); }}
+                disabled={!!uploading}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-semibold disabled:opacity-40 ${
+                  uploadStage === st
+                    ? "bg-[#0088ff] border-[#0088ff] text-white"
+                    : "border-white/15 text-slate-300 hover:bg-white/[0.06]"
+                }`}
+              >
+                {st === "proof" ? "Proofs — she picks from these" : "Finals — she receives these"}
+              </button>
+            ))}
+          </div>
+        )}
         <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
         <p className="text-sm text-slate-300 mb-3">
-          {dragOver ? "Drop to upload" : "Drag photos or videos here, or click to browse"}
+          {dragOver
+            ? (proofingEnabled ? `Drop to add ${uploadStage === "proof" ? "proofs" : "finals"}` : "Drop to upload")
+            : readOnly ? "Drag the finished files here, or click to browse"
+            : "Drag photos or videos here, or click to browse"}
         </p>
         <p className="text-[11px] text-slate-500 mb-3">
           Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: JPEG, PNG, HEIC · up to 50 MB each.
@@ -1465,7 +1582,9 @@ function DeliveryDetail({ id }: { id: string }) {
           disabled={!!uploading}
           className="inline-flex items-center gap-2 px-4 py-2 bg-[#0088ff] text-white rounded-lg font-semibold text-sm hover:bg-[#0066dd] disabled:opacity-50"
         >
-          {uploading ? `Uploading ${uploading.done} / ${uploading.total}…` : "Choose files"}
+          {uploading
+            ? `Uploading ${uploading.done} / ${uploading.total}…`
+            : proofingEnabled ? `Choose ${uploadStage === "proof" ? "proofs" : "finals"}` : "Choose files"}
         </button>
         {uploading && (
           <div className="mt-3 max-w-md mx-auto text-left">
@@ -1498,8 +1617,33 @@ function DeliveryDetail({ id }: { id: string }) {
       )}
 
       {/* File grid */}
-      {files.length === 0 ? (
-        <p className="text-center text-sm text-slate-500 py-8">No photos or videos yet.</p>
+      {proofingEnabled && (hasBothStages || readOnly) && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button
+            onClick={() => setFileViewOverride("proofs")}
+            className={`text-xs px-3 py-1.5 rounded-lg border ${fileView === "proofs" ? "bg-white/10 border-white/25 text-white font-semibold" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}
+          >
+            {readOnly ? `Her picks (${visibleProofs.length})` : `Proofs (${proofs.length})`}
+          </button>
+          <button
+            onClick={() => setFileViewOverride("finals")}
+            className={`text-xs px-3 py-1.5 rounded-lg border ${fileView === "finals" ? "bg-white/10 border-white/25 text-white font-semibold" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}
+          >
+            Finals ({finals.length})
+          </button>
+          {readOnly && fileView === "proofs" && (
+            <span className="text-[11px] text-slate-500">Download these, edit, then add them back as finals.</span>
+          )}
+        </div>
+      )}
+
+      {gridFiles.length === 0 ? (
+        <p className="text-center text-sm text-slate-500 py-8">
+          {!proofingEnabled ? "No photos or videos yet."
+            : fileView === "finals" ? "No finished files here yet."
+            : readOnly ? "She hasn't submitted her picks yet."
+            : "No proofs loaded yet."}
+        </p>
       ) : (
         <>
         {pickedIds.length > 0 && (
@@ -1509,10 +1653,10 @@ function DeliveryDetail({ id }: { id: string }) {
             </span>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
-                onClick={() => setPicked(new Set(files.map(f => f.id)))}
+                onClick={() => setPicked(new Set(gridFiles.map(f => f.id)))}
                 className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
               >
-                Select all {files.length}
+                Select all {gridFiles.length}
               </button>
               <button
                 onClick={() => { setPicked(new Set()); setPickAnchor(null); }}
@@ -1531,9 +1675,9 @@ function DeliveryDetail({ id }: { id: string }) {
           </div>
         )}
         <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handlePhotoDragEnd}>
-        <SortableContext items={files.map(f => f.id)} strategy={rectSortingStrategy}>
+        <SortableContext items={gridFiles.map(f => f.id)} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {files.map((f) => {
+          {gridFiles.map((f) => {
             const sel = selections.find(s => s.fileId === f.id);
             const isVideo = f.mediaType === "video";
             const thumb = thumbUrls.get(f.id);

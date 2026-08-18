@@ -193,7 +193,25 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .select("*")
     .eq("delivery_id", delivery.id)
     .order("position");
-  const fileRows = (files || []) as FileRow[];
+  const allRows = (files || []) as FileRow[];
+
+  // A client sees ONE half of the job, never both.
+  //
+  // Proofing splits a gallery in two: the shots she picks from, and the
+  // finished files she receives. Serving the whole table would put 198 rejects
+  // next to the 15 she's paying for, which is the thing the stage column
+  // exists to prevent.
+  //
+  // Delivered with finals present → the finals, and only those. Otherwise the
+  // proofs, so a returning client still sees what she chose. A gallery with no
+  // proofs at all — every real-estate delivery, and everything uploaded before
+  // this existed — falls through unchanged.
+  const proofRows = allRows.filter(f => (f as unknown as { stage?: string }).stage === "proof");
+  const finalRows = allRows.filter(f => (f as unknown as { stage?: string }).stage !== "proof");
+  const fileRows: FileRow[] =
+    delivery.status === "delivered" && finalRows.length > 0 ? finalRows
+      : proofRows.length > 0 ? proofRows
+        : allRows;
 
   // Load existing selections (so client sees their picks if they're returning)
   const { data: selections } = await supabase
@@ -389,12 +407,24 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
     return res.status(400).json({ error: "This gallery is already in progress. Pay for extras instead." });
   }
 
-  // Validate file IDs belong to this delivery
-  const { data: validFiles } = await supabase
+  // Validate file IDs belong to this delivery.
+  //
+  // Proofs only where a proofing round exists: a submitted pick has to be
+  // something she was choosing FROM, not a finished file that happens to share
+  // the gallery. Galleries with no proofs (every real-estate delivery) keep
+  // validating against the whole set.
+  const { count: proofCount } = await supabase
+    .from("delivery_files")
+    .select("id", { count: "exact", head: true })
+    .eq("delivery_id", delivery.id)
+    .eq("stage", "proof");
+  let validQuery = supabase
     .from("delivery_files")
     .select("id")
     .eq("delivery_id", delivery.id)
     .in("id", fileIds);
+  if ((proofCount ?? 0) > 0) validQuery = validQuery.eq("stage", "proof");
+  const { data: validFiles } = await validQuery;
   const validIds = new Set((validFiles || []).map((f: { id: string }) => f.id));
   const filteredIds = fileIds.filter((id) => validIds.has(id));
   if (filteredIds.length !== fileIds.length) {

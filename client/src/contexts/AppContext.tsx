@@ -932,6 +932,9 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
     originalStoragePath: r.original_storage_path || "",
     originalSizeBytes: Number(r.original_size_bytes || 0),
+    // Anything not explicitly a proof is a deliverable, which is every row
+    // that predates the column.
+    stage: r.stage === "proof" ? "proof" : "final",
   };
 }
 
@@ -2293,6 +2296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         duration_seconds: f.durationSeconds ?? null,
         original_storage_path: f.originalStoragePath ?? "",
         original_size_bytes: f.originalSizeBytes ?? 0,
+        stage: f.stage ?? "final",
       }).eq("id", dupe.id).select().single();
       if (updErr) throw new Error(updErr.message);
       const replaced = rowToDeliveryFile(updated);
@@ -2308,6 +2312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       media_type: f.mediaType ?? "image",
       thumbnail_storage_path: f.thumbnailStoragePath ?? "",
       duration_seconds: f.durationSeconds ?? null,
+      stage: f.stage ?? "final",
       original_storage_path: f.originalStoragePath ?? "",
       original_size_bytes: f.originalSizeBytes ?? 0,
     }).select().single();
