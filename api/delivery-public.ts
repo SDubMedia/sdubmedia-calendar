@@ -14,6 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage, escapeHtml, publicBusinessInfo, verifyAuth, getUserOrgId } from "./_auth.js";
 import { verifyPassword } from "./_password.js";
+import { sendPushToOwner } from "./_apns.js";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
 
 const supabase = createClient(
@@ -538,6 +539,13 @@ async function trackDownload(req: VercelRequest, res: VercelResponse, token: str
           + (delivery.require_email ? "" : `<p style="color:#777;font-size:13px">Turn on <strong>Require email</strong> in the gallery's Privacy tab to see who it was.</p>`),
       }).catch(() => { /* never fail a download over a notification */ });
     }
+
+    // Inside the debounce, so a client saving 40 photos buzzes once.
+    await sendPushToOwner(delivery.org_id, {
+      title: "Gallery downloaded",
+      body: `${visitorEmail || "Someone with the link"} — ${delivery.title}`,
+      data: { url: `/deliveries/${delivery.id}` },
+    }).catch(() => { /* never fail a download over a notification */ });
   }
 
   return res.status(200).json({ ok: true });
@@ -604,4 +612,17 @@ export async function saveSelectionsAndAlert(
       `,
     }).catch(() => { /* fire-and-forget */ });
   }
+
+  // Push as well as email. Every other event that matters — a lead, a signed
+  // contract, a payment — buzzes the phone; a client finishing their picks is
+  // the moment editing can start, and it only sent an email.
+  //
+  // Owner only, via the role-scoped sender: device_tokens holds staff and
+  // CLIENT devices too, and "Felicia picked 15 photos" on another client's
+  // phone is a leak, not a notification.
+  await sendPushToOwner(orgId, {
+    title: `${clientName || "Your client"} finished picking`,
+    body: `${fileIds.length} photo${fileIds.length === 1 ? "" : "s"} on ${delivery.title}`,
+    data: { url: `/deliveries/${delivery.id}` },
+  }).catch(() => { /* best effort — the email already went */ });
 }
