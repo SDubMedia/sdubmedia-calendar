@@ -135,6 +135,29 @@ export default function ClientDashboardPage() {
       }));
   }, [data.projects, data.deliveries, data.locations]);
 
+  /** "Pick your favourites" — a proofing gallery waiting on this client.
+   *
+   *  The ready-photos nudge above only matches DELIVERED galleries, which a
+   *  proofing round isn't: it sits at 'sent' while the client chooses. So a
+   *  client who logged in to find their proofs saw nothing at all, and the
+   *  emailed link was the only way in. Same link, surfaced where they already
+   *  are.
+   *
+   *  Dropped once submitted — the job then moves to the editor and there's
+   *  nothing for them to do. */
+  const proofsToPick = useMemo(() => {
+    return data.projects
+      .map(p => ({ p, g: data.deliveries.find(d => d.projectId === p.id && (d.selectionLimit ?? 0) > 0 && !d.submittedAt && d.status !== "draft" && d.status !== "delivered") }))
+      .filter((x): x is { p: Project; g: NonNullable<typeof x.g> } => !!x.g)
+      .slice(0, 5)
+      .map(({ p, g }) => ({
+        id: p.id,
+        label: data.locations.find(l => l.id === p.locationId)?.name || g.title || "Your shoot",
+        limit: g.selectionLimit,
+        url: `${window.location.origin}${g.slug ? `/g/${g.slug}` : `/deliver/${g.token}`}`,
+      }));
+  }, [data.projects, data.deliveries, data.locations]);
+
   // "What you owe" = invoices billed to the agent themselves (self-pay agents,
   // or shoots a broker declined and you re-pointed to the agent). Honest for all.
   const showOwe = !coveredByBroker || outstandingAmount > 0;
@@ -307,6 +330,24 @@ export default function ClientDashboardPage() {
                 <a key={r.id} href={r.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-md bg-background/60 px-3 py-2 hover:bg-background transition-colors">
                   <span className="text-sm text-foreground min-w-0 truncate">{r.label}</span>
                   <span className="text-xs font-medium text-emerald-600 shrink-0 flex items-center gap-1">View &amp; download <ArrowRight className="w-3.5 h-3.5" /></span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {proofsToPick.length > 0 && (
+          <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-4 space-y-2">
+            <div className="flex items-center gap-2 font-semibold text-foreground">
+              <Images className="w-5 h-5 text-blue-500" /> Choose your favourites
+            </div>
+            <div className="space-y-1.5">
+              {proofsToPick.map(r => (
+                <a key={r.id} href={r.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-md bg-background/60 px-3 py-2 hover:bg-background transition-colors">
+                  <span className="text-sm text-foreground min-w-0 truncate">
+                    {r.label}
+                    {r.limit > 0 && <span className="text-muted-foreground"> · pick {r.limit}</span>}
+                  </span>
+                  <span className="text-xs font-medium text-blue-600 shrink-0 flex items-center gap-1">Start picking <ArrowRight className="w-3.5 h-3.5" /></span>
                 </a>
               ))}
             </div>
