@@ -341,17 +341,17 @@ export default function ViewProposalPage() {
   // agreement + custom, which silently dropped invoice and payment pages: you
   // could add them to a template and they simply never appeared, so there was
   // no way to check what the client would see before sending.
+  /** A page with nothing on it printed "No content yet." to the client — an
+   *  author's note in a customer's document. Invoice and payment pages build
+   *  themselves from the selections, so an empty one is still meaningful. */
+  const pageHasSomething = (p: any) =>
+    p?.type === "invoice" || p?.type === "payment"
+      || (p?.blocks || []).length > 0 || !!(p?.content || "").trim();
+
   const agreementPages = [...(proposal?.pages || [])]
-    // A page with nothing on it printed "No content yet." to the client. That
-    // is a note to the author, not something a customer should read in a
-    // proposal — the wedding template's Invoice page is empty and said it.
-    // Invoice and payment pages build themselves from the selections, so an
-    // empty one is still meaningful; only blank agreement/custom pages go.
-    .filter((p: any) => {
-      if (p.type === "invoice" || p.type === "payment") return true;
-      if (p.type === "agreement" && proposal?.agreementPreview) return true;  // placeholder for the linked contract
-      return (p.blocks || []).length > 0 || !!(p.content || "").trim();
-    })
+    // An empty agreement page is the placeholder for the linked contract, so
+    // it stays; anything else blank goes.
+    .filter((p: any) => (p.type === "agreement" && proposal?.agreementPreview) || pageHasSomething(p))
     .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const hasPages = agreementPages.length > 0;
 
@@ -610,7 +610,7 @@ export default function ViewProposalPage() {
         )}
 
         {/* ---- PAYMENT SCHEDULE (milestones) ---- */}
-        {hasMilestones && selectedPackageId && (
+        {hasMilestones && selectedPackageId && !hasGroups && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Payment Schedule</h2>
             <div className="space-y-3">
@@ -707,7 +707,7 @@ export default function ViewProposalPage() {
               // section where you put it, rather than tacked on at the end.
               (proposal.agreementPreview.pages || []).length > 0 ? (
                 (proposal.agreementPreview.pages as any[])
-                  .slice()
+                  .filter(pageHasSomething)
                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                   .map((cp: any) => (
                     <ProposalBlockRenderer {...agreementProps} key={cp.id} page={cp} libraryPackages={proposal?.libraryPackages || []} />
@@ -740,7 +740,7 @@ export default function ViewProposalPage() {
             <h2 className="text-lg font-bold text-gray-900 px-2">{proposal.agreementPreview.label}</h2>
             {(proposal.agreementPreview.pages || []).length > 0 ? (
               (proposal.agreementPreview.pages as any[])
-                .slice()
+                .filter(pageHasSomething)
                 .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                 .map((page: any) => (
                   <ProposalBlockRenderer {...agreementProps}
