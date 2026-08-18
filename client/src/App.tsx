@@ -251,7 +251,7 @@ function Router() {
         <Route path="/deliveries">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/deliveries/:id">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/proposals">{() => internal ? <ProposalsPage /> : <Redirect to="/" />}</Route>
-        <Route path="/pipeline">{() => internal ? <PipelinePage /> : <Redirect to="/" />}</Route>
+        <Route path="/pipeline">{() => isOwner ? <PipelinePage /> : <Redirect to="/" />}</Route>
         <Route path="/1099" component={ContractorSummaryPage} />
         <Route path="/calendar-sync" component={CalendarSyncPage} />
         <Route path="/help" component={HelpPage} />

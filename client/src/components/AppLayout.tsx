@@ -97,7 +97,9 @@ const navStructure: NavEntry[] = [
 
   // Sales — owner and partner only
   { label: "Sales", icon: TrendingUp, roles: ["owner", "partner"], items: [
-    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner", "partner"], feature: "pipeline" },
+    // Owner-only: pipeline_leads RLS has never granted partner reads, so a
+    // partner got this nav item and a silently empty page.
+    { label: "Pipeline", href: "/pipeline", icon: Users, roles: ["owner"], feature: "pipeline" },
     { label: "Proposals", href: "/proposals", icon: FileText, roles: ["owner", "partner"], feature: "proposals" },
     // Templates & Inquiry Pipeline — owner-only per PRD RBAC
     { label: "Packages", href: "/packages", icon: PackageIcon, roles: ["owner"], feature: "proposals" },
