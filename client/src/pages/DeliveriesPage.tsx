@@ -1131,6 +1131,15 @@ function DeliveryDetail({ id }: { id: string }) {
               </div>
             )}
           </div>
+          <ProofingPanel
+            selectionLimit={delivery.selectionLimit}
+            perExtraPhotoCents={delivery.perExtraPhotoCents}
+            buyAllFlatCents={delivery.buyAllFlatCents}
+            downloadOnly={delivery.downloadOnly ?? false}
+            photoCount={files.filter(f => f.mediaType !== "video").length}
+            pickedCount={selections.length}
+            onUpdate={(patch) => updateDelivery(id, patch)}
+          />
           <ExpiryPanel
             expiresAt={delivery.expiresAt}
             onUpdate={(v) => updateDelivery(id, { expiresAt: v })}
@@ -2102,6 +2111,142 @@ function WatermarkPanel({ watermarkText, watermarkUseLogo, orgLogoUrl, onUpdate 
         className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
       />
       <p className="text-[11px] text-slate-500 mt-2">Tiled overlay across the public gallery. Deters casual screenshots; the underlying image isn't modified — paid clients still get clean originals via download.</p>
+    </div>
+  );
+}
+
+/**
+ * How many photos the client may pick, changeable at any time.
+ *
+ * The whole proofing flow already existed — hearts on the public gallery, a
+ * running "3 of 15 picked", a submit that refuses to go over — but the number
+ * could only be set on the create form. Once a gallery existed there was no
+ * way to change it, which is the one thing you actually need: the count gets
+ * negotiated after the client has seen the shoot, not before.
+ *
+ * Committed on blur, not per keystroke, so clearing the box to retype doesn't
+ * momentarily save a limit of 0 and turn proofing off underneath the client.
+ */
+function ProofingPanel({
+  selectionLimit,
+  perExtraPhotoCents,
+  buyAllFlatCents,
+  downloadOnly,
+  photoCount,
+  pickedCount,
+  onUpdate,
+}: {
+  selectionLimit: number;
+  perExtraPhotoCents: number;
+  buyAllFlatCents: number;
+  downloadOnly: boolean;
+  photoCount: number;
+  pickedCount: number;
+  onUpdate: (patch: { selectionLimit?: number; perExtraPhotoCents?: number; buyAllFlatCents?: number; downloadOnly?: boolean }) => Promise<void>;
+}) {
+  const [limit, setLimit] = useState(String(selectionLimit || ""));
+  const [perExtra, setPerExtra] = useState(perExtraPhotoCents ? String(perExtraPhotoCents / 100) : "");
+  const [flat, setFlat] = useState(buyAllFlatCents ? String(buyAllFlatCents / 100) : "");
+  useEffect(() => { setLimit(String(selectionLimit || "")); }, [selectionLimit]);
+  useEffect(() => { setPerExtra(perExtraPhotoCents ? String(perExtraPhotoCents / 100) : ""); }, [perExtraPhotoCents]);
+  useEffect(() => { setFlat(buyAllFlatCents ? String(buyAllFlatCents / 100) : ""); }, [buyAllFlatCents]);
+
+  const on = selectionLimit > 0 && !downloadOnly;
+  const paidExtras = perExtraPhotoCents > 0 || buyAllFlatCents > 0;
+
+  const commit = async (patch: Parameters<typeof onUpdate>[0], label: string) => {
+    try { await onUpdate(patch); toast.success(label); }
+    catch (e) { toast.error("Couldn't save", { description: e instanceof Error ? e.message : "Try again" }); }
+  };
+
+  const saveLimit = () => {
+    const n = parseInt(limit, 10) || 0;
+    if (n === selectionLimit) return;
+    // Turning proofing on means turning download-only off — a download-only
+    // gallery hides the hearts, so a limit alone would do nothing visible.
+    commit(
+      n > 0 && downloadOnly ? { selectionLimit: n, downloadOnly: false } : { selectionLimit: n },
+      n > 0 ? `Client can pick ${n}` : "Picking turned off",
+    );
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Photo picking</h3>
+      <p className="text-xs text-slate-500 mb-3">
+        Let the client heart the shots they want edited. Leave blank or 0 to turn it off and just deliver everything.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0">
+          <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">How many they can pick</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value.replace(/[^\d]/g, ""))}
+            onBlur={saveLimit}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            placeholder="15"
+            className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+          />
+        </div>
+        {on && (
+          <p className="text-xs text-slate-400 pb-2">
+            of <strong className="text-white">{photoCount}</strong> photo{photoCount === 1 ? "" : "s"}
+            {pickedCount > 0 && <> · <strong className="text-white">{pickedCount}</strong> picked so far</>}
+          </p>
+        )}
+      </div>
+
+      {on && (
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-xs text-slate-400 mb-2">
+            {paidExtras
+              ? "They can go over and pay for the extras."
+              : `A hard stop at ${selectionLimit} — they can't submit more.`}
+          </p>
+          <p className="text-[10px] text-slate-500 mb-3">Set a price to let them buy extras instead. Leave both blank for a hard cap.</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Per extra photo ($)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={perExtra}
+                onChange={(e) => setPerExtra(e.target.value.replace(/[^\d.]/g, ""))}
+                onBlur={() => {
+                  const cents = Math.round((parseFloat(perExtra) || 0) * 100);
+                  if (cents !== perExtraPhotoCents) commit({ perExtraPhotoCents: cents }, cents ? `Extras at $${(cents / 100).toFixed(2)} each` : "Per-photo price cleared");
+                }}
+                placeholder="0.00"
+                className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Or buy all ($)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={flat}
+                onChange={(e) => setFlat(e.target.value.replace(/[^\d.]/g, ""))}
+                onBlur={() => {
+                  const cents = Math.round((parseFloat(flat) || 0) * 100);
+                  if (cents !== buyAllFlatCents) commit({ buyAllFlatCents: cents }, cents ? `Buy-all at $${(cents / 100).toFixed(2)}` : "Buy-all price cleared");
+                }}
+                placeholder="0.00"
+                className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectionLimit > 0 && downloadOnly && (
+        <p className="text-[11px] text-amber-400/90 mt-3">
+          This gallery is set to download-only, which hides the hearts — the limit won't do anything until you switch that off under Privacy.
+        </p>
+      )}
     </div>
   );
 }
