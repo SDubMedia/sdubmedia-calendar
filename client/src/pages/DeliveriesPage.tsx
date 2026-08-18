@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { toUploadableImage } from "@/lib/heic";
+import { extractRawPreview, isRawFile } from "@/lib/rawPreview";
 import PrereqGate from "@/components/PrereqGate";
 import { DateField } from "@/components/DateTimeField";
 import { useConfirm } from "@/components/ConfirmProvider";
@@ -675,26 +676,12 @@ function DeliveryDetail({ id }: { id: string }) {
     if (!fileList || fileList.length === 0) return;
     const all = Array.from(fileList);
 
-    // Raw files are turned away at the door.
-    //
-    // No browser can decode .NEF/.CR2/.ARW, so a raw uploads fine and then
-    // shows as a grey tile with a filename on it — no picture. A client
-    // opening a 198-frame proofing gallery would have nothing to choose
-    // between. Worse, you'd only find out after the upload finished.
-    //
-    // Export JPEGs for the gallery and keep the raws where they are; the
-    // Selections tab hands back the filenames to match them up.
-    const raws = all.filter(f => RAW_EXTENSIONS.test(f.name));
-    const list = all.filter(f => !RAW_EXTENSIONS.test(f.name));
-    if (raws.length > 0) {
-      toast.error(
-        `${raws.length} raw file${raws.length === 1 ? "" : "s"} skipped`,
-        {
-          description: "Browsers can't display raw photos — they'd upload as blank tiles with no preview. Export JPEGs for the gallery; your raws stay where they are.",
-          duration: 10000,
-        },
-      );
-    }
+    // Raws are no longer turned away — the JPEG the camera embeds inside them
+    // is pulled out and used as the browsable copy, while the raw itself is
+    // stored alongside for the editor to download. Extraction happens per file
+    // inside the loop, because it's the only place we learn whether a
+    // particular file actually carries a usable preview.
+    const list = all;
     if (list.length === 0) return;
     cancelUploadRef.current = false;
     setStopping(false);
@@ -705,8 +692,36 @@ function DeliveryDetail({ id }: { id: string }) {
       // stays — those are finished files, not half of anything.
       if (cancelUploadRef.current) { stopped = true; break; }
       try {
-        // iPhone HEIC → JPEG so it displays; full quality, full resolution.
-        const file = await toUploadableImage(rawFile);
+        // A raw can't be shown by any browser, so what gets displayed is the
+        // JPEG the camera wrote inside it for its own back screen. The raw is
+        // then always kept as the original — that's the entire point of
+        // uploading raws, so it doesn't wait on the keep-originals switch.
+        const isRaw = isRawFile(rawFile.name);
+        let rawPreviewWidth: number | null = null;
+        let rawPreviewHeight: number | null = null;
+        let file: File;
+        if (isRaw) {
+          setUploading({ done, total: list.length, pct: 0, name: `Reading ${rawFile.name}…` });
+          const extracted = await extractRawPreview(rawFile);
+          if (!extracted.preview) {
+            // Named, not silently dropped: with 198 files you need to know
+            // which one, and "some failed" is useless.
+            toast.error(`No preview inside ${rawFile.name}`, {
+              description: extracted.reason === "no-jpeg-found"
+                ? "This camera doesn't embed a JPEG we can find. Export a JPEG for this frame."
+                : "The embedded image wouldn't decode. Export a JPEG for this frame.",
+            });
+            failed++; done++;
+            setUploading({ done, total: list.length, pct: 0, name: "" });
+            continue;
+          }
+          file = extracted.preview;
+          rawPreviewWidth = extracted.width;
+          rawPreviewHeight = extracted.height;
+        } else {
+          // iPhone HEIC → JPEG so it displays; full quality, full resolution.
+          file = await toUploadableImage(rawFile);
+        }
         const isVideo = file.type.startsWith("video/");
 
         // Read dimensions/duration client-side. Video also produces a
@@ -728,6 +743,10 @@ function DeliveryDetail({ id }: { id: string }) {
             durationSeconds = meta.duration > 0 ? meta.duration : null;
             autoThumbBlob = meta.thumbBlob;
           }
+        } else if (isRaw) {
+          // Already measured while decoding the embedded preview.
+          width = rawPreviewWidth;
+          height = rawPreviewHeight;
         } else {
           const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
           width = dims.width;
@@ -771,7 +790,10 @@ function DeliveryDetail({ id }: { id: string }) {
         // video is never re-encoded, so its "original" is the same bytes.
         let originalStoragePath = "";
         let originalSizeBytes = 0;
-        if (delivery?.keepOriginals && !isVideo && rawFile !== file) {
+        // A raw is kept unconditionally: it IS the deliverable for the editor,
+        // and the browsable copy is only a stand-in. Everything else follows
+        // the gallery's keep-originals switch.
+        if ((isRaw || delivery?.keepOriginals) && !isVideo && rawFile !== file) {
           try {
             const origRes = await fetch("/api/delivery-upload", {
               method: "POST",
@@ -1436,7 +1458,7 @@ function DeliveryDetail({ id }: { id: string }) {
         </p>
         <p className="text-[11px] text-slate-500 mb-3">
           Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: JPEG, PNG, HEIC · up to 50 MB each.
-          <br />Camera raws (.NEF, .CR2, .ARW…) can't be shown by a browser — export JPEGs.
+          <br />Camera raws welcome — the gallery shows the preview inside them and keeps the raw for your editor.
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -2938,9 +2960,6 @@ function projectLabel(p: Project, clients: Client[]): string {
 // becomes risky, so ordinary photos and short clips keep the simpler path.
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
 
-// Camera raw formats. Matched on extension because the browser reports no
-// useful MIME type for most of them — Chrome gives "" for a .NEF.
-const RAW_EXTENSIONS = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
 
 // No bytes moved for this long = the connection is dead, whatever it claims.
 // Used by both uploaders. Generous enough that a genuinely slow line is never

@@ -27,6 +27,15 @@ const supabase = createClient(
 const PRO_STORAGE_CAP_BYTES = 200 * 1024 * 1024 * 1024; // 200 GB
 const FREE_STORAGE_CAP_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB per single image
+
+// The untouched file kept beside the browsable copy. Larger than a display
+// image because that's the whole point of keeping it: a camera raw is 20-60MB
+// off a modern body. Still a single PUT, so not raised to video territory.
+const MAX_ORIGINAL_SIZE_BYTES = 150 * 1024 * 1024;
+
+// A camera reports no usable MIME type through a browser — Chrome gives "" for
+// a .NEF — so an original is validated on its extension instead.
+const RAW_FILE_EXT = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
 // 5GB is S3's hard ceiling for one object via a single PUT, and the practical
 // ceiling for a finished film. Anything over MULTIPART_THRESHOLD on the client
 // never reaches this endpoint — it goes to /api/delivery-multipart instead.
@@ -112,6 +121,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isImage) return res.status(400).json({ error: "A cover must be an image" });
     if (sizeBytes > MAX_IMAGE_SIZE_BYTES) {
       return res.status(413).json({ error: `Cover too large (max ${Math.floor(MAX_IMAGE_SIZE_BYTES / 1024 / 1024)}MB)` });
+    }
+  } else if (kind === "original") {
+    // The file exactly as it came off the card, stored beside the compressed
+    // copy the gallery browses. Raws land here: they can't be validated as
+    // images because the browser doesn't know what they are.
+    if (!isImage && !RAW_FILE_EXT.test(fileName)) {
+      return res.status(400).json({ error: "An original must be an image or a camera raw" });
+    }
+    if (sizeBytes > MAX_ORIGINAL_SIZE_BYTES) {
+      return res.status(413).json({ error: `Original too large (max ${Math.floor(MAX_ORIGINAL_SIZE_BYTES / 1024 / 1024)}MB per file)` });
     }
   } else if (kind === "thumbnail") {
     if (!isImage) return res.status(400).json({ error: "Thumbnail must be an image" });
