@@ -600,9 +600,24 @@ export default function DeliverGalleryPage() {
     });
   }
 
+  /** Deliberately sending fewer than the allowance. Off by default so a short
+   *  submission can't happen by accident — the whole point of the limit is
+   *  that the client gets all of what they paid for. */
+  const [allowShort, setAllowShort] = useState(false);
+  const shortBy = Math.max(0, (delivery?.selectionLimit ?? 0) - picked.size);
+
   async function startSubmit() {
     if (picked.size === 0) {
       toast.error("Pick at least one photo");
+      return;
+    }
+    // Submitting 10 when 15 are included is nearly always a slip — a row
+    // missed while scrolling, or not realising more were allowed. It used to
+    // go straight through and the other five were simply lost.
+    if (shortBy > 0 && !allowShort) {
+      toast.error(`You can still choose ${shortBy} more`, {
+        description: `${delivery?.selectionLimit} are included, and you've picked ${picked.size}.`,
+      });
       return;
     }
     setSubmitOpen(true);
@@ -1462,15 +1477,27 @@ export default function DeliverGalleryPage() {
                   </>
                 )}
               </div>
-              <button
-                onClick={startSubmit}
-                disabled={picked.size === 0}
-                className="shrink-0 bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {picked.size === 0
-                  ? `Choose ${delivery.selectionLimit}`
-                  : `Send my ${picked.size} pick${picked.size === 1 ? "" : "s"} →`}
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                {shortBy > 0 && picked.size > 0 && !allowShort && (
+                  <button
+                    onClick={() => setAllowShort(true)}
+                    className="text-xs text-slate-500 underline hover:text-slate-800"
+                  >
+                    I only want {picked.size}
+                  </button>
+                )}
+                <button
+                  onClick={startSubmit}
+                  disabled={picked.size === 0 || (shortBy > 0 && !allowShort)}
+                  className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {picked.size === 0
+                    ? `Choose ${delivery.selectionLimit}`
+                    : shortBy > 0 && !allowShort
+                      ? `${shortBy} more to go`
+                      : `Send my ${picked.size} pick${picked.size === 1 ? "" : "s"} →`}
+                </button>
+              </div>
             </div>
           </div>
         )}

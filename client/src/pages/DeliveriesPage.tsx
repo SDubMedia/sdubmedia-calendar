@@ -458,7 +458,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
   const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice } = useApp();
-  const { effectiveProfile } = useAuth();
+  const { effectiveProfile, allProfiles } = useAuth();
   /** An editor opens this to see which frames were picked and download them —
    *  not to rename the gallery, change the password, reorder it or delete a
    *  client's photos. RLS already grants staff SELECT only (plus marking a
@@ -1084,6 +1084,18 @@ function DeliveryDetail({ id }: { id: string }) {
     || (agentClient?.clientType === "agent" ? "the agent" : "the client");
   const clientNounGeneric = agentClient?.clientType === "agent" ? "the agent" : "the client";
   const hasBroker = agentClient?.clientType === "agent" && !!agentClient.brokerId;
+
+  /** Who the email goes to.
+   *
+   *  A client created from a booking usually has no email on its record — but
+   *  if they've been given a login, Slate knows it. Falling back to that turns
+   *  a dead end (Send greyed out, nothing to click but Cancel) into a
+   *  prefilled field. The server does the same lookup, so this only ever
+   *  agrees with where the mail was going to go anyway. */
+  const composerRecipient =
+    (agentClient?.email || "").trim()
+    || (agentClient ? (allProfiles.find(p => p.clientIds?.includes(agentClient.id))?.email || "") : "");
+
 
   // Self-pay charge on delivery: when the shoot's payer resolves to an agent
   // (no broker covering it) who has a card on file, the owner can charge that
@@ -1859,7 +1871,7 @@ function DeliveryDetail({ id }: { id: string }) {
           contents={composer.contents}
           subject={composer.subject}
           body={composer.body}
-          recipient={agentClient?.email || ""}
+          recipient={composerRecipient}
           recipientName={agentClient?.contactName || agentClient?.company || ""}
           galleryTitle={delivery.title || "your gallery"}
           galleryUrl={delivery.slug ? `${window.location.origin}/g/${delivery.slug}` : `${window.location.origin}/deliver/${delivery.token}`}
