@@ -79,6 +79,7 @@ const TermsPage = lazy(() => import("./pages/TermsPage"));
 const RefundPage = lazy(() => import("./pages/RefundPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 const SupportPage = lazy(() => import("./pages/SupportPage"));
+const RawCheckPage = lazy(() => import("./pages/RawCheckPage"));
 
 function LoadingScreen() {
   return (
@@ -244,6 +245,9 @@ function Router() {
         {/* Staff too: an editor needs the gallery for the job they're on to
             see which frames the client picked. RLS scopes them to assigned
             projects and the page itself renders read-only for them. */}
+        {/* Owner-only bench: does this camera embed a preview worth showing?
+            Runs entirely in the browser — nothing uploads, nothing is saved. */}
+        <Route path="/raw-check">{() => isOwner ? <RawCheckPage /> : <Redirect to="/" />}</Route>
         <Route path="/deliveries">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/deliveries/:id">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/proposals">{() => internal ? <ProposalsPage /> : <Redirect to="/" />}</Route>
