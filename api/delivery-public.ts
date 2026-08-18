@@ -14,7 +14,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage, escapeHtml, publicBusinessInfo, verifyAuth, getUserOrgId } from "./_auth.js";
 import { verifyPassword } from "./_password.js";
-import { sendPushToOwner } from "./_apns.js";
+import { sendPushToOwner, sendPushToUser } from "./_apns.js";
+import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
 
 const supabase = createClient(
@@ -666,4 +667,51 @@ export async function saveSelectionsAndAlert(
     body: `${fileIds.length} photo${fileIds.length === 1 ? "" : "s"} on ${delivery.title}`,
     data: { url: `/deliveries/${delivery.id}` },
   }).catch(() => { /* best effort — the email already went */ });
+
+  // And whoever is editing this job. They're the person the picks are FOR:
+  // until now the owner had to relay it, which is the manual step the whole
+  // proofing flow exists to remove.
+  await notifyAssignedEditors(delivery, fileIds.length, clientName).catch(() => { /* never fail a submission over a notification */ });
+}
+
+/**
+ * Push + bell the photo editors on this gallery's project.
+ *
+ * Addressed per user, not by role: "staff" here would hit every contractor in
+ * the business, and a shoot they're not on is not their notification.
+ */
+async function notifyAssignedEditors(delivery: DeliveryRow, pickCount: number, clientName: string) {
+  const projectId = (delivery as unknown as { project_id?: string }).project_id;
+  if (!projectId) return;   // nothing to scope by
+
+  const { data: project } = await supabase
+    .from("projects").select("post_production").eq("id", projectId).maybeSingle();
+  const post = Array.isArray(project?.post_production) ? project!.post_production : [];
+  const crewIds = [...new Set(
+    (post as Record<string, unknown>[])
+      .map(e => String(e?.crewMemberId ?? e?.crew_member_id ?? ""))
+      .filter(Boolean),
+  )];
+  if (crewIds.length === 0) return;
+
+  const { data: profiles } = await supabase
+    .from("user_profiles").select("id").eq("org_id", delivery.org_id).in("crew_member_id", crewIds);
+  const userIds = (profiles as { id: string }[] | null)?.map(p => p.id) ?? [];
+  if (userIds.length === 0) return;
+
+  const title = "Photos picked — ready to edit";
+  const body = `${clientName || "The client"} chose ${pickCount} on ${delivery.title}`;
+  await Promise.allSettled([
+    // The bell survives a push that never arrives (no device, notifications
+    // off), so the job is still waiting for her when she next opens Slate.
+    supabase.from("notifications").insert(userIds.map(uid => ({
+      id: randomUUID(),
+      user_id: uid,
+      type: "picks_ready",
+      title,
+      message: body,
+      link: `/deliveries/${delivery.id}`,
+    }))),
+    ...userIds.map(uid => sendPushToUser(uid, { title, body, data: { url: `/deliveries/${delivery.id}` } })),
+  ]);
 }

@@ -118,28 +118,57 @@ export default function StaffDashboardPage() {
   /** Photo-editor work: which galleries still need their finished photos.
    *  "Ready for you" = the shoot happened and nothing has been uploaded yet. */
   const photoEditJobs = useMemo(() => {
-    if (!crewMemberId) return { needsFinals: [] as Project[], uploaded: [] as Project[] };
-    const needsFinals: Project[] = [];
-    const uploaded: Project[] = [];
+    const empty = {
+      picksReady: [] as { project: Project; galleryId: string; picks: number }[],
+      waitingOnClient: [] as { project: Project; galleryId: string; proofs: number; limit: number }[],
+      needsFinals: [] as Project[],
+      uploaded: [] as Project[],
+    };
+    if (!crewMemberId) return empty;
+    const out = { ...empty, picksReady: [] as typeof empty.picksReady, waitingOnClient: [] as typeof empty.waitingOnClient, needsFinals: [] as Project[], uploaded: [] as Project[] };
+
     for (const p of data.projects) {
       if (p.status === "cancelled" || myEditKind(p) !== "photo") continue;
       if (p.date > todayStr) continue; // not shot yet — nothing to edit
+
       const gallery = data.deliveries.find(d => d.projectId === p.id);
-      const fileCount = gallery ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id).length : 0;
-      // Done means done, however it happened. A job that's been delivered —
-      // marked delivered on the project, or its gallery sent — is not work
-      // waiting on the editor, even when nothing was uploaded through Slate.
-      // Plenty of past jobs were handed over by hand; asking her for finals on
-      // those is noise she can't clear.
-      const isDone = p.status === "delivered" || gallery?.status === "delivered";
-      if (isDone) {
-        if (fileCount > 0) uploaded.push(p);   // she did upload — show it as finished
-        continue;                              // delivered by hand — off her list entirely
+
+      // Finals ONLY. This used to count every file in the gallery, so a
+      // proofing job showed "Done" the moment 198 proofs were uploaded —
+      // before the client had picked anything and before a single frame was
+      // edited.
+      const finals = gallery
+        ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id && f.stage !== "proof").length
+        : 0;
+      const proofs = gallery
+        ? data.deliveryFiles.filter(f => f.deliveryId === gallery.id && f.stage === "proof").length
+        : 0;
+      const picks = gallery
+        ? data.deliverySelections.filter(sel => sel.deliveryId === gallery.id).length
+        : 0;
+
+      // Delivered is off her list entirely. It was still being shown as a
+      // "Done" row, which is a finished job taking up space on a dashboard
+      // that should only carry work.
+      if (p.status === "delivered" || gallery?.status === "delivered") continue;
+
+      // Client is still choosing — she can't start, but she can see it coming.
+      if (proofs > 0 && !gallery?.submittedAt) {
+        out.waitingOnClient.push({ project: p, galleryId: gallery!.id, proofs, limit: gallery?.selectionLimit ?? 0 });
+        continue;
       }
-      (fileCount > 0 ? uploaded : needsFinals).push(p);
+
+      // Picks are in and the finals aren't up yet — this is the one that
+      // needs her.
+      if (picks > 0 && finals < picks) {
+        out.picksReady.push({ project: p, galleryId: gallery!.id, picks });
+        continue;
+      }
+
+      (finals > 0 ? out.uploaded : out.needsFinals).push(p);
     }
-    return { needsFinals, uploaded };
-  }, [data.projects, data.deliveries, data.deliveryFiles, crewMemberId, todayStr, myEditKind]);
+    return out;
+  }, [data.projects, data.deliveries, data.deliveryFiles, data.deliverySelections, crewMemberId, todayStr, myEditKind]);
 
   const editJobs = useMemo(() => {
     if (!crewMemberId) return { needsCut: [] as Project[], inReview: [] as { project: Project; doc: ProjectDocument }[], settled: [] as { project: Project; doc: ProjectDocument }[] };
@@ -317,7 +346,7 @@ export default function StaffDashboardPage() {
         {/* Photo-editor work. Their next action isn't "post a draft for review",
             it's "upload the finished gallery" — so this leads with the jobs
             waiting on them and links straight to the project to do it. */}
-        {(photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
+        {(photoEditJobs.picksReady.length > 0 || photoEditJobs.waitingOnClient.length > 0 || photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
           <div className="bg-card border border-border rounded-lg">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -325,6 +354,62 @@ export default function StaffDashboardPage() {
               </h3>
             </div>
             <div className="divide-y divide-border">
+              {/* The client has chosen — this is the row that needs her, so it
+                  leads and links straight into the gallery where the picks
+                  are, not to the project. */}
+              {photoEditJobs.picksReady.map(({ project: p, galleryId, picks }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                return (
+                  <div key={p.id} className="px-4 py-3 bg-primary/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                        </div>
+                        <p className="text-xs text-primary mt-0.5">
+                          {client?.company || "The client"} picked {picks} photo{picks === 1 ? "" : "s"} — ready to edit
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Shot {formatDate(p.date)}</p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/40 text-primary shrink-0">
+                        Picks in
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Link href={`/deliveries/${galleryId}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Download className="w-3.5 h-3.5" /> Open the {picks} picked
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Coming, but not hers yet. Shown so a job doesn't appear out of
+                  nowhere the moment the client presses submit. */}
+              {photoEditJobs.waitingOnClient.map(({ project: p, proofs, limit }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                return (
+                  <div key={p.id} className="px-4 py-3 opacity-70">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {proofs} proofs sent — waiting for {client?.company || "the client"} to choose {limit > 0 ? limit : "their favourites"}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-border text-muted-foreground shrink-0">
+                        With client
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
               {photoEditJobs.needsFinals.map(p => {
                 const client = data.clients.find(c => c.id === p.clientId);
                 const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
