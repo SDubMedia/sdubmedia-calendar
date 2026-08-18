@@ -13,7 +13,7 @@ import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
 import ProjectDialog from "@/components/ProjectDialog";
 import { Link } from "wouter";
-import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users, Plus } from "lucide-react";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users, Plus, Image as ImageIcon } from "lucide-react";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -308,15 +308,25 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card/50">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Dashboard
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Business overview at a glance</p>
         </div>
         {isRealOwner && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+            {/* Same gate as the sidebar item — a disabled feature must not
+                leave a live shortcut to it sitting on the dashboard. */}
+            {isFeatureVisible("deliveries") && (
+              <Link
+                href="/deliveries"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground text-xs font-semibold hover:bg-secondary/80 transition-colors shrink-0"
+              >
+                <ImageIcon className="w-4 h-4" /> Galleries
+              </Link>
+            )}
             <button
               onClick={() => setBookOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shrink-0"
