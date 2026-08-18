@@ -21,7 +21,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import type { Client, DeliveryFile, DeliveryStatus, Project } from "@/lib/types";
+import type { Client, DeliveryFile, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -1239,14 +1239,22 @@ function DeliveryDetail({ id }: { id: string }) {
       {activeTab === "selections" && (
         <>
           {delivery.submittedAt ? (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-6">
-              <p className="text-sm">
-                <strong>{delivery.clientName || "Client"}</strong>
-                {delivery.clientEmail && <span className="text-slate-400"> · {delivery.clientEmail}</span>}
-                <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
-              </p>
-              <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
-            </div>
+            <>
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
+                <p className="text-sm">
+                  <strong>{delivery.clientName || "Client"}</strong>
+                  {delivery.clientEmail && <span className="text-slate-400"> · {delivery.clientEmail}</span>}
+                  <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
+                </p>
+                <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
+              </div>
+              <PicksList
+                selections={selections}
+                files={files}
+                signedUrls={signedUrls}
+                onToggleEdited={(selId, edited) => markSelectionEdited(selId, edited)}
+              />
+            </>
           ) : (
             <p className="text-sm text-slate-500 py-8 text-center">No selections submitted yet.</p>
           )}
@@ -2168,6 +2176,102 @@ function WatermarkPanel({ watermarkText, watermarkUseLogo, orgLogoUrl, onUpdate 
  * Committed on blur, not per keystroke, so clearing the box to retype doesn't
  * momentarily save a limit of 0 and turn proofing off underneath the client.
  */
+/**
+ * Which photos she picked, by the filename they came off the card with.
+ *
+ * The tab used to say "15 picks" and stop there. That number is useless on
+ * its own: the shoot is 400 raws sitting in Lightroom, and the answer you
+ * need is WHICH fifteen. The grid marks them, but scrolling 400 tiles hunting
+ * for highlights is not a workflow.
+ *
+ * So: the list, with the original filenames, and a button that copies them.
+ * Paste into Lightroom's filename filter and you have her selects.
+ */
+function PicksList({
+  selections,
+  files,
+  signedUrls,
+  onToggleEdited,
+}: {
+  selections: DeliverySelection[];
+  files: DeliveryFile[];
+  signedUrls: Map<string, string>;
+  onToggleEdited: (selectionId: string, edited: boolean) => void;
+}) {
+  const byId = useMemo(() => new Map(files.map(f => [f.id, f])), [files]);
+  const rows = useMemo(
+    () => selections
+      .map(sel => ({ sel, file: byId.get(sel.fileId) }))
+      .filter((r): r is { sel: DeliverySelection; file: DeliveryFile } => !!r.file)
+      // Natural order, so DSC_9 sorts before DSC_10 the way a card reader lists them.
+      .sort((a, b) => a.file.originalName.localeCompare(b.file.originalName, undefined, { numeric: true })),
+    [selections, byId],
+  );
+
+  // A pick whose file has since been deleted still counts — say so rather
+  // than quietly showing a shorter list than the count above.
+  const missing = selections.length - rows.length;
+  const editedCount = rows.filter(r => !!r.sel.editedAt).length;
+
+  const copyNames = async () => {
+    const text = rows.map(r => r.file.originalName).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`Copied ${rows.length} filename${rows.length === 1 ? "" : "s"}`);
+    } catch {
+      toast.error("Couldn't copy", { description: "Your browser blocked clipboard access." });
+    }
+  };
+
+  if (rows.length === 0 && missing === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider min-w-0">
+          Her picks — {editedCount} of {rows.length} edited
+        </h3>
+        <button
+          onClick={copyNames}
+          className="text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04] shrink-0"
+          title="Copy the original filenames to paste into Lightroom"
+        >
+          Copy filenames
+        </button>
+      </div>
+      {missing > 0 && (
+        <p className="text-[11px] text-amber-400/90 mb-3">
+          {missing} pick{missing === 1 ? " refers" : "s refer"} to {missing === 1 ? "a photo" : "photos"} no longer in this gallery.
+        </p>
+      )}
+      <div className="divide-y divide-white/5">
+        {rows.map(({ sel, file }) => {
+          const url = signedUrls.get(file.id);
+          return (
+            <div key={sel.id} className="flex items-center gap-3 py-2 min-w-0">
+              <div className="w-12 h-12 rounded bg-white/[0.03] overflow-hidden shrink-0">
+                {url && <img src={url} alt="" className="w-full h-full object-cover" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-white font-mono truncate">{file.originalName}</p>
+                {sel.isPaid && <p className="text-[10px] text-emerald-400">paid extra</p>}
+              </div>
+              <button
+                onClick={() => onToggleEdited(sel.id, !sel.editedAt)}
+                className={`text-[10px] px-2 py-1 rounded font-semibold shrink-0 ${
+                  sel.editedAt ? "bg-emerald-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
+                }`}
+              >
+                {sel.editedAt ? "Edited" : "Mark edited"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ProofingPanel({
   selectionLimit,
   perExtraPhotoCents,
