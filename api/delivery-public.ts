@@ -36,6 +36,7 @@ interface DeliveryRow {
   password_hash: string | null;
   expires_at: string | null;
   selection_limit: number;
+  selection_minimum: number;
   per_extra_photo_cents: number;
   buy_all_flat_cents: number;
   status: string;
@@ -301,6 +302,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       selectionLimit: delivery.selection_limit,
+      selectionMinimum: (delivery as unknown as { selection_minimum?: number }).selection_minimum ?? 0,
       downloadOnly: (delivery as unknown as { download_only?: boolean }).download_only === true,
       perExtraPhotoCents: delivery.per_extra_photo_cents,
       buyAllFlatCents: delivery.buy_all_flat_cents,
@@ -443,7 +445,14 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
     return res.status(400).json({ error: "Some picked photos no longer exist" });
   }
 
-  const overage = Math.max(0, filteredIds.length - delivery.selection_limit);
+  // Already-submitted picks are counted, not overwritten. A top-up round
+  // ("send five now, five later") otherwise looks like a fresh submission of
+  // five and the first five vanish from the count.
+  const { data: already } = await supabase
+    .from("delivery_selections").select("file_id").eq("delivery_id", delivery.id);
+  const alreadyIds = new Set((already || []).map((r: { file_id: string }) => r.file_id));
+  const combined = new Set([...alreadyIds, ...filteredIds]);
+  const overage = Math.max(0, combined.size - delivery.selection_limit);
 
   // If selections exceed the free limit, return checkout options instead of saving
   if (overage > 0) {

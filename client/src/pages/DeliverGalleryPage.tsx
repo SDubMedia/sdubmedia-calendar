@@ -320,6 +320,7 @@ interface DeliveryInfo {
   printsEnabled: boolean;
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
   selectionLimit: number;
+  selectionMinimum?: number;
   downloadOnly?: boolean;
   perExtraPhotoCents: number;
   buyAllFlatCents: number;
@@ -573,7 +574,23 @@ export default function DeliverGalleryPage() {
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [token, delivery]); // eslint-disable-line react-hooks/exhaustive-deps -- re-arm once loaded, not on every data change
 
-  const isLocked = delivery?.status === "submitted" || delivery?.status === "working" || delivery?.status === "delivered";
+  /** What she's already sent. Those are with the editor — she can add to them
+   *  but can't take them back. */
+  const submittedIds = useMemo(() => new Set(serverSelections.map(s2 => s2.fileId)), [serverSelections]);
+  const limit = delivery?.selectionLimit ?? 0;
+  /** The floor for one send. 0 means she must use the whole allowance, which
+   *  is every gallery that predates the setting. */
+  const minPerSend = (delivery?.selectionMinimum ?? 0) > 0 ? (delivery!.selectionMinimum as number) : limit;
+  const roomLeft = Math.max(0, limit - submittedIds.size);
+
+  /** Editing has started, or she's used the lot — either way she's done.
+   *
+   *  'submitted' alone no longer locks it. With a minimum set she's allowed to
+   *  send five now and come back for the rest, and freezing the page the
+   *  moment she pressed Send made that impossible. */
+  const isLocked =
+    delivery?.status === "working" || delivery?.status === "delivered"
+    || (delivery?.status === "submitted" && roomLeft === 0);
   const isWorking = delivery?.status === "working" || delivery?.status === "delivered";
   const proofingEnabled = !delivery?.downloadOnly && (delivery?.selectionLimit ?? 0) > 0;
 
@@ -592,6 +609,11 @@ export default function DeliverGalleryPage() {
 
   function togglePick(fileId: string) {
     if (isLocked) return;
+    // Already with the editor — un-hearting it here would only lie about it.
+    if (submittedIds.has(fileId)) {
+      toast.message("Already sent", { description: "Ask us if you'd like to swap this one out." });
+      return;
+    }
     setPicked((prev) => {
       const next = new Set(prev);
       if (next.has(fileId)) next.delete(fileId);
@@ -604,10 +626,13 @@ export default function DeliverGalleryPage() {
    *  submission can't happen by accident — the whole point of the limit is
    *  that the client gets all of what they paid for. */
   const [allowShort, setAllowShort] = useState(false);
-  const shortBy = Math.max(0, (delivery?.selectionLimit ?? 0) - picked.size);
+  /** New hearts in this round, on top of anything already sent. */
+  const newPicks = useMemo(() => [...picked].filter(id => !submittedIds.has(id)), [picked, submittedIds]);
+  const target = Math.min(minPerSend, submittedIds.size + roomLeft) - submittedIds.size;
+  const shortBy = Math.max(0, target - newPicks.length);
 
   async function startSubmit() {
-    if (picked.size === 0) {
+    if (newPicks.length === 0) {
       toast.error("Pick at least one photo");
       return;
     }
@@ -616,7 +641,7 @@ export default function DeliverGalleryPage() {
     // go straight through and the other five were simply lost.
     if (shortBy > 0 && !allowShort) {
       toast.error(`You can still choose ${shortBy} more`, {
-        description: `${delivery?.selectionLimit} are included, and you've picked ${picked.size}.`,
+        description: `${delivery?.selectionLimit} are included${submittedIds.size > 0 ? `, ${submittedIds.size} already sent` : ""}.`,
       });
       return;
     }
@@ -1459,15 +1484,20 @@ export default function DeliverGalleryPage() {
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-30">
             <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm min-w-0">
-                {picked.size === 0 ? (
+                {submittedIds.size > 0 && newPicks.length === 0 ? (
+                  <span className="text-slate-700">
+                    <strong>{submittedIds.size}</strong> sent · you can still choose <strong>{roomLeft}</strong> more
+                  </span>
+                ) : picked.size === 0 ? (
                   <span className="text-slate-700">
                     Tap the <span className="text-rose-500">♥</span> on the {delivery.selectionLimit} photo{delivery.selectionLimit === 1 ? "" : "s"} you'd like edited
                   </span>
                 ) : (
                   <>
                     <strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked
-                    {picked.size < delivery.selectionLimit && (
-                      <span className="text-slate-500"> · {delivery.selectionLimit - picked.size} to go</span>
+                    {submittedIds.size > 0 && <span className="text-slate-500"> · {submittedIds.size} already sent</span>}
+                    {shortBy > 0 && (
+                      <span className="text-slate-500"> · {shortBy} to go</span>
                     )}
                     {overage > 0 && (
                       <span className="ml-2 text-amber-700">
@@ -1478,24 +1508,26 @@ export default function DeliverGalleryPage() {
                 )}
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {shortBy > 0 && picked.size > 0 && !allowShort && (
+                {shortBy > 0 && newPicks.length > 0 && !allowShort && (
                   <button
                     onClick={() => setAllowShort(true)}
                     className="text-xs text-slate-500 underline hover:text-slate-800"
                   >
-                    I only want {picked.size}
+                    Send {newPicks.length} for now
                   </button>
                 )}
                 <button
                   onClick={startSubmit}
-                  disabled={picked.size === 0 || (shortBy > 0 && !allowShort)}
+                  disabled={newPicks.length === 0 || (shortBy > 0 && !allowShort)}
                   className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  {picked.size === 0
-                    ? `Choose ${delivery.selectionLimit}`
+                  {newPicks.length === 0
+                    ? (submittedIds.size > 0 ? `Choose up to ${roomLeft} more` : `Choose ${delivery.selectionLimit}`)
                     : shortBy > 0 && !allowShort
                       ? `${shortBy} more to go`
-                      : `Send my ${picked.size} pick${picked.size === 1 ? "" : "s"} →`}
+                      : submittedIds.size > 0
+                        ? `Send ${newPicks.length} more →`
+                        : `Send my ${newPicks.length} pick${newPicks.length === 1 ? "" : "s"} →`}
                 </button>
               </div>
             </div>

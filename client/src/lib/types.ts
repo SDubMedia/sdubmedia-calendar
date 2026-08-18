@@ -1764,7 +1764,11 @@ export interface Delivery {
   expiresAt: string | null;
 
   // Proofing config
-  selectionLimit: number;        // 0 disables proofing entirely
+  selectionLimit: number;
+  /** The fewest they may send in one go. 0 means "use the whole allowance",
+   *  which is every gallery that predates the field. Between this and
+   *  selectionLimit they can send now and come back for the rest. */
+  selectionMinimum: number;        // 0 disables proofing entirely
   downloadOnly?: boolean;        // real-estate: no cover/walkthrough/proofing, just Download All
   // When true, uploads keep the untouched original alongside the compressed
   // copy the gallery browses, and Download hands over the original — EXIF and

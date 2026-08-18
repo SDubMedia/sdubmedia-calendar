@@ -298,6 +298,7 @@ interface CreateInput {
   title: string;
   projectId: string | null;
   selectionLimit: number;
+  selectionMinimum: number;
   perExtraPhotoCents: number;
   buyAllFlatCents: number;
   expiresAt: string | null;
@@ -428,6 +429,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               title: title.trim() || "Untitled gallery",
               projectId,
               selectionLimit: parseInt(selectionLimit, 10) || 0,
+              selectionMinimum: 0,
               perExtraPhotoCents: Math.round((parseFloat(perExtraDollars) || 0) * 100),
               buyAllFlatCents: Math.round((parseFloat(flatDollars) || 0) * 100),
               expiresAt: expiresAt || null,
@@ -1430,6 +1432,7 @@ function DeliveryDetail({ id }: { id: string }) {
             )}
           </div>
           <ProofingPanel
+            selectionMinimum={delivery.selectionMinimum ?? 0}
             selectionLimit={delivery.selectionLimit}
             perExtraPhotoCents={delivery.perExtraPhotoCents}
             buyAllFlatCents={delivery.buyAllFlatCents}
@@ -2702,6 +2705,7 @@ function PicksList({
 
 function ProofingPanel({
   selectionLimit,
+  selectionMinimum,
   perExtraPhotoCents,
   buyAllFlatCents,
   downloadOnly,
@@ -2710,17 +2714,20 @@ function ProofingPanel({
   onUpdate,
 }: {
   selectionLimit: number;
+  selectionMinimum: number;
   perExtraPhotoCents: number;
   buyAllFlatCents: number;
   downloadOnly: boolean;
   photoCount: number;
   pickedCount: number;
-  onUpdate: (patch: { selectionLimit?: number; perExtraPhotoCents?: number; buyAllFlatCents?: number; downloadOnly?: boolean }) => Promise<void>;
+  onUpdate: (patch: { selectionLimit?: number; selectionMinimum?: number; perExtraPhotoCents?: number; buyAllFlatCents?: number; downloadOnly?: boolean }) => Promise<void>;
 }) {
   const [limit, setLimit] = useState(String(selectionLimit || ""));
+  const [minimum, setMinimum] = useState(String(selectionMinimum || ""));
   const [perExtra, setPerExtra] = useState(perExtraPhotoCents ? String(perExtraPhotoCents / 100) : "");
   const [flat, setFlat] = useState(buyAllFlatCents ? String(buyAllFlatCents / 100) : "");
   useEffect(() => { setLimit(String(selectionLimit || "")); }, [selectionLimit]);
+  useEffect(() => { setMinimum(String(selectionMinimum || "")); }, [selectionMinimum]);
   useEffect(() => { setPerExtra(perExtraPhotoCents ? String(perExtraPhotoCents / 100) : ""); }, [perExtraPhotoCents]);
   useEffect(() => { setFlat(buyAllFlatCents ? String(buyAllFlatCents / 100) : ""); }, [buyAllFlatCents]);
 
@@ -2765,12 +2772,39 @@ function ProofingPanel({
           />
         </div>
         {on && (
+          <div className="min-w-0">
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Fewest they can send</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={minimum}
+              onChange={(e) => setMinimum(e.target.value.replace(/[^\d]/g, ""))}
+              onBlur={() => {
+                let n = parseInt(minimum, 10) || 0;
+                if (n > selectionLimit) n = selectionLimit;   // a floor above the ceiling can never be met
+                if (n !== selectionMinimum) commit({ selectionMinimum: n }, n > 0 ? `They can send from ${n}` : "They must use all " + selectionLimit);
+                setMinimum(String(n || ""));
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              placeholder="all"
+              className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+            />
+          </div>
+        )}
+        {on && (
           <p className="text-xs text-slate-400 pb-2">
             of <strong className="text-white">{photoCount}</strong> photo{photoCount === 1 ? "" : "s"}
             {pickedCount > 0 && <> · <strong className="text-white">{pickedCount}</strong> picked so far</>}
           </p>
         )}
       </div>
+      {on && (
+        <p className="text-[11px] text-slate-500 mt-2">
+          {selectionMinimum > 0 && selectionMinimum < selectionLimit
+            ? <>They can send once they've chosen <strong className="text-slate-300">{selectionMinimum}</strong>, then come back for the remaining {selectionLimit - selectionMinimum} whenever they like — until you start editing.</>
+            : <>They must use the whole allowance of <strong className="text-slate-300">{selectionLimit}</strong> before they can send. Set a lower number here to let them send some now and the rest later.</>}
+        </p>
+      )}
 
       {on && (
         <div className="mt-4 pt-4 border-t border-white/10">
