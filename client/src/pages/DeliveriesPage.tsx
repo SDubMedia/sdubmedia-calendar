@@ -459,7 +459,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice, refresh } = useApp();
   const { effectiveProfile, allProfiles } = useAuth();
   /** An editor opens this to see which frames were picked and download them —
    *  not to rename the gallery, change the password, reorder it or delete a
@@ -800,8 +800,10 @@ function DeliveryDetail({ id }: { id: string }) {
         let originalSizeBytes = 0;
         // A raw is kept unconditionally: it IS the deliverable for the editor,
         // and the browsable copy is only a stand-in. Everything else follows
-        // the gallery's keep-originals switch.
-        if ((isRaw || delivery?.keepOriginals) && !isVideo && rawFile !== file) {
+        // the gallery's keep-originals switch. Not for staff: an editor hands
+        // back finished files (the shoot's raws are already here), and the
+        // crew registration route has nowhere to record an original anyway.
+        if (!readOnly && (isRaw || delivery?.keepOriginals) && !isVideo && rawFile !== file) {
           try {
             const origRes = await fetch("/api/delivery-upload", {
               method: "POST",
@@ -845,22 +847,48 @@ function DeliveryDetail({ id }: { id: string }) {
         // the multipart lifecycle rule, which only reaps uploads that never
         // completed. So clean up before surfacing the error.
         try {
-          await registerDeliveryFile({
-            deliveryId: id,
-            storagePath: primaryStoragePath,
-            originalName: file.name,
-            sizeBytes: file.size,
-            width,
-            height,
-            mimeType: file.type,
-            position: files.length + done,
-            mediaType: isVideo ? "video" : "image",
-            thumbnailStoragePath,
-            durationSeconds,
-            originalStoragePath,
-            originalSizeBytes,
-            stage: uploadStage,
-          });
+          if (readOnly) {
+            // Staff can't write delivery_files under RLS (SELECT-only since
+            // 2026-08-18-staff-assigned-galleries). Same route as the project
+            // sheet's crew upload: service-role after verifying assignment.
+            // Stage defaults to 'final' server-side, which is the only stage
+            // staff uploads.
+            const regRes = await fetch("/api/crew-register-file", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+              body: JSON.stringify({
+                deliveryId: id,
+                storagePath: primaryStoragePath,
+                originalName: file.name,
+                sizeBytes: file.size,
+                width, height,
+                mimeType: file.type,
+                position: files.length + done,
+                mediaType: isVideo ? "video" : "image",
+                thumbnailStoragePath,
+                durationSeconds,
+              }),
+            });
+            const regBody = await regRes.json().catch(() => ({ error: "Failed" }));
+            if (!regRes.ok) throw new Error(regBody.error || "Couldn't save the photo");
+          } else {
+            await registerDeliveryFile({
+              deliveryId: id,
+              storagePath: primaryStoragePath,
+              originalName: file.name,
+              sizeBytes: file.size,
+              width,
+              height,
+              mimeType: file.type,
+              position: files.length + done,
+              mediaType: isVideo ? "video" : "image",
+              thumbnailStoragePath,
+              durationSeconds,
+              originalStoragePath,
+              originalSizeBytes,
+              stage: uploadStage,
+            });
+          }
         } catch (regErr) {
           await discardOrphanedUpload(
             [primaryStoragePath, originalStoragePath, thumbnailStoragePath],
@@ -902,6 +930,22 @@ function DeliveryDetail({ id }: { id: string }) {
       toast.error("Nothing uploaded", { description: `All ${failed} file${failed === 1 ? "" : "s"} failed.` });
     } else {
       toast.warning("Partly uploaded", { description: `${added} added, ${failed} failed.` });
+    }
+    if (readOnly && added > 0) {
+      // Crew registration bypasses AppContext, so the new rows aren't in local
+      // state yet — pull them in so the grid shows what was just uploaded.
+      await refresh();
+      // One ping for the whole batch — the owner previews, then delivers.
+      try {
+        const sess = await supabase.auth.getSession();
+        await fetch("/api/notify-gallery-finals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.data.session?.access_token || ""}` },
+          body: JSON.stringify({ deliveryId: id, count: added }),
+        });
+      } catch (e) {
+        console.warn("Owner notification failed — files are uploaded", e);
+      }
     }
   }
 
@@ -1331,7 +1375,11 @@ function DeliveryDetail({ id }: { id: string }) {
 
       {activeTab === "photos" && (
         <>
-          {/* One-tap deliver, right where the photos are. */}
+          {/* One-tap deliver, right where the photos are. Owner only — the
+              server refuses staff anyway (notify-gallery-ready is owner-gated,
+              and RLS blocks the status write), so showing an editor a green
+              "Deliver to client" button could only mislead. */}
+          {!readOnly && (
           <div className="mb-6">
             {delivery.status === "delivered" ? (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-center justify-between gap-3">
@@ -1355,8 +1403,9 @@ function DeliveryDetail({ id }: { id: string }) {
               </button>
             )}
           </div>
-          {/* Archive to Google Drive */}
-          {files.length > 0 && data.organization?.googleDriveEmail && (
+          )}
+          {/* Archive to Google Drive — owner only, same as the server's gate */}
+          {!readOnly && files.length > 0 && data.organization?.googleDriveEmail && (
             <div className="mb-6">
               <button
                 onClick={sendToDrive}

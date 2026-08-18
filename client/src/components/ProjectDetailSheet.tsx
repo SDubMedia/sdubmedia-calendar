@@ -492,7 +492,19 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
         setCrewUploading({ done: done + failed, total: list.length });
       }
       await refresh();
-      if (done > 0) toast.success(`Uploaded ${done} file${done === 1 ? "" : "s"} to the gallery`);
+      if (done > 0) {
+        toast.success(`Uploaded ${done} file${done === 1 ? "" : "s"} to the gallery`);
+        // One ping for the whole batch — the owner previews, then delivers.
+        try {
+          await fetch("/api/notify-gallery-finals", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ deliveryId, count: done }),
+          });
+        } catch (e) {
+          console.warn("Owner notification failed — files are uploaded", e);
+        }
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't upload");
     } finally {
