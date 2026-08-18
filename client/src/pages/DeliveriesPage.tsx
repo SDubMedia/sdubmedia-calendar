@@ -664,7 +664,29 @@ function DeliveryDetail({ id }: { id: string }) {
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    const list = Array.from(fileList);
+    const all = Array.from(fileList);
+
+    // Raw files are turned away at the door.
+    //
+    // No browser can decode .NEF/.CR2/.ARW, so a raw uploads fine and then
+    // shows as a grey tile with a filename on it — no picture. A client
+    // opening a 198-frame proofing gallery would have nothing to choose
+    // between. Worse, you'd only find out after the upload finished.
+    //
+    // Export JPEGs for the gallery and keep the raws where they are; the
+    // Selections tab hands back the filenames to match them up.
+    const raws = all.filter(f => RAW_EXTENSIONS.test(f.name));
+    const list = all.filter(f => !RAW_EXTENSIONS.test(f.name));
+    if (raws.length > 0) {
+      toast.error(
+        `${raws.length} raw file${raws.length === 1 ? "" : "s"} skipped`,
+        {
+          description: "Browsers can't display raw photos — they'd upload as blank tiles with no preview. Export JPEGs for the gallery; your raws stay where they are.",
+          duration: 10000,
+        },
+      );
+    }
+    if (list.length === 0) return;
     cancelUploadRef.current = false;
     setStopping(false);
     setUploading({ done: 0, total: list.length, pct: 0, name: "" });
@@ -1390,7 +1412,8 @@ function DeliveryDetail({ id }: { id: string }) {
           {dragOver ? "Drop to upload" : "Drag photos or videos here, or click to browse"}
         </p>
         <p className="text-[11px] text-slate-500 mb-3">
-          Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: any image format · up to 50 MB each.
+          Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: JPEG, PNG, HEIC · up to 50 MB each.
+          <br />Camera raws (.NEF, .CR2, .ARW…) can't be shown by a browser — export JPEGs.
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -2883,6 +2906,10 @@ function projectLabel(p: Project, clients: Client[]): string {
 // Above this, use multipart. 100MB is well under the point where a single PUT
 // becomes risky, so ordinary photos and short clips keep the simpler path.
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
+
+// Camera raw formats. Matched on extension because the browser reports no
+// useful MIME type for most of them — Chrome gives "" for a .NEF.
+const RAW_EXTENSIONS = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
 
 // No bytes moved for this long = the connection is dead, whatever it claims.
 // Used by both uploaders. Generous enough that a genuinely slow line is never
