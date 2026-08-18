@@ -6,9 +6,10 @@
 import { useState, useMemo, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import type { PipelineStage, Proposal, Contract } from "@/lib/types";
+import type { PipelineStage, Proposal, Contract, PipelineLead } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
-import { formatDayLong } from "@/lib/dates";
+import { formatDayLong, isoDate } from "@/lib/dates";
+import { classifyFollowUp, isOpenLead, pipelineValueByStage, totalPipelineValue, LOST_REASONS, type FollowUpStatus } from "@/lib/pipelineInsights";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/DateTimeField";
@@ -62,6 +63,15 @@ interface PipelineEntry {
   // this the message is captured to the DB but unreadable anywhere in the app.
   description?: string;
   createdAt?: string;
+  // Lead-only CRM fields (undefined on proposal/contract_draft rows)
+  expectedValue?: number;
+  followUpDate?: string | null;
+  followUpNote?: string;
+  followUpStatus?: FollowUpStatus | null;
+  closedOutcome?: "" | "won" | "lost";
+  closedAt?: string | null;
+  lostReason?: string;
+  lostReasonNote?: string;
 }
 
 /** Full ISO timestamp into a readable "Jul 29, 2026, 6:36 PM". `formatDayLong`
@@ -86,15 +96,99 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
 }
 
 /**
- * Read-only detail view for a pipeline row. Exists because website form
- * submissions fold the visitor's message into the lead's `description`, and
- * before this there was no surface in the app that rendered it — the inquiry
- * was captured but unreadable.
+ * Detail view for a pipeline row. Started read-only (its original job: render
+ * the website visitor's message, which was captured but unreadable); for
+ * leads it now also edits the CRM fields — expected value, follow-up,
+ * won/lost close-out.
+ *
+ * Edit state is plain useState seeded from props, and the CALL SITE remounts
+ * this dialog per lead via `key={entry.id}`. That's the whole
+ * concurrency story: realtime updates to AppContext can't reach an open
+ * dialog (the entry prop is a snapshot), so in-progress edits can't be wiped
+ * (the CLAUDE.md form-reset rule, satisfied with zero effects). A concurrent
+ * edit of the same field from another device loses to the last Save —
+ * acceptable for a single-owner CRM.
  */
 function EntryDetailDialog({
-  entry, stageLabel, onClose,
-}: { entry: PipelineEntry | null; stageLabel: string; onClose: () => void }) {
+  entry, stageLabel, onClose, updateLead,
+}: {
+  entry: PipelineEntry | null;
+  stageLabel: string;
+  onClose: () => void;
+  updateLead: (id: string, patch: Partial<PipelineLead>) => Promise<void>;
+}) {
+  const isLead = entry?.type === "lead";
+  const [valueStr, setValueStr] = useState(() => (entry?.expectedValue ?? 0) > 0 ? String(entry!.expectedValue) : "");
+  const [followUpDate, setFollowUpDate] = useState(() => entry?.followUpDate ?? "");
+  const [followUpNote, setFollowUpNote] = useState(() => entry?.followUpNote ?? "");
+  const [lostPickerOpen, setLostPickerOpen] = useState(false);
+  const [lostReason, setLostReason] = useState("");
+  const [lostNote, setLostNote] = useState("");
+  const [saving, setSaving] = useState(false);
   if (!entry) return null;
+
+  const parsedValue = parseFloat(valueStr) || 0;
+  const dirty = isLead && (
+    parsedValue !== (entry.expectedValue ?? 0)
+    || (followUpDate || null) !== (entry.followUpDate ?? null)
+    || followUpNote !== (entry.followUpNote ?? "")
+  );
+
+  const saveDetails = async () => {
+    if (valueStr.trim() !== "" && Number.isNaN(parseFloat(valueStr))) {
+      toast.error("Expected value must be a number");
+      return;
+    }
+    setSaving(true);
+    try {
+      const dateChanged = (followUpDate || null) !== (entry.followUpDate ?? null);
+      await updateLead(entry.id, {
+        expectedValue: parsedValue,
+        followUpDate: followUpDate || null,
+        followUpNote,
+        recentActivity: dateChanged && followUpDate ? `Follow-up set for ${formatDayLong(followUpDate)}` : "Details updated",
+        recentActivityAt: new Date().toISOString(),
+      });
+      toast.success("Saved");
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const closeOut = async (patch: Partial<PipelineLead>, doneMsg: string) => {
+    setSaving(true);
+    try {
+      await updateLead(entry.id, patch);
+      toast.success(doneMsg);
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const markWon = () => closeOut({
+    closedOutcome: "won", closedAt: new Date().toISOString(),
+    recentActivity: "Marked won", recentActivityAt: new Date().toISOString(),
+  }, "Marked won 🎉");
+
+  const markLost = () => {
+    if (!lostReason) return;
+    void closeOut({
+      closedOutcome: "lost", closedAt: new Date().toISOString(),
+      lostReason, lostReasonNote: lostNote.trim(),
+      recentActivity: `Marked lost — ${lostReason}`, recentActivityAt: new Date().toISOString(),
+    }, "Marked lost");
+  };
+
+  const reopen = () => closeOut({
+    closedOutcome: "", closedAt: null, lostReason: "", lostReasonNote: "",
+    recentActivity: "Reopened", recentActivityAt: new Date().toISOString(),
+  }, "Reopened");
   const mailto = entry.email
     ? `mailto:${entry.email}?subject=${encodeURIComponent(`Re: your inquiry${entry.projectType ? ` — ${entry.projectType}` : ""}`)}`
     : "";
@@ -126,8 +220,79 @@ function EntryDetailDialog({
           {entry.eventDate && <DetailRow label="Event date">{formatDayLong(entry.eventDate)}</DetailRow>}
           {entry.location && <DetailRow label="Location">{entry.location}</DetailRow>}
           {entry.leadSource && <DetailRow label="Source">{entry.leadSource}</DetailRow>}
-          {entry.total != null && entry.total > 0 && <DetailRow label="Total">${entry.total.toFixed(2)}</DetailRow>}
+          {!isLead && entry.total != null && entry.total > 0 && <DetailRow label="Total">${entry.total.toFixed(2)}</DetailRow>}
+          {isLead && entry.closedOutcome === "won" && (
+            <DetailRow label="Outcome">
+              <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Won</span>
+              {entry.closedAt && <span className="text-xs text-muted-foreground ml-2">{formatReceived(entry.closedAt)}</span>}
+            </DetailRow>
+          )}
+          {isLead && entry.closedOutcome === "lost" && (
+            <DetailRow label="Outcome">
+              <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/20 text-zinc-300 border border-zinc-500/40">
+                Lost{entry.lostReason ? ` — ${entry.lostReason}` : ""}
+              </span>
+              {entry.lostReasonNote && <p className="text-xs text-muted-foreground mt-1">{entry.lostReasonNote}</p>}
+            </DetailRow>
+          )}
         </div>
+
+        {/* Lead CRM fields — value, follow-up, close-out */}
+        {isLead && (
+          <div className="rounded-lg border border-border bg-background/40 p-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Expected value ($)</Label>
+                <Input type="text" inputMode="decimal" value={valueStr} onChange={e => setValueStr(e.target.value)} className="bg-secondary border-border" placeholder="0" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Follow up on</Label>
+                <DateField value={followUpDate} onChange={setFollowUpDate} className="bg-secondary border-border" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Follow-up note</Label>
+              <Input value={followUpNote} onChange={e => setFollowUpNote(e.target.value)} className="bg-secondary border-border" placeholder='e.g. "said call after Labor Day"' />
+            </div>
+
+            {entry.closedOutcome === "" && !lostPickerOpen && (
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" variant="outline" className="flex-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10" onClick={markWon} disabled={saving}>
+                  Mark won
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1 border-border text-muted-foreground hover:text-foreground" onClick={() => setLostPickerOpen(true)} disabled={saving}>
+                  Mark lost
+                </Button>
+              </div>
+            )}
+            {entry.closedOutcome === "" && lostPickerOpen && (
+              <div className="space-y-2 pt-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Why was it lost?</Label>
+                    <Select value={lostReason} onValueChange={setLostReason}>
+                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Pick a reason" /></SelectTrigger>
+                      <SelectContent>
+                        {LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Note (optional)</Label>
+                    <Input value={lostNote} onChange={e => setLostNote(e.target.value)} className="bg-secondary border-border" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" className="flex-1" onClick={() => { setLostPickerOpen(false); setLostReason(""); setLostNote(""); }} disabled={saving}>Cancel</Button>
+                  <Button size="sm" variant="destructive" className="flex-1" onClick={markLost} disabled={saving || !lostReason}>Confirm lost</Button>
+                </div>
+              </div>
+            )}
+            {entry.closedOutcome !== "" && (
+              <Button size="sm" variant="outline" className="w-full" onClick={reopen} disabled={saving}>Reopen</Button>
+            )}
+          </div>
+        )}
 
         <div className="mt-1">
           <span className="block text-xs text-muted-foreground mb-1.5">Message</span>
@@ -141,10 +306,15 @@ function EntryDetailDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Close</Button>
           {mailto && (
-            <Button asChild>
+            <Button variant={dirty ? "outline" : "default"} asChild>
               <a href={mailto}>Reply by email</a>
+            </Button>
+          )}
+          {isLead && (
+            <Button onClick={saveDetails} disabled={!dirty || saving}>
+              {saving ? "Saving…" : "Save"}
             </Button>
           )}
         </DialogFooter>
@@ -174,6 +344,7 @@ export default function PipelinePage() {
   const [newType, setNewType] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newSource, setNewSource] = useState("");
+  const [newValue, setNewValue] = useState("");
 
   // Merge pipeline_leads + proposals into unified entries
   const entries = useMemo<PipelineEntry[]>(() => {
@@ -189,6 +360,7 @@ export default function PipelinePage() {
     );
 
     // Add pipeline leads
+    const todayIso = isoDate(new Date());
     for (const lead of data.pipelineLeads) {
       const late = lead.proposalId
         ? computePaymentLateness(liveContractsByProposalId.get(lead.proposalId))
@@ -210,6 +382,17 @@ export default function PipelinePage() {
         paymentLateAmount: late?.amount,
         description: lead.description,
         createdAt: lead.createdAt,
+        // total feeds the existing $ renderers (row + dialog) with zero new markup
+        total: lead.expectedValue > 0 ? lead.expectedValue : undefined,
+        expectedValue: lead.expectedValue,
+        followUpDate: lead.followUpDate,
+        followUpNote: lead.followUpNote,
+        // A closed lead's follow-up is moot — don't badge it
+        followUpStatus: lead.closedOutcome === "" ? classifyFollowUp(lead.followUpDate, todayIso) : null,
+        closedOutcome: lead.closedOutcome,
+        closedAt: lead.closedAt,
+        lostReason: lead.lostReason,
+        lostReasonNote: lead.lostReasonNote,
       });
     }
 
@@ -282,19 +465,35 @@ export default function PipelinePage() {
     return result;
   }, [data.pipelineLeads, data.proposals, data.clients, data.contracts]);
 
-  // Stage counts
+  // Won/lost leads leave the working board; a toggle brings them back.
+  const [showClosed, setShowClosed] = useState(false);
+  const openEntries = useMemo(() => entries.filter(e => !e.closedOutcome), [entries]);
+  const closedCount = entries.length - openEntries.length;
+
+  // Stage counts — open work only, so the buckets match the default view
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const s of stages) counts[s.id] = 0;
-    for (const e of entries) counts[e.pipelineStage] = (counts[e.pipelineStage] || 0) + 1;
+    for (const e of openEntries) counts[e.pipelineStage] = (counts[e.pipelineStage] || 0) + 1;
     return counts;
-  }, [entries, stages]);
+  }, [openEntries, stages]);
+
+  // Dollars in play per stage: open leads' expected value + unlinked proposals.
+  const stageValues = useMemo(() => {
+    const linkedProposalIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
+    return pipelineValueByStage(
+      data.pipelineLeads.filter(isOpenLead),
+      data.proposals.filter(p => !linkedProposalIds.has(p.id)),
+    );
+  }, [data.pipelineLeads, data.proposals]);
+  const valueInPlay = useMemo(() => totalPipelineValue(stageValues), [stageValues]);
 
   // Filtered entries
   const filtered = useMemo(() => {
-    if (activeStage === "all") return entries;
-    return entries.filter(e => e.pipelineStage === activeStage);
-  }, [entries, activeStage]);
+    const pool = showClosed ? entries : openEntries;
+    if (activeStage === "all") return pool;
+    return pool.filter(e => e.pipelineStage === activeStage);
+  }, [entries, openEntries, showClosed, activeStage]);
 
   async function createLead() {
     if (!newName.trim()) { toast.error("Name required"); return; }
@@ -312,10 +511,17 @@ export default function PipelinePage() {
       proposalId: null,
       recentActivity: "Created",
       recentActivityAt: new Date().toISOString(),
+      expectedValue: parseFloat(newValue) || 0,
+      followUpDate: null,
+      followUpNote: "",
+      closedOutcome: "",
+      closedAt: null,
+      lostReason: "",
+      lostReasonNote: "",
     });
     toast.success("Lead added");
     setAddDialogOpen(false);
-    setNewName(""); setNewEmail(""); setNewPhone(""); setNewType(""); setNewDate(""); setNewSource("");
+    setNewName(""); setNewEmail(""); setNewPhone(""); setNewType(""); setNewDate(""); setNewSource(""); setNewValue("");
   }
 
   async function changeStage(entry: PipelineEntry, newStage: PipelineStage) {
@@ -438,11 +644,27 @@ export default function PipelinePage() {
           <h1 className="text-xl font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Event Pipeline
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{entries.length} total · {filtered.length} shown</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {openEntries.length} open · {filtered.length} shown
+            {valueInPlay > 0 && <span className="text-emerald-400"> · ${valueInPlay.toLocaleString("en-US", { maximumFractionDigits: 0 })} in play</span>}
+          </p>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Lead
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {closedCount > 0 && (
+            <button
+              onClick={() => setShowClosed(v => !v)}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-lg border transition-colors",
+                showClosed ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {showClosed ? "Hide closed" : `Show closed (${closedCount})`}
+            </button>
+          )}
+          <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Add Lead
+          </Button>
+        </div>
       </div>
 
       {/* Stage buckets */}
@@ -455,7 +677,7 @@ export default function PipelinePage() {
               activeStage === "all" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"
             )}
           >
-            <div className="text-lg font-bold">{entries.length}</div>
+            <div className="text-lg font-bold">{openEntries.length}</div>
             <div>All</div>
           </button>
           {stages.map(s => (
@@ -469,6 +691,11 @@ export default function PipelinePage() {
             >
               <div className="text-lg font-bold">{stageCounts[s.id] || 0}</div>
               <div className="truncate">{s.label}</div>
+              {(stageValues.get(s.id) ?? 0) > 0 && (
+                <div className="text-[10px] font-mono text-emerald-400/80 mt-0.5">
+                  ${(stageValues.get(s.id) ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                </div>
+              )}
             </button>
           ))}
         </div>
@@ -513,6 +740,30 @@ export default function PipelinePage() {
                             title={`Payment of $${(entry.paymentLateAmount ?? 0).toFixed(2)} is ${entry.paymentLateDays} days past due`}
                           >
                             {entry.paymentLateDays}d late
+                          </span>
+                        )}
+                        {entry.followUpStatus?.kind === "overdue" && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 tabular-nums"
+                            title={entry.followUpNote || `Follow-up was due ${entry.followUpStatus.daysOverdue} day${entry.followUpStatus.daysOverdue === 1 ? "" : "s"} ago`}
+                          >
+                            {entry.followUpStatus.daysOverdue}d follow-up
+                          </span>
+                        )}
+                        {entry.followUpStatus?.kind === "due_today" && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                            title={entry.followUpNote || "Follow-up scheduled for today"}
+                          >
+                            Follow up today
+                          </span>
+                        )}
+                        {entry.closedOutcome === "won" && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Won</span>
+                        )}
+                        {entry.closedOutcome === "lost" && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/20 text-zinc-300 border border-zinc-500/40" title={entry.lostReasonNote || undefined}>
+                            Lost{entry.lostReason ? ` — ${entry.lostReason}` : ""}
                           </span>
                         )}
                       </div>
@@ -588,11 +839,16 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      {/* Lead / entry detail — the only place the visitor's message is readable */}
+      {/* Lead / entry detail — the only place the visitor's message is
+          readable, and where a lead's CRM fields are edited. The key remounts
+          the dialog per entry so its edit state seeds fresh from props — see
+          the concurrency note on EntryDetailDialog. */}
       <EntryDetailDialog
+        key={detailEntry?.id ?? "none"}
         entry={detailEntry}
         stageLabel={stages.find(s => s.id === detailEntry?.pipelineStage)?.label || detailEntry?.pipelineStage || ""}
         onClose={() => setDetailEntry(null)}
+        updateLead={updatePipelineLead}
       />
 
       {/* Add Lead Dialog */}
@@ -631,6 +887,10 @@ export default function PipelinePage() {
                 <Label className="text-xs text-muted-foreground">Lead Source</Label>
                 <Input value={newSource} onChange={e => setNewSource(e.target.value)} className="bg-secondary border-border" placeholder="e.g. Instagram" />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Expected Value ($)</Label>
+              <Input type="text" inputMode="decimal" value={newValue} onChange={e => setNewValue(e.target.value)} className="bg-secondary border-border" placeholder="What this job would be worth if it books" />
             </div>
           </div>
           <DialogFooter>

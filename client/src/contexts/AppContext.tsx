@@ -382,6 +382,13 @@ function rowToPipelineLead(r: any): PipelineLead {
     proposalId: r.proposal_id || null,
     recentActivity: r.recent_activity || "",
     recentActivityAt: r.recent_activity_at || null,
+    expectedValue: Number(r.expected_value) || 0,
+    followUpDate: r.follow_up_date || null,
+    followUpNote: r.follow_up_note || "",
+    closedOutcome: r.closed_outcome === "won" || r.closed_outcome === "lost" ? r.closed_outcome : "",
+    closedAt: r.closed_at || null,
+    lostReason: r.lost_reason || "",
+    lostReasonNote: r.lost_reason_note || "",
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
   };
 }
@@ -1882,6 +1889,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       lead_source: l.leadSource, pipeline_stage: l.pipelineStage,
       proposal_id: l.proposalId, recent_activity: l.recentActivity,
       recent_activity_at: l.recentActivityAt, updated_at: now,
+      expected_value: l.expectedValue, follow_up_date: l.followUpDate,
+      follow_up_note: l.followUpNote, closed_outcome: l.closedOutcome,
+      closed_at: l.closedAt, lost_reason: l.lostReason,
+      lost_reason_note: l.lostReasonNote,
     }).select().single();
     if (error) throw new Error(error.message);
     const lead = rowToPipelineLead(row);
@@ -1904,6 +1915,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (l.proposalId !== undefined) patch.proposal_id = l.proposalId;
     if (l.recentActivity !== undefined) patch.recent_activity = l.recentActivity;
     if (l.recentActivityAt !== undefined) patch.recent_activity_at = l.recentActivityAt;
+    if (l.expectedValue !== undefined) patch.expected_value = l.expectedValue;
+    if (l.followUpDate !== undefined) {
+      patch.follow_up_date = l.followUpDate;
+      // Re-arm the due-date notification whenever the date changes — the cron
+      // only fires while followup_due_notified_at is NULL.
+      patch.followup_due_notified_at = null;
+    }
+    if (l.followUpNote !== undefined) patch.follow_up_note = l.followUpNote;
+    if (l.closedOutcome !== undefined) patch.closed_outcome = l.closedOutcome;
+    if (l.closedAt !== undefined) patch.closed_at = l.closedAt;
+    if (l.lostReason !== undefined) patch.lost_reason = l.lostReason;
+    if (l.lostReasonNote !== undefined) patch.lost_reason_note = l.lostReasonNote;
     const { error } = await supabase.from("pipeline_leads").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, pipelineLeads: d.pipelineLeads.map(x => x.id === id ? { ...x, ...l, updatedAt: patch.updated_at } : x) }));

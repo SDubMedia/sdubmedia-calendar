@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
+import { isOpenLead, pipelineValueByStage, totalPipelineValue } from "@/lib/pipelineInsights";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
 import { mergeDashboardWidgets } from "@/lib/types";
@@ -195,6 +196,8 @@ export default function DashboardPage() {
     const counts: Record<string, number> = {};
     for (const s of pipelineStages) counts[s.id] = 0;
     for (const l of data.pipelineLeads) {
+      // Won/lost leads have left the board — the widget matches the page's default view
+      if (l.closedOutcome !== "") continue;
       if (counts[l.pipelineStage] !== undefined) counts[l.pipelineStage]++;
     }
     const linkedIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
@@ -205,6 +208,15 @@ export default function DashboardPage() {
     }
     return counts;
   }, [data.pipelineLeads, data.proposals, pipelineStages]);
+
+  // Dollars in play across the open pipeline (leads' expected value + unlinked proposals)
+  const pipelineValue = useMemo(() => {
+    const linkedIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
+    return totalPipelineValue(pipelineValueByStage(
+      data.pipelineLeads.filter(isOpenLead),
+      data.proposals.filter(p => !linkedIds.has(p.id)),
+    ));
+  }, [data.pipelineLeads, data.proposals]);
 
   // Revenue chart — last 6 months
   const chartData = useMemo(() => {
@@ -481,6 +493,11 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               <Users className="w-4 h-4 text-primary" />
               Pipeline
+              {pipelineValue > 0 && (
+                <span className="text-xs font-normal text-emerald-400">
+                  ${pipelineValue.toLocaleString("en-US", { maximumFractionDigits: 0 })} in play
+                </span>
+              )}
             </h3>
             <Link href="/pipeline" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
               View All <ArrowRight className="w-3 h-3" />

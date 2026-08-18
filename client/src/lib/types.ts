@@ -1517,6 +1517,19 @@ export interface PipelineLead {
   proposalId: string | null;
   recentActivity: string;
   recentActivityAt: string | null;
+  /** What the job would be worth if it books, in dollars (matches proposals.total). */
+  expectedValue: number;
+  /** "Call her back on this day" — YYYY-MM-DD, or null when nothing is scheduled. */
+  followUpDate: string | null;
+  followUpNote: string;
+  /** '' = open. Won/lost is orthogonal to pipelineStage — the stage list is
+   *  org-customizable, so close-out can't live there. */
+  closedOutcome: "" | "won" | "lost";
+  closedAt: string | null;
+  /** One of LOST_REASONS (pipelineInsights.ts), kept clean for aggregation.
+   *  Free text goes in lostReasonNote. */
+  lostReason: string;
+  lostReasonNote: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
