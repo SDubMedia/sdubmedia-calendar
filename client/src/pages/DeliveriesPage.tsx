@@ -1137,7 +1137,6 @@ function DeliveryDetail({ id }: { id: string }) {
       body:
         `Hi {{first_name}},\n\n` +
         `Your proofs from {{gallery_title}} are ready. Have a look through and heart the ${delivery.selectionLimit} you'd like edited, then press Submit.\n\n` +
-        `{{gallery_link}}\n\n` +
         `They're previews for choosing from, so they aren't downloadable — the finished files come after.\n\n` +
         `Thank you!`,
       proofs: true,
@@ -2838,6 +2837,121 @@ function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUp
  *  Replaces a yes/no confirmation, which could only describe what was about to
  *  go out. The preview renders the same merge fields the server will, so what
  *  you read is what the client gets. */
+/**
+ * A field that shows merge fields as chips instead of {{braces}}.
+ *
+ * The tokens are still what gets saved and sent — they have to be, the server
+ * substitutes them — but nobody should have to read "{{gallery_title}}" to
+ * work out their own email says the gallery's name.
+ *
+ * Uncontrolled on purpose: the HTML is written once on mount and never again
+ * from props. Re-rendering a contenteditable from state on every keystroke
+ * puts the caret back at the start, which is the classic way this breaks.
+ */
+function ChipField({
+  value,
+  onChange,
+  multiline,
+  placeholder,
+  registerInsert,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  /** Hands the parent a way to drop a token in at the caret. The field is
+   *  uncontrolled, so setting state alone wouldn't show anything. */
+  registerInsert?: (fn: (token: string) => void) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const initial = useRef(value);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.innerHTML = toChips(initial.current);
+  }, []);
+
+  /** Read the text back with chips turned into their tokens. */
+  const readOut = (): string => {
+    const el = ref.current;
+    if (!el) return "";
+    const walk = (node: Node): string => {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+      const e = node as HTMLElement;
+      if (e.dataset?.token) return e.dataset.token;
+      if (e.tagName === "BR") return "\n";
+      let out = "";
+      e.childNodes.forEach(c => { out += walk(c); });
+      // A div is a line in a contenteditable.
+      if (e.tagName === "DIV" && e !== el) out = "\n" + out;
+      return out;
+    };
+    let out = "";
+    el.childNodes.forEach(c => { out += walk(c); });
+    return out.replace(/\u00a0/g, " ");
+  };
+
+  useEffect(() => {
+    if (!registerInsert) return;
+    registerInsert((token: string) => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      const sel = window.getSelection();
+      // No caret in this field yet — put it at the end rather than dropping
+      // the token into whatever was last focused.
+      if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        r.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(r);
+      }
+      document.execCommand("insertHTML", false, toChips(token) + "&nbsp;");
+      onChange(readOut());
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline={multiline ? "true" : "false"}
+      data-placeholder={placeholder}
+      onInput={() => onChange(readOut())}
+      onBlur={() => onChange(readOut())}
+      // Chips are atomic — a token half-deleted is a token that silently
+      // stops substituting, which you'd only find out about in the client's
+      // inbox. Paste lands as plain text for the same reason.
+      onPaste={(e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+      }}
+      className={`w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] chip-field ${
+        multiline ? "min-h-[9rem] max-h-[18rem] overflow-y-auto whitespace-pre-wrap" : "whitespace-nowrap overflow-x-auto"
+      }`}
+    />
+  );
+}
+
+/** {{token}} → an inline chip carrying the token on a data attribute. */
+function toChips(text: string): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return esc(text)
+    .replace(/\{\{([a-z_]+)\}\}/g, (match, field: string) => {
+      const known = MERGE_FIELDS.find(f => f.token === `{{${field}}}`);
+      if (!known) return match;   // unknown token stays visible rather than vanishing
+      const label = field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      return `<span class="email-chip" contenteditable="false" data-token="{{${field}}}">${label}</span>`;
+    })
+    .replace(/\n/g, "<br>");
+}
+
 function DeliveryEmailComposer({
   contents, subject: initialSubject, body: initialBody,
   recipient, recipientName, galleryTitle, galleryUrl, alsoBroker, proofs, onCancel, onSend,
@@ -2860,6 +2974,7 @@ function DeliveryEmailComposer({
   const [body, setBody] = useState(initialBody);
   const [to, setTo] = useState(recipient);
   const [sending, setSending] = useState(false);
+  const insertIntoBody = useRef<(token: string) => void>(() => {});
 
   // The name the merge field will actually resolve to, so the preview can't
   // flatter itself with a name the send won't have.
@@ -2908,27 +3023,24 @@ function DeliveryEmailComposer({
 
           <div>
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Subject</label>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
-            />
+            <ChipField value={subject} onChange={setSubject} placeholder="Subject" />
           </div>
 
           <div>
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Message</label>
-            <textarea
+            <ChipField
               value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={7}
-              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
+              onChange={setBody}
+              multiline
+              placeholder="Write your message…"
+              registerInsert={(fn) => { insertIntoBody.current = fn; }}
             />
             <div className="flex flex-wrap gap-1.5 mt-2">
               {MERGE_FIELDS.map(f => (
                 <button
                   key={f.token}
                   type="button"
-                  onClick={() => setBody(b => `${b}${f.token}`)}
+                  onClick={() => insertIntoBody.current(f.token)}
                   title={f.label}
                   className="text-[10px] px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/25 font-mono"
                 >{f.token}</button>
@@ -2950,7 +3062,15 @@ function DeliveryEmailComposer({
                 {previewSubject}
               </h1>
               {previewBody.split(/\n{2,}/).map((para, i) => (
-                <p key={i} className="text-[14px] leading-relaxed mb-2 whitespace-pre-line">{para}</p>
+                <p key={i} className="text-[14px] leading-relaxed mb-2 whitespace-pre-line">
+                  {/* A pasted gallery URL reads as a wall of characters in the
+                      middle of a friendly note. Same link, said in words. */}
+                  {para.split(/(https?:\/\/\S+)/g).map((chunk, j) =>
+                    /^https?:\/\//.test(chunk)
+                      ? <a key={j} href={chunk} className="text-[#0088ff] underline">{proofs ? "Open your proofs" : "Open your gallery"}</a>
+                      : <span key={j}>{chunk}</span>,
+                  )}
+                </p>
               ))}
               <span className="inline-block mt-3 bg-[#0088ff] text-white px-5 py-2.5 rounded-md text-[13px] font-semibold">
                 {proofs ? "View & choose" : "View & download"}

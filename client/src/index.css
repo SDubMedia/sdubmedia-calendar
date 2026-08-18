@@ -523,3 +523,26 @@
 [data-slot="sheet-content"] > button {
   top: max(0.75rem, env(safe-area-inset-top));
 }
+
+/* Merge fields in the delivery-email composer. The token is what's stored and
+   sent; this is only what the person writing the email has to look at. */
+.chip-field:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(100 116 139);
+  pointer-events: none;
+}
+.email-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  margin: 0 1px;
+  border-radius: 4px;
+  background: rgb(0 136 255 / 0.15);
+  border: 1px solid rgb(0 136 255 / 0.40);
+  color: rgb(147 197 253);
+  font-size: 0.85em;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: baseline;
+}
