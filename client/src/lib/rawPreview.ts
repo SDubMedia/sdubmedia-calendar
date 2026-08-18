@@ -82,6 +82,82 @@ export function findLargestEmbeddedJpeg(buffer: ArrayBuffer): EmbeddedJpeg | nul
   return findEmbeddedJpegs(buffer)[0] ?? null;
 }
 
+/**
+ * The camera's Orientation tag, read from the raw's own TIFF header (IFD0,
+ * tag 0x0112).
+ *
+ * It has to come from the RAW, not from the preview: the JPEG a camera embeds
+ * carries no EXIF of its own, so a portrait frame extracts as a landscape
+ * image lying on its side with nothing telling a browser to turn it. 57 of
+ * one 198-frame shoot were exactly that.
+ *
+ * 1 = as stored. 6 and 8 are the quarter-turns; 5 and 7 are mirrored
+ * quarter-turns. Anything ≥5 means width and height swap on screen.
+ */
+export function rawOrientation(buffer: ArrayBuffer): number {
+  const b = new Uint8Array(buffer);
+  if (b.length < 16) return 1;
+  const le = b[0] === 0x49 && b[1] === 0x49;          // "II"
+  const be = b[0] === 0x4d && b[1] === 0x4d;          // "MM"
+  if (!le && !be) return 1;
+  const dv = new DataView(buffer);
+  if (dv.getUint16(2, le) !== 42) return 1;
+  const ifd = dv.getUint32(4, le);
+  if (ifd + 2 > b.length) return 1;
+  const n = dv.getUint16(ifd, le);
+  for (let i = 0; i < n; i++) {
+    const e = ifd + 2 + i * 12;
+    if (e + 12 > b.length) break;
+    if (dv.getUint16(e, le) === 0x0112) return dv.getUint16(e + 8, le);
+  }
+  return 1;
+}
+
+/** Does this orientation put the image on its side? */
+export function isQuarterTurn(orientation: number): boolean {
+  return orientation >= 5 && orientation <= 8;
+}
+
+/**
+ * Redraw a preview the right way up.
+ *
+ * Baked into the pixels rather than left to a CSS transform: the file is then
+ * correct everywhere it goes — the client's gallery, the owner's grid, the
+ * lightbox, and anything that downloads it — instead of correct only where
+ * someone remembered to apply the rotation.
+ */
+export async function applyOrientation(file: File, orientation: number): Promise<{ file: File; width: number; height: number }> {
+  const bitmap = await createImageBitmap(file);
+  const turned = isQuarterTurn(orientation);
+  const w = turned ? bitmap.height : bitmap.width;
+  const h = turned ? bitmap.width : bitmap.height;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) { bitmap.close?.(); return { file, width: bitmap.width, height: bitmap.height }; }
+
+  // Standard EXIF transform table. Mirrored cases (2/4/5/7) are rare off a
+  // camera but cost nothing to handle correctly.
+  switch (orientation) {
+    case 2: ctx.translate(w, 0); ctx.scale(-1, 1); break;
+    case 3: ctx.translate(w, h); ctx.rotate(Math.PI); break;
+    case 4: ctx.translate(0, h); ctx.scale(1, -1); break;
+    case 5: ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); break;
+    case 6: ctx.rotate(0.5 * Math.PI); ctx.translate(0, -h); break;
+    case 7: ctx.rotate(0.5 * Math.PI); ctx.translate(w, -h); ctx.scale(-1, 1); break;
+    case 8: ctx.rotate(-0.5 * Math.PI); ctx.translate(-w, 0); break;
+    default: break;
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) return { file, width: w, height: h };
+  return { file: new File([blob], file.name, { type: "image/jpeg" }), width: w, height: h };
+}
+
 /** True for the raw extensions we'd try to extract from. */
 export const RAW_EXTENSIONS =
   /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
@@ -139,9 +215,18 @@ export async function extractRawPreview(file: File): Promise<RawPreviewResult> {
   // reads on the tile and what the editor matches back to the raw on disk, so
   // it has to stay recognisable.
   const previewName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-  return {
-    preview: new File([chosen.blob], previewName, { type: "image/jpeg" }),
-    width,
-    height,
-  };
+  let preview = new File([chosen.blob], previewName, { type: "image/jpeg" });
+
+  // Turn it the right way up. The camera recorded the rotation in the raw's
+  // own header and the embedded JPEG doesn't carry it, so without this every
+  // portrait frame reaches the client lying on its side.
+  const orientation = rawOrientation(buffer);
+  if (orientation > 1) {
+    const fixed = await applyOrientation(preview, orientation);
+    preview = new File([fixed.file], previewName, { type: "image/jpeg" });
+    width = fixed.width;
+    height = fixed.height;
+  }
+
+  return { preview, width, height };
 }
