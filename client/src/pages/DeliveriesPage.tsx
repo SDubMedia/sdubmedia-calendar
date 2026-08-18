@@ -503,6 +503,11 @@ function DeliveryDetail({ id }: { id: string }) {
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
   const [charging, setCharging] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number; pct: number; name: string } | null>(null);
+  /** Set by Stop. Checked between files, and passed down so the transfer in
+   *  flight aborts too — otherwise "stop" means "after this 50MB photo",
+   *  which on a slow line is not stopping. */
+  const cancelUploadRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
@@ -647,9 +652,14 @@ function DeliveryDetail({ id }: { id: string }) {
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const list = Array.from(fileList);
+    cancelUploadRef.current = false;
+    setStopping(false);
     setUploading({ done: 0, total: list.length, pct: 0, name: "" });
-    let done = 0, failed = 0;
+    let done = 0, failed = 0, stopped = false;
     for (const rawFile of list) {
+      // Between files: the clean stopping point. Everything already uploaded
+      // stays — those are finished files, not half of anything.
+      if (cancelUploadRef.current) { stopped = true; break; }
       try {
         // iPhone HEIC → JPEG so it displays; full quality, full resolution.
         const file = await toUploadableImage(rawFile);
@@ -692,7 +702,7 @@ function DeliveryDetail({ id }: { id: string }) {
         let primaryStoragePath: string;
 
         if (file.size > MULTIPART_THRESHOLD) {
-          primaryStoragePath = await uploadFileMultipart(id, file, accessToken, onPct);
+          primaryStoragePath = await uploadFileMultipart(id, file, accessToken, onPct, () => cancelUploadRef.current);
         } else {
           const uploadRes = await fetch("/api/delivery-upload", {
             method: "POST",
@@ -706,7 +716,7 @@ function DeliveryDetail({ id }: { id: string }) {
           });
           const uploadData = await uploadRes.json();
           if (!uploadRes.ok) throw new Error(uploadData.error || "Upload URL failed");
-          await putFileWithProgress(uploadData.uploadUrl, file, onPct);
+          await putFileWithProgress(uploadData.uploadUrl, file, onPct, () => cancelUploadRef.current);
           primaryStoragePath = uploadData.storagePath;
         }
 
@@ -787,6 +797,10 @@ function DeliveryDetail({ id }: { id: string }) {
         done++;
         setUploading({ done, total: list.length, pct: 0, name: "" });
       } catch (err) {
+        // Pressing Stop aborts the transfer in flight, which surfaces here as
+        // an error. It isn't one — don't count it as a failure and don't throw
+        // a red toast at someone for doing what they asked for.
+        if (cancelUploadRef.current) { stopped = true; break; }
         console.error(`Upload failed: ${rawFile.name}`, err);
         toast.error(`Failed: ${rawFile.name}`, { description: err instanceof Error ? err.message : "Try again" });
         failed++;
@@ -795,11 +809,19 @@ function DeliveryDetail({ id }: { id: string }) {
       }
     }
     setUploading(null);
+    setStopping(false);
+    cancelUploadRef.current = false;
     // This used to say "Upload complete" unconditionally, so a run where every
     // single file failed still ended on a green success toast. Say what
     // actually happened.
-    const added = list.length - failed;
-    if (failed === 0) {
+    const attempted = stopped ? done : list.length;
+    const added = attempted - failed;
+    if (stopped) {
+      const left = list.length - attempted;
+      toast.info("Upload stopped", {
+        description: `${added} file${added === 1 ? "" : "s"} uploaded${failed ? `, ${failed} failed` : ""}. ${left} not started — drop the same files again to carry on.`,
+      });
+    } else if (failed === 0) {
       toast.success("Upload complete", { description: `${added} file${added === 1 ? "" : "s"} added.` });
     } else if (added === 0) {
       toast.error("Nothing uploaded", { description: `All ${failed} file${failed === 1 ? "" : "s"} failed.` });
@@ -1311,7 +1333,20 @@ function DeliveryDetail({ id }: { id: string }) {
             <div className="h-2 rounded-full bg-white/10 overflow-hidden">
               <div className="h-full bg-[#0088ff] transition-[width] duration-150" style={{ width: `${uploading.pct}%` }} />
             </div>
-            <p className="text-[10px] text-slate-500 mt-1.5">Keep this tab open until it finishes.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+              <p className="text-[10px] text-slate-500 min-w-0">
+                {stopping
+                  ? "Stopping…"
+                  : `${uploading.done} of ${uploading.total} · keep this tab open until it finishes.`}
+              </p>
+              <button
+                onClick={(e) => { e.stopPropagation(); cancelUploadRef.current = true; setStopping(true); }}
+                disabled={stopping}
+                className="text-[10px] px-2.5 py-1 rounded border border-white/15 text-white hover:bg-white/[0.06] disabled:opacity-40 shrink-0"
+              >
+                {stopping ? "Stopping…" : "Stop"}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2731,11 +2766,26 @@ const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
 // mistaken for a stall.
 const STALL_TIMEOUT_MS = 60_000;
 
-function putFileWithProgress(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+/** `isCancelled` lets Stop kill the transfer in flight rather than waiting for
+ *  it to finish. Without it, stopping a 400-photo drop means "after this one",
+ *  and on a slow line that's a long way from stopping. */
+function putFileWithProgress(
+  url: string,
+  file: File,
+  onProgress: (pct: number) => void,
+  isCancelled?: () => boolean,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let userStopped = false;
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", file.type);
+
+    // Polled rather than event-driven: there's no signal to listen to, and a
+    // half-second lag on a button press nobody can perceive.
+    const watch = setInterval(() => {
+      if (isCancelled?.()) { userStopped = true; xhr.abort(); }
+    }, 400);
 
     // Same stall detection as the multipart path. This used to have an
     // ontimeout handler and never set xhr.timeout, so the handler was dead
@@ -2746,7 +2796,7 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
       clearTimeout(stall);
       stall = setTimeout(() => xhr.abort(), STALL_TIMEOUT_MS);
     };
-    const settle = (fn: () => void) => { clearTimeout(stall); fn(); };
+    const settle = (fn: () => void) => { clearTimeout(stall); clearInterval(watch); fn(); };
 
     xhr.upload.onprogress = (e) => {
       armStall();
@@ -2757,7 +2807,9 @@ function putFileWithProgress(url: string, file: File, onProgress: (pct: number) 
       else reject(new Error(`R2 upload failed: ${xhr.status}`));
     });
     xhr.onerror = () => settle(() => reject(new Error("Network error during upload — check your connection")));
-    xhr.onabort = () => settle(() => reject(new Error(`Upload stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`)));
+    xhr.onabort = () => settle(() => reject(new Error(
+      userStopped ? "Upload stopped" : `Upload stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`,
+    )));
     armStall();
     xhr.send(file);
   });
@@ -2883,6 +2935,11 @@ async function uploadFileMultipart(
   file: File,
   accessToken: string,
   onProgress: (pct: number) => void,
+  /** Stop, mid-file. Stopping a multipart upload is the one case where the
+   *  existing no-abort rule is exactly what you want: the parts stay in R2 and
+   *  the record stays on disk, so dropping the same file again resumes from
+   *  here rather than re-sending gigabytes. */
+  isCancelled?: () => boolean,
 ): Promise<string> {
   const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` };
   const call = async (payload: Record<string, unknown>) => {
@@ -2979,7 +3036,11 @@ async function uploadFileMultipart(
     // instead. A 2xx here means the part is stored; that is all we need.
     const putPart = (partNumber: number, blob: Blob) => new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let userStopped = false;
       xhr.open("PUT", urlMap.get(partNumber)!);
+      const watch = setInterval(() => {
+        if (isCancelled?.()) { userStopped = true; xhr.abort(); }
+      }, 400);
 
       // Stall detection, NOT a total time limit. xhr.timeout caps the whole
       // request, which is wrong here: a 32MB part on a slow line legitimately
@@ -2993,7 +3054,7 @@ async function uploadFileMultipart(
         clearTimeout(stall);
         stall = setTimeout(() => xhr.abort(), STALL_TIMEOUT_MS);
       };
-      const settle = (fn: () => void) => { clearTimeout(stall); fn(); };
+      const settle = (fn: () => void) => { clearTimeout(stall); clearInterval(watch); fn(); };
 
       xhr.upload.onprogress = (e) => {
         armStall();
@@ -3008,7 +3069,9 @@ async function uploadFileMultipart(
       xhr.onerror = () => settle(() => reject(new Error(`Network error on part ${partNumber}`)));
       // Without this the abort above resolves nothing and the slot wedges: an
       // aborted XHR fires neither onload nor onerror.
-      xhr.onabort = () => settle(() => reject(new Error(`Part ${partNumber} stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`)));
+      xhr.onabort = () => settle(() => reject(new Error(
+        userStopped ? "Upload stopped" : `Part ${partNumber} stalled — no data for ${STALL_TIMEOUT_MS / 1000}s`,
+      )));
       armStall();
       xhr.send(blob);
     });
@@ -3017,6 +3080,7 @@ async function uploadFileMultipart(
     const CONCURRENCY = 4; // enough to saturate a domestic upstream, few enough not to starve each other
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
       for (;;) {
+        if (isCancelled?.()) return;
         const partNumber = queue.shift();
         if (partNumber === undefined) return;
         const start = (partNumber - 1) * partSize;
@@ -3026,8 +3090,13 @@ async function uploadFileMultipart(
         let lastErr: unknown;
         for (let attempt = 0; attempt < 3; attempt++) {
           try { await putPart(partNumber, blob); lastErr = null; break; }
-          catch (e) { lastErr = e; sent[partNumber - 1] = 0; report();
-            await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); }
+          catch (e) {
+            lastErr = e; sent[partNumber - 1] = 0; report();
+            // Don't burn three attempts and six seconds retrying something the
+            // user just cancelled.
+            if (isCancelled?.()) break;
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
         }
         if (lastErr) throw lastErr;
       }
@@ -3037,6 +3106,10 @@ async function uploadFileMultipart(
     // there should be and how big each must be, then checks R2 against that.
     // A client that has just failed shouldn't get a vote on whether the upload
     // is complete.
+    // Completing here would assemble whatever parts happened to land and
+    // hand back a truncated file that looks fine until it's played. The
+    // record stays on disk instead, so re-dropping resumes.
+    if (isCancelled?.()) throw new Error("Upload stopped");
     await call({ action: "complete", storagePath, uploadId, sizeBytes: file.size });
     mpuClear(recordKey);
     onProgress(100);
