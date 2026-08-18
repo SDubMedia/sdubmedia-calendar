@@ -29,6 +29,15 @@ export function resolveVendorField(field: string, org?: Organization | null): st
       return bi.email?.trim() || null;
     case "vendor_phone":
       return bi.phone?.trim() || null;
+    case "vendor_signer_name":
+      // Who physically signs for the business. The server prefers the owner's
+      // own name and falls back to the company (see _contractGenerator), so
+      // the preview has to agree or the signature line changes at signing.
+      return bi.ownerName?.trim() || org.name?.trim() || null;
+    case "contract_signed_date":
+      // The server stamps the day it's signed. Signing now means today, so
+      // today is the honest preview — and it matches what they'd get.
+      return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     case "vendor_address": {
       const street = bi.address?.trim() || "";
       const cityStateZip = [
@@ -58,6 +67,12 @@ const FIELD_LABELS: Record<string, string> = {
   partner_phone: "Second Person's Phone",
   contract_signed_date: "Date Signed (today)",
   total_due_date: "Total Due Date",
+  // Derived from the payment schedule at signing, so the preview can only
+  // name them. Without these two the raw {{token}} reached the client —
+  // "due in full by {{balance_due_date}}" was printed in the live agreement.
+  balance_due_date: "Balance Due Date",
+  deposit_due_date: "Deposit Due Date",
+  vendor_signer_name: "Vendor Signer Name",
   project_title: "Project Title",
   parties_block: "Parties Header",
   packages_block: "Selected Packages",

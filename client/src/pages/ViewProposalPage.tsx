@@ -301,9 +301,19 @@ export default function ViewProposalPage() {
     g.requirement === "required" && !g.packageIds.some((id: string) => selectedPackageIds.includes(id)));
   const hasGroups = allGroups.length > 0;
 
-  // Fallback to legacy lineItems if no packages
-  const lineItems = selectedPkg?.lineItems || proposal?.lineItems || [];
-  const total = hasGroups && groupChosen.length > 0
+  // When the proposal offers service groups, THEY are the price — full stop.
+  //
+  // A template converted to groups can still carry its old single package.
+  // The wedding template does: one $10,100 package alongside the three
+  // pickers. The client was shown a $10,100 bill and a "Sign & Pay $5,050"
+  // button before choosing anything, and picking services didn't change
+  // either figure until the first tick. Whatever they chose, they were
+  // charged the legacy total.
+  //
+  // So with groups present the legacy package contributes nothing: no line
+  // items, no total. Nothing selected means $0, which is the truth.
+  const lineItems = hasGroups ? [] : (selectedPkg?.lineItems || proposal?.lineItems || []);
+  const total = hasGroups
     ? groupTotal
     : (selectedPkg?.totalPrice || proposal?.total || 0);
   const milestones = selectedPkg?.paymentMilestones || [];
@@ -332,6 +342,16 @@ export default function ViewProposalPage() {
   // could add them to a template and they simply never appeared, so there was
   // no way to check what the client would see before sending.
   const agreementPages = [...(proposal?.pages || [])]
+    // A page with nothing on it printed "No content yet." to the client. That
+    // is a note to the author, not something a customer should read in a
+    // proposal — the wedding template's Invoice page is empty and said it.
+    // Invoice and payment pages build themselves from the selections, so an
+    // empty one is still meaningful; only blank agreement/custom pages go.
+    .filter((p: any) => {
+      if (p.type === "invoice" || p.type === "payment") return true;
+      if (p.type === "agreement" && proposal?.agreementPreview) return true;  // placeholder for the linked contract
+      return (p.blocks || []).length > 0 || !!(p.content || "").trim();
+    })
     .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const hasPages = agreementPages.length > 0;
 
@@ -521,7 +541,7 @@ export default function ViewProposalPage() {
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
 
         {/* ---- PACKAGE SELECTION ---- */}
-        {hasPackages && packages.length > 1 && (
+        {hasPackages && !hasGroups && packages.length > 1 && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Choose Your Package</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -562,7 +582,7 @@ export default function ViewProposalPage() {
         )}
 
         {/* Single package or legacy services display */}
-        {(!hasPackages || packages.length === 1) && lineItems.length > 0 && (
+        {!hasGroups && (!hasPackages || packages.length === 1) && lineItems.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">
               {hasPackages && selectedPkg ? selectedPkg.name : "Services"}

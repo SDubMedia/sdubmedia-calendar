@@ -240,7 +240,7 @@ function BlockView({
     case "spacer":
       return <SpacerBlock block={block} />;
     case "signature":
-      return <SignatureBlock block={block} />;
+      return <SignatureBlock block={block} org={org} resolveMerge={resolveMerge} />;
     case "merge_field":
       // Without resolveMerge this is serialisation, not reading: the literal
       // token has to survive into the saved HTML so the contract generator
@@ -613,8 +613,12 @@ function SpacerBlock({ block }: { block: Extract<ProposalBlock, { type: "spacer"
 
 function SignatureBlock({
   block,
+  org,
+  resolveMerge,
 }: {
   block: Extract<ProposalBlock, { type: "signature" }>;
+  org?: Organization | null;
+  resolveMerge?: boolean;
 }) {
   const defaultLabel = block.role === "client"
     ? "Client"
@@ -627,8 +631,17 @@ function SignatureBlock({
   // the rendered contract has the vendor's name printed and a real date
   // beneath every signature line. Client name stays blank — the client
   // prints their own name at signing.
+  // These are printed INTO the page, so without the merge pass the client
+  // reads the literal "{{contract_signed_date}}" on the line they're about to
+  // sign. The block renderer resolves prose and merge-field blocks; signature
+  // blocks were a third path that never went through it.
   const printNameToken = block.role === "vendor" ? "{{vendor_signer_name}}" : "";
   const dateToken = "{{contract_signed_date}}";
+  const show = (token: string) => {
+    if (!token) return null;
+    if (!resolveMerge) return token;   // serialising — the token must survive
+    return <MergeFieldInline field={token.replace(/[{}]/g, "")} org={org} />;
+  };
   // Color-code the role badge so the client sees at a glance which line
   // is theirs vs. yours: emerald for vendor, indigo for client.
   const badgeStyle = block.role === "vendor"
@@ -651,13 +664,13 @@ function SignatureBlock({
         </div>
         <div>
           <div className="h-10 border-b border-gray-400 flex items-end pb-1 text-sm text-gray-800">
-            {dateToken}
+            {show(dateToken)}
           </div>
           <p className="text-[11px] text-gray-500 mt-1">Date</p>
         </div>
         <div className="col-span-2">
           <div className="h-6 border-b border-gray-400 flex items-end pb-0.5 text-sm text-gray-800">
-            {printNameToken}
+            {show(printNameToken)}
           </div>
           <p className="text-[11px] text-gray-500 mt-1">Print name</p>
         </div>

@@ -111,3 +111,28 @@ describe("fieldFilledBy", () => {
     expect(fieldFilledBy("contract_signed_date")).toBe("auto");
   });
 });
+
+describe("tokens that reached a live client as raw braces", () => {
+  // Found by opening a real proposal in a browser, not by reading code:
+  // the agreement printed 'due in full by {{balance_due_date}}' and the
+  // signature lines printed '{{contract_signed_date}}' and
+  // '{{vendor_signer_name}}' to the person being asked to sign.
+  it("labels the dates derived at signing", () => {
+    expect(strip(renderTemplatePreviewHtml("{{balance_due_date}}", ORG))).toBe("Balance Due Date*");
+    expect(strip(renderTemplatePreviewHtml("{{deposit_due_date}}", ORG))).toBe("Deposit Due Date*");
+  });
+
+  it("prints who signs for the business", () => {
+    const withOwner = { name: "S-Dub Media", businessInfo: { ownerName: "Geoff Southworth" } } as unknown as Organization;
+    expect(strip(renderTemplatePreviewHtml("{{vendor_signer_name}}", withOwner))).toBe("Geoff Southworth");
+    // Server falls back company-ward, so the preview must too or the name
+    // changes between what they read and what they sign.
+    expect(strip(renderTemplatePreviewHtml("{{vendor_signer_name}}", ORG))).toBe("S-Dub Media");
+  });
+
+  it("prints a real signing date", () => {
+    const out = strip(renderTemplatePreviewHtml("{{contract_signed_date}}", ORG));
+    expect(out).not.toContain("{{");
+    expect(out).toMatch(/^[A-Z][a-z]+ \d{1,2}, \d{4}$/);
+  });
+});
