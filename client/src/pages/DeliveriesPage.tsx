@@ -172,7 +172,7 @@ function DeliveriesList() {
           {project && <p className="text-xs text-slate-500 mb-2">{projectLabel(project, data.clients)}</p>}
           <div className="flex items-center gap-4 text-xs text-slate-400">
             <span>{fileCount} photo{fileCount === 1 ? "" : "s"}</span>
-            {d.selectionLimit > 0 && <span>{pickCount} pick{pickCount === 1 ? "" : "s"}</span>}
+            {d.selectionLimit > 0 && <span>{pickCount} pick{pickCount === 1 ? "" : "s"} of {d.selectionLimit}</span>}
             {d.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Locked</span>}
           </div>
           {d.clientName && <p className="text-xs text-slate-500 mt-2">Submitted by {d.clientName}</p>}
@@ -536,7 +536,7 @@ function DeliveryDetail({ id }: { id: string }) {
   // File whose thumbnail the user is currently picking (or null when closed).
   const [thumbnailPickerFileId, setThumbnailPickerFileId] = useState<string | null>(null);
   // Non-null while the delivery email is being composed.
-  const [composer, setComposer] = useState<{ contents: GalleryContents; subject: string; body: string } | null>(null);
+  const [composer, setComposer] = useState<{ contents: GalleryContents; subject: string; body: string; proofs?: boolean } | null>(null);
   // Inline rename of a delivered file. The name is what the client sees in the
   // gallery and what they get on disk, so this is the label, not the R2 key.
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
@@ -1048,6 +1048,12 @@ function DeliveryDetail({ id }: { id: string }) {
   const fileView: "proofs" | "finals" =
     fileViewOverride ?? (phase === "editing" || phase === "done" ? "finals" : "proofs");
 
+  /** The green button means "invite her to choose" until she has, and
+   *  "deliver the finished work" after. Two different actions that were one
+   *  button labelled for the second. */
+  const sendProofsPhase = proofingEnabled && !delivery.submittedAt;
+  const finalsToDeliver = proofingEnabled ? finals : files;
+
   // Default the drop target to whatever this phase is for. Before the client
   // has picked, you're adding proofs; after, you're adding finished files.
   const uploadStage: DeliveryFileStage = readOnly
@@ -1119,6 +1125,25 @@ function DeliveryDetail({ id }: { id: string }) {
   // Opens the composer rather than a yes/no box. A confirmation could only
   // tell you what was about to go out; this lets you read it and change it,
   // which is what "preview before you send" has to mean.
+  /** Before she's picked, the green button is not "deliver" — pressing that
+   *  would mark the gallery delivered, lock the hearts and tell her the work
+   *  was done. What you actually want at this point is to invite her to
+   *  choose. Same composer, different meaning, and status stays 'sent'. */
+  const sendProofsForPicking = () => {
+    const contents = { photoCount: proofs.length, videoCount: 0 };
+    setComposer({
+      contents,
+      subject: `Your proofs are ready to view — {{gallery_title}}`,
+      body:
+        `Hi {{first_name}},\n\n` +
+        `Your proofs from {{gallery_title}} are ready. Have a look through and heart the ${delivery.selectionLimit} you'd like edited, then press Submit.\n\n` +
+        `{{gallery_link}}\n\n` +
+        `They're previews for choosing from, so they aren't downloadable — the finished files come after.\n\n` +
+        `Thank you!`,
+      proofs: true,
+    });
+  };
+
   const deliverToAgent = () => {
     const contents = {
       photoCount: files.filter(f => f.mediaType !== "video").length,
@@ -1134,9 +1159,13 @@ function DeliveryDetail({ id }: { id: string }) {
 
   // Runs after the composer's Send. Everything below is what the old one-tap
   // deliver did; only the confirmation step changed.
-  const sendDelivery = async (subject: string, body: string) => {
+  const sendDelivery = async (subject: string, body: string, proofsOnly?: boolean) => {
     setComposer(null);
-    await setDeliveryStatus(id, "delivered");
+    // 'sent', not 'delivered'. Delivered locks the hearts (see isLocked on the
+    // public page) and tells her the job is finished — the opposite of asking
+    // her to choose.
+    await setDeliveryStatus(id, proofsOnly ? "sent" : "delivered");
+    if (proofsOnly) { notifyGallery("agent", { subject, body }); return; }
     notifyGallery("agent", { subject, body });
     // If this shoot belongs to a brokerage, automatically notify every managing
     // broker too — no button. Fires quietly so a brokerage-less shoot is a no-op.
@@ -1275,7 +1304,10 @@ function DeliveryDetail({ id }: { id: string }) {
               activeTab === t ? "border-[#0088ff] text-white" : "border-transparent text-slate-400 hover:text-white"
             }`}
           >
-            {t === "photos" ? `Photos (${files.length})`
+            {t === "photos"
+              ? (proofingEnabled
+                  ? `${fileView === "proofs" ? (readOnly ? "Her picks" : "Proofs") : "Finals"} (${gridFiles.length})`
+                  : `Photos (${files.length})`)
               : t === "general" ? "General"
               : t === "cover" ? "Cover"
               : t === "privacy" ? "Privacy"
@@ -1295,12 +1327,18 @@ function DeliveryDetail({ id }: { id: string }) {
               </div>
             ) : (
               <button
-                onClick={deliverToAgent}
-                disabled={files.length === 0 || charging}
+                onClick={sendProofsPhase ? sendProofsForPicking : deliverToAgent}
+                disabled={(sendProofsPhase ? proofs.length === 0 : finalsToDeliver.length === 0) || charging}
                 className="w-full bg-emerald-600 text-white rounded-lg py-3 px-4 font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ImageIcon className="w-5 h-5 shrink-0" />
-                {files.length === 0 ? "Upload photos, then deliver" : `Deliver ${files.length} photo${files.length === 1 ? "" : "s"} to ${clientNoun}`}
+                {sendProofsPhase
+                  ? (proofs.length === 0
+                      ? "Load proofs, then send for picking"
+                      : `Send ${proofs.length} proof${proofs.length === 1 ? "" : "s"} to ${clientNoun} to pick from`)
+                  : (finalsToDeliver.length === 0
+                      ? (proofingEnabled ? "Upload the finished files, then deliver" : "Upload photos, then deliver")
+                      : `Deliver ${finalsToDeliver.length} ${proofingEnabled ? "final" : "photo"}${finalsToDeliver.length === 1 ? "" : "s"} to ${clientNoun}`)}
               </button>
             )}
           </div>
@@ -1828,7 +1866,7 @@ function DeliveryDetail({ id }: { id: string }) {
           galleryUrl={delivery.slug ? `${window.location.origin}/g/${delivery.slug}` : `${window.location.origin}/deliver/${delivery.token}`}
           alsoBroker={hasBroker}
           onCancel={() => setComposer(null)}
-          onSend={sendDelivery}
+          onSend={(subject, body) => sendDelivery(subject, body, composer.proofs)}
         />
       )}
 
