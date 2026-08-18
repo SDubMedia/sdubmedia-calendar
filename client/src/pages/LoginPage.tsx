@@ -98,8 +98,25 @@ export default function LoginPage() {
       } else {
         await signIn(email, password);
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+
+      // "User already registered" is what an invited client hits, because the
+      // owner made their account for them and Sign up is what a first-time
+      // visitor lands on. Supabase's wording sends them to the owner for their
+      // password — which is how a password ends up being texted. Put them on
+      // the right path instead of restating the error.
+      if (/already registered|already exists|user already/i.test(msg)) {
+        setMode("signin");
+        setPassword("");
+        toast.error("You already have an account", {
+          description: "Sign in below — or tap \u201cForgot password?\u201d to set a new one.",
+          duration: 8000,
+        });
+        return;
+      }
+
+      toast.error(msg || "Failed");
     } finally {
       setLoading(false);
     }
