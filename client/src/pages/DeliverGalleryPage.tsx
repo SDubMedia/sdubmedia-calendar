@@ -1182,16 +1182,16 @@ export default function DeliverGalleryPage() {
               Thank you — we've got your picks and we'll take it from here.
             </p>
           )}
-          {delivery.status === "delivered" && (
+          {delivery.status === "delivered" && !showingProofs && (
             <p className="text-slate-700 text-sm sm:text-base">
               Your photos are ready. Download the whole set, or tap <strong>Select photos</strong> to pick out a few — they're yours to keep, so grab them whenever suits you.
             </p>
           )}
-          {proofingEnabled && delivery.status === "sent" && (
+          {proofingEnabled && !isLocked && (
             <p className="text-amber-900 text-xs sm:text-sm">
-              <strong>Pick your {delivery.selectionLimit} favorite{delivery.selectionLimit === 1 ? "" : "s"} for editing.</strong>
+              <strong>Choose the {delivery.selectionLimit} you'd like edited</strong>, then send them back with the button at the bottom.
               {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
-              {hasFlat && <> {hasPerPhoto ? "Or " : "Or "}<strong>{money(flatCents)}</strong> to unlock all picks.</>}
+              {hasFlat && <> Or <strong>{money(flatCents)}</strong> to unlock all picks.</>}
             </p>
           )}
           {delivery.status === "submitted" && !isWorking && (
@@ -1432,22 +1432,44 @@ export default function DeliverGalleryPage() {
           </div>
         )}
 
-        {proofingEnabled && delivery.status === "sent" && picked.size > 0 && (
+        {/* Always present while she's choosing — not only once she's picked
+            something. A first-time visitor otherwise sees a wall of cards and
+            a line of small print that scrolls away, with nothing telling them
+            what this page wants.
+
+            Gated on isLocked rather than status === "sent" so the owner's
+            Preview shows it too: a draft is exactly when you're checking that
+            the page reads right. */}
+        {proofingEnabled && !isLocked && (
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-30">
-            <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-              <div className="text-sm">
-                <strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked
-                {overage > 0 && (
-                  <span className="ml-2 text-amber-700">
-                    · {overage} extra {hasPerPhoto && `(${money(overagePerPhotoTotal)})`}
+            <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm min-w-0">
+                {picked.size === 0 ? (
+                  <span className="text-slate-700">
+                    Tap the <span className="text-rose-500">♥</span> on the {delivery.selectionLimit} photo{delivery.selectionLimit === 1 ? "" : "s"} you'd like edited
                   </span>
+                ) : (
+                  <>
+                    <strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked
+                    {picked.size < delivery.selectionLimit && (
+                      <span className="text-slate-500"> · {delivery.selectionLimit - picked.size} to go</span>
+                    )}
+                    {overage > 0 && (
+                      <span className="ml-2 text-amber-700">
+                        · {overage} extra {hasPerPhoto && `(${money(overagePerPhotoTotal)})`}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
               <button
                 onClick={startSubmit}
-                className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm"
+                disabled={picked.size === 0}
+                className="shrink-0 bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                Submit selections →
+                {picked.size === 0
+                  ? `Choose ${delivery.selectionLimit}`
+                  : `Send my ${picked.size} pick${picked.size === 1 ? "" : "s"} →`}
               </button>
             </div>
           </div>
@@ -1455,11 +1477,20 @@ export default function DeliverGalleryPage() {
 
         {/* First-visit walkthrough */}
         {walkthroughStep !== null && (() => {
-          const steps = [
-            { title: "Welcome", body: `Take a look through ${delivery.title}. Click any photo to view full-size.` },
-            ...(proofingEnabled ? [{ title: "Pick favorites", body: `Tap the ♡ heart on photos you'd like edited. You can pick up to ${delivery.selectionLimit} for free.` }] : []),
-            { title: "Download anytime", body: "Save individual photos or download everything as a ZIP from the top bar." },
-          ];
+          // Two different jobs, two different walkthroughs. A proofing visitor
+          // is here to CHOOSE — telling them how to download a ZIP is both
+          // wrong (proofs aren't downloadable) and a distraction from the only
+          // thing the page needs them to do.
+          const steps = proofingEnabled
+            ? [
+                { title: "Welcome", body: `Have a look through ${delivery.title}. Tap any photo to see it full-size.` },
+                { title: `Choose your ${delivery.selectionLimit}`, body: `Tap the ♥ on the ${delivery.selectionLimit} you'd like edited. Tap again to change your mind — nothing is final until you send them.` },
+                { title: "Send them back", body: `When you're happy, press the button at the bottom to send your picks. We'll edit those and send the finished photos over.` },
+              ]
+            : [
+                { title: "Welcome", body: `Take a look through ${delivery.title}. Click any photo to view full-size.` },
+                { title: "Download anytime", body: "Save individual photos or download everything as a ZIP from the top bar." },
+              ];
           const step = steps[walkthroughStep];
           const last = walkthroughStep >= steps.length - 1;
           return (
