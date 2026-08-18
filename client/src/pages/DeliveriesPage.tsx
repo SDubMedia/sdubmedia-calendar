@@ -327,6 +327,29 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
   const [perExtraDollars, setPerExtraDollars] = useState("");
   const [flatDollars, setFlatDollars] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [showAllProjects, setShowAllProjects] = useState(false);
+
+  /** The jobs you'd plausibly be building a gallery for.
+   *
+   *  This was `data.projects.slice(0, 50)` against a list the context loads
+   *  in ascending date order — so it offered the FIFTY OLDEST jobs, and
+   *  silently dropped everything after. Of 67 projects here, 56 are already
+   *  delivered; the eight that actually need a gallery were all past the cut.
+   *
+   *  Delivered and cancelled jobs are hidden and the newest comes first.
+   *  Nothing is truncated, and "show every project" is one click away — a
+   *  filter that can hide the row you need is the same bug in a nicer hat. */
+  const projectOptions = useMemo(() => {
+    const withGallery = new Set(
+      data.deliveries.map(d => d.projectId).filter((x): x is string => !!x),
+    );
+    return [...data.projects]
+      .filter(p => showAllProjects || (p.status !== "delivered" && p.status !== "cancelled"))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+      .map(p => ({ project: p, hasGallery: withGallery.has(p.id) }));
+  }, [data.projects, data.deliveries, showAllProjects]);
+
+  const hiddenCount = data.projects.length - projectOptions.length;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -347,13 +370,31 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
         <select
           value={projectId || ""}
           onChange={(e) => setProjectId(e.target.value || null)}
-          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
+          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
         >
           <option value="">— No project —</option>
-          {data.projects.slice(0, 50).map(p => (
-            <option key={p.id} value={p.id}>{projectLabel(p, data.clients)}</option>
+          {projectOptions.map(({ project, hasGallery }) => (
+            <option key={project.id} value={project.id}>
+              {projectLabel(project, data.clients)}{hasGallery ? " · already has a gallery" : ""}
+            </option>
           ))}
         </select>
+        <div className="flex items-center justify-between gap-2 mt-1.5 mb-4">
+          <p className="text-[10px] text-slate-500 min-w-0">
+            {showAllProjects
+              ? `All ${projectOptions.length} projects, newest first.`
+              : `${projectOptions.length} shoot${projectOptions.length === 1 ? "" : "s"} still to deliver.`}
+          </p>
+          {(hiddenCount > 0 || showAllProjects) && (
+            <button
+              type="button"
+              onClick={() => setShowAllProjects(v => !v)}
+              className="text-[10px] text-[#0088ff] hover:underline shrink-0"
+            >
+              {showAllProjects ? "Just the undelivered" : `Show all ${data.projects.length}`}
+            </button>
+          )}
+        </div>
 
         <div className="border-t border-white/10 my-5" />
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Proofing (optional)</p>
