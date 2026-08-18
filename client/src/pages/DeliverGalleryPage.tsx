@@ -30,6 +30,10 @@ interface FileItem {
   // Attachment-forced link (Content-Disposition) that streams straight to disk.
   // Used for videos, which are too large to pull into memory like photos.
   downloadUrl?: string;
+  /** A choosing sheet, not a deliverable. Set by the server, which also
+   *  withholds downloadUrl for these — the flag only stops the page offering
+   *  a button that couldn't work. */
+  isProof?: boolean;
   // Server returns these for video files (otherwise "image" / "" / null).
   mediaType?: "image" | "video";
   durationSeconds?: number | null;
@@ -59,7 +63,7 @@ interface FileItem {
  */
 function Lightbox({
   file, index, total, prevUrl, nextUrl, slideshowPlaying, canPick, isPicked,
-  onPick, onToggleSlideshow, onDownload, onPrev, onNext, onClose,
+  onPick, onToggleSlideshow, onDownload, canDownload, onPrev, onNext, onClose,
 }: {
   file: FileItem;
   index: number;
@@ -72,6 +76,7 @@ function Lightbox({
   onPick: () => void;
   onToggleSlideshow: () => void;
   onDownload: () => void;
+  canDownload: boolean;
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
@@ -202,9 +207,11 @@ function Lightbox({
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={onDownload} className="p-2 hover:text-white" aria-label="Download this one" title="Download">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
+          {canDownload && (
+            <button onClick={onDownload} className="p-2 hover:text-white" aria-label="Download this one" title="Download">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+          )}
           <button onClick={onClose} className="p-2 text-3xl leading-none hover:text-white" aria-label="Close">×</button>
         </div>
       </div>
@@ -569,6 +576,12 @@ export default function DeliverGalleryPage() {
   const isLocked = delivery?.status === "submitted" || delivery?.status === "working" || delivery?.status === "delivered";
   const isWorking = delivery?.status === "working" || delivery?.status === "delivered";
   const proofingEnabled = !delivery?.downloadOnly && (delivery?.selectionLimit ?? 0) > 0;
+
+  /** Proofs are for choosing from, not for keeping. When the gallery is
+   *  showing them, every download route goes away — the single button, the
+   *  lightbox, and Download all. The server withholds the URLs regardless;
+   *  this is so nobody is offered something that won't work. */
+  const showingProofs = files.some(f => f.isProof);
   const overage = Math.max(0, picked.size - (delivery?.selectionLimit ?? 0));
   const perExtraCents = delivery?.perExtraPhotoCents ?? 0;
   const flatCents = delivery?.buyAllFlatCents ?? 0;
@@ -876,6 +889,9 @@ export default function DeliverGalleryPage() {
   }
 
   async function downloadOne(f: FileItem) {
+    // Belt and braces. The server sends no downloadUrl for a proof and the
+    // buttons are hidden, but this is the one function every route ends at.
+    if (f.isProof) return;
     trackDownload(1, f.id);
     // Videos stream straight to disk via their attachment link — pulling a
     // multi-hundred-MB video into a blob first would run mobile Safari out of
@@ -1088,9 +1104,11 @@ export default function DeliverGalleryPage() {
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             </button>
+            {!showingProofs && (
             <button onClick={downloadAll} disabled={zipping} title="Download all" className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black disabled:opacity-50">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
+            )}
             <button onClick={shareGallery} title="Share" className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             </button>
@@ -1117,8 +1135,13 @@ export default function DeliverGalleryPage() {
       {/* Download-only galleries (e.g. real-estate): one prominent download-all. */}
       {/* Shown whenever there is something to download. It used to require
           status delivered/sent, so previewing a draft — the moment you are
-          actually checking the layout — showed no download action at all. */}
-      {!proofingEnabled && files.length > 0 && (
+          actually checking the layout — showed no download action at all.
+          
+          Gated on what's ON SCREEN, not on whether the gallery does proofing.
+          `!proofingEnabled` also hid this after delivery: a proofing gallery
+          keeps its pick limit forever, so the client could never download the
+          finals she'd paid for. */}
+      {!showingProofs && files.length > 0 && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
           <button
             onClick={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
@@ -1321,6 +1344,7 @@ export default function DeliverGalleryPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                   </button>
                 )}
+                {!f.isProof && (
                 <button
                   onClick={(e) => { e.stopPropagation(); downloadOne(f); }}
                   className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
@@ -1329,6 +1353,7 @@ export default function DeliverGalleryPage() {
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); shareGallery(); }}
                   className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
@@ -1471,6 +1496,7 @@ export default function DeliverGalleryPage() {
             onPick={() => togglePick(lightboxFile.id)}
             onToggleSlideshow={() => setSlideshowPlaying(p => !p)}
             onDownload={() => downloadOne(lightboxFile)}
+            canDownload={!lightboxFile.isProof}
             onPrev={() => setLightboxIdx(i => (i === null ? null : Math.max(0, i - 1)))}
             onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(files.length - 1, i + 1)))}
             onClose={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}

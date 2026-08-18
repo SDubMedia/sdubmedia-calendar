@@ -229,6 +229,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
   const filesWithUrls = fileRows.map((f) => {
     const isVideo = f.media_type === "video";
+    const isProof = (f as unknown as { stage?: string }).stage === "proof";
     // A download link that tells R2 to serve the file as an attachment. The
     // browser streams it straight to disk — critical for videos, which are far
     // too large to fetch into memory and ZIP client-side like photos.
@@ -243,19 +244,29 @@ async function getDelivery(token: string, password: string | undefined, email: s
       position: f.position,
       mediaType: isVideo ? "video" : "image",
       durationSeconds: f.duration_seconds ?? null,
+      // So the page can stop offering downloads rather than offering one that
+      // 404s. The server is what enforces it; this is just honesty in the UI.
+      isProof,
       url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
       // Download serves the untouched original when the gallery kept one
       // (portrait work); otherwise the single stored file, exactly as before.
       // `url` above always stays the compressed copy so the grid loads fast —
       // browsing a folder of 30MB originals would crawl on a phone.
-      downloadUrl: r2Configured()
-        ? r2PresignedUrl({
+      // A PROOF IS NEVER DOWNLOADABLE. It's the client's choosing sheet, not
+      // something she's bought — and on a raw shoot the download key resolves
+      // to original_storage_path, which IS the .NEF. Handing that over would
+      // give away the negatives to pick from.
+      //
+      // Withheld here, on the server, rather than by hiding a button: the URL
+      // is in the JSON either way, and anyone can open the network tab.
+      downloadUrl: isProof || !r2Configured()
+        ? ""
+        : r2PresignedUrl({
             method: "GET",
             key: f.original_storage_path || f.storage_path,
             expiresIn: 3600,
             responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
-          })
-        : "",
+          }),
       thumbnailUrl: isVideo && f.thumbnail_storage_path && r2Configured()
         ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
         : "",
