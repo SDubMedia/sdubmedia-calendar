@@ -1159,14 +1159,14 @@ function DeliveryDetail({ id }: { id: string }) {
 
   // Runs after the composer's Send. Everything below is what the old one-tap
   // deliver did; only the confirmation step changed.
-  const sendDelivery = async (subject: string, body: string, proofsOnly?: boolean) => {
+  const sendDelivery = async (subject: string, body: string, to: string, proofsOnly?: boolean) => {
     setComposer(null);
     // 'sent', not 'delivered'. Delivered locks the hearts (see isLocked on the
     // public page) and tells her the job is finished — the opposite of asking
     // her to choose.
     await setDeliveryStatus(id, proofsOnly ? "sent" : "delivered");
-    if (proofsOnly) { notifyGallery("agent", { subject, body }); return; }
-    notifyGallery("agent", { subject, body });
+    if (proofsOnly) { notifyGallery("agent", { subject, body, to }); return; }
+    notifyGallery("agent", { subject, body, to });
     // If this shoot belongs to a brokerage, automatically notify every managing
     // broker too — no button. Fires quietly so a brokerage-less shoot is a no-op.
     const shootClient = project ? data.clients.find(c => c.id === project.clientId) : null;
@@ -1224,7 +1224,7 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   };
 
-  const notifyGallery = async (recipient: "agent" | "broker", email?: { subject: string; body: string }) => {
+  const notifyGallery = async (recipient: "agent" | "broker", email?: { subject: string; body: string; to?: string }) => {
     try {
       const token = await getAuthToken();
       const res = await fetch("/api/notify-gallery-ready", {
@@ -1866,7 +1866,8 @@ function DeliveryDetail({ id }: { id: string }) {
           galleryUrl={delivery.slug ? `${window.location.origin}/g/${delivery.slug}` : `${window.location.origin}/deliver/${delivery.token}`}
           alsoBroker={hasBroker}
           onCancel={() => setComposer(null)}
-          onSend={(subject, body) => sendDelivery(subject, body, composer.proofs)}
+          proofs={composer.proofs}
+          onSend={(subject, body, to) => sendDelivery(subject, body, to, composer.proofs)}
         />
       )}
 
@@ -2839,7 +2840,7 @@ function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUp
  *  you read is what the client gets. */
 function DeliveryEmailComposer({
   contents, subject: initialSubject, body: initialBody,
-  recipient, recipientName, galleryTitle, galleryUrl, alsoBroker, onCancel, onSend,
+  recipient, recipientName, galleryTitle, galleryUrl, alsoBroker, proofs, onCancel, onSend,
 }: {
   contents: GalleryContents;
   subject: string;
@@ -2849,11 +2850,15 @@ function DeliveryEmailComposer({
   galleryTitle: string;
   galleryUrl: string;
   alsoBroker: boolean;
+  /** Proofs read differently: nothing is downloadable and the ask is to
+   *  choose, so the button in the preview must not promise a download. */
+  proofs?: boolean;
   onCancel: () => void;
-  onSend: (subject: string, body: string) => Promise<void>;
+  onSend: (subject: string, body: string, to: string) => Promise<void>;
 }) {
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
+  const [to, setTo] = useState(recipient);
   const [sending, setSending] = useState(false);
 
   // The name the merge field will actually resolve to, so the preview can't
@@ -2864,9 +2869,10 @@ function DeliveryEmailComposer({
   const previewBody = applyMerge(body, merged);
 
   const send = async () => {
+    if (!to.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to.trim())) { toast.error("That doesn't look like an email address"); return; }
     if (!subject.trim() || !body.trim()) { toast.error("Subject and message can't be empty"); return; }
     setSending(true);
-    try { await onSend(subject, body); }
+    try { await onSend(subject, body, to.trim()); }
     finally { setSending(false); }
   };
 
@@ -2879,9 +2885,25 @@ function DeliveryEmailComposer({
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="text-xs text-slate-400">
-            To <span className="text-white">{recipient || "— no email on file —"}</span>
-            {alsoBroker && <span> · the brokerage is notified too</span>}
+          {/* Editable, not a label. A client record with no email address on
+              it — which is every client created from a booking rather than
+              typed in — left this modal with nothing but Cancel: Send was
+              disabled and there was no way to say who to send it to. */}
+          <div>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">To</label>
+            <input
+              type="email"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="name@example.com"
+              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+            />
+            {!recipient && (
+              <p className="text-[11px] text-amber-400/90 mt-1">
+                No email saved on this client — type one here, and add it to their record so next time it's filled in.
+              </p>
+            )}
+            {alsoBroker && <p className="text-[11px] text-slate-500 mt-1">The brokerage is notified too.</p>}
           </div>
 
           <div>
@@ -2925,13 +2947,13 @@ function DeliveryEmailComposer({
                 <strong className="text-slate-700">Subject:</strong> {previewSubject}
               </p>
               <h1 className="text-[20px] font-bold text-[#0088ff] mb-2">
-                Your {contentsNounFor(contents)} {contentsVerbFor(contents)} ready
+                {previewSubject}
               </h1>
               {previewBody.split(/\n{2,}/).map((para, i) => (
                 <p key={i} className="text-[14px] leading-relaxed mb-2 whitespace-pre-line">{para}</p>
               ))}
               <span className="inline-block mt-3 bg-[#0088ff] text-white px-5 py-2.5 rounded-md text-[13px] font-semibold">
-                View &amp; download
+                {proofs ? "View & choose" : "View & download"}
               </span>
             </div>
           </div>
@@ -2945,8 +2967,7 @@ function DeliveryEmailComposer({
             <button onClick={onCancel} className="text-xs px-3 py-2 border border-white/10 rounded-lg text-slate-300 hover:bg-white/[0.04]">Cancel</button>
             <button
               onClick={send}
-              disabled={sending || !recipient}
-              title={recipient ? "" : "No email on file for this client"}
+              disabled={sending || !to.trim()}
               className="text-xs px-4 py-2 rounded-lg bg-[#0088ff] text-white font-semibold disabled:opacity-40"
             >{sending ? "Sending…" : "Send"}</button>
           </div>

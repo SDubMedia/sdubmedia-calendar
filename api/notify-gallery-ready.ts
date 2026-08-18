@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    const { deliveryId, recipient, subject: subjectOverride, body: bodyOverride } = req.body || {};
+    const { deliveryId, recipient, subject: subjectOverride, body: bodyOverride, to: toOverride } = req.body || {};
     if (!deliveryId) return res.status(400).json({ error: "deliveryId required" });
     const who: "agent" | "broker" = recipient === "broker" ? "broker" : "agent";
 
@@ -160,7 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Agent path: notify the single agent whose listing this is.
     const target = agent;
-    let toEmail = (target.email || "").trim();
+    // An address typed in the composer wins. A client created from a booking
+    // often has no email on its record, and the owner shouldn't have to go and
+    // edit the client just to send them their gallery.
+    let toEmail = (typeof toOverride === "string" ? toOverride : "").trim() || (target.email || "").trim();
     let targetUserId = "";
     {
       const { data: profiles } = await supabase.from("user_profiles").select("id, email, client_ids").eq("org_id", callerOrgId);
