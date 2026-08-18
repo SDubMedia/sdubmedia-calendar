@@ -287,11 +287,12 @@ const TOOLS = [
   // ---- Pipeline ----
   {
     name: "list_pipeline_leads",
-    description: "List pipeline leads. Filter by stage (inquiry, follow_up, proposal_sent, proposal_signed, retainer_paid, final_payment, in_production, delivered, review, archived). Returns lead name, stage, event date, recent activity.",
+    description: "List pipeline leads. Filter by stage (inquiry, follow_up, proposal_sent, proposal_signed, retainer_paid, final_payment, in_production, delivered, review, archived). Returns lead name, stage, event date, expected value (dollars), follow-up date/note, closed outcome (won/lost + reason), recent activity. By default only open leads; pass include_closed to also get won/lost ones.",
     inputSchema: {
       type: "object",
       properties: {
         pipeline_stage: { type: "string", description: "Filter by stage" },
+        include_closed: { type: "boolean", description: "Include won/lost leads (default false, matching the app's view)" },
       },
     },
   },
@@ -608,10 +609,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
     // ---- Pipeline Leads ----
     case "list_pipeline_leads": {
-      let query = db.from("pipeline_leads").select("id, name, email, phone, project_type, event_date, location, description, lead_source, pipeline_stage, proposal_id, client_id, recent_activity, recent_activity_at, created_at")
+      let query = db.from("pipeline_leads").select("id, name, email, phone, project_type, event_date, location, description, lead_source, pipeline_stage, proposal_id, client_id, recent_activity, recent_activity_at, created_at, expected_value, follow_up_date, follow_up_note, closed_outcome, closed_at, lost_reason, lost_reason_note")
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (args.pipeline_stage) query = query.eq("pipeline_stage", args.pipeline_stage);
+      if (!args.include_closed) query = query.eq("closed_outcome", "");
       const { data, error } = await query;
       if (error) throw new Error(error.message);
       return data;

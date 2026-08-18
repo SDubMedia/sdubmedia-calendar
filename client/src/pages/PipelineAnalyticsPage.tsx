@@ -3,16 +3,20 @@
 // proposal + contract data. Owner / partner only. No new schema.
 //
 // Surfaces:
+//   - Pipeline value by stage (current snapshot, outside the time window)
+//   - Win rate from explicit lead close-outs + lost-reason breakdown
 //   - Conversion funnel (sent → viewed → accepted → signed → paid)
 //   - Average deal size (proposals accepted)
 //   - Average time-to-sign (sent → accepted)
-//   - Win rate (accepted / sent)
+//   - Proposal accept rate (accepted / sent)
 //   - Lead-source breakdown
 //   - Trailing 30 / 90 / 365 day filters
 // ============================================================
 
 import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
+import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
+import { aggregateLostReasons, isOpenLead, leadWinRate, pipelineValueByStage, totalPipelineValue } from "@/lib/pipelineInsights";
 import { TrendingUp, Send, MailOpen, CheckCircle2, FileText, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -75,8 +79,26 @@ export default function PipelineAnalyticsPage() {
       .map(([source, s]) => ({ source, ...s }))
       .sort((a, b) => b.revenue - a.revenue || b.sent - a.sent);
 
-    return { sent, viewed, accepted, paid, signedContracts, totalRevenue, avgDealSize, avgTimeToSign, leadSources };
-  }, [data.proposals, data.contracts, window]);
+    // Explicit lead close-outs — the honest win rate (won / closed), unlike
+    // the proposal accept rate above which never sees leads that die before
+    // a proposal exists.
+    const closeStats = leadWinRate(data.pipelineLeads, cutoff);
+    const lostReasons = aggregateLostReasons(data.pipelineLeads, cutoff);
+
+    return { sent, viewed, accepted, paid, signedContracts, totalRevenue, avgDealSize, avgTimeToSign, leadSources, closeStats, lostReasons };
+  }, [data.proposals, data.contracts, data.pipelineLeads, window]);
+
+  // Current snapshot, deliberately outside the time window — "what's in play
+  // right now" has no meaningful 30/90-day variant.
+  const stageValues = useMemo(() => {
+    const linkedIds = new Set(data.pipelineLeads.map(l => l.proposalId).filter(Boolean));
+    return pipelineValueByStage(
+      data.pipelineLeads.filter(isOpenLead),
+      data.proposals.filter(p => !linkedIds.has(p.id)),
+    );
+  }, [data.pipelineLeads, data.proposals]);
+  const valueInPlay = useMemo(() => totalPipelineValue(stageValues), [stageValues]);
+  const stages = data.organization?.pipelineStages?.length ? data.organization.pipelineStages : DEFAULT_PIPELINE_STAGES;
 
   const winRate = stats.sent > 0 ? (stats.accepted / stats.sent) * 100 : 0;
   const viewRate = stats.sent > 0 ? (stats.viewed / stats.sent) * 100 : 0;
@@ -110,11 +132,73 @@ export default function PipelineAnalyticsPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-5">
+        {/* Current pipeline snapshot — deliberately outside the time window */}
+        {valueInPlay > 0 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Pipeline value by stage</h2>
+              <span className="text-xs text-emerald-400 font-mono">${valueInPlay.toLocaleString("en-US", { maximumFractionDigits: 0 })} in play now</span>
+            </div>
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {stages.filter(s => (stageValues.get(s.id) ?? 0) > 0).map(s => (
+                  <tr key={s.id} className="border-t border-border/50 first:border-t-0">
+                    <td className="px-5 py-2.5 text-foreground">{s.label}</td>
+                    <td className="px-5 py-2.5 text-right tabular-nums font-mono text-foreground">
+                      ${(stageValues.get(s.id) ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </div>
+        )}
+
+        {/* Lead close-outs — needs at least one explicit won/lost in the window */}
+        {(stats.closeStats.won + stats.closeStats.lost) > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <KpiCard
+              label="Win rate"
+              value={stats.closeStats.rate !== null ? `${(stats.closeStats.rate * 100).toFixed(0)}%` : "—"}
+              hint={`${stats.closeStats.won} won / ${stats.closeStats.won + stats.closeStats.lost} closed leads`}
+            />
+            {stats.lostReasons.length > 0 && (
+              <div className="bg-card border border-border rounded-xl overflow-hidden sm:col-span-2">
+                <div className="px-5 py-3 border-b border-border">
+                  <h2 className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Why leads were lost</h2>
+                </div>
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/40">
+                    <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                      <th className="px-5 py-2 font-medium">Reason</th>
+                      <th className="px-5 py-2 font-medium text-right">Leads</th>
+                      <th className="px-5 py-2 font-medium text-right">Value lost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.lostReasons.map(r => (
+                      <tr key={r.reason} className="border-t border-border/50">
+                        <td className="px-5 py-2.5 text-foreground">{r.reason}</td>
+                        <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground">{r.count}</td>
+                        <td className="px-5 py-2.5 text-right tabular-nums font-mono text-foreground">${r.expectedValue.toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {stats.sent === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm">No proposals sent in this window.</p>
-            <p className="text-xs mt-1">Pipeline metrics will appear once you send your first proposal.</p>
+            <p className="text-xs mt-1">Proposal-funnel metrics will appear once you send your first proposal.</p>
           </div>
         ) : (
           <>
@@ -130,7 +214,7 @@ export default function PipelineAnalyticsPage() {
 
             {/* KPI cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <KpiCard label="Win rate"            value={`${winRate.toFixed(1)}%`}  hint="Accepted / sent" />
+              <KpiCard label="Proposal accept rate" value={`${winRate.toFixed(1)}%`}  hint="Accepted / sent" />
               <KpiCard label="Avg. deal size"      value={`$${stats.avgDealSize.toFixed(0)}`} hint={`Across ${stats.accepted} accepted`} />
               <KpiCard label="Avg. time to sign"   value={stats.avgTimeToSign > 0 ? `${stats.avgTimeToSign.toFixed(1)} days` : "—"} hint="Sent → accepted" />
             </div>
