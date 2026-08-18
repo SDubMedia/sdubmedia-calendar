@@ -241,8 +241,11 @@ function Router() {
         <Route path="/contracts">{() => internal ? <ContractsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/contracts/new" component={NewContractPage} />}
         {isOwner && <Route path="/contracts/:id/edit" component={EditContractPage} />}
-        <Route path="/deliveries">{() => internal ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
-        <Route path="/deliveries/:id">{() => internal ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
+        {/* Staff too: an editor needs the gallery for the job they're on to
+            see which frames the client picked. RLS scopes them to assigned
+            projects and the page itself renders read-only for them. */}
+        <Route path="/deliveries">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
+        <Route path="/deliveries/:id">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/proposals">{() => internal ? <ProposalsPage /> : <Redirect to="/" />}</Route>
         <Route path="/pipeline">{() => internal ? <PipelinePage /> : <Redirect to="/" />}</Route>
         <Route path="/1099" component={ContractorSummaryPage} />

@@ -32,7 +32,7 @@ const PUBLIC_BASE = typeof window !== "undefined" ? window.location.origin : "ht
 // One draggable photo tile. Drag to reorder (mouse: move ~6px; touch: press &
 // hold ~0.2s, so normal scrolling still works). The tile's own buttons stop the
 // drag from starting so taps still delete / mark / pick a thumbnail.
-function SortablePhoto({ id, children, dimmed }: { id: string; children: React.ReactNode; dimmed?: boolean }) {
+function SortablePhoto({ id, children, dimmed, outlined }: { id: string; children: React.ReactNode; dimmed?: boolean; outlined?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -44,7 +44,9 @@ function SortablePhoto({ id, children, dimmed }: { id: string; children: React.R
     <div
       ref={setNodeRef}
       style={style}
-      className="relative group aspect-square bg-white/[0.02] border border-white/10 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing"
+      className={`relative group aspect-square bg-white/[0.02] rounded-lg overflow-hidden cursor-grab active:cursor-grabbing ${
+        outlined ? "border-2 border-[#0088ff]" : "border border-white/10"
+      }`}
       {...attributes}
       {...listeners}
     >
@@ -455,6 +457,13 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
   const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice } = useApp();
+  const { effectiveProfile } = useAuth();
+  /** An editor opens this to see which frames were picked and download them —
+   *  not to rename the gallery, change the password, reorder it or delete a
+   *  client's photos. RLS already grants staff SELECT only (plus marking a
+   *  pick edited), so a hidden button would fail anyway; hiding it means they
+   *  don't hit an error to find that out. */
+  const readOnly = effectiveProfile?.role === "staff";
   const confirm = useConfirm();
   const [, setLocation] = useLocation();
   // Go back to wherever we came from (e.g. the project we opened the gallery
@@ -1155,6 +1164,8 @@ function DeliveryDetail({ id }: { id: string }) {
                 className="text-2xl font-bold bg-transparent border-b border-white/30 focus:border-white/70 outline-none min-w-0 flex-1"
                 style={{ fontFamily: "'Space Grotesk', system-ui" }}
               />
+            ) : readOnly ? (
+              <h1 className="text-2xl font-bold truncate min-w-0" style={{ fontFamily: "'Space Grotesk', system-ui" }}>{delivery.title}</h1>
             ) : (
               <button
                 type="button"
@@ -1171,16 +1182,21 @@ function DeliveryDetail({ id }: { id: string }) {
           {project && <p className="text-sm text-slate-500">Project: {projectLabel(project, data.clients)}</p>}
 
         </div>
+        {!readOnly && (
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={copyLink} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><Copy className="w-3 h-3" /> Copy link</button>
           <a href={publicUrl} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><ExternalLink className="w-3 h-3" /> Preview</a>
           <button onClick={() => setPwOpen(true)} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><Lock className="w-3 h-3" /> {delivery.hasPassword ? "Change password" : "Set password"}</button>
         </div>
+        )}
       </div>
 
       {/* Tabs — Pixieset-style left nav (collapsed to top tabs on mobile) */}
       <div className="flex items-center gap-1 mb-6 border-b border-white/10 overflow-x-auto -mx-1 px-1">
-        {(["photos", "general", "cover", "privacy", "selections"] as const).map(t => (
+        {(readOnly
+          ? (["photos", "selections"] as const)
+          : (["photos", "general", "cover", "privacy", "selections"] as const)
+        ).map(t => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -1384,7 +1400,14 @@ function DeliveryDetail({ id }: { id: string }) {
 
       {activeTab === "photos" && (
       <>
+      {readOnly && (
+        <p className="text-xs text-slate-400 mb-4 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+          You're viewing this gallery for a job you're assigned to. Picked photos are
+          outlined — open <strong>Selections</strong> for the list and filenames.
+        </p>
+      )}
       {/* Upload zone — drag-drop OR click to browse */}
+      {!readOnly && (
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1450,6 +1473,7 @@ function DeliveryDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
+      )}
 
       {/* File grid */}
       {files.length === 0 ? (
@@ -1493,11 +1517,15 @@ function DeliveryDetail({ id }: { id: string }) {
             const thumb = thumbUrls.get(f.id);
             const photo = signedUrls.get(f.id);
             const isPicked = picked.has(f.id);
+            // The editor's version of "which ones": an outline on the frames
+            // the client chose, so the grid itself answers the question.
+            const clientPicked = !!sel;
             return (
               <SortablePhoto key={f.id} id={f.id} dimmed={picked.size > 0 && !isPicked}>
                 {/* Top-left: the other three corners already hold Mark edited,
                     Thumbnail and Delete. stopPropagation on pointerdown so the
                     tick doesn't start a drag. */}
+                {!readOnly && (
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePick(f.id, e.shiftKey); }}
                   onPointerDown={(e) => e.stopPropagation()}
@@ -1510,6 +1538,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 >
                   <Check className="w-3.5 h-3.5" />
                 </button>
+                )}
                 {isVideo ? (
                   // Video tile: show thumbnail (or fallback) + play overlay + duration
                   <>
@@ -1602,6 +1631,7 @@ function DeliveryDetail({ id }: { id: string }) {
                     Thumbnail
                   </button>
                 )}
+                {!readOnly && (
                 <button
                   onClick={() => handleDeleteFile(f.id)}
                   onPointerDown={(e) => e.stopPropagation()}
@@ -1610,6 +1640,7 @@ function DeliveryDetail({ id }: { id: string }) {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
+                )}
               </SortablePhoto>
             );
           })}

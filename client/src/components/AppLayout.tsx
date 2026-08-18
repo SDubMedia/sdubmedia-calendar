@@ -102,7 +102,7 @@ const navStructure: NavEntry[] = [
     // Templates & Inquiry Pipeline — owner-only per PRD RBAC
     { label: "Packages", href: "/packages", icon: PackageIcon, roles: ["owner"], feature: "proposals" },
     { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
-    { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner"], feature: "deliveries" },
+    { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "staff"], feature: "deliveries" },
   ]},
 
   // Production — owner, partner, client (Series), staff (Series)
