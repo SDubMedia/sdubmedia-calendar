@@ -241,6 +241,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }).eq("id", authData.user.id);
     if (profileError) throw new Error(profileError.message);
 
+    // Close the loop back to the client record.
+    //
+    // A client and their login are two rows, and only one of them gets an
+    // email when you make a login by hand here. The gallery send dialog, the
+    // invoice mailer and the notify endpoints all read the CLIENT record — so
+    // a client with a perfectly good login had "no email on file" everywhere
+    // that matters, and Send sat greyed out with nothing to click.
+    //
+    // Only fills a blank. An address deliberately different from the login
+    // (a billing contact, say) is left exactly as it is.
+    if (role === "client" && clientIds.length > 0) {
+      const { data: linked } = await supabase
+        .from("clients").select("id, email, contact_name").in("id", clientIds);
+      for (const c of (linked || []) as { id: string; email: string | null; contact_name: string | null }[]) {
+        const patch: Record<string, string> = {};
+        if (!(c.email || "").trim()) patch.email = email;
+        if (!(c.contact_name || "").trim() && name) patch.contact_name = name;
+        if (Object.keys(patch).length === 0) continue;
+        // Best effort: the login exists and works either way, and failing the
+        // whole invite over a convenience backfill would be worse.
+        await supabase.from("clients").update(patch).eq("id", c.id);
+      }
+    }
+
     await refreshProfiles();
     return authData.user.id;
   }, [refreshProfiles, profile?.orgId]);
