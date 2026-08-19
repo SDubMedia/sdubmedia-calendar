@@ -148,6 +148,7 @@ interface AppContextValue {
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
+  removeDeliverySelection: (selectionId: string) => Promise<void>;
   // Delivery collections
   addDeliveryCollection: (c: { name: string; slug: string | null; coverSubtitle: string | null }) => Promise<DeliveryCollection>;
   updateDeliveryCollection: (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => Promise<void>;
@@ -2550,6 +2551,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, serviceVariants: d.serviceVariants.filter(x => x.id !== id) }));
   }, []);
 
+  /** Drop one of the client's submitted picks (owner-only under RLS). The
+   *  photo itself stays in the gallery — the client's gallery unlocks by
+   *  itself once her submitted count falls under the selection limit, so she
+   *  can choose a replacement without any status change. */
+  const removeDeliverySelection = useCallback(async (selectionId: string) => {
+    const { error } = await supabase.from("delivery_selections").delete().eq("id", selectionId);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliverySelections: s.deliverySelections.filter(sel => sel.id !== selectionId),
+    }));
+  }, []);
+
   const markSelectionEdited = useCallback(async (selectionId: string, edited: boolean) => {
     const editedAt = edited ? new Date().toISOString() : null;
     const { error } = await supabase.from("delivery_selections").update({ edited_at: editedAt }).eq("id", selectionId);
@@ -3566,7 +3580,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,
-      registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited,
+      registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       addServiceCategory, updateServiceCategory, deleteServiceCategory,
       addService, updateService, deleteService,

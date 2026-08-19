@@ -459,7 +459,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, addInvoice, refresh } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection, addInvoice, refresh } = useApp();
   const { effectiveProfile, allProfiles } = useAuth();
   /** An editor opens this to see which frames were picked and download them —
    *  not to rename the gallery, change the password, reorder it or delete a
@@ -1562,6 +1562,27 @@ function DeliveryDetail({ id }: { id: string }) {
                 files={files}
                 signedUrls={signedUrls}
                 onToggleEdited={(selId, edited) => markSelectionEdited(selId, edited)}
+                onRemove={readOnly ? undefined : async (selId) => {
+                  const file = files.find(f => f.id === selections.find(s => s.id === selId)?.fileId);
+                  if (!(await confirm({
+                    title: "Remove this pick?",
+                    description: `${file?.originalName || "This photo"} comes off her list. Her gallery unlocks by itself so she can choose a replacement — the photo stays in the proofs.`,
+                    destructive: true,
+                    confirmLabel: "Remove pick",
+                  }))) return;
+                  try {
+                    await removeDeliverySelection(selId);
+                    const remaining = selections.length - 1;
+                    const room = Math.max(0, delivery.selectionLimit - remaining);
+                    toast.success("Pick removed", {
+                      description: room > 0
+                        ? `${remaining} left — she can now choose ${room} more from the same link.`
+                        : `${remaining} left.`,
+                    });
+                  } catch (err) {
+                    toast.error("Couldn't remove the pick", { description: err instanceof Error ? err.message : "Try again" });
+                  }
+                }}
               />
             </>
           ) : (
@@ -2672,11 +2693,14 @@ function PicksList({
   files,
   signedUrls,
   onToggleEdited,
+  onRemove,
 }: {
   selections: DeliverySelection[];
   files: DeliveryFile[];
   signedUrls: Map<string, string>;
   onToggleEdited: (selectionId: string, edited: boolean) => void;
+  /** Owner only — absent in the staff (read-only) view. */
+  onRemove?: (selectionId: string) => void;
 }) {
   const byId = useMemo(() => new Map(files.map(f => [f.id, f])), [files]);
   const rows = useMemo(
@@ -2744,6 +2768,15 @@ function PicksList({
               >
                 {sel.editedAt ? "Edited" : "Mark edited"}
               </button>
+              {onRemove && (
+                <button
+                  onClick={() => onRemove(sel.id)}
+                  className="p-1 text-slate-500 hover:text-red-400 shrink-0"
+                  title="Remove this pick — she'll be able to choose a replacement"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           );
         })}
