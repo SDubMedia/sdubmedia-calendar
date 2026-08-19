@@ -23,7 +23,7 @@ import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, DeliveryFile, DeliveryFileStage, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -539,6 +539,8 @@ function DeliveryDetail({ id }: { id: string }) {
   const [thumbnailPickerFileId, setThumbnailPickerFileId] = useState<string | null>(null);
   // Non-null while the delivery email is being composed.
   const [composer, setComposer] = useState<{ contents: GalleryContents; subject: string; body: string; proofs?: boolean } | null>(null);
+  // True while the picks download is being signed/zipped.
+  const [downloadingPicks, setDownloadingPicks] = useState(false);
   // Inline rename of a delivered file. The name is what the client sees in the
   // gallery and what they get on disk, so this is the label, not the R2 key.
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
@@ -1117,6 +1119,60 @@ function DeliveryDetail({ id }: { id: string }) {
    *  what he loaded as well as what came back. */
   const pickedFileIds = new Set(selections.map(s2 => s2.fileId));
   const visibleProofs = readOnly ? proofs.filter(f => pickedFileIds.has(f.id)) : proofs;
+
+  /** Hand the editor (or owner) the client's picks at full quality — the raw
+   *  original when the gallery kept one. Photos zip in the browser like the
+   *  public gallery's download-all; past the memory budget (or for videos)
+   *  each file streams straight to disk instead. Fresh URLs are signed per
+   *  click so nothing here expires mid-batch. */
+  async function downloadPicks() {
+    const pickFiles = files.filter(f => pickedFileIds.has(f.id));
+    if (pickFiles.length === 0) return;
+    setDownloadingPicks(true);
+    try {
+      const sess = await supabase.auth.getSession();
+      const accessToken = sess.data.session?.access_token || "";
+      const res = await fetch("/api/deliveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ action: "signed-urls", deliveryId: id, fileIds: pickFiles.map(f => f.id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't prepare the download");
+      const dlById = new Map<string, string>(
+        ((data.urls || []) as { id: string; url: string; downloadUrl?: string }[]).map(u => [u.id, u.downloadUrl || u.url]),
+      );
+      const items = pickFiles
+        .map(f => ({ f, dl: dlById.get(f.id) || "" }))
+        .filter(x => x.dl);
+      const videos = items.filter(x => x.f.mediaType === "video");
+      const photos = items.filter(x => x.f.mediaType !== "video");
+      // Same budget as the public gallery: zipping happens in memory, and a
+      // batch of raw originals can easily pass it — stream those one by one.
+      const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
+      const photoBytes = photos.reduce((s, x) => s + (x.f.originalSizeBytes || x.f.sizeBytes || 0), 0);
+      for (const v of videos) {
+        streamToDisk(v.dl);
+        await new Promise(r => setTimeout(r, 800));
+      }
+      if (photos.length > 0 && photoBytes > ZIP_BUDGET_BYTES) {
+        toast.message(`Saving ${photos.length} files one by one`, { description: "This set is too big to zip in the browser." });
+        for (const p of photos) {
+          streamToDisk(p.dl);
+          await new Promise(r => setTimeout(r, 600));
+        }
+      } else if (photos.length > 0) {
+        await zipToDisk(
+          photos.map(x => ({ name: x.f.originalName, url: x.dl })),
+          `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}-picks.zip`,
+        );
+      }
+    } catch (err) {
+      toast.error("Download failed", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setDownloadingPicks(false);
+    }
+  }
   const hasBothStages = proofs.length > 0 && finals.length > 0;
   const gridFiles = !proofingEnabled ? files
     : fileView === "proofs" ? visibleProofs
@@ -1753,6 +1809,17 @@ function DeliveryDetail({ id }: { id: string }) {
           >
             Finals ({finals.length})
           </button>
+          {fileView === "proofs" && selections.length > 0 && (
+            <button
+              onClick={downloadPicks}
+              disabled={downloadingPicks}
+              className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="Full-quality files — a raw shoot hands back the raw"
+            >
+              <Download className="w-3 h-3" />
+              {downloadingPicks ? "Preparing…" : `Download her ${selections.length} pick${selections.length === 1 ? "" : "s"}`}
+            </button>
+          )}
           {readOnly && fileView === "proofs" && (
             <span className="text-[11px] text-slate-500">Download these, edit, then add them back as finals.</span>
           )}
@@ -3882,6 +3949,51 @@ async function uploadThumbnailBlob(deliveryId: string, originalName: string, blo
 
 // Helper called by the thumbnail-picker save: uploads new thumb, patches
 // the delivery_files row, returns a fresh signed GET URL for immediate display.
+/** Kick off a browser download of a presigned attachment URL. Same trick as
+ *  the public gallery: an <a> click streams to disk without loading the file
+ *  into memory. */
+function streamToDisk(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** Fetch a set of files and hand back one zip. Mirrors the public gallery's
+ *  zipPhotos (JSZip lazy-loaded from CDN, batches of 4 so R2 isn't hammered);
+ *  duplicated here because that one is welded to the gallery's FileItem shape. */
+async function zipToDisk(items: { name: string; url: string }[], filename: string) {
+  if (!window.JSZip) {
+    await new Promise<void>((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+      el.onload = () => resolve();
+      el.onerror = () => reject(new Error("Failed to load ZIP library"));
+      document.head.appendChild(el);
+    });
+  }
+  const JSZipCtor = (window.JSZip as unknown as { new(): { file: (n: string, b: Blob) => void; generateAsync: (o: { type: "blob" }) => Promise<Blob> } });
+  const zip = new JSZipCtor();
+  const batchSize = 4;
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (it) => {
+      const r = await fetch(it.url);
+      if (!r.ok) throw new Error(`Failed to fetch ${it.name}`);
+      zip.file(it.name, await r.blob());
+    }));
+  }
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function uploadAndAttachThumbnail(
   deliveryId: string,
   fileId: string,

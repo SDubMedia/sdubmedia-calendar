@@ -35,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "set-password": return await setPassword(body, orgId, res);
       case "delete-file": return await deleteFile(body, orgId, res);
       case "delete-delivery": return await deleteDelivery(body, orgId, res);
-      case "signed-urls": return await signedUrls(body, orgId, res);
+      case "signed-urls": return await signedUrls(body, orgId, user.userId, res);
       case "cover-url": return await coverUrl(body, orgId, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
@@ -109,7 +109,7 @@ async function deleteFile(body: Record<string, unknown>, orgId: string, res: Ver
   return res.status(200).json({ ok: true });
 }
 
-async function signedUrls(body: Record<string, unknown>, orgId: string, res: VercelResponse) {
+async function signedUrls(body: Record<string, unknown>, orgId: string, callerUserId: string, res: VercelResponse) {
   const deliveryId = typeof body.deliveryId === "string" ? body.deliveryId : "";
   if (!deliveryId) return res.status(400).json({ error: "Missing deliveryId" });
   // Optional filter — pass `fileIds` to only sign a subset (e.g. just the
@@ -127,14 +127,30 @@ async function signedUrls(body: Record<string, unknown>, orgId: string, res: Ver
 
   let query = supabase
     .from("delivery_files")
-    .select("id, storage_path, media_type, thumbnail_storage_path")
+    .select("id, storage_path, media_type, thumbnail_storage_path, original_storage_path, original_name")
     .eq("delivery_id", deliveryId);
   if (fileIds && fileIds.length > 0) query = query.in("id", fileIds);
   const { data: files } = await query;
 
-  const urls = (files || []).map((f: { id: string; storage_path: string; media_type?: string | null; thumbnail_storage_path?: string | null }) => ({
+  // downloadUrl hands over the untouched original (the .NEF on a raw shoot) —
+  // that's the editor's deliverable, but it must never reach a client login.
+  // The public gallery has its own rule (proofs are never downloadable); this
+  // endpoint is Bearer-authed, so the gate is the caller's role.
+  const { data: callerProfile } = await supabase
+    .from("user_profiles").select("role").eq("id", callerUserId).single();
+  const internalCaller = callerProfile?.role === "owner" || callerProfile?.role === "partner" || callerProfile?.role === "staff";
+
+  const urls = (files || []).map((f: { id: string; storage_path: string; media_type?: string | null; thumbnail_storage_path?: string | null; original_storage_path?: string | null; original_name?: string | null }) => ({
     id: f.id,
     url: r2Configured() ? r2PresignedUrl({ method: "GET", key: f.storage_path, expiresIn: 3600 }) : "",
+    downloadUrl: internalCaller && r2Configured()
+      ? r2PresignedUrl({
+          method: "GET",
+          key: f.original_storage_path || f.storage_path,
+          expiresIn: 3600,
+          responseHeaders: { "Content-Disposition": `attachment; filename="${(f.original_name || "download").replace(/["\\\r\n]/g, "")}"` },
+        })
+      : "",
     // For videos, sign the thumbnail too so the admin grid can render a
     // preview tile without trying (and failing) to display a video as <img>.
     thumbnailUrl: f.media_type === "video" && f.thumbnail_storage_path && r2Configured()
