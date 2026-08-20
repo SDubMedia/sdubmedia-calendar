@@ -1092,9 +1092,12 @@ function DeliveryDetail({ id }: { id: string }) {
 
   // Which half you're looking at. Follows the phase unless you say otherwise:
   // while proofs are being loaded or picked you want the proofs, afterwards
-  // you want what's going out.
+  // you want what's going out — but only once something HAS come back. With
+  // zero finals the finals view is an empty grid, and (before the toggle fix
+  // below) adding proofs after submission left the owner staring at "No
+  // finished files here yet" with no way to reach 256 proofs.
   const fileView: "proofs" | "finals" =
-    fileViewOverride ?? (phase === "editing" || phase === "done" ? "finals" : "proofs");
+    fileViewOverride ?? ((phase === "editing" || phase === "done") && finals.length > 0 ? "finals" : "proofs");
 
   /** The green button means "invite her to choose" until she has, and
    *  "deliver the finished work" after. Two different actions that were one
@@ -1794,8 +1797,10 @@ function DeliveryDetail({ id }: { id: string }) {
       </div>
       )}
 
-      {/* File grid */}
-      {proofingEnabled && (hasBothStages || readOnly) && (
+      {/* File grid. The Proofs/Finals toggle also shows through the whole
+          editing phase even before any final exists — that's when the owner
+          adds late proofs and downloads picks, both dead ends without it. */}
+      {proofingEnabled && (hasBothStages || readOnly || phase === "editing" || phase === "done") && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             onClick={() => setFileViewOverride("proofs")}
