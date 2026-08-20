@@ -2619,9 +2619,16 @@ function BasicsPanel({ title, projectId, projects, clients, onUpdate }: {
 }
 
 function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | null; onUpdate: (v: string | null) => Promise<void> }) {
-  const { data, addDeliveryCollection } = useApp();
+  const { data, addDeliveryCollection, updateDeliveryCollection } = useApp();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  // The slug IS the public URL (/c/:slug is the only route to a collection),
+  // yet collections were created slug-less with no way to set one — grouping
+  // worked, the landing page was unreachable. Same editor pattern as the
+  // gallery's vanity URL above.
+  const selected = data.deliveryCollections.find(c => c.id === collectionId) || null;
+  const [collSlug, setCollSlug] = useState(selected?.slug || "");
+  useEffect(() => { setCollSlug(selected?.slug || ""); }, [selected?.slug]);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
@@ -2656,11 +2663,12 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
             onClick={async () => {
               if (!newName.trim()) return;
               try {
-                const c = await addDeliveryCollection({ name: newName.trim(), slug: null, coverSubtitle: null });
+                // Slug from the name so the landing page has a URL from birth.
+                const c = await addDeliveryCollection({ name: newName.trim(), slug: slugify(newName) || null, coverSubtitle: null });
                 await onUpdate(c.id);
                 setCreating(false);
                 setNewName("");
-                toast.success(`Collection "${c.name}" created`);
+                toast.success(`Collection "${c.name}" created${c.slug ? ` — /c/${c.slug}` : ""}`);
               } catch (err) {
                 toast.error("Couldn't create", { description: err instanceof Error ? err.message : "" });
               }
@@ -2668,6 +2676,46 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
             className="px-3 py-2 bg-[#0088ff] text-white rounded-lg text-sm font-semibold whitespace-nowrap"
           >Create</button>
           <button onClick={() => { setCreating(false); setNewName(""); }} className="text-xs text-slate-400 hover:text-white">Cancel</button>
+        </div>
+      )}
+      {selected && (
+        <div className="mt-3">
+          <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Collection URL</label>
+          <div className="flex items-stretch gap-0">
+            <span className="bg-white/[0.03] border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/c/</span>
+            <input
+              type="text"
+              value={collSlug}
+              onChange={(e) => setCollSlug(slugify(e.target.value))}
+              onBlur={async () => {
+                if (collSlug !== (selected.slug || "")) {
+                  try {
+                    await updateDeliveryCollection(selected.id, { slug: collSlug || null });
+                    if (collSlug) toast.success(`URL set: /c/${collSlug}`);
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : "";
+                    if (msg.includes("duplicate") || msg.includes("unique")) {
+                      toast.error("That URL is already taken — try a different slug");
+                    } else {
+                      toast.error("Couldn't save URL", { description: msg });
+                    }
+                    setCollSlug(selected.slug || "");
+                  }
+                }
+              }}
+              placeholder="portfolio"
+              className="flex-1 bg-white/[0.03] border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+            />
+            {selected.slug && (
+              <button
+                onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/c/${selected.slug}`); toast.success("Link copied"); }}
+                className="ml-2 text-xs px-3 border border-white/10 rounded-lg hover:bg-white/[0.04] inline-flex items-center gap-1.5 shrink-0"
+              >
+                <Copy className="w-3 h-3" /> Copy
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1">The public landing page listing every gallery in this collection. Only galleries marked sent (or beyond) appear.</p>
         </div>
       )}
     </div>
