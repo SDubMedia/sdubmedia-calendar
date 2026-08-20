@@ -554,8 +554,13 @@ export default function DeliverGalleryPage() {
       // old picks come back as toggleable hearts (status 'sent' with rows is
       // exactly that reopened state — a first-time picker has no rows, so
       // this is a no-op for her).
+      //
+      // INITIAL LOAD ONLY. The quiet 45-minute URL refresh re-runs this
+      // function, and re-seeding there silently reverted every heart she'd
+      // changed since — on a phone that fires every time it wakes, so she
+      // came back to "picks" she never made. Her live edits outrank the seeds.
       const submitted = (data.selections || []).map((s: SelectionRecord) => s.fileId);
-      if (submitted.length > 0) {
+      if (submitted.length > 0 && !opts?.quiet) {
         setPicked(new Set(submitted));
       }
     } catch (err) {
