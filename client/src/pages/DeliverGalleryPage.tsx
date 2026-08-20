@@ -370,30 +370,44 @@ export default function DeliverGalleryPage() {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [slideshowPlaying, setSlideshowPlaying] = useState(false);
 
+  /** "Just my picks" — collapse a 254-proof grid to the shortlist she's
+   *  deciding between. The grid AND the lightbox must render from this same
+   *  array: the lightbox, its arrows and the slideshow all address photos by
+   *  grid position, so filtering one without the other would open the wrong
+   *  photo. */
+  const [showPickedOnly, setShowPickedOnly] = useState(false);
+  // Falls back to everything when nothing is picked — unhearting the last
+  // photo while filtered would otherwise strand her on an empty grid with the
+  // toggle gone (it lives in the picked-count bar).
+  const visibleFiles = useMemo(
+    () => (showPickedOnly && picked.size > 0 ? files.filter(f => picked.has(f.id)) : files),
+    [showPickedOnly, files, picked],
+  );
+
   // Auto-advance lightbox when slideshow is on. ~4s per photo, loops at end.
   useEffect(() => {
     if (lightboxIdx === null || !slideshowPlaying) return;
     const t = setTimeout(() => {
       setLightboxIdx((i) => {
         if (i === null) return null;
-        return i + 1 >= files.length ? 0 : i + 1;
+        return i + 1 >= visibleFiles.length ? 0 : i + 1;
       });
     }, 4000);
     return () => clearTimeout(t);
-  }, [lightboxIdx, slideshowPlaying, files.length]);
+  }, [lightboxIdx, slideshowPlaying, visibleFiles.length]);
 
   // Keyboard nav inside lightbox: arrows + escape + space-to-toggle-slideshow
   useEffect(() => {
     if (lightboxIdx === null) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") { setLightboxIdx(null); setSlideshowPlaying(false); }
-      else if (e.key === "ArrowRight") setLightboxIdx((i) => (i === null ? null : Math.min(files.length - 1, i + 1)));
+      else if (e.key === "ArrowRight") setLightboxIdx((i) => (i === null ? null : Math.min(visibleFiles.length - 1, i + 1)));
       else if (e.key === "ArrowLeft") setLightboxIdx((i) => (i === null ? null : Math.max(0, i - 1)));
       else if (e.key === " ") { e.preventDefault(); setSlideshowPlaying(p => !p); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lightboxIdx, files.length]);
+  }, [lightboxIdx, visibleFiles.length]);
 
   // Password gate
   const [passwordRequired, setPasswordRequired] = useState(false);
@@ -907,7 +921,7 @@ export default function DeliverGalleryPage() {
     }
   }
 
-  const lightboxFile = lightboxIdx !== null ? files[lightboxIdx] : null;
+  const lightboxFile = lightboxIdx !== null ? visibleFiles[lightboxIdx] : null;
 
   // Cover image: explicit pick first, otherwise first uploaded photo.
   // A cover uploaded for this gallery wins over one picked from the photos.
@@ -1151,7 +1165,7 @@ export default function DeliverGalleryPage() {
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
-              onClick={() => { if (files.length > 0) { setLightboxIdx(0); setSlideshowPlaying(true); } }}
+              onClick={() => { if (visibleFiles.length > 0) { setLightboxIdx(0); setSlideshowPlaying(true); } }}
               disabled={files.length === 0}
               title="Slideshow"
               className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black disabled:opacity-50"
@@ -1315,7 +1329,7 @@ export default function DeliverGalleryPage() {
             }}
           />
         )}
-        {files.map((f, i) => {
+        {visibleFiles.map((f, i) => {
           const isPicked = picked.has(f.id);
           const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
           const isVideo = f.mediaType === "video";
@@ -1518,6 +1532,12 @@ export default function DeliverGalleryPage() {
                         · {overage} extra {hasPerPhoto && `(${money(overagePerPhotoTotal)})`}
                       </span>
                     )}
+                    <button
+                      onClick={() => { setShowPickedOnly(v => !v); setLightboxIdx(null); }}
+                      className="ml-3 text-xs underline underline-offset-2 text-slate-500 hover:text-slate-800"
+                    >
+                      {showPickedOnly ? `Show all ${files.length}` : "Just my picks"}
+                    </button>
                   </>
                 )}
               </div>
@@ -1591,9 +1611,9 @@ export default function DeliverGalleryPage() {
           <Lightbox
             file={lightboxFile}
             index={lightboxIdx}
-            total={files.length}
-            prevUrl={files[lightboxIdx - 1]?.url}
-            nextUrl={files[lightboxIdx + 1]?.url}
+            total={visibleFiles.length}
+            prevUrl={visibleFiles[lightboxIdx - 1]?.url}
+            nextUrl={visibleFiles[lightboxIdx + 1]?.url}
             slideshowPlaying={slideshowPlaying}
             canPick={proofingEnabled && !isLocked && lightboxFile.mediaType !== "video"}
             isPicked={picked.has(lightboxFile.id)}
@@ -1602,7 +1622,7 @@ export default function DeliverGalleryPage() {
             onDownload={() => downloadOne(lightboxFile)}
             canDownload={!lightboxFile.isProof && !delivery.viewOnly}
             onPrev={() => setLightboxIdx(i => (i === null ? null : Math.max(0, i - 1)))}
-            onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(files.length - 1, i + 1)))}
+            onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(visibleFiles.length - 1, i + 1)))}
             onClose={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
           />
         )}
