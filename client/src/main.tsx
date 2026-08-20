@@ -26,6 +26,15 @@ Sentry.init({
       (f.function || "").includes("ServiceWorkerContainer"),
     );
     if (fromSWRegister) return null;
+    // Drop supabase-js's cross-tab auth lock steal (SLATE-F). With Slate open
+    // in two contexts (tab + PWA, or a tab waking from sleep), auth-js uses
+    // the Web Locks API so only one refreshes the token; the loser's wait is
+    // aborted by design ("Lock broken by another request with the 'steal'
+    // option") and surfaces as an unhandled rejection. No user impact.
+    const exc = event.exception?.values?.[0];
+    if (exc?.type === "AbortError" && (exc.value || "").includes("Lock broken by another request")) {
+      return null;
+    }
     return event;
   },
 });
