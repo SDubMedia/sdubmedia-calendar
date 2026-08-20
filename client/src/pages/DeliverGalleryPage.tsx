@@ -535,9 +535,13 @@ export default function DeliverGalleryPage() {
       loadedAtRef.current = Date.now();
       setServerSelections(data.selections || []);
       setOrg(data.org);
-      // Pre-populate local picks from server (client returning to view their picks)
+      // Pre-populate local picks from server. Either the client is returning
+      // to view what she submitted, or the owner reopened the round and her
+      // old picks come back as toggleable hearts (status 'sent' with rows is
+      // exactly that reopened state — a first-time picker has no rows, so
+      // this is a no-op for her).
       const submitted = (data.selections || []).map((s: SelectionRecord) => s.fileId);
-      if (submitted.length > 0 && data.delivery.status !== "sent") {
+      if (submitted.length > 0) {
         setPicked(new Set(submitted));
       }
     } catch (err) {
@@ -576,8 +580,13 @@ export default function DeliverGalleryPage() {
   }, [token, delivery]); // eslint-disable-line react-hooks/exhaustive-deps -- re-arm once loaded, not on every data change
 
   /** What she's already sent. Those are with the editor — she can add to them
-   *  but can't take them back. */
-  const submittedIds = useMemo(() => new Set(serverSelections.map(s2 => s2.fileId)), [serverSelections]);
+   *  but can't take them back. On an OPEN round (no submittedAt — the owner
+   *  reopened it), existing rows are just seed hearts: nothing is with the
+   *  editor, everything toggles, and her next Send replaces the set. */
+  const submittedIds = useMemo(
+    () => delivery?.submittedAt ? new Set(serverSelections.map(s2 => s2.fileId)) : new Set<string>(),
+    [serverSelections, delivery?.submittedAt],
+  );
   const limit = delivery?.selectionLimit ?? 0;
   /** The floor for one send. 0 means she must use the whole allowance, which
    *  is every gallery that predates the setting. */

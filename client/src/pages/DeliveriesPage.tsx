@@ -459,7 +459,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection, addInvoice, refresh } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, reopenPicking, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection, addInvoice, refresh } = useApp();
   const { effectiveProfile, allProfiles } = useAuth();
   /** An editor opens this to see which frames were picked and download them —
    *  not to rename the gallery, change the password, reorder it or delete a
@@ -1617,6 +1617,30 @@ function DeliveryDetail({ id }: { id: string }) {
                   <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
                 </p>
                 <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
+                {!readOnly && delivery.status === "submitted" && (
+                  <button
+                    onClick={async () => {
+                      if (selections.some(s => s.isPaid)) {
+                        toast.error("This gallery has paid picks", { description: "Reopening would replace payment records. Remove picks one by one instead." });
+                        return;
+                      }
+                      if (!(await confirm({
+                        title: "Reopen picking?",
+                        description: `Her ${selections.length} picks stay hearted, but everything unlocks — she can swap any of them and must press Send again. Do this before the editor starts.`,
+                        confirmLabel: "Reopen picking",
+                      }))) return;
+                      try {
+                        await reopenPicking(id);
+                        toast.success("Picking reopened", { description: "Her hearts are kept. Send her the same gallery link." });
+                      } catch (err) {
+                        toast.error("Couldn't reopen", { description: err instanceof Error ? err.message : "Try again" });
+                      }
+                    }}
+                    className="mt-2 text-xs px-3 py-1.5 border border-amber-500/40 text-amber-400 rounded-lg hover:bg-amber-500/10"
+                  >
+                    Reopen picking — let her reselect
+                  </button>
+                )}
               </div>
               <PicksList
                 selections={selections}
@@ -1646,6 +1670,11 @@ function DeliveryDetail({ id }: { id: string }) {
                 }}
               />
             </>
+          ) : selections.length > 0 ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <p className="text-sm text-amber-300 font-medium">Picking reopened — she's reselecting.</p>
+              <p className="text-xs text-slate-400 mt-1">Her previous {selections.length} pick{selections.length === 1 ? "" : "s"} are still hearted in her gallery. This list refills when she presses Send.</p>
+            </div>
           ) : (
             <p className="text-sm text-slate-500 py-8 text-center">No selections submitted yet.</p>
           )}

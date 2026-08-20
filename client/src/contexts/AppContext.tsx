@@ -142,6 +142,7 @@ interface AppContextValue {
   updateDelivery: (id: string, d: Partial<Delivery>) => Promise<void>;
   deleteDelivery: (id: string) => Promise<void>;
   setDeliveryStatus: (id: string, status: DeliveryStatus) => Promise<void>;
+  reopenPicking: (id: string) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
   updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName">>) => Promise<void>;
@@ -2289,6 +2290,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  /** Put a submitted proofing round back in the client's hands. Status
+   *  returns to 'sent' and submitted_at clears — that's what tells both the
+   *  gallery page and the submit endpoint the round is open again. The
+   *  selection rows deliberately STAY: the gallery seeds them as hearts, so
+   *  the client reselects starting from what she chose, not a blank grid.
+   *  On her next Send the server replaces them (fresh round), not tops up. */
+  const reopenPicking = useCallback(async (id: string) => {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("deliveries")
+      .update({ status: "sent", submitted_at: null, updated_at: now })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveries: s.deliveries.map(x => x.id === id ? { ...x, status: "sent" as DeliveryStatus, submittedAt: null, updatedAt: now } : x),
+    }));
+  }, []);
+
   const setDeliveryStatus = useCallback(async (id: string, status: DeliveryStatus) => {
     const now = new Date().toISOString();
     const patch: any = { status, updated_at: now };
@@ -3581,7 +3600,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProjectDocument, updateProjectDocument, deleteProjectDocument,
       addPackage, updatePackage, deletePackage,
       addProposalImage, updateProposalImage, deleteProposalImage,
-      addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus,
+      addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus, reopenPicking,
       registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       addServiceCategory, updateServiceCategory, deleteServiceCategory,

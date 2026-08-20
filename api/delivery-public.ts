@@ -450,9 +450,17 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
   // Already-submitted picks are counted, not overwritten. A top-up round
   // ("send five now, five later") otherwise looks like a fresh submission of
   // five and the first five vanish from the count.
+  //
+  // UNLESS the round is open (submitted_at null): then any existing rows are
+  // seed hearts — either leftovers the owner reopened for reselection, or
+  // nothing at all on a first submit — and what she sends now IS the whole
+  // set. Counting the seeds would make unhearting a photo impossible.
+  const freshRound = !delivery.submitted_at;
   const { data: already } = await supabase
     .from("delivery_selections").select("file_id").eq("delivery_id", delivery.id);
-  const alreadyIds = new Set((already || []).map((r: { file_id: string }) => r.file_id));
+  const alreadyIds = freshRound
+    ? new Set<string>()
+    : new Set((already || []).map((r: { file_id: string }) => r.file_id));
   const combined = new Set([...alreadyIds, ...filteredIds]);
   const overage = Math.max(0, combined.size - delivery.selection_limit);
 
@@ -615,6 +623,19 @@ export async function saveSelectionsAndAlert(
 ) {
   const now = new Date().toISOString();
   const orgId = delivery.org_id;
+
+  // Open round (no submitted_at): this submission REPLACES whatever rows
+  // exist — they're seed hearts from a reopened round, and any she unhearted
+  // must go. Paid rows are never deleted (they're a payment record; the UI
+  // blocks reopening a gallery that has them, this is the backstop).
+  if (!delivery.submitted_at) {
+    await supabase
+      .from("delivery_selections")
+      .delete()
+      .eq("delivery_id", delivery.id)
+      .eq("is_paid", false)
+      .not("file_id", "in", `(${fileIds.map(id => `"${id}"`).join(",")})`);
+  }
 
   // Insert selection rows. Upsert so re-submission doesn't duplicate.
   const rows = fileIds.map((fileId, i) => ({
