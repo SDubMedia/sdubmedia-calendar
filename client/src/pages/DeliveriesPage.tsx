@@ -1590,8 +1590,10 @@ function DeliveryDetail({ id }: { id: string }) {
           </div>
           <PresentationPanel
             downloadOnly={delivery.downloadOnly ?? false}
+            viewOnly={delivery.viewOnly ?? false}
             hasCover={!!delivery.coverFileId}
             onUpdate={(v) => updateDelivery(id, { downloadOnly: v })}
+            onUpdateViewOnly={(v) => updateDelivery(id, { viewOnly: v })}
           />
           <PrivacyPanel
             requireEmail={delivery.requireEmail}
@@ -3345,10 +3347,25 @@ function DeliveryEmailComposer({
   );
 }
 
-function PresentationPanel({ downloadOnly, hasCover, onUpdate }: { downloadOnly: boolean; hasCover: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdateViewOnly }: { downloadOnly: boolean; viewOnly: boolean; hasCover: boolean; onUpdate: (v: boolean) => Promise<void>; onUpdateViewOnly: (v: boolean) => Promise<void> }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Presentation</h3>
+      <label className="flex items-start gap-3 cursor-pointer mb-4">
+        <input
+          type="checkbox"
+          checked={viewOnly}
+          onChange={(e) => onUpdateViewOnly(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">View only (portfolio)</span>
+          <span className="text-xs text-slate-500">
+            Visitors browse, nothing downloads — the download buttons disappear and the server withholds the file links.
+            For sending work samples to prospects. Pair it with the logo watermark below if you want your mark on every image.
+          </span>
+        </span>
+      </label>
       <label className="flex items-start gap-3 cursor-pointer">
         <input
           type="checkbox"

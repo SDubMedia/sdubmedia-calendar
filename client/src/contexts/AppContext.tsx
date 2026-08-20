@@ -906,6 +906,7 @@ function rowToDelivery(r: any): Delivery {
     selectionLimit: Number(r.selection_limit ?? 0),
     selectionMinimum: Number(r.selection_minimum ?? 0),
     downloadOnly: r.download_only === true,
+    viewOnly: r.view_only === true,
     keepOriginals: r.keep_originals === true,
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
     buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
@@ -2217,7 +2218,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cover_subtitle: d.coverSubtitle,
       cover_date: d.coverDate,
       token, expires_at: d.expiresAt,
-      selection_limit: d.selectionLimit, selection_minimum: d.selectionMinimum ?? 0, download_only: d.downloadOnly ?? false, keep_originals: d.keepOriginals ?? false, per_extra_photo_cents: d.perExtraPhotoCents,
+      selection_limit: d.selectionLimit, selection_minimum: d.selectionMinimum ?? 0, download_only: d.downloadOnly ?? false, view_only: d.viewOnly ?? false, keep_originals: d.keepOriginals ?? false, per_extra_photo_cents: d.perExtraPhotoCents,
       buy_all_flat_cents: d.buyAllFlatCents, status: d.status || "draft",
       updated_at: now,
     }).select().single();
@@ -2265,6 +2266,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.selectionLimit !== undefined) patch.selection_limit = d.selectionLimit;
     if (d.selectionMinimum !== undefined) patch.selection_minimum = d.selectionMinimum;
     if (d.downloadOnly !== undefined) patch.download_only = d.downloadOnly;
+    if (d.viewOnly !== undefined) patch.view_only = d.viewOnly;
     if (d.keepOriginals !== undefined) patch.keep_originals = d.keepOriginals;
     if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
     if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;

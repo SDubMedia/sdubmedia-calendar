@@ -257,11 +257,12 @@ async function getDelivery(token: string, password: string | undefined, email: s
       // A PROOF IS NEVER DOWNLOADABLE. It's the client's choosing sheet, not
       // something she's bought — and on a raw shoot the download key resolves
       // to original_storage_path, which IS the .NEF. Handing that over would
-      // give away the negatives to pick from.
+      // give away the negatives to pick from. A VIEW-ONLY gallery (portfolio
+      // mode) withholds downloads the same way, for every file.
       //
       // Withheld here, on the server, rather than by hiding a button: the URL
       // is in the JSON either way, and anyone can open the network tab.
-      downloadUrl: isProof || !r2Configured()
+      downloadUrl: isProof || (delivery as unknown as { view_only?: boolean }).view_only === true || !r2Configured()
         ? ""
         : r2PresignedUrl({
             method: "GET",
@@ -304,6 +305,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       selectionLimit: delivery.selection_limit,
       selectionMinimum: (delivery as unknown as { selection_minimum?: number }).selection_minimum ?? 0,
       downloadOnly: (delivery as unknown as { download_only?: boolean }).download_only === true,
+      viewOnly: (delivery as unknown as { view_only?: boolean }).view_only === true,
       perExtraPhotoCents: delivery.per_extra_photo_cents,
       buyAllFlatCents: delivery.buy_all_flat_cents,
       submittedAt: delivery.submitted_at,

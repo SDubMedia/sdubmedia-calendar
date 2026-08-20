@@ -1783,6 +1783,7 @@ export interface Delivery {
    *  selectionLimit they can send now and come back for the rest. */
   selectionMinimum: number;        // 0 disables proofing entirely
   downloadOnly?: boolean;        // real-estate: no cover/walkthrough/proofing, just Download All
+  viewOnly?: boolean;            // portfolio: browse only — every download route is withheld, server-enforced
   // When true, uploads keep the untouched original alongside the compressed
   // copy the gallery browses, and Download hands over the original — EXIF and
   // colour profile intact. Off by default: every photo is otherwise re-encoded

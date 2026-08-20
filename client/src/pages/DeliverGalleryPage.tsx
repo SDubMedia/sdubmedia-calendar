@@ -322,6 +322,7 @@ interface DeliveryInfo {
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
+  viewOnly?: boolean;
   perExtraPhotoCents: number;
   buyAllFlatCents: number;
   submittedAt: string | null;
@@ -597,8 +598,11 @@ export default function DeliverGalleryPage() {
   /** Proofs are for choosing from, not for keeping. When the gallery is
    *  showing them, every download route goes away — the single button, the
    *  lightbox, and Download all. The server withholds the URLs regardless;
-   *  this is so nobody is offered something that won't work. */
-  const showingProofs = files.some(f => f.isProof);
+   *  this is so nobody is offered something that won't work.
+   *
+   *  A view-only gallery (portfolio mode) kills the same routes for the same
+   *  reason, permanently — it's work samples to browse, not files to keep. */
+  const showingProofs = files.some(f => f.isProof) || delivery?.viewOnly === true;
   const overage = Math.max(0, picked.size - (delivery?.selectionLimit ?? 0));
   const perExtraCents = delivery?.perExtraPhotoCents ?? 0;
   const flatCents = delivery?.buyAllFlatCents ?? 0;
@@ -929,9 +933,10 @@ export default function DeliverGalleryPage() {
   }
 
   async function downloadOne(f: FileItem) {
-    // Belt and braces. The server sends no downloadUrl for a proof and the
-    // buttons are hidden, but this is the one function every route ends at.
-    if (f.isProof) return;
+    // Belt and braces. The server sends no downloadUrl for a proof (or for
+    // any file in a view-only gallery) and the buttons are hidden, but this
+    // is the one function every route ends at.
+    if (f.isProof || delivery?.viewOnly) return;
     trackDownload(1, f.id);
     // Videos stream straight to disk via their attachment link — pulling a
     // multi-hundred-MB video into a blob first would run mobile Safari out of
@@ -1384,7 +1389,7 @@ export default function DeliverGalleryPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                   </button>
                 )}
-                {!f.isProof && (
+                {!f.isProof && !delivery.viewOnly && (
                 <button
                   onClick={(e) => { e.stopPropagation(); downloadOne(f); }}
                   className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-black flex items-center justify-center shadow-md"
@@ -1586,7 +1591,7 @@ export default function DeliverGalleryPage() {
             onPick={() => togglePick(lightboxFile.id)}
             onToggleSlideshow={() => setSlideshowPlaying(p => !p)}
             onDownload={() => downloadOne(lightboxFile)}
-            canDownload={!lightboxFile.isProof}
+            canDownload={!lightboxFile.isProof && !delivery.viewOnly}
             onPrev={() => setLightboxIdx(i => (i === null ? null : Math.max(0, i - 1)))}
             onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(files.length - 1, i + 1)))}
             onClose={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
