@@ -25,7 +25,7 @@ import { brandedEmailWrapper } from "./_emailBranding.js";
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
 const resend = new Resend(process.env.RESEND_API_KEY);
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-11-20.acacia" });
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
 // Verified-domain sender. Always send through `slate.sdubmedia.com`
 // (the only domain Resend has DKIM/SPF for) and brand via the From
