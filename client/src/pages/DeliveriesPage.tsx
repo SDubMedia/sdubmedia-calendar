@@ -425,7 +425,16 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
           <button
-            onClick={() => onCreate({
+            onClick={() => {
+              // Validate before anything else (repo rule: never flip state
+              // before validation). A past expiry creates a gallery that is
+              // expired on arrival — the viewer refuses it and nothing looks
+              // wrong from the admin side (bit Geoff 2026-08-20).
+              if (expiresAt && expiresAt < new Date().toISOString().slice(0, 10)) {
+                toast.error("That expiry date is in the past. The gallery would be unviewable from the moment it's created.");
+                return;
+              }
+              onCreate({
               title: title.trim() || "Untitled gallery",
               projectId,
               selectionLimit: parseInt(selectionLimit, 10) || 0,
@@ -445,7 +454,8 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
               watermarkText: null,
               watermarkUseLogo: false,
               printsEnabled: false,
-            })}
+              });
+            }}
             disabled={!title.trim()}
             className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
           >Create</button>
@@ -3478,6 +3488,13 @@ function ExpiryPanel({ expiresAt, onUpdate }: { expiresAt: string | null; onUpda
         <DateField
           value={val}
           onChange={(v) => {
+            // Refuse past dates: an expired-on-save gallery silently locks
+            // clients out while looking fine here (bit Geoff 2026-08-20).
+            if (v && v < new Date().toISOString().slice(0, 10)) {
+              toast.error("That expiry date is in the past. Pick today or later, or clear it.");
+              setVal(expiresAt ? expiresAt.slice(0, 10) : "");
+              return;
+            }
             setVal(v);
             const next = v ? `${v}T23:59:59Z` : null;
             if (next !== expiresAt) onUpdate(next);
