@@ -55,9 +55,13 @@ export default function ViewProposalPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  // Owner preview (?preview=1): render exactly the client experience but
+  // skip view tracking, so "Viewed" still means the CLIENT opened it.
+  const isOwnerPreview = searchParams.get("preview") === "1";
+
   // Load proposal + track view
   useEffect(() => {
-    fetch(`/api/proposal-view?token=${token}`).catch(() => {});
+    if (!isOwnerPreview) fetch(`/api/proposal-view?token=${token}`).catch(() => {});
 
     fetch(`/api/proposal-accept?action=get&token=${token}`)
       .then(async r => ({ status: r.status, body: await r.json() }))
@@ -116,6 +120,7 @@ export default function ViewProposalPage() {
         setLoading(false);
       })
       .catch(() => { setError("Failed to load proposal"); setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Persist in-progress selections to localStorage so closing the tab

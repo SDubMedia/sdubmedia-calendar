@@ -719,6 +719,9 @@ export default function ProposalsPage() {
                           {p.status === "accepted" && (
                             <button onClick={() => openSignDialog(p.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
                           )}
+                          {/* Full-size client view in a new tab — the real public
+                              page, preview-flagged so it doesn't count as a view. */}
+                          <button onClick={() => window.open(`/proposal/${p.viewToken}?preview=1`, "_blank")} className="p-1.5 text-muted-foreground hover:text-foreground" title="Open client view (full size)"><ExternalLink className="w-4 h-4" /></button>
                           {/* Content editing locks the moment the client signs. */}
                           {!p.acceptedAt && p.status !== "void" && (
                             <button onClick={() => setLocation(`/proposals/${p.id}/edit`)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Edit proposal"><Edit3 className="w-4 h-4" /></button>
