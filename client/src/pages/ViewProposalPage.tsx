@@ -60,6 +60,13 @@ export default function ViewProposalPage() {
         } else {
           setProposal(body);
           setSignerEmail(body.clientEmail || "");
+          // Hydrate with what's already known (owner-prefilled booking
+          // details or a previous partial submit). Known fields render in
+          // the agreement and are not asked for again; they round-trip
+          // through the accept payload so they survive re-saves.
+          if (body.clientFieldValues && typeof body.clientFieldValues === "object") {
+            setClientFields(v => ({ ...body.clientFieldValues, ...v }));
+          }
           if (body.alreadyAccepted) setAccepted(true);
           if (body.paidAt) setPaymentVerified(true);
           // Restore in-progress selections from localStorage if the client
@@ -395,10 +402,21 @@ export default function ViewProposalPage() {
     { field: "event_date", label: "Event Date" },
     { field: "event_location", label: "Event Location" },
   ];
+  // Fields the owner pre-filled on the proposal are already answered: a
+  // corporate offsite's dates are known when the proposal is written, and
+  // asking the client to re-type them (into a single-date input that can't
+  // even hold "October 9-10") read as a wedding form. When everything is
+  // pre-known, the whole "Your details" panel (second-person offer included)
+  // disappears.
+  const preKnown = new Set(
+    Object.entries((proposal?.clientFieldValues || {}) as Record<string, string>)
+      .filter(([, v]) => String(v || "").trim())
+      .map(([k]) => k),
+  );
   const requiredClientFields = [
     ...fromContract.filter(f => !f.field.startsWith("partner_")),
     ...ALWAYS.filter(a => !fromContract.some(f => f.field === a.field)),
-  ];
+  ].filter(f => !preKnown.has(f.field));
 
   // The second person is optional to add, but once added their name is
   // needed — half a set of details is worse than none. Not always a fiancé:

@@ -141,6 +141,11 @@ async function getProposal(token: string, res: VercelResponse) {
     paymentMilestones: proposal.payment_milestones || [],
     status: proposal.status,
     clientEmail: proposal.client_email,
+    // Values the owner already knows (event date, venue) or the client
+    // previously submitted. The viewer treats non-empty entries as known:
+    // it prefills them into the agreement and stops asking for them.
+    clientFieldValues: (proposal.client_field_values && typeof proposal.client_field_values === "object" && !Array.isArray(proposal.client_field_values))
+      ? proposal.client_field_values : {},
     clientSignature: proposal.client_signature,
     ownerSignature: proposal.owner_signature,
     paidAt: proposal.paid_at,
