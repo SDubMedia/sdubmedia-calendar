@@ -419,7 +419,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
 
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id")
+    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id, client_field_values")
     .eq("view_token", token as string)
     .single();
 
@@ -463,7 +463,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
  * must never fail because the receipt could not be written.
  */
 async function ensurePaidInvoice(
-  proposal: { id: string; org_id: string; client_id: string; title: string; line_items: unknown; subtotal: number; tax_rate: number; tax_amount: number; total: number; invoice_id: string | null },
+  proposal: { id: string; org_id: string; client_id: string; title: string; line_items: unknown; subtotal: number; tax_rate: number; tax_amount: number; total: number; invoice_id: string | null; client_field_values?: Record<string, string> | null },
   org: { name?: string | null; business_info?: Record<string, unknown> | null },
   session: { amount_total?: number | null },
 ): Promise<string | null> {
@@ -504,10 +504,21 @@ async function ensurePaidInvoice(
 
     const { data: client } = await supabase
       .from("clients").select("company, contact_name, email, phone").eq("id", proposal.client_id).maybeSingle();
+    const cfv = (proposal.client_field_values && typeof proposal.client_field_values === "object")
+      ? proposal.client_field_values : {};
     const clientInfo = {
       company: client?.company || "", contactName: client?.contact_name || "",
       email: client?.email || "", phone: client?.phone || "",
+      // AP teams pay against purchase orders; a po_number collected on the
+      // proposal prints as the invoice's PO / Reference line.
+      ...(cfv.po_number ? { poNumber: String(cfv.po_number).slice(0, 100) } : {}),
     };
+
+    // Service dates: the linked pipeline lead's event date, when it's a real
+    // date. Falls back to today (same-day service semantics) otherwise.
+    const { data: lead } = await supabase
+      .from("pipeline_leads").select("event_date").eq("proposal_id", proposal.id).is("deleted_at", null).maybeSingle();
+    const serviceDate = (lead?.event_date && /^\d{4}-\d{2}-\d{2}$/.test(lead.event_date)) ? lead.event_date : today;
 
     // Same numbering scheme as the app: INV-YYYY-NNNN from the year's max.
     const year = new Date().getFullYear();
@@ -540,7 +551,7 @@ async function ensurePaidInvoice(
       org_id: proposal.org_id,
       invoice_number: invoiceNumber,
       client_id: proposal.client_id,
-      period_start: today, period_end: today,
+      period_start: serviceDate, period_end: serviceDate,
       subtotal,
       tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
       tax_amount: fullyPaid ? Number(proposal.tax_amount ?? 0) : 0,

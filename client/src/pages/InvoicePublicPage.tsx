@@ -31,6 +31,8 @@ interface PublicInvoice {
   issueDate: string;
   dueDate: string;
   paidDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
   lineItems: PublicLineItem[];
   clientInfo: { company?: string; contactName?: string };
   notes: string;
@@ -220,7 +222,7 @@ export default function InvoicePublicPage() {
               </p>
               <p className="text-xs text-emerald-700 mt-0.5">
                 {isPaid
-                  ? `Marked paid on ${invoice.paidDate ? formatDate(invoice.paidDate) : "file"}.`
+                  ? `Marked paid on ${invoice.paidDate ? formatDate(invoice.paidDate) : "file"}${invoice.paymentMethods.includes("stripe") ? " · card payment via Stripe" : ""}.`
                   : "Your payment is processing — we'll send a confirmation shortly."}
               </p>
             </div>
@@ -258,6 +260,24 @@ export default function InvoicePublicPage() {
               <p className="uppercase tracking-wider text-slate-500 mb-0.5">Due</p>
               <p className="text-slate-700">{formatDate(invoice.dueDate) || "Due on receipt"}</p>
             </div>
+            {/* Service dates: what AP files the invoice against. Shown when
+                the billing period is a real range distinct from the issue
+                date (event work), not for same-day service invoices. */}
+            {invoice.periodStart && invoice.periodStart !== invoice.issueDate && (
+              <div>
+                <p className="uppercase tracking-wider text-slate-500 mb-0.5">Service date{invoice.periodEnd && invoice.periodEnd !== invoice.periodStart ? "s" : ""}</p>
+                <p className="text-slate-700">
+                  {formatDate(invoice.periodStart)}
+                  {invoice.periodEnd && invoice.periodEnd !== invoice.periodStart ? ` – ${formatDate(invoice.periodEnd)}` : ""}
+                </p>
+              </div>
+            )}
+            {(invoice.clientInfo as Record<string, string>).poNumber && (
+              <div>
+                <p className="uppercase tracking-wider text-slate-500 mb-0.5">PO / Reference</p>
+                <p className="text-slate-700">{(invoice.clientInfo as Record<string, string>).poNumber}</p>
+              </div>
+            )}
           </div>
 
           {/* Line items */}

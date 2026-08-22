@@ -53,6 +53,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: invoice.status,
         issueDate: invoice.issue_date,
         dueDate: invoice.due_date,
+        periodStart: invoice.period_start || null,
+        periodEnd: invoice.period_end || null,
         paidDate: invoice.paid_date,
         lineItems: invoice.line_items || [],
         clientInfo: invoice.client_info || {},
