@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, Link2, ExternalLink, Copy } from "lucide-react";
+import { Plus, FileText, Send, CheckCircle, Eye, Trash2, Edit3, PenTool, Upload, X, Link2, ExternalLink, Copy, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -228,6 +228,11 @@ export default function ProposalsPage() {
   // Send confirmation card: pressing any Send button opens this instead of
   // firing immediately — shows who the email goes to, Cancel / Send.
   const [confirmSendProposal, setConfirmSendProposal] = useState<Proposal | null>(null);
+  // Signed-documents resend: the client asks for their agreement/invoices
+  // again → Mail icon on signed rows → confirm card → one email with every
+  // document link, built server-side.
+  const [confirmDocsProposal, setConfirmDocsProposal] = useState<Proposal | null>(null);
+  const [sendingDocs, setSendingDocs] = useState(false);
 
   // Signature dialog
   const [signDialogOpen, setSignDialogOpen] = useState(false);
@@ -503,6 +508,25 @@ export default function ProposalsPage() {
     }
   }
 
+  async function sendSignedDocuments(proposalId: string) {
+    setSendingDocs(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/send-proposal-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ kind: "documents", proposalId, cc: profile?.email || "" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Failed to send documents");
+      toast.success(`Documents sent to ${body.to || "the client"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send documents");
+    } finally {
+      setSendingDocs(false);
+    }
+  }
+
   // ---- Countersign ----
   function openSignDialog(proposalId: string) {
     setSigningProposalId(proposalId);
@@ -745,6 +769,9 @@ export default function ProposalsPage() {
                           )}
                           {p.status === "draft" && (
                             <button onClick={() => setConfirmSendProposal(p)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
+                          )}
+                          {!!p.acceptedAt && p.status !== "void" && (
+                            <button onClick={() => setConfirmDocsProposal(p)} className="p-1.5 text-emerald-400 hover:text-emerald-300" title="Email signed documents"><Mail className="w-4 h-4" /></button>
                           )}
                           {p.status === "sent" && (
                             <button onClick={() => setConfirmSendProposal(p)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
@@ -1143,6 +1170,57 @@ export default function ProposalsPage() {
                     className="gap-2"
                   >
                     <Send className="w-4 h-4" /> Send
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ SIGNED DOCUMENTS RESEND DIALOG ============ */}
+      <Dialog open={!!confirmDocsProposal} onOpenChange={(open) => { if (!open) setConfirmDocsProposal(null); }}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Email signed documents?</DialogTitle>
+          </DialogHeader>
+          {confirmDocsProposal && (() => {
+            const client = data.clients.find(c => c.id === confirmDocsProposal.clientId);
+            const toEmail = confirmDocsProposal.clientEmail || client?.email || "";
+            const balanceInv = data.invoices.find(inv =>
+              (inv.clientInfo as Record<string, string> | undefined)?.proposalId === confirmDocsProposal.id && !inv.deletedAt);
+            const depositInv = data.invoices.find(inv => inv.id === confirmDocsProposal.invoiceId && !inv.deletedAt);
+            return (
+              <div className="space-y-4 py-2">
+                <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-1.5">
+                  <p className="text-sm font-semibold text-foreground">{confirmDocsProposal.title}</p>
+                  <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Sending to</p>
+                    {client?.contactName && <p className="text-sm text-foreground">{client.contactName}</p>}
+                    {client?.company && <p className="text-xs text-muted-foreground">{client.company}</p>}
+                    {toEmail
+                      ? <p className="text-sm text-blue-400">{toEmail}</p>
+                      : <p className="text-sm text-red-400">No email on file — add one to the client first.</p>}
+                  </div>
+                  <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Includes</p>
+                    <p className="text-sm text-foreground">Signed agreement</p>
+                    {depositInv && <p className="text-sm text-foreground">Invoice {depositInv.invoiceNumber} — ${depositInv.total.toFixed(2)} (paid)</p>}
+                    {balanceInv && <p className="text-sm text-foreground">Invoice {balanceInv.invoiceNumber} — ${balanceInv.total.toFixed(2)}{balanceInv.status === "paid" ? " (paid)" : " (balance due)"}</p>}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setConfirmDocsProposal(null)}>Cancel</Button>
+                  <Button
+                    disabled={!toEmail || sendingDocs}
+                    onClick={() => {
+                      const id = confirmDocsProposal.id;
+                      setConfirmDocsProposal(null);
+                      void sendSignedDocuments(id);
+                    }}
+                    className="gap-2"
+                  >
+                    <Mail className="w-4 h-4" /> Send
                   </Button>
                 </div>
               </div>
