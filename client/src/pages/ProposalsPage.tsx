@@ -225,6 +225,9 @@ export default function ProposalsPage() {
 
   // View proposal
   const [viewProposal, setViewProposal] = useState<Proposal | null>(null);
+  // Send confirmation card: pressing any Send button opens this instead of
+  // firing immediately — shows who the email goes to, Cancel / Send.
+  const [confirmSendProposal, setConfirmSendProposal] = useState<Proposal | null>(null);
 
   // Signature dialog
   const [signDialogOpen, setSignDialogOpen] = useState(false);
@@ -421,6 +424,8 @@ export default function ProposalsPage() {
   async function sendProposal(proposalId: string) {
     const proposal = data.proposals.find(p => p.id === proposalId);
     if (!proposal) return;
+    const toEmail = proposal.clientEmail || data.clients.find(c => c.id === proposal.clientId)?.email || "";
+    if (!toEmail) { toast.error("No client email on file"); return; }
 
     try {
       const token = await getAuthToken();
@@ -430,7 +435,7 @@ export default function ProposalsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          to: proposal.clientEmail,
+          to: toEmail,
           cc: profile?.email || "",
           subject: `Proposal: ${proposal.title} — ${orgName}`,
           proposalUrl,
@@ -492,7 +497,7 @@ export default function ProposalsPage() {
         console.warn("[proposals] pipeline lead auto-link failed:", err);
       }
 
-      toast.success("Proposal sent to " + proposal.clientEmail);
+      toast.success("Proposal sent to " + toEmail);
     } catch (e: any) {
       toast.error(e.message || "Failed to send");
     }
@@ -739,10 +744,10 @@ export default function ProposalsPage() {
                             <button onClick={() => copyLink(p)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Copy link"><Link2 className="w-4 h-4" /></button>
                           )}
                           {p.status === "draft" && (
-                            <button onClick={() => sendProposal(p.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
+                            <button onClick={() => setConfirmSendProposal(p)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Send"><Send className="w-4 h-4" /></button>
                           )}
                           {p.status === "sent" && (
-                            <button onClick={() => sendProposal(p.id)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
+                            <button onClick={() => setConfirmSendProposal(p)} className="p-1.5 text-blue-400 hover:text-blue-300" title="Resend"><Send className="w-4 h-4" /></button>
                           )}
                           {p.status === "accepted" && (
                             <button onClick={() => openSignDialog(p.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
@@ -1079,7 +1084,7 @@ export default function ProposalsPage() {
 
               <div className="flex gap-2">
                 {viewProposal.status === "draft" && (
-                  <Button onClick={() => { sendProposal(viewProposal.id); setViewProposal(null); }} className="gap-2">
+                  <Button onClick={() => { setViewProposal(null); setConfirmSendProposal(viewProposal); }} className="gap-2">
                     <Send className="w-4 h-4" /> Send to Client
                   </Button>
                 )}
@@ -1096,6 +1101,53 @@ export default function ProposalsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ SEND CONFIRMATION DIALOG ============ */}
+      <Dialog open={!!confirmSendProposal} onOpenChange={(open) => { if (!open) setConfirmSendProposal(null); }}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              {confirmSendProposal?.status === "sent" ? "Resend this proposal?" : "Send this proposal?"}
+            </DialogTitle>
+          </DialogHeader>
+          {confirmSendProposal && (() => {
+            const client = data.clients.find(c => c.id === confirmSendProposal.clientId);
+            const toEmail = confirmSendProposal.clientEmail || client?.email || "";
+            return (
+              <div className="space-y-4 py-2">
+                <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-1.5">
+                  <p className="text-sm font-semibold text-foreground">{confirmSendProposal.title}</p>
+                  {confirmSendProposal.total > 0 && (
+                    <p className="text-xs text-muted-foreground">${confirmSendProposal.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                  )}
+                  <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Sending to</p>
+                    {client?.contactName && <p className="text-sm text-foreground">{client.contactName}</p>}
+                    {client?.company && <p className="text-xs text-muted-foreground">{client.company}</p>}
+                    {toEmail
+                      ? <p className="text-sm text-blue-400">{toEmail}</p>
+                      : <p className="text-sm text-red-400">No email on file — add one to the client before sending.</p>}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setConfirmSendProposal(null)}>Cancel</Button>
+                  <Button
+                    disabled={!toEmail}
+                    onClick={() => {
+                      const id = confirmSendProposal.id;
+                      setConfirmSendProposal(null);
+                      void sendProposal(id);
+                    }}
+                    className="gap-2"
+                  >
+                    <Send className="w-4 h-4" /> Send
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
