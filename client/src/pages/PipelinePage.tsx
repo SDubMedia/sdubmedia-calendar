@@ -575,6 +575,7 @@ export default function PipelinePage() {
         clientId,
         projectId: null,
         title: tpl?.name || `Proposal for ${lead.name}`,
+      clientFieldValues: {},
         pages: tpl?.pages || [],
         packages: tpl?.packages || [],
         selectedPackageId: null,

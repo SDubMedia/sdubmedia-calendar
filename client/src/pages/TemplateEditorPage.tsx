@@ -76,13 +76,21 @@ function emptyPackage(): ProposalPackage {
   };
 }
 
-export default function TemplateEditorPage() {
+/**
+ * Dual-mode editor. Default: proposal TEMPLATES. With proposalMode, it edits
+ * an EXISTING proposal in place (same block canvas, saved via updateProposal)
+ * so an owner can revise a live draft/sent proposal without rebuilding it
+ * from a template. Accepted proposals are locked: the signed record must
+ * match what the client saw.
+ */
+export default function TemplateEditorPage({ proposalMode = false }: { proposalMode?: boolean }) {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
-  const { data, addProposalTemplate, updateProposalTemplate } = useApp();
+  const { data, addProposalTemplate, updateProposalTemplate, updateProposal } = useApp();
 
-  const isNew = params.id === "new";
-  const existing = isNew ? null : data.proposalTemplates.find(t => t.id === params.id);
+  const isNew = !proposalMode && params.id === "new";
+  const existing = isNew || proposalMode ? null : data.proposalTemplates.find(t => t.id === params.id);
+  const existingProposal = proposalMode ? data.proposals.find(pr => pr.id === params.id) : null;
 
   // Template state
   const [name, setName] = useState("");
@@ -101,6 +109,48 @@ export default function TemplateEditorPage() {
 
   // Legacy fields for backward compat
   const [legacyPayment, setLegacyPayment] = useState<ProposalPaymentConfig>({ option: "none", depositPercent: 50, depositAmount: 0 });
+
+  // ---- Proposal mode ----
+  // Direct line-item pricing (proposals without packages price this way) and
+  // the booking details / PO that drive the client form and the invoice.
+  const [pLineItems, setPLineItems] = useState<ProposalLineItem[]>([]);
+  const [bookingStart, setBookingStart] = useState("");
+  const [bookingEnd, setBookingEnd] = useState("");
+  const [bookingLocation, setBookingLocation] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [bookingDateText, setBookingDateText] = useState("");
+
+  useEffect(() => {
+    if (!proposalMode) return;
+    if (!existingProposal) {
+      // Proposals load async; only bail once data is present and the id is
+      // genuinely unknown.
+      if (data.proposals.length > 0) { toast.error("Proposal not found"); setLocation("/proposals"); }
+      return;
+    }
+    if (existingProposal.acceptedAt) {
+      toast.error("This proposal has been signed and can no longer be edited");
+      setLocation("/proposals");
+      return;
+    }
+    setName(existingProposal.title);
+    const pgs = existingProposal.pages.length > 0 ? existingProposal.pages : [emptyPage("custom", 0)];
+    setPages(pgs);
+    setActivePageId(pgs[0].id);
+    setPackages(existingProposal.packages || []);
+    setContractTemplateId(existingProposal.contractTemplateId ?? null);
+    setLegacyPayment(existingProposal.paymentConfig || { option: "none", depositPercent: 50, depositAmount: 0 });
+    setPLineItems(existingProposal.lineItems || []);
+    const cfv = existingProposal.clientFieldValues || {};
+    setBookingStart(cfv.event_start_date || "");
+    setBookingEnd(cfv.event_end_date || "");
+    setBookingLocation(cfv.event_location || "");
+    setPoNumber(cfv.po_number || "");
+    setBookingDateText(cfv.event_date || "");
+    // Narrow deps by design: realtime refreshes hand back new object
+    // references every few seconds and would wipe in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposalMode, existingProposal?.id, data.proposals.length]);
 
 
   // Load existing template
@@ -254,8 +304,40 @@ export default function TemplateEditorPage() {
 
   // ---- Save ----
   async function save() {
-    if (!name.trim()) { toast.error("Template name required"); return; }
+    if (!name.trim()) { toast.error(proposalMode ? "Proposal title required" : "Template name required"); return; }
     setSaving(true);
+    if (proposalMode) {
+      try {
+        const subtotal = pLineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+        // Booking values: blank input removes the key, so the client-facing
+        // form asks for it again. Unknown keys (a client's earlier answers)
+        // are preserved untouched.
+        const cfv: Record<string, string> = { ...(existingProposal?.clientFieldValues || {}) };
+        const setOrClear = (k: string, v: string) => { if (v.trim()) cfv[k] = v.trim(); else delete cfv[k]; };
+        setOrClear("event_start_date", bookingStart);
+        setOrClear("event_end_date", bookingEnd);
+        setOrClear("event_location", bookingLocation);
+        setOrClear("po_number", poNumber);
+        setOrClear("event_date", bookingDateText);
+        await updateProposal(params.id!, {
+          title: name.trim(),
+          pages,
+          packages,
+          contractTemplateId,
+          lineItems: pLineItems,
+          subtotal,
+          total: subtotal + (existingProposal?.taxAmount || 0),
+          paymentConfig: legacyPayment,
+          clientFieldValues: cfv,
+        });
+        toast.success("Proposal saved");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Save failed");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const payload = {
         name: name.trim(),
@@ -743,6 +825,107 @@ export default function TemplateEditorPage() {
               <button onClick={() => setShowProperties(false)} className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-6">
+              {proposalMode && (
+                <>
+                {/* Booking details: what the client form treats as known.
+                    Filled = shown, never asked. Blank = asked before signing.
+                    The PO prints on the generated invoice. */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Booking Details</Label>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Event date (as shown, e.g. "October 9–10, 2026")</p>
+                      <input value={bookingDateText} onChange={e => setBookingDateText(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Shown to the client" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Start</p>
+                        <input type="date" value={bookingStart} onChange={e => setBookingStart(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-0.5">End</p>
+                        <input type="date" value={bookingEnd} onChange={e => setBookingEnd(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Event location (leave blank to ask the client)</p>
+                      <input value={bookingLocation} onChange={e => setBookingLocation(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Venue name and address" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">PO / Reference (prints on the invoice)</p>
+                      <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Client purchase order #" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Filled fields show as confirmed details; blank ones are asked before signing.</p>
+                </div>
+
+                {/* Direct pricing for proposals that bill by line items. */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Pricing</Label>
+                  {pLineItems.map((li, i) => (
+                    <div key={li.id} className="rounded border border-border p-2 space-y-1.5">
+                      <input
+                        value={li.description}
+                        onChange={e => setPLineItems(items => items.map((x, xi) => xi === i ? { ...x, description: e.target.value } : x))}
+                        className="w-full px-2 py-1 text-xs rounded border border-border bg-background"
+                        placeholder="Line description"
+                      />
+                      <textarea
+                        value={li.details}
+                        onChange={e => setPLineItems(items => items.map((x, xi) => xi === i ? { ...x, details: e.target.value } : x))}
+                        rows={3}
+                        className="w-full px-2 py-1 text-xs rounded border border-border bg-background resize-y"
+                        placeholder="Details shown under the line"
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">$</span>
+                        <input
+                          type="text" inputMode="decimal"
+                          value={String(li.amount ?? 0)}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value.replace(/[^\d.]/g, "")) || 0;
+                            setPLineItems(items => items.map((x, xi) => xi === i ? { ...x, amount: v, unitPrice: v, quantity: 1 } : x));
+                          }}
+                          className="w-24 px-2 py-1 text-xs rounded border border-border bg-background"
+                        />
+                        <button onClick={() => setPLineItems(items => items.filter((_, xi) => xi !== i))} className="ml-auto p-1 text-muted-foreground hover:text-red-400" title="Remove line"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setPLineItems(items => [...items, { ...emptyLineItem() }])}
+                    className="w-full py-1.5 text-xs rounded border border-dashed border-border text-muted-foreground hover:text-foreground"
+                  >+ Add line item</button>
+                  <p className="text-xs text-foreground font-semibold">Total: ${pLineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0).toLocaleString()}</p>
+                </div>
+
+                {/* Payment at signing */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Payment At Signing</Label>
+                  <select
+                    value={legacyPayment.option}
+                    onChange={e => setLegacyPayment(pc => ({ ...pc, option: e.target.value as ProposalPaymentConfig["option"] }))}
+                    className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background"
+                  >
+                    <option value="none">None — sign only, invoice later</option>
+                    <option value="deposit">Deposit at signing</option>
+                    <option value="full">Full payment at signing</option>
+                  </select>
+                  {legacyPayment.option === "deposit" && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text" inputMode="decimal"
+                        value={String(legacyPayment.depositPercent ?? 0)}
+                        onChange={e => setLegacyPayment(pc => ({ ...pc, depositPercent: parseFloat(e.target.value.replace(/[^\d.]/g, "")) || 0 }))}
+                        className="w-16 px-2 py-1 text-xs rounded border border-border bg-background"
+                      />
+                      <span className="text-xs text-muted-foreground">% deposit</span>
+                    </div>
+                  )}
+                </div>
+                </>
+              )}
+
               {/* Library — drag a Package or Image from here onto any
                   agreement/custom page to drop it as a new block. */}
               <LibraryPanel

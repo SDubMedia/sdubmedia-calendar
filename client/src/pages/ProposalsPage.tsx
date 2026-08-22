@@ -376,6 +376,7 @@ export default function ProposalsPage() {
       clientId: propClientId,
       projectId: propProjectId || null,
       title: propTitle.trim(),
+    clientFieldValues: {},
       pages: propPages,
       packages: propPackages,
       // No pre-selection: with more than one package the client picks, and
@@ -714,6 +715,10 @@ export default function ProposalsPage() {
                           )}
                           {p.status === "accepted" && (
                             <button onClick={() => openSignDialog(p.id)} className="p-1.5 text-amber-400 hover:text-amber-300" title="Countersign"><PenTool className="w-4 h-4" /></button>
+                          )}
+                          {/* Content editing locks the moment the client signs. */}
+                          {!p.acceptedAt && p.status !== "void" && (
+                            <button onClick={() => setLocation(`/proposals/${p.id}/edit`)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Edit proposal"><Edit3 className="w-4 h-4" /></button>
                           )}
                           {p.status !== "completed" && (
                             <button onClick={async () => { await updateProposal(p.id, { status: "void" }); toast.success("Proposal voided"); }} className="p-1.5 text-muted-foreground hover:text-red-400" title="Void"><X className="w-4 h-4" /></button>

@@ -1492,6 +1492,10 @@ export interface Proposal {
   clientEmail: string;
   viewToken: string;
   notes: string;
+  // Owner-known booking details and client-confirmed answers (event dates,
+  // venue, PO number). Non-empty values render as known on the public page
+  // and are not asked for; po_number prints on the generated invoice.
+  clientFieldValues: Record<string, string>;
   // Per-send snapshot history. Appended each time the proposal moves to
   // "sent" status. Each entry: { sentAt, total, packageIds, milestoneCount }.
   sendHistory: Array<{ sentAt: string; total?: number; packageIds?: string[]; milestoneCount?: number }>;

@@ -367,6 +367,7 @@ function rowToProposal(r: any): Proposal {
     paidAt: r.paid_at || null,
     clientEmail: r.client_email || "", viewToken: r.view_token || "",
     notes: r.notes || "",
+    clientFieldValues: (r.client_field_values && typeof r.client_field_values === "object" && !Array.isArray(r.client_field_values)) ? r.client_field_values : {},
     sendHistory: Array.isArray(r.send_history) ? r.send_history : [],
     inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
     expiresAt: r.expires_at || null,
@@ -1869,6 +1870,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.paidAt !== undefined) patch.paid_at = p.paidAt;
     if (p.clientEmail !== undefined) patch.client_email = p.clientEmail;
     if (p.notes !== undefined) patch.notes = p.notes;
+    if (p.clientFieldValues !== undefined) patch.client_field_values = p.clientFieldValues;
     const { error } = await supabase.from("proposals").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, proposals: d.proposals.map(x => x.id === id ? { ...x, ...p, updatedAt: patch.updated_at } : x) }));

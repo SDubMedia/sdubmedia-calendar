@@ -205,7 +205,11 @@ function Router() {
         {isOwner && <Route path="/settings">{() => <SettingsPage />}</Route>}
         {isOwner && <Route path="/users">{() => <UsersPage />}</Route>}
         {isOwner && <Route path="/trash" component={TrashPage} />}
-        {isOwner && <Route path="/proposals/templates/:id/edit" component={TemplateEditorPage} />}
+        {isOwner && <Route path="/proposals/templates/:id/edit">{() => <TemplateEditorPage />}</Route>}
+        {/* Same editor, proposal mode: revise an existing (unsigned) proposal
+            in place. Accepted proposals redirect out — the signed record
+            must stay what the client saw. */}
+        {isOwner && <Route path="/proposals/:id/edit">{() => <TemplateEditorPage proposalMode />}</Route>}
         {isOwner && <Route path="/packages" component={PackagesPage} />}
         {isOwner && <Route path="/contracts/:id/review" component={ReviewContractPage} />}
         {isOwner && <Route path="/contracts/templates/:id/edit" component={EditContractTemplatePage} />}
