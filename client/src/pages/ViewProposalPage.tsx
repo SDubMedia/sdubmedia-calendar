@@ -27,6 +27,8 @@ export default function ViewProposalPage() {
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paymentVerified, setPaymentVerified] = useState(false);
+  // Public view token of the auto-generated paid invoice (set on verify).
+  const [invoiceToken, setInvoiceToken] = useState("");
   const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   // Package selection (V2)
@@ -125,7 +127,11 @@ export default function ViewProposalPage() {
       fetch(`/api/proposal-accept?action=verify-payment&token=${token}&sessionId=${sessionIdParam}`)
         .then(r => r.json())
         .then(data => {
-          if (data.paid) { setPaymentVerified(true); setAccepted(true); }
+          if (data.paid) {
+            setPaymentVerified(true);
+            setAccepted(true);
+            if (typeof data.invoiceToken === "string" && data.invoiceToken) setInvoiceToken(data.invoiceToken);
+          }
           setVerifyingPayment(false);
         })
         .catch(() => setVerifyingPayment(false));
@@ -265,6 +271,12 @@ export default function ViewProposalPage() {
               ? "Thank you! Your payment has been received."
               : "Thank you for accepting. We'll be in touch shortly."}
           </p>
+          {paymentVerified && invoiceToken && (
+            <a
+              href={`/invoice/${invoiceToken}`}
+              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >View your invoice</a>
+          )}
           {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
         </div>
       </div>

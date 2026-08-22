@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { randomBytes } from "crypto";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
@@ -417,7 +418,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
 
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, org_id")
+    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id")
     .eq("view_token", token as string)
     .single();
 
@@ -425,7 +426,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("stripe_account_id")
+    .select("stripe_account_id, name, business_info")
     .eq("id", proposal.org_id)
     .single();
 
@@ -445,10 +446,109 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
       updated_at: now,
     }).eq("id", proposal.id);
 
-    return res.status(200).json({ paid: true });
+    // A paid invoice the client can open (and print/save as PDF) right from
+    // the confirmation screen. Created once: page reloads re-enter this
+    // handler, so an already-linked invoice is returned, not duplicated.
+    const invoiceToken = await ensurePaidInvoice(proposal, org, session);
+    return res.status(200).json({ paid: true, ...(invoiceToken ? { invoiceToken } : {}) });
   }
 
   return res.status(200).json({ paid: false });
+}
+
+/**
+ * Create (or fetch) the paid invoice for a proposal payment. Returns its
+ * public view token, or null when creation fails — payment verification
+ * must never fail because the receipt could not be written.
+ */
+async function ensurePaidInvoice(
+  proposal: { id: string; org_id: string; client_id: string; title: string; line_items: unknown; subtotal: number; tax_rate: number; tax_amount: number; total: number; invoice_id: string | null },
+  org: { name?: string | null; business_info?: Record<string, unknown> | null },
+  session: { amount_total?: number | null },
+): Promise<string | null> {
+  try {
+    if (proposal.invoice_id) {
+      const { data: existing } = await supabase
+        .from("invoices").select("view_token").eq("id", proposal.invoice_id).maybeSingle();
+      return existing?.view_token || null;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const paidAmount = Math.round(Number(session.amount_total ?? 0)) / 100;
+    const proposalTotal = Number(proposal.total ?? 0);
+
+    // Full payment carries the proposal's own line items onto the invoice;
+    // a partial payment (deposit / milestone) gets one line for the amount
+    // actually paid, so the invoice never claims more was billed than paid.
+    const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - proposalTotal) < 0.01;
+    const srcItems: Record<string, unknown>[] = Array.isArray(proposal.line_items)
+      ? (proposal.line_items as Record<string, unknown>[])
+      : [];
+    const lineItems = fullyPaid && srcItems.length > 0
+      ? srcItems.map((li) => ({
+          date: today,
+          amount: Number(li.amount) || 0,
+          quantity: Number(li.quantity) || 1,
+          unitPrice: Number(li.unitPrice) || 0,
+          description: String(li.description || proposal.title || "Services"),
+        }))
+      : [{ date: today, amount: paidAmount, quantity: 1, unitPrice: paidAmount, description: `Payment received — ${proposal.title || "Proposal"}` }];
+
+    const bi = (org.business_info && typeof org.business_info === "object" ? org.business_info : {}) as Record<string, string>;
+    const companyInfo = {
+      name: org.name || bi.name || "", email: bi.email || "", phone: bi.phone || "",
+      address: bi.address || "", city: bi.city || "", state: bi.state || "", zip: bi.zip || "",
+      website: bi.website || "",
+    };
+
+    const { data: client } = await supabase
+      .from("clients").select("company, contact_name, email, phone").eq("id", proposal.client_id).maybeSingle();
+    const clientInfo = {
+      company: client?.company || "", contactName: client?.contact_name || "",
+      email: client?.email || "", phone: client?.phone || "",
+    };
+
+    // Same numbering scheme as the app: INV-YYYY-NNNN from the year's max.
+    const year = new Date().getFullYear();
+    const prefix = `INV-${year}-`;
+    const { data: latest } = await supabase
+      .from("invoices").select("invoice_number").like("invoice_number", `${prefix}%`)
+      .order("invoice_number", { ascending: false }).limit(1);
+    const maxNum = latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0;
+    const invoiceNumber = `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
+
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+    const viewToken = randomBytes(8).toString("hex");
+
+    const subtotal = fullyPaid ? Number(proposal.subtotal ?? paidAmount) : paidAmount;
+    const { error: insErr } = await supabase.from("invoices").insert({
+      id: invoiceId,
+      org_id: proposal.org_id,
+      invoice_number: invoiceNumber,
+      client_id: proposal.client_id,
+      period_start: today, period_end: today,
+      subtotal,
+      tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
+      tax_amount: fullyPaid ? Number(proposal.tax_amount ?? 0) : 0,
+      total: paidAmount || proposalTotal,
+      status: "paid",
+      issue_date: today, due_date: today, paid_date: today,
+      line_items: lineItems,
+      company_info: companyInfo,
+      client_info: clientInfo,
+      notes: `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      payment_methods: ["stripe"],
+      view_token: viewToken,
+    });
+    if (insErr) { console.warn(`[proposal-accept] invoice create failed: ${insErr.message}`); return null; }
+
+    await supabase.from("proposals").update({ invoice_id: invoiceId, updated_at: new Date().toISOString() }).eq("id", proposal.id);
+    return viewToken;
+  } catch (err) {
+    console.warn(`[proposal-accept] invoice create failed: ${errorMessage(err, "unknown")}`);
+    return null;
+  }
 }
 
 async function notifyOwner(orgId: string, title: string, signerName: string, event: "signed" | "viewed") {
