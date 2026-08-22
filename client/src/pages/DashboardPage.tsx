@@ -9,6 +9,7 @@ import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId, draftQu
 import { isOpenLead, pipelineValueByStage, totalPipelineValue } from "@/lib/pipelineInsights";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
+import TodosWidget from "@/components/TodosWidget";
 import { mergeDashboardWidgets } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
@@ -520,6 +521,12 @@ export default function DashboardPage() {
         {/* Activity Feed — recent client interactions across proposals,
             contracts, payments, replies. Pulls only from existing data; no
             new fetches. Owners can disable in Settings → Dashboard widgets. */}
+        {/* To-Dos — owner sees all open items, staff see their own (the widget
+            reads scoped data itself). Client/family roles never see it. */}
+        {(role === "owner" || role === "staff") && isWidgetEnabled("todos") && (
+          <div style={{ order: orderOf("todos") }}><TodosWidget /></div>
+        )}
+
         {isWidgetEnabled("activity") && <div style={{ order: orderOf("activity") }}><ActivityFeed /></div>}
 
         {/* Middle Section — Upcoming + Invoices stay side-by-side, ordered as a pair */}

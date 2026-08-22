@@ -27,18 +27,28 @@ describe("mergeDashboardWidgets", () => {
     const saved = DEFAULT_DASHBOARD_WIDGETS.filter(w => w.id !== "pipeline");
     const merged = ids(mergeDashboardWidgets(saved));
     expect(merged).toContain("pipeline");
-    expect(merged.indexOf("pipeline")).toBe(merged.indexOf("metrics") + 1);
+    // Derive pipeline's default predecessor instead of hardcoding it: the
+    // anchor changes whenever a widget is added above pipeline in the
+    // defaults (metrics → todos, 2026-08-21), and this test is about the
+    // slotting behavior, not about which widget happens to sit above.
+    const defaults = ids(DEFAULT_DASHBOARD_WIDGETS);
+    const anchor = defaults[defaults.indexOf("pipeline") - 1];
+    expect(merged.indexOf("pipeline")).toBe(merged.indexOf(anchor) + 1);
     expect(merged[merged.length - 1]).not.toBe("pipeline");
   });
 
   it("respects the user's order when slotting a new widget in", () => {
-    // metrics moved to the end; pipeline should follow it rather than jump to the top.
+    // Everything above pipeline in the defaults moved to the end; pipeline
+    // should follow its moved anchors rather than jump to the top.
+    const defaults = ids(DEFAULT_DASHBOARD_WIDGETS);
+    const abovePipeline = defaults.slice(0, defaults.indexOf("pipeline"));
     const saved = [
-      ...DEFAULT_DASHBOARD_WIDGETS.filter(w => w.id !== "pipeline" && w.id !== "metrics"),
-      { id: "metrics" as const, enabled: true },
+      ...DEFAULT_DASHBOARD_WIDGETS.filter(w => w.id !== "pipeline" && !abovePipeline.includes(w.id)),
+      ...DEFAULT_DASHBOARD_WIDGETS.filter(w => abovePipeline.includes(w.id)),
     ];
     const merged = ids(mergeDashboardWidgets(saved));
-    expect(merged.indexOf("pipeline")).toBe(merged.indexOf("metrics") + 1);
+    expect(merged[0]).not.toBe("pipeline");
+    expect(merged.indexOf("pipeline")).toBeGreaterThan(merged.indexOf(abovePipeline[abovePipeline.length - 1]));
   });
 
   it("puts a new first-position widget at the front", () => {
