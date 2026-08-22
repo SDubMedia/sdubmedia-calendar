@@ -280,6 +280,12 @@ export default function InvoicePublicPage() {
                 <p className="text-slate-700">{(invoice.clientInfo as Record<string, string>).poNumber}</p>
               </div>
             )}
+            {(invoice.clientInfo as Record<string, string>).eventLocation && (
+              <div className="col-span-2">
+                <p className="uppercase tracking-wider text-slate-500 mb-0.5">Event Location</p>
+                <p className="text-slate-700">{(invoice.clientInfo as Record<string, string>).eventLocation}</p>
+              </div>
+            )}
           </div>
 
           {/* Line items */}

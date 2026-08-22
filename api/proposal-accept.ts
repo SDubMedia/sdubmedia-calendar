@@ -552,21 +552,22 @@ async function ensurePaidInvoice(
       .map(li => String(li.details || "").trim())
       .filter(Boolean)
       .join("\n\n");
+    // The venue the client confirmed at signing: legacy single field, or
+    // composed from the structured name/address/city-state/zip fields.
+    // Rendered as its own labeled row on the invoice, not a notes line.
+    const cleanV = (v: unknown) => String(v || "").trim();
+    const venueLine = (cleanV(cfv.event_location) || [
+      cleanV(cfv.event_venue_name),
+      cleanV(cfv.event_address),
+      [cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", ")).slice(0, 300);
+
     const notes = [
       `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
-      // The venue the client confirmed at signing: legacy single field, or
-      // composed from the structured name/address/city-state/zip fields.
-      (() => {
-        const clean = (v: unknown) => String(v || "").trim();
-        const venue = clean(cfv.event_location) || [
-          clean(cfv.event_venue_name),
-          clean(cfv.event_address),
-          [clean(cfv.event_city_state), clean(cfv.event_zip)].filter(Boolean).join(" "),
-        ].filter(Boolean).join(", ");
-        return venue ? `Event location: ${venue.slice(0, 300)}` : "";
-      })(),
       detailText,
     ].filter(Boolean).join("\n\n");
+
+    if (venueLine) (clientInfo as Record<string, string>).eventLocation = venueLine;
 
     const { error: insErr } = await supabase.from("invoices").insert({
       id: invoiceId,
