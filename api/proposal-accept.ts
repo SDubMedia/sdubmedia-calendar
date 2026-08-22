@@ -148,6 +148,7 @@ async function getProposal(token: string, res: VercelResponse) {
     clientFieldValues: (proposal.client_field_values && typeof proposal.client_field_values === "object" && !Array.isArray(proposal.client_field_values))
       ? proposal.client_field_values : {},
     clientSignature: proposal.client_signature,
+    acceptedAt: proposal.accepted_at || null,
     ownerSignature: proposal.owner_signature,
     paidAt: proposal.paid_at,
     orgName,
@@ -522,6 +523,16 @@ async function ensurePaidInvoice(
     const viewToken = randomBytes(8).toString("hex");
 
     const subtotal = fullyPaid ? Number(proposal.subtotal ?? paidAmount) : paidAmount;
+    // The invoice reads as a full receipt, not a bare line: each proposal
+    // line item's details paragraph lands in the notes, under the title.
+    const detailBlocks = srcItems
+      .map(li => ({ d: String(li.description || ""), t: String(li.details || "").trim() }))
+      .filter(x => x.t);
+    const notes = [
+      `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      ...detailBlocks.map(x => (x.d ? `${x.d}:\n${x.t}` : x.t)),
+    ].join("\n\n");
+
     const { error: insErr } = await supabase.from("invoices").insert({
       id: invoiceId,
       org_id: proposal.org_id,
@@ -537,7 +548,7 @@ async function ensurePaidInvoice(
       line_items: lineItems,
       company_info: companyInfo,
       client_info: clientInfo,
-      notes: `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      notes,
       payment_methods: ["stripe"],
       view_token: viewToken,
     });

@@ -17,6 +17,9 @@ export default function ViewProposalPage() {
   const searchParams = new URLSearchParams(search);
   const paidParam = searchParams.get("paid");
   const sessionIdParam = searchParams.get("session_id");
+  // ?view=document re-opens the full proposal read-only AFTER acceptance,
+  // so the client can reread and print/save the agreement they signed.
+  const documentView = searchParams.get("view") === "document";
 
   const [loading, setLoading] = useState(true);
   const [proposal, setProposal] = useState<any>(null);
@@ -258,7 +261,7 @@ export default function ViewProposalPage() {
     );
   }
 
-  if (accepted || paymentVerified) {
+  if ((accepted || paymentVerified) && !documentView) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
@@ -271,12 +274,18 @@ export default function ViewProposalPage() {
               ? "Thank you! Your payment has been received."
               : "Thank you for accepting. We'll be in touch shortly."}
           </p>
-          {paymentVerified && invoiceToken && (
+          <div className="mt-5 flex flex-col gap-2">
+            {paymentVerified && invoiceToken && (
+              <a
+                href={`/invoice/${invoiceToken}`}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >View your invoice</a>
+            )}
             <a
-              href={`/invoice/${invoiceToken}`}
-              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-            >View your invoice</a>
-          )}
+              href={`/proposal/${token}?view=document`}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >View the signed agreement</a>
+          </div>
           {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
         </div>
       </div>
@@ -453,7 +462,7 @@ export default function ViewProposalPage() {
   // filled in — they see a finished document with their date and venue in it,
   // rather than a page of empty boxes they complete afterwards and never
   // re-read. It also front-loads the only typing in the whole flow.
-  const yourDetailsPanel = requiredClientFields.length > 0 ? (
+  const yourDetailsPanel = (!accepted && requiredClientFields.length > 0) ? (
     <div className="bg-white rounded-xl shadow-sm border p-6">
       <h2 className="text-lg font-bold text-gray-900 mb-1">Your details</h2>
       <p className="text-sm text-gray-500 mb-4">
@@ -819,7 +828,30 @@ export default function ViewProposalPage() {
             never asking. */}
         {!agreementPages.some((p: any) => p.type === "agreement") && yourDetailsPanel}
 
+        {/* ---- SIGNED RECORD (document view after acceptance) ---- */}
+        {accepted && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Signed &amp; Accepted</h2>
+            <p className="text-sm text-gray-600">
+              Signed by <strong>{proposal?.clientSignature?.name || "the client"}</strong>
+              {proposal?.clientSignature?.email ? ` (${proposal.clientSignature.email})` : ""}
+              {proposal?.acceptedAt ? ` on ${new Date(proposal.acceptedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}` : ""}.
+              {proposal?.paidAt ? " Paid in full." : ""}
+            </p>
+            {proposal?.clientSignature?.signatureType === "typed" && proposal?.clientSignature?.name && (
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 text-center mt-3">
+                <p className="text-2xl italic text-gray-900" style={{ fontFamily: "cursive" }}>{proposal.clientSignature.name}</p>
+              </div>
+            )}
+            <button
+              onClick={() => window.print()}
+              className="mt-4 inline-flex items-center justify-center rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 print:hidden"
+            >Print / Save as PDF</button>
+          </div>
+        )}
+
         {/* ---- SIGN & ACCEPT ---- */}
+        {!accepted && (
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4">
             {paymentAmount > 0 ? "Sign & Pay" : "Accept Proposal"}
@@ -896,6 +928,7 @@ export default function ViewProposalPage() {
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {/* Business info footer — clients see the contractor's company name,
