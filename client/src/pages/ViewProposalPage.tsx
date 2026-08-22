@@ -429,6 +429,8 @@ export default function ViewProposalPage() {
     { field: "event_address", label: "Event Address" },
     { field: "event_city_state", label: "Event City and State" },
     { field: "event_zip", label: "Event Zip Code" },
+    { field: "event_start_time", label: "Event Start Time" },
+    { field: "event_end_time", label: "Event End Time" },
   ];
   const legacyLocationKnown = !!String((proposal?.clientFieldValues || {}).event_location || "").trim();
   // Fields the owner pre-filled on the proposal are already answered: a
@@ -437,17 +439,15 @@ export default function ViewProposalPage() {
   // even hold "October 9-10") read as a wedding form. When everything is
   // pre-known, the whole "Your details" panel (second-person offer included)
   // disappears.
-  const preKnown = new Set(
-    Object.entries((proposal?.clientFieldValues || {}) as Record<string, string>)
-      .filter(([, v]) => String(v || "").trim())
-      .map(([k]) => k),
-  );
+  // Owner-prefilled values are not hidden — they render prefilled and
+  // editable so the client VERIFIES them (Geoff, 2026-08-22: "I want them to
+  // confirm the event address and the dates/times"). Only a legacy combined
+  // event_location value suppresses the structured venue fields.
   const VENUE_FIELDS = ["event_venue_name", "event_address", "event_city_state", "event_zip"];
   const requiredClientFields = [
     ...fromContract.filter(f => !f.field.startsWith("partner_")),
     ...ALWAYS.filter(a => !fromContract.some(f => f.field === a.field)),
-  ].filter(f => !preKnown.has(f.field))
-   .filter(f => !(legacyLocationKnown && VENUE_FIELDS.includes(f.field)));
+  ].filter(f => !(legacyLocationKnown && VENUE_FIELDS.includes(f.field)));
 
   // The second person is optional to add, but once added their name is
   // needed — half a set of details is worse than none. Not always a fiancé:
@@ -474,9 +474,9 @@ export default function ViewProposalPage() {
   // re-read. It also front-loads the only typing in the whole flow.
   const yourDetailsPanel = (!accepted && requiredClientFields.length > 0) ? (
     <div className="bg-white rounded-xl shadow-sm border p-6">
-      <h2 className="text-lg font-bold text-gray-900 mb-1">Your details</h2>
+      <h2 className="text-lg font-bold text-gray-900 mb-1">Confirm your details</h2>
       <p className="text-sm text-gray-500 mb-4">
-        A few things we need for the agreement. They'll appear in it on the next page — and you can correct any of them by clicking the word in the contract itself.
+        Please verify the event details below and fill in anything missing — correct anything that's off before signing.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {requiredClientFields.map(f => (
@@ -485,7 +485,7 @@ export default function ViewProposalPage() {
               {f.label} <span className="text-red-600">*</span>
             </label>
             <input
-              type={f.field === "event_date" ? "date" : f.field.endsWith("_email") ? "email" : "text"}
+              type={f.field === "event_date" && /^(\d{4}-\d{2}-\d{2})?$/.test(clientFields.event_date || "") ? "date" : f.field.endsWith("_email") ? "email" : "text"}
               inputMode={f.field.endsWith("_zip") ? "numeric" : undefined}
               value={clientFields[f.field] || ""}
               onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
