@@ -955,7 +955,26 @@ export default function ViewProposalPage() {
             {proposal?.clientSignature?.signatureType === "typed" && proposal?.clientSignature?.name && (
               <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 text-center mt-3">
                 <p className="text-2xl italic text-gray-900" style={{ fontFamily: "cursive" }}>{proposal.clientSignature.name}</p>
+                <p className="text-[11px] uppercase tracking-wider text-gray-400 mt-1">Client</p>
               </div>
+            )}
+            {/* Countersignature: once the owner signs, the client's copy is a
+                fully-executed two-signature document. */}
+            {proposal?.ownerSignature?.name && (
+              <>
+                <p className="text-sm text-gray-600 mt-4">
+                  Countersigned by <strong>{proposal.ownerSignature.name}</strong>
+                  {proposal.ownerSignature.timestamp ? ` on ${new Date(proposal.ownerSignature.timestamp).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}` : ""}.
+                </p>
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 text-center mt-2">
+                  {proposal.ownerSignature.signatureType === "drawn" && String(proposal.ownerSignature.signatureData || "").startsWith("data:image") ? (
+                    <img src={proposal.ownerSignature.signatureData} alt="Countersignature" className="max-h-16 mx-auto" />
+                  ) : (
+                    <p className="text-2xl italic text-gray-900" style={{ fontFamily: "cursive" }}>{proposal.ownerSignature.name}</p>
+                  )}
+                  <p className="text-[11px] uppercase tracking-wider text-gray-400 mt-1">{proposal?.orgName || "Provider"}</p>
+                </div>
+              </>
             )}
             <button
               onClick={() => window.print()}

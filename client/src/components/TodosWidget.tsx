@@ -13,7 +13,7 @@ import { Link } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Todo } from "@/lib/types";
-import { ArrowRight, Plus, ListChecks, AlertTriangle } from "lucide-react";
+import { ArrowRight, Plus, ListChecks, AlertTriangle, PenTool } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +82,13 @@ export default function TodosWidget() {
 
   const crewName = (id: string | null) => data.crewMembers.find(c => c.id === id)?.name || null;
 
+  // Derived action items, never stored: proposals awaiting the owner's
+  // countersignature appear the moment a client signs and disappear the
+  // moment the owner countersigns. Owner-only — staff don't sign proposals.
+  const countersignItems = isOwner
+    ? data.proposals.filter(t => t.status === "accepted" && !t.deletedAt)
+    : [];
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -113,12 +120,22 @@ export default function TodosWidget() {
       </div>
 
       <div className="divide-y divide-border">
-        {open.length === 0 ? (
+        {countersignItems.map(pr => (
+          <Link key={pr.id} href="/proposals" className="px-4 py-2.5 flex items-center gap-3 bg-amber-500/5 hover:bg-amber-500/10">
+            <PenTool className="w-4 h-4 shrink-0 text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground truncate">Countersign: {pr.title}</p>
+              <p className="text-[11px] text-amber-400/90">Client signed — awaiting your signature</p>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+          </Link>
+        ))}
+        {open.length === 0 && countersignItems.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             <ListChecks className="w-5 h-5 mx-auto mb-1.5 opacity-60" />
             All caught up
           </div>
-        ) : (
+        ) : open.length === 0 ? null : (
           open.slice(0, SHOW_LIMIT).map(t => {
             const overdue = !!t.dueDate && t.dueDate < today;
             const assignee = isOwner ? crewName(t.assignedCrewMemberId) : null;
