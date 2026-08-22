@@ -244,7 +244,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (clientFields && typeof clientFields === "object" && !Array.isArray(clientFields)) {
     const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(clientFields as Record<string, unknown>)) {
-      if (typeof v === "string" && /^[a-z_]{1,40}$/.test(k)) clean[k] = v.slice(0, 500);
+      if (typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(k)) clean[k] = v.slice(0, 500);
     }
     if (Object.keys(clean).length > 0) updatePayload.client_field_values = clean;
   }
@@ -495,8 +495,15 @@ async function ensurePaidInvoice(
     const iso = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
     const { data: lead } = await supabase
       .from("pipeline_leads").select("event_date").eq("proposal_id", proposal.id).is("deleted_at", null).maybeSingle();
-    const serviceDate = iso(cfv.event_start_date) || iso(lead?.event_date) || today;
-    const serviceEnd = iso(cfv.event_end_date) || serviceDate;
+    // Schedule rows (event_date_1..N) the client confirmed take priority;
+    // owner-prefilled start/end and the lead's date remain fallbacks.
+    const rowDates = Object.entries(cfv)
+      .filter(([k]) => /^event_date_\d+$/.test(k))
+      .map(([, v]) => iso(v))
+      .filter(Boolean)
+      .sort();
+    const serviceDate = rowDates[0] || iso(cfv.event_start_date) || iso(lead?.event_date) || today;
+    const serviceEnd = rowDates[rowDates.length - 1] || iso(cfv.event_end_date) || serviceDate;
 
     const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - proposalTotal) < 0.01;
     const srcItems: Record<string, unknown>[] = Array.isArray(proposal.line_items)

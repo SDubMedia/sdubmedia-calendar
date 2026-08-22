@@ -43,6 +43,9 @@ export default function ViewProposalPage() {
   // What the signer types into the contract's blanks — their details and the
   // event. Filled here, shown live in the agreement above.
   const [clientFields, setClientFields] = useState<Record<string, string>>({});
+  // Visible coverage-schedule rows (date + start + end each). Seeded from
+  // prefilled event_date_N keys, or a legacy ISO event_date, after load.
+  const [scheduleRows, setScheduleRows] = useState(1);
   const [showPartner, setShowPartner] = useState(false);
   const [partnerSignature, setPartnerSignature] = useState("");
 
@@ -70,7 +73,17 @@ export default function ViewProposalPage() {
           // the agreement and are not asked for again; they round-trip
           // through the accept payload so they survive re-saves.
           if (body.clientFieldValues && typeof body.clientFieldValues === "object") {
-            setClientFields(v => ({ ...body.clientFieldValues, ...v }));
+            const cfv: Record<string, string> = { ...body.clientFieldValues };
+            // Seed schedule row 1 from a legacy single ISO date if no
+            // numbered rows exist yet.
+            const rowNums = Object.keys(cfv)
+              .map(k => k.match(/^event_date_(\d+)$/)?.[1])
+              .filter(Boolean).map(Number);
+            if (rowNums.length === 0 && /^\d{4}-\d{2}-\d{2}$/.test(cfv.event_date || "")) {
+              cfv.event_date_1 = cfv.event_date;
+            }
+            setScheduleRows(Math.max(1, ...rowNums, 0) || 1);
+            setClientFields(v => ({ ...cfv, ...v }));
           }
           if (body.alreadyAccepted) setAccepted(true);
           if (body.paidAt) setPaymentVerified(true);
@@ -423,14 +436,15 @@ export default function ViewProposalPage() {
   // address, city/state, zip. Tab order follows DOM order, so this list IS
   // the tab flow. A legacy single event_location value (older proposals)
   // satisfies all four.
+  // Venue fields only — coverage dates/times are the repeating schedule
+  // rows below (event_date_1 / event_start_time_1 / event_end_time_1, _2…).
+  // A contract that references {{event_date}} still asks for it via
+  // fromContract, so wedding agreements keep their single date field.
   const ALWAYS: { field: string; label: string }[] = [
-    { field: "event_date", label: "Event Date" },
     { field: "event_venue_name", label: "Event Name" },
     { field: "event_address", label: "Event Address" },
     { field: "event_city_state", label: "Event City and State" },
     { field: "event_zip", label: "Event Zip Code" },
-    { field: "event_start_time", label: "Event Start Time" },
-    { field: "event_end_time", label: "Event End Time" },
   ];
   const legacyLocationKnown = !!String((proposal?.clientFieldValues || {}).event_location || "").trim();
   // Fields the owner pre-filled on the proposal are already answered: a
@@ -457,8 +471,23 @@ export default function ViewProposalPage() {
     { field: "partner_email", label: "Email" },
     { field: "partner_phone", label: "Phone" },
   ];
+  // Schedule validation: row 1 must be complete; any partially-filled extra
+  // row must be completed too (a date without times is not a schedule).
+  const missingSchedule: { field: string; label: string }[] = [];
+  for (let i = 1; i <= scheduleRows; i++) {
+    const d = (clientFields[`event_date_${i}`] || "").trim();
+    const st = (clientFields[`event_start_time_${i}`] || "").trim();
+    const en = (clientFields[`event_end_time_${i}`] || "").trim();
+    const anyFilled = !!(d || st || en);
+    if (i === 1 || anyFilled) {
+      if (!d) missingSchedule.push({ field: `event_date_${i}`, label: `Date ${i}` });
+      if (!st) missingSchedule.push({ field: `event_start_time_${i}`, label: `Start time (day ${i})` });
+      if (!en) missingSchedule.push({ field: `event_end_time_${i}`, label: `End time (day ${i})` });
+    }
+  }
   const missingClientFields = [
     ...requiredClientFields.filter(f => !(clientFields[f.field] || "").trim()),
+    ...missingSchedule,
     ...(showPartner && !(clientFields.partner_name || "").trim()
       ? [{ field: "partner_name", label: "Second person's full name" }]
       : []),
@@ -478,7 +507,7 @@ export default function ViewProposalPage() {
       <p className="text-sm text-gray-500 mb-4">
         Please verify the event details below and fill in anything missing — correct anything that's off before signing.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2" data-section="venue-and-contract-fields">
         {requiredClientFields.map(f => (
           <div key={f.field}>
             <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">
@@ -494,6 +523,71 @@ export default function ViewProposalPage() {
             />
           </div>
         ))}
+      </div>
+
+      {/* Coverage schedule: one row per day (date + start + end side by
+          side), Add date for multi-day events. Sits below the venue block
+          by design (Geoff, 2026-08-22). */}
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">Coverage dates and times</h3>
+        <div className="space-y-2">
+          {Array.from({ length: scheduleRows }, (_, idx) => idx + 1).map(i => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Event Date {scheduleRows > 1 ? i : ""} <span className="text-red-600">*</span></label>
+                <input
+                  type="date"
+                  value={clientFields[`event_date_${i}`] || ""}
+                  onChange={(e) => setClientFields(v => ({ ...v, [`event_date_${i}`]: e.target.value }))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Start Time <span className="text-red-600">*</span></label>
+                <input
+                  type="text"
+                  value={clientFields[`event_start_time_${i}`] || ""}
+                  onChange={(e) => setClientFields(v => ({ ...v, [`event_start_time_${i}`]: e.target.value }))}
+                  placeholder="8:30 AM"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">End Time <span className="text-red-600">*</span></label>
+                <input
+                  type="text"
+                  value={clientFields[`event_end_time_${i}`] || ""}
+                  onChange={(e) => setClientFields(v => ({ ...v, [`event_end_time_${i}`]: e.target.value }))}
+                  placeholder="5:00 PM"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setScheduleRows(n => n + 1)}
+            className="text-sm text-blue-600 hover:text-blue-700"
+          >+ Add date</button>
+          {scheduleRows > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                setClientFields(v => {
+                  const next = { ...v };
+                  delete next[`event_date_${scheduleRows}`];
+                  delete next[`event_start_time_${scheduleRows}`];
+                  delete next[`event_end_time_${scheduleRows}`];
+                  return next;
+                });
+                setScheduleRows(n => Math.max(1, n - 1));
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >Remove last date</button>
+          )}
+        </div>
       </div>
       {/* Weddings usually have two people on the agreement, and it isn't
           always a couple — sometimes a parent is paying. Only offered when
