@@ -10,6 +10,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { errorMessage, escapeHtml, publicBusinessInfo } from "./_auth.js";
+import { sendPushToOwner } from "./_apns.js";
 import { generateContractContent } from "./_contractGenerator.js";
 import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
 import { nanoid } from "nanoid";
@@ -392,6 +393,11 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         stripe_session_id: session.id,
       }).eq("id", proposal.id);
 
+      // The signature is already recorded, so the countersign nudge goes out
+      // now — the client may abandon the checkout tab, and the owner should
+      // still know they signed.
+      await notifySignedAllChannels(proposal.org_id, proposal.title, signature.name || proposal.client_email);
+
       return res.status(200).json({
         success: true,
         paymentRequired: true,
@@ -407,8 +413,8 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Notify owner
-  notifyOwner(proposal.org_id, proposal.title, signature.name || proposal.client_email, "signed").catch(() => {});
+  // Notify owner — awaited; see notifySignedAllChannels.
+  await notifySignedAllChannels(proposal.org_id, proposal.title, signature.name || proposal.client_email);
 
   return res.status(200).json({ success: true, paymentRequired: false });
 }
@@ -580,6 +586,24 @@ async function ensurePaidInvoice(
     console.warn(`[proposal-accept] invoice create failed: ${errorMessage(err, "unknown")}`);
     return null;
   }
+}
+
+/** Email + in-app push: the client signed, go countersign. AWAIT this
+ *  (Promise.allSettled) before responding — a fire-and-forget here dies with
+ *  the invocation, which is how signed-proposal emails silently vanished on
+ *  the pay-at-signing path (found 2026-08-22). */
+async function notifySignedAllChannels(orgId: string, title: string, signerName: string) {
+  const results = await Promise.allSettled([
+    notifyOwner(orgId, title, signerName, "signed"),
+    sendPushToOwner(orgId, {
+      title: "Proposal signed — countersign",
+      body: `${signerName || "Your client"} signed ${title || "a proposal"}. Open Slate to countersign.`,
+      data: { type: "proposal" },
+    }),
+  ]);
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.warn(`[proposal-accept] ${i === 0 ? "email" : "push"} notify failed: ${errorMessage(r.reason, "unknown")}`);
+  });
 }
 
 async function notifyOwner(orgId: string, title: string, signerName: string, event: "signed" | "viewed") {
