@@ -473,7 +473,7 @@ export default function ProposalsPage() {
         const linked = data.pipelineLeads.some(l => l.proposalId === proposalId && !l.deletedAt);
         if (!linked) {
           const client = data.clients.find(c => c.id === proposal.clientId);
-          const lead = await addPipelineLead({
+          await addPipelineLead({
             clientId: proposal.clientId || null,
             name: client ? `${client.contactName || client.company}${client.contactName && client.company ? ` (${client.company})` : ""}` : (proposal.clientEmail || "Proposal client"),
             email: client?.email || proposal.clientEmail || "",
@@ -487,7 +487,6 @@ export default function ProposalsPage() {
             closedOutcome: "", closedAt: null, lostReason: "", lostReasonNote: "",
             deletedAt: null,
           });
-          void lead;
         }
       } catch (err) {
         console.warn("[proposals] pipeline lead auto-link failed:", err);

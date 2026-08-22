@@ -3,7 +3,7 @@
 // 3-column layout: page sidebar | document editor | properties
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import type { ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig } from "@/lib/types";
@@ -122,6 +122,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
   const [bookingZip, setBookingZip] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [bookingDateText, setBookingDateText] = useState("");
+  const hydratedProposalIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!proposalMode) return;
@@ -136,6 +137,11 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
       setLocation("/proposals");
       return;
     }
+    // Hydrate once per proposal id. Without this guard, any realtime change
+    // to data.proposals (another row updating, a send elsewhere) re-fires
+    // this effect via the .length dep and wipes in-progress edits.
+    if (hydratedProposalIdRef.current === existingProposal.id) return;
+    hydratedProposalIdRef.current = existingProposal.id;
     setName(existingProposal.title);
     const pgs = existingProposal.pages.length > 0 ? existingProposal.pages : [emptyPage("custom", 0)];
     setPages(pgs);

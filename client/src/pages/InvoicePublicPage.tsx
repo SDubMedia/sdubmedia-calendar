@@ -224,7 +224,7 @@ export default function InvoicePublicPage() {
               </p>
               <p className="text-xs text-emerald-700 mt-0.5">
                 {isPaid
-                  ? `Marked paid on ${invoice.paidDate ? formatDate(invoice.paidDate) : "file"}${invoice.paymentMethods.includes("stripe") ? " · card payment via Stripe" : ""}.`
+                  ? `Marked paid on ${invoice.paidDate ? formatDate(invoice.paidDate) : "file"}${(invoice.clientInfo as Record<string, string>).paidVia ? ` · ${(invoice.clientInfo as Record<string, string>).paidVia}` : ""}.`
                   : "Your payment is processing — we'll send a confirmation shortly."}
               </p>
             </div>

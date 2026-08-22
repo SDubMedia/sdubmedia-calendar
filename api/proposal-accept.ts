@@ -140,6 +140,7 @@ async function getProposal(token: string, res: VercelResponse) {
     pages: proposal.pages || [],
     packages: proposal.packages || [],
     selectedPackageId: proposal.selected_package_id || null,
+    selectedPackageIds: Array.isArray(proposal.selected_package_ids) ? proposal.selected_package_ids : [],
     paymentMilestones: proposal.payment_milestones || [],
     status: proposal.status,
     clientEmail: proposal.client_email,
@@ -288,7 +289,7 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
       ...(proposal.client_field_values && typeof proposal.client_field_values === "object" ? proposal.client_field_values : {}),
       ...((updatePayload.client_field_values as Record<string, string>) || {}),
     } as Record<string, string>;
-    await createProjectsForProposal(proposal, mergedFields);
+    await createProjectsForProposal(proposal, mergedFields, proposalTotal);
   } catch (err) {
     console.warn(`[proposal-accept] calendar projects failed: ${errorMessage(err, "unknown")}`);
   }
@@ -310,12 +311,21 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         chosenIds,
         extraSigner,
       );
-      // Fire-and-forget owner notification with deep-link to review the draft.
-      // Critical for conversion — without it, owners don't know to act.
-      // Errors don't block the client's success response.
+      // Owner notification with deep-link to review the draft. Critical for
+      // conversion — without it, owners don't know to act. Awaited (Vercel
+      // kills in-flight work once the handler returns) but never fails the
+      // client's success response.
       const signerName = signature.name || proposal.client_email || "Your client";
-      notifyOwnerContractReady(proposal.org_id, draftId, proposal.title, signerName, proposalTotal)
-        .catch(err => console.error(`[proposal-accept] owner notify failed: ${errorMessage(err)}`));
+      const notifyResults = await Promise.allSettled([
+        notifyOwnerContractReady(proposal.org_id, draftId, proposal.title, signerName, proposalTotal),
+        sendPushToOwner(proposal.org_id, {
+          title: "Proposal signed",
+          body: `${signerName} signed "${proposal.title}" — contract draft ready for review`,
+        }),
+      ]);
+      notifyResults.forEach(r => {
+        if (r.status === "rejected") console.error(`[proposal-accept] owner notify failed: ${errorMessage(r.reason)}`);
+      });
       return res.status(200).json({
         success: true,
         paymentRequired: false,
@@ -437,17 +447,34 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({ success: true, paymentRequired: false });
 }
 
+export const PROPOSAL_PAYMENT_SELECT = "id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id, client_field_values, view_token, client_email, stripe_session_id, paid_at";
+
 async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   const { token, sessionId } = req.query;
   if (!token || !sessionId) return res.status(400).json({ error: "Missing token or sessionId" });
 
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id, client_field_values, view_token, client_email")
+    .select(PROPOSAL_PAYMENT_SELECT)
     .eq("view_token", token as string)
     .single();
 
   if (!proposal) return res.status(404).json({ error: "Proposal not found" });
+
+  // The session id in the query string is attacker-controlled; only the one
+  // WE created for this proposal may verify it. Without this check, any paid
+  // session on the connected account could mark any proposal paid.
+  if (!proposal.stripe_session_id || proposal.stripe_session_id !== sessionId) {
+    return res.status(400).json({ error: "Payment session does not match this proposal" });
+  }
+
+  // Already processed (page reload, double-tab): return the existing state
+  // without re-running any side effect — no duplicate emails, no re-updates.
+  if (proposal.invoice_id) {
+    const { data: existing } = await supabase
+      .from("invoices").select("view_token").eq("id", proposal.invoice_id).maybeSingle();
+    return res.status(200).json({ paid: true, ...(existing?.view_token ? { invoiceToken: existing.view_token } : {}) });
+  }
 
   const { data: org } = await supabase
     .from("organizations")
@@ -465,43 +492,63 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   });
 
   if (session.payment_status === "paid") {
-    const now = new Date().toISOString();
-    await supabase.from("proposals").update({
-      paid_at: now,
-      updated_at: now,
-    }).eq("id", proposal.id);
-
-    // Pipeline: paid in full — the lead advances to the paid stage.
-    await supabase.from("pipeline_leads")
-      .update({ pipeline_stage: "retainer_paid", recent_activity: "Paid in full via proposal", recent_activity_at: now, updated_at: now })
-      .eq("proposal_id", proposal.id)
-      .is("deleted_at", null);
-
-    // Calendar: signed-tentative projects become confirmed and paid.
-    await supabase.from("projects")
-      .update({ status: "upcoming", paid_date: now.slice(0, 10), updated_at: now })
-      .eq("org_id", proposal.org_id)
-      .eq("status", "tentative")
-      .like("notes", `%[proposal:${proposal.id}]%`);
-
-    // A paid invoice the client can open (and print/save as PDF) right from
-    // the confirmation screen. Created once: page reloads re-enter this
-    // handler, so an already-linked invoice is returned, not duplicated.
-    const invoiceToken = await ensurePaidInvoice(proposal, org, session);
-
-    // The client's own record: a receipt email with the signed agreement
-    // and paid invoice links. Awaited (never fire-and-forget in a handler);
-    // failure logs and degrades — the payment stands either way.
-    try {
-      await sendClientReceiptEmail(proposal, org, invoiceToken, session);
-    } catch (err) {
-      console.warn(`[proposal-accept] client receipt email failed: ${errorMessage(err, "unknown")}`);
-    }
-
+    const invoiceToken = await processProposalPayment(proposal, org, session);
     return res.status(200).json({ paid: true, ...(invoiceToken ? { invoiceToken } : {}) });
   }
 
   return res.status(200).json({ paid: false });
+}
+
+/**
+ * Everything that must happen once a proposal payment is confirmed. Shared
+ * by verifyPayment (browser redirect) and the Stripe webhook (the durable
+ * path when the client never returns from the checkout tab). Idempotent at
+ * the caller via proposals.invoice_id.
+ *
+ * A deposit is NOT "paid in full": partial payments advance the pipeline to
+ * retainer_paid and confirm the calendar, but only a full payment stamps
+ * proposals.paid_at, projects.paid_date, and the paid-in-full language.
+ */
+export async function processProposalPayment(
+  proposal: { id: string; org_id: string; client_id: string; title: string; line_items: unknown; subtotal: number; tax_rate: number; tax_amount: number; total: number; invoice_id: string | null; client_field_values?: Record<string, string> | null; view_token?: string; client_email?: string | null },
+  org: { name?: string | null; business_info?: Record<string, unknown> | null },
+  session: { amount_total?: number | null },
+): Promise<string | null> {
+  const now = new Date().toISOString();
+  const paidAmount = Math.round(Number(session.amount_total ?? 0)) / 100;
+  const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - Number(proposal.total ?? 0)) < 0.01;
+
+  await supabase.from("proposals").update({
+    ...(fullyPaid ? { paid_at: now } : {}),
+    updated_at: now,
+  }).eq("id", proposal.id);
+
+  await supabase.from("pipeline_leads")
+    .update({
+      pipeline_stage: "retainer_paid",
+      recent_activity: fullyPaid ? "Paid in full via proposal" : `Deposit of $${paidAmount.toFixed(2)} paid via proposal`,
+      recent_activity_at: now, updated_at: now,
+    })
+    .eq("proposal_id", proposal.id)
+    .is("deleted_at", null);
+
+  // Calendar: signed-tentative projects are confirmed by any payment;
+  // paid_date only stamps when the balance is actually settled.
+  await supabase.from("projects")
+    .update({ status: "upcoming", ...(fullyPaid ? { paid_date: now.slice(0, 10) } : {}), updated_at: now })
+    .eq("org_id", proposal.org_id)
+    .eq("status", "tentative")
+    .like("notes", `%[proposal:${proposal.id}]%`);
+
+  const invoiceToken = await ensurePaidInvoice(proposal, org, session, fullyPaid);
+
+  try {
+    await sendClientReceiptEmail(proposal, org, invoiceToken, session, fullyPaid);
+  } catch (err) {
+    console.warn(`[proposal-accept] client receipt email failed: ${errorMessage(err, "unknown")}`);
+  }
+
+  return invoiceToken;
 }
 
 /**
@@ -514,6 +561,7 @@ async function sendClientReceiptEmail(
   org: { name?: string | null },
   invoiceToken: string | null,
   session: { amount_total?: number | null },
+  fullyPaid: boolean,
 ) {
   const to = String(proposal.client_email || "").trim();
   if (!to || !proposal.view_token) return;
@@ -525,10 +573,10 @@ async function sendClientReceiptEmail(
   await resend.emails.send({
     from: FROM_EMAIL,
     to,
-    subject: `Payment received — ${proposal.title || "your booking"}`,
+    subject: `${fullyPaid ? "Payment received" : "Deposit received"} — ${proposal.title || "your booking"}`,
     html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
-      <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
-      <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your payment${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.</p>
+      <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${fullyPaid ? "Payment received" : "Deposit received"} ✓</h2>
+      <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your ${fullyPaid ? "payment" : "deposit"}${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.${fullyPaid ? "" : " The remaining balance will be invoiced separately."}</p>
       <p style="margin:0 0 8px;font-size:14px;">For your records:</p>
       <p style="margin:8px 0;"><a href="${escapeHtml(agreementUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your signed agreement</a></p>
       ${invoiceUrl ? `<p style="margin:8px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your paid invoice</a></p>` : ""}
@@ -563,6 +611,7 @@ function parseTimeText(v: unknown): string {
 async function createProjectsForProposal(
   proposal: { id: string; org_id: string; client_id: string; title: string; total: number; project_id?: string | null },
   cfv: Record<string, string>,
+  acceptedTotal: number,
 ) {
   if (proposal.project_id) return; // already created
 
@@ -605,7 +654,7 @@ async function createProjectsForProposal(
       status: "tentative",
       crew: [],
       billing_model: "per_project",
-      project_rate: i === 0 ? Number(proposal.total || 0) : 0,
+      project_rate: i === 0 ? Number(acceptedTotal || 0) : 0,
       notes: [
         `Booked via signed proposal: ${proposal.title || ""} [proposal:${proposal.id}]`,
         venue ? `Venue: ${venue}` : "",
@@ -626,6 +675,7 @@ async function ensurePaidInvoice(
   proposal: { id: string; org_id: string; client_id: string; title: string; line_items: unknown; subtotal: number; tax_rate: number; tax_amount: number; total: number; invoice_id: string | null; client_field_values?: Record<string, string> | null },
   org: { name?: string | null; business_info?: Record<string, unknown> | null },
   session: { amount_total?: number | null },
+  fullyPaid: boolean,
 ): Promise<string | null> {
   try {
     if (proposal.invoice_id) {
@@ -636,7 +686,6 @@ async function ensurePaidInvoice(
 
     const today = new Date().toISOString().slice(0, 10);
     const paidAmount = Math.round(Number(session.amount_total ?? 0)) / 100;
-    const proposalTotal = Number(proposal.total ?? 0);
 
     // Full payment carries the proposal's own line items onto the invoice;
     // a partial payment (deposit / milestone) gets one line for the amount
@@ -659,7 +708,6 @@ async function ensurePaidInvoice(
     const serviceDate = rowDates[0] || iso(cfv.event_start_date) || iso(lead?.event_date) || today;
     const serviceEnd = rowDates[rowDates.length - 1] || iso(cfv.event_end_date) || serviceDate;
 
-    const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - proposalTotal) < 0.01;
     const srcItems: Record<string, unknown>[] = Array.isArray(proposal.line_items)
       ? (proposal.line_items as Record<string, unknown>[])
       : [];
@@ -692,20 +740,24 @@ async function ensurePaidInvoice(
     };
 
 
-    // Same numbering scheme as the app: INV-YYYY-NNNN from the year's max.
+    // Same numbering scheme as the app: INV-YYYY-NNNN from the ORG's max
+    // (matches the client-side generator, which is implicitly org-scoped by
+    // RLS). invoice_number is globally unique in the schema, so the insert
+    // below retries upward on a cross-org collision.
     const year = new Date().getFullYear();
     const prefix = `INV-${year}-`;
     const { data: latest } = await supabase
-      .from("invoices").select("invoice_number").like("invoice_number", `${prefix}%`)
+      .from("invoices").select("invoice_number").eq("org_id", proposal.org_id)
+      .like("invoice_number", `${prefix}%`)
       .order("invoice_number", { ascending: false }).limit(1);
-    const maxNum = latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0;
-    const invoiceNumber = `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
+    const nextNum = (latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0) + 1;
 
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
     const viewToken = randomBytes(8).toString("hex");
 
-    const subtotal = fullyPaid ? Number(proposal.subtotal ?? paidAmount) : paidAmount;
+    const taxCharged = fullyPaid ? Number(proposal.tax_amount ?? 0) : 0;
+    const subtotal = Math.round((paidAmount - taxCharged) * 100) / 100;
     // One modest notes block: the proposal reference plus each line item's
     // details sentence. Line items stay as priced on the proposal (Geoff,
     // 2026-08-22: one investment figure, not split sub-prices).
@@ -724,31 +776,44 @@ async function ensurePaidInvoice(
     ].filter(Boolean).join(", ")).slice(0, 300);
 
     const notes = [
-      `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      (fullyPaid
+        ? `Paid in full via proposal acceptance: ${proposal.title || ""}`
+        : `Deposit received via proposal acceptance: ${proposal.title || ""}. Remaining balance to be invoiced.`).trim(),
       detailText,
     ].filter(Boolean).join("\n\n");
 
     if (venueLine) (clientInfo as Record<string, string>).eventLocation = venueLine;
+    // How this invoice was actually settled — the renderer's paid banner
+    // reads THIS, not the offered-methods list, so it never misattributes.
+    (clientInfo as Record<string, string>).paidVia = "card via Stripe";
 
-    const { error: insErr } = await supabase.from("invoices").insert({
-      id: invoiceId,
-      org_id: proposal.org_id,
-      invoice_number: invoiceNumber,
-      client_id: proposal.client_id,
-      period_start: serviceDate, period_end: serviceEnd,
-      subtotal,
-      tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
-      tax_amount: fullyPaid ? Number(proposal.tax_amount ?? 0) : 0,
-      total: paidAmount || proposalTotal,
-      status: "paid",
-      issue_date: today, due_date: today, paid_date: today,
-      line_items: lineItems,
-      company_info: companyInfo,
-      client_info: clientInfo,
-      notes,
-      payment_methods: ["stripe"],
-      view_token: viewToken,
-    });
+    // invoice_number is globally unique; another org may hold this year's
+    // next number. Walk upward a few slots on collision instead of failing.
+    let insErr: { message: string; code?: string } | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { error } = await supabase.from("invoices").insert({
+        id: invoiceId,
+        org_id: proposal.org_id,
+        invoice_number: `${prefix}${String(nextNum + attempt).padStart(4, "0")}`,
+        client_id: proposal.client_id,
+        period_start: serviceDate, period_end: serviceEnd,
+        subtotal,
+        tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
+        tax_amount: taxCharged,
+        total: paidAmount,
+        status: "paid",
+        issue_date: today, due_date: today, paid_date: today,
+        line_items: lineItems,
+        company_info: companyInfo,
+        client_info: clientInfo,
+        notes,
+        payment_methods: ["stripe"],
+        view_token: viewToken,
+      });
+      insErr = error;
+      if (!error) break;
+      if (error.code !== "23505") break; // only retry unique collisions
+    }
     if (insErr) { console.warn(`[proposal-accept] invoice create failed: ${insErr.message}`); return null; }
 
     await supabase.from("proposals").update({ invoice_id: invoiceId, updated_at: new Date().toISOString() }).eq("id", proposal.id);

@@ -109,6 +109,11 @@ export default function ViewProposalPage() {
             }
           } catch { /* corrupt localStorage — ignore */ }
 
+          // Committed group picks (accepted proposals) win over any local
+          // draft — the document view renders exactly what was signed.
+          if (Array.isArray(body.selectedPackageIds) && body.selectedPackageIds.length > 0) {
+            setSelectedPackageIds(body.selectedPackageIds);
+          }
           if (body.selectedPackageId) setSelectedPackageId(body.selectedPackageId);
           else if (restoredPackage && (body.packages || []).some((p: { id: string }) => p.id === restoredPackage)) {
             setSelectedPackageId(restoredPackage);
@@ -506,7 +511,10 @@ export default function ViewProposalPage() {
   // filled in — they see a finished document with their date and venue in it,
   // rather than a page of empty boxes they complete afterwards and never
   // re-read. It also front-loads the only typing in the whole flow.
-  const yourDetailsPanel = (!accepted && requiredClientFields.length > 0) ? (
+  // Rendered whenever unsigned: coverage dates/times are always required,
+  // so hiding the panel when the venue fields happen to be pre-known would
+  // leave signing permanently blocked with no visible inputs.
+  const yourDetailsPanel = !accepted ? (
     <div className="bg-white rounded-xl shadow-sm border p-6">
       <h2 className="text-lg font-bold text-gray-900 mb-1">Confirm your details</h2>
       <p className="text-sm text-gray-500 mb-4">
@@ -538,16 +546,16 @@ export default function ViewProposalPage() {
         <div className="space-y-2">
           {Array.from({ length: scheduleRows }, (_, idx) => idx + 1).map(i => (
             <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Event Date {scheduleRows > 1 ? i : ""} <span className="text-red-600">*</span></label>
                 <input
                   type="date"
                   value={clientFields[`event_date_${i}`] || ""}
                   onChange={(e) => setClientFields(v => ({ ...v, [`event_date_${i}`]: e.target.value }))}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full min-w-0 max-w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Start Time <span className="text-red-600">*</span></label>
                 <input
                   type="text"
@@ -557,7 +565,7 @@ export default function ViewProposalPage() {
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">End Time <span className="text-red-600">*</span></label>
                 <input
                   type="text"

@@ -34,6 +34,7 @@ import { brandedEmailWrapper } from "./_emailBranding.js";
 import { saveSelectionsAndAlert } from "./delivery-public.js";
 import { syncConversionToScout } from "./_scoutSync.js";
 import { sendPushToOwner } from "./_apns.js";
+import { processProposalPayment, PROPOSAL_PAYMENT_SELECT } from "./proposal-accept.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -370,6 +371,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body: `Invoice ${invoice.invoice_number || ""} — $${Number(invoice.total || 0).toLocaleString("en-US")} paid`.trim(),
               data: { type: "payment" },
             }).catch(err => console.warn(`[stripe-webhook] push failed: ${errorMessage(err)}`));
+          }
+        } else if (session.mode === "payment" && session.metadata?.type === "proposal" && session.metadata?.proposalId) {
+          // Proposal pay-at-signing. The browser redirect (verify-payment)
+          // handles the happy path; this is the durable path when the client
+          // pays and closes the tab. Idempotent via proposals.invoice_id, and
+          // only the session WE stored for this proposal may settle it.
+          if (session.payment_status === "paid") {
+            const { data: proposal } = await supabase
+              .from("proposals")
+              .select(PROPOSAL_PAYMENT_SELECT)
+              .eq("id", session.metadata.proposalId)
+              .maybeSingle();
+            if (proposal && !proposal.invoice_id && proposal.stripe_session_id === session.id) {
+              const { data: org } = await supabase
+                .from("organizations")
+                .select("stripe_account_id, name, business_info")
+                .eq("id", proposal.org_id)
+                .maybeSingle();
+              if (org) await processProposalPayment(proposal, org, session);
+            }
           }
         } else if (session.mode === "payment" && session.metadata?.kind === "delivery_extras") {
           await handleDeliveryExtrasPaid(session);
