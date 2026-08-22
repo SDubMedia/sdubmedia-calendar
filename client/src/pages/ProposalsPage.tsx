@@ -199,7 +199,7 @@ function PaymentEditor({ config, setConfig, total }: { config: ProposalPaymentCo
 }
 
 export default function ProposalsPage() {
-  const { data, addClient, addContractTemplate, addProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
+  const { data, addClient, addContractTemplate, addProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal, addPipelineLead } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
   // Proposals first: the page is for the deals you have, templates are the
@@ -464,6 +464,35 @@ export default function ProposalsPage() {
          console.warn("[proposals] send_history append failed:", err);
        }
       await updateProposal(proposalId, { status: "sent", sentAt: new Date().toISOString() });
+
+      // Every sent proposal lives in the pipeline: if no lead is linked yet
+      // (standalone proposals — Pipeline-created ones link automatically),
+      // create one at proposal_sent so the signed/paid stage advancement
+      // has a lead to move. Best-effort.
+      try {
+        const linked = data.pipelineLeads.some(l => l.proposalId === proposalId && !l.deletedAt);
+        if (!linked) {
+          const client = data.clients.find(c => c.id === proposal.clientId);
+          const lead = await addPipelineLead({
+            clientId: proposal.clientId || null,
+            name: client ? `${client.contactName || client.company}${client.contactName && client.company ? ` (${client.company})` : ""}` : (proposal.clientEmail || "Proposal client"),
+            email: client?.email || proposal.clientEmail || "",
+            phone: client?.phone || "",
+            projectType: "", eventDate: null, location: "", description: `Proposal: ${proposal.title}`,
+            leadSource: "Proposal", pipelineStage: "proposal_sent",
+            proposalId: proposalId,
+            recentActivity: "Proposal sent", recentActivityAt: new Date().toISOString(),
+            expectedValue: proposal.total || 0,
+            followUpDate: null, followUpNote: "",
+            closedOutcome: "", closedAt: null, lostReason: "", lostReasonNote: "",
+            deletedAt: null,
+          });
+          void lead;
+        }
+      } catch (err) {
+        console.warn("[proposals] pipeline lead auto-link failed:", err);
+      }
+
       toast.success("Proposal sent to " + proposal.clientEmail);
     } catch (e: any) {
       toast.error(e.message || "Failed to send");
