@@ -481,19 +481,31 @@ async function ensurePaidInvoice(
     // Full payment carries the proposal's own line items onto the invoice;
     // a partial payment (deposit / milestone) gets one line for the amount
     // actually paid, so the invoice never claims more was billed than paid.
+    const cfv = (proposal.client_field_values && typeof proposal.client_field_values === "object")
+      ? proposal.client_field_values : {};
+    // Service dates, best source first: ISO event_start_date/event_end_date
+    // in the proposal's client field values (multi-day events set these), then
+    // the linked pipeline lead's single event date, then today.
+    const iso = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+    const { data: lead } = await supabase
+      .from("pipeline_leads").select("event_date").eq("proposal_id", proposal.id).is("deleted_at", null).maybeSingle();
+    const serviceDate = iso(cfv.event_start_date) || iso(lead?.event_date) || today;
+    const serviceEnd = iso(cfv.event_end_date) || serviceDate;
+
     const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - proposalTotal) < 0.01;
     const srcItems: Record<string, unknown>[] = Array.isArray(proposal.line_items)
       ? (proposal.line_items as Record<string, unknown>[])
       : [];
     const lineItems = fullyPaid && srcItems.length > 0
       ? srcItems.map((li) => ({
-          date: today,
+          date: serviceDate,
+          ...(serviceEnd !== serviceDate ? { dateEnd: serviceEnd } : {}),
           amount: Number(li.amount) || 0,
           quantity: Number(li.quantity) || 1,
           unitPrice: Number(li.unitPrice) || 0,
           description: String(li.description || proposal.title || "Services"),
         }))
-      : [{ date: today, amount: paidAmount, quantity: 1, unitPrice: paidAmount, description: `Payment received — ${proposal.title || "Proposal"}` }];
+      : [{ date: serviceDate, ...(serviceEnd !== serviceDate ? { dateEnd: serviceEnd } : {}), amount: paidAmount, quantity: 1, unitPrice: paidAmount, description: `Payment received — ${proposal.title || "Proposal"}` }];
 
     const bi = (org.business_info && typeof org.business_info === "object" ? org.business_info : {}) as Record<string, string>;
     const companyInfo = {
@@ -504,8 +516,6 @@ async function ensurePaidInvoice(
 
     const { data: client } = await supabase
       .from("clients").select("company, contact_name, email, phone").eq("id", proposal.client_id).maybeSingle();
-    const cfv = (proposal.client_field_values && typeof proposal.client_field_values === "object")
-      ? proposal.client_field_values : {};
     const clientInfo = {
       company: client?.company || "", contactName: client?.contact_name || "",
       email: client?.email || "", phone: client?.phone || "",
@@ -514,11 +524,6 @@ async function ensurePaidInvoice(
       ...(cfv.po_number ? { poNumber: String(cfv.po_number).slice(0, 100) } : {}),
     };
 
-    // Service dates: the linked pipeline lead's event date, when it's a real
-    // date. Falls back to today (same-day service semantics) otherwise.
-    const { data: lead } = await supabase
-      .from("pipeline_leads").select("event_date").eq("proposal_id", proposal.id).is("deleted_at", null).maybeSingle();
-    const serviceDate = (lead?.event_date && /^\d{4}-\d{2}-\d{2}$/.test(lead.event_date)) ? lead.event_date : today;
 
     // Same numbering scheme as the app: INV-YYYY-NNNN from the year's max.
     const year = new Date().getFullYear();
@@ -551,7 +556,7 @@ async function ensurePaidInvoice(
       org_id: proposal.org_id,
       invoice_number: invoiceNumber,
       client_id: proposal.client_id,
-      period_start: serviceDate, period_end: serviceDate,
+      period_start: serviceDate, period_end: serviceEnd,
       subtotal,
       tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
       tax_amount: fullyPaid ? Number(proposal.tax_amount ?? 0) : 0,

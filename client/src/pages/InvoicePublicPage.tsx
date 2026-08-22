@@ -20,6 +20,8 @@ interface PublicLineItem {
   quantity?: number;
   unitPrice?: number;
   date?: string;
+  // Multi-day service (event coverage): renders "date – dateEnd" under the line.
+  dateEnd?: string;
 }
 interface PublicInvoice {
   id: string;
@@ -296,6 +298,7 @@ export default function InvoicePublicPage() {
                     {(showRate || li.date) && (
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {li.date ? formatDate(li.date) : ""}
+                        {li.date && li.dateEnd && li.dateEnd !== li.date ? ` – ${formatDate(li.dateEnd)}` : ""}
                         {li.date && showRate ? " · " : ""}
                         {showRate ? `${qty.toLocaleString()} × ${formatMoney(unit)}` : ""}
                       </p>
