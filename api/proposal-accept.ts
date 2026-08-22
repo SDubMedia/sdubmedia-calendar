@@ -786,11 +786,19 @@ async function createProjectsForProposal(
 async function insertInvoiceNumbered(orgId: string, row: Record<string, unknown>): Promise<string | null> {
   const year = new Date().getFullYear();
   const prefix = `INV-${year}-`;
-  const { data: latest } = await supabase
+  // Numeric max computed in code, NOT order-by-string-desc limit 1: string
+  // sort puts a non-numeric suffix like "INV-2026-PREVIEW" above every real
+  // number, which parsed to 0 and restarted the sequence at 0001 (found in
+  // the 2026-08-22 dry run — both test invoices minted as INV-2026-0001).
+  const { data: rows } = await supabase
     .from("invoices").select("invoice_number").eq("org_id", orgId)
-    .like("invoice_number", `${prefix}%`)
-    .order("invoice_number", { ascending: false }).limit(1);
-  const nextNum = (latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0) + 1;
+    .like("invoice_number", `${prefix}%`).limit(2000);
+  let maxNum = 0;
+  for (const r of rows || []) {
+    const n = parseInt(String(r.invoice_number || "").slice(prefix.length), 10);
+    if (Number.isFinite(n) && n > maxNum) maxNum = n;
+  }
+  const nextNum = maxNum + 1;
   let insErr: { message: string; code?: string } | null = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const { error } = await supabase.from("invoices").insert({

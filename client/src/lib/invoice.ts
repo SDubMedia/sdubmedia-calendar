@@ -46,15 +46,18 @@ export function generateInvoiceNumber(existingInvoices: { invoiceNumber: string 
 export async function generateInvoiceNumberFromDB(supabase: any): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `INV-${year}-`;
+  // Numeric max in code — order-by-string-desc limit 1 ranks a non-numeric
+  // suffix ("INV-2026-PREVIEW") above every real number, which parsed to 0
+  // and would have restarted the whole sequence at 0001.
   const { data } = await supabase
     .from("invoices")
     .select("invoice_number")
     .like("invoice_number", `${prefix}%`)
-    .order("invoice_number", { ascending: false })
-    .limit(1);
+    .limit(2000);
   let maxNum = 0;
-  if (data?.[0]?.invoice_number) {
-    maxNum = parseInt(data[0].invoice_number.slice(prefix.length), 10) || 0;
+  for (const r of (data || []) as { invoice_number?: string }[]) {
+    const n = parseInt(String(r.invoice_number || "").slice(prefix.length), 10);
+    if (Number.isFinite(n) && n > maxNum) maxNum = n;
   }
   return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
 }
