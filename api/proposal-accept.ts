@@ -443,7 +443,7 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
 
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id, client_field_values")
+    .select("id, org_id, client_id, title, line_items, subtotal, tax_rate, tax_amount, total, invoice_id, client_field_values, view_token, client_email")
     .eq("view_token", token as string)
     .single();
 
@@ -488,10 +488,54 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
     // the confirmation screen. Created once: page reloads re-enter this
     // handler, so an already-linked invoice is returned, not duplicated.
     const invoiceToken = await ensurePaidInvoice(proposal, org, session);
+
+    // The client's own record: a receipt email with the signed agreement
+    // and paid invoice links. Awaited (never fire-and-forget in a handler);
+    // failure logs and degrades — the payment stands either way.
+    try {
+      await sendClientReceiptEmail(proposal, org, invoiceToken, session);
+    } catch (err) {
+      console.warn(`[proposal-accept] client receipt email failed: ${errorMessage(err, "unknown")}`);
+    }
+
     return res.status(200).json({ paid: true, ...(invoiceToken ? { invoiceToken } : {}) });
   }
 
   return res.status(200).json({ paid: false });
+}
+
+/**
+ * Receipt email to the signer after a verified payment: amount, the signed
+ * agreement (document view), and the paid invoice. Everything on-screen
+ * survives in their inbox.
+ */
+async function sendClientReceiptEmail(
+  proposal: { title: string; total: number; view_token?: string; client_email?: string | null },
+  org: { name?: string | null },
+  invoiceToken: string | null,
+  session: { amount_total?: number | null },
+) {
+  const to = String(proposal.client_email || "").trim();
+  if (!to || !proposal.view_token) return;
+  const appBase = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
+  const agreementUrl = `${appBase}/proposal/${proposal.view_token}?view=document`;
+  const invoiceUrl = invoiceToken ? `${appBase}/invoice/${invoiceToken}` : "";
+  const paid = Math.round(Number(session.amount_total ?? 0)) / 100;
+  const orgName = org.name || "Your provider";
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Payment received — ${proposal.title || "your booking"}`,
+    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+      <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
+      <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your payment${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.</p>
+      <p style="margin:0 0 8px;font-size:14px;">For your records:</p>
+      <p style="margin:8px 0;"><a href="${escapeHtml(agreementUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your signed agreement</a></p>
+      ${invoiceUrl ? `<p style="margin:8px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your paid invoice</a></p>` : ""}
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">Both pages can be printed or saved as PDF. Questions? Just reply to this email.</p>
+      <p style="margin:24px 0 0;color:#64748b;font-size:13px;">— ${escapeHtml(orgName)}</p>
+    </body></html>`,
+  });
 }
 
 /** "8:30 AM" / "5 pm" / "08:30" → "HH:MM" 24h, or "" when unparseable. */

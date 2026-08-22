@@ -13,7 +13,7 @@ import { Link } from "wouter";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Todo } from "@/lib/types";
-import { ArrowRight, Plus, ListChecks, AlertTriangle, PenTool } from "lucide-react";
+import { ArrowRight, Plus, ListChecks, AlertTriangle, PenTool, Users } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +89,18 @@ export default function TodosWidget() {
     ? data.proposals.filter(t => t.status === "accepted" && !t.deletedAt)
     : [];
 
+  // Booked-but-unstaffed: upcoming or tentative future projects with no crew
+  // assigned. Derived live like the countersign items — appears when a
+  // signed proposal books the calendar, disappears as crew is assigned.
+  const unstaffed = isOwner
+    ? data.projects
+        .filter(pj => pj.date >= today
+          && (pj.status === "upcoming" || pj.status === "tentative")
+          && (!Array.isArray(pj.crew) || pj.crew.length === 0))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+  const clientCompany = (id: string) => data.clients.find(c => c.id === id)?.company || "";
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -120,6 +132,21 @@ export default function TodosWidget() {
       </div>
 
       <div className="divide-y divide-border">
+        {unstaffed.slice(0, 3).map(pj => (
+          <Link key={pj.id} href="/calendar" className="px-4 py-2.5 flex items-center gap-3 bg-blue-500/5 hover:bg-blue-500/10">
+            <Users className="w-4 h-4 shrink-0 text-blue-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground truncate">Assign crew: {clientCompany(pj.clientId) || "Project"}</p>
+              <p className="text-[11px] text-blue-400/90">{formatDue(pj.date)} — no crew assigned yet</p>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+          </Link>
+        ))}
+        {unstaffed.length > 3 && (
+          <Link href="/calendar" className="block px-4 py-1.5 text-center text-[11px] text-blue-400/90 hover:text-blue-300 bg-blue-500/5">
+            {unstaffed.length - 3} more unstaffed project{unstaffed.length - 3 !== 1 ? "s" : ""}
+          </Link>
+        )}
         {countersignItems.map(pr => (
           <Link key={pr.id} href="/proposals" className="px-4 py-2.5 flex items-center gap-3 bg-amber-500/5 hover:bg-amber-500/10">
             <PenTool className="w-4 h-4 shrink-0 text-amber-400" />
@@ -130,7 +157,7 @@ export default function TodosWidget() {
             <ArrowRight className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
           </Link>
         ))}
-        {open.length === 0 && countersignItems.length === 0 ? (
+        {open.length === 0 && countersignItems.length === 0 && unstaffed.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             <ListChecks className="w-5 h-5 mx-auto mb-1.5 opacity-60" />
             All caught up
