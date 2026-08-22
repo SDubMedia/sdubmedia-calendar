@@ -275,6 +275,24 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   if (updateError) return res.status(500).json({ error: updateError.message });
   if (count === 0) return res.status(409).json({ error: "Proposal already accepted" });
 
+  // Pipeline: the lead follows the deal — signed now, paid on verification.
+  await supabase.from("pipeline_leads")
+    .update({ pipeline_stage: "proposal_signed", recent_activity: `Signed by ${signature.name || "client"}`, recent_activity_at: now, updated_at: now })
+    .eq("proposal_id", proposal.id)
+    .is("deleted_at", null);
+
+  // Calendar: one tentative project per confirmed coverage day, flipped to
+  // upcoming + paid when the payment verifies. Never fails the acceptance.
+  try {
+    const mergedFields = {
+      ...(proposal.client_field_values && typeof proposal.client_field_values === "object" ? proposal.client_field_values : {}),
+      ...((updatePayload.client_field_values as Record<string, string>) || {}),
+    } as Record<string, string>;
+    await createProjectsForProposal(proposal, mergedFields);
+  } catch (err) {
+    console.warn(`[proposal-accept] calendar projects failed: ${errorMessage(err, "unknown")}`);
+  }
+
   // ---------- Phase A: auto-generate draft contract ----------
   // If the proposal links to a master contract template, render a draft
   // contract from the master + selected packages and drop it in the owner's
@@ -453,6 +471,19 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
       updated_at: now,
     }).eq("id", proposal.id);
 
+    // Pipeline: paid in full — the lead advances to the paid stage.
+    await supabase.from("pipeline_leads")
+      .update({ pipeline_stage: "retainer_paid", recent_activity: "Paid in full via proposal", recent_activity_at: now, updated_at: now })
+      .eq("proposal_id", proposal.id)
+      .is("deleted_at", null);
+
+    // Calendar: signed-tentative projects become confirmed and paid.
+    await supabase.from("projects")
+      .update({ status: "upcoming", paid_date: now.slice(0, 10), updated_at: now })
+      .eq("org_id", proposal.org_id)
+      .eq("status", "tentative")
+      .like("notes", `%[proposal:${proposal.id}]%`);
+
     // A paid invoice the client can open (and print/save as PDF) right from
     // the confirmation screen. Created once: page reloads re-enter this
     // handler, so an already-linked invoice is returned, not duplicated.
@@ -461,6 +492,85 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(200).json({ paid: false });
+}
+
+/** "8:30 AM" / "5 pm" / "08:30" → "HH:MM" 24h, or "" when unparseable. */
+function parseTimeText(v: unknown): string {
+  const m = String(v || "").trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i);
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const min = m[2] || "00";
+  const ap = (m[3] || "").toLowerCase();
+  if (h > 23 || parseInt(min, 10) > 59) return "";
+  if (ap.startsWith("p") && h < 12) h += 12;
+  if (ap.startsWith("a") && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+
+/**
+ * One tentative project per confirmed coverage day (event_date_N rows, or
+ * the single event_date), so a signed proposal lands on the calendar with
+ * its dates immediately. The full amount rides on day one (per_project);
+ * later days carry 0 so nothing double-bills. Projects are tagged
+ * [proposal:id] in notes; verify-payment flips them to upcoming + paid.
+ * Idempotent via proposals.project_id. Crew starts empty — assignment is
+ * the owner's call, per position, in the app.
+ */
+async function createProjectsForProposal(
+  proposal: { id: string; org_id: string; client_id: string; title: string; total: number; project_id?: string | null },
+  cfv: Record<string, string>,
+) {
+  if (proposal.project_id) return; // already created
+
+  const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+  const rows = Object.entries(cfv)
+    .map(([k, v]) => { const m = k.match(/^event_date_(\d+)$/); return m ? { n: Number(m[1]), date: String(v || "") } : null; })
+    .filter((r): r is { n: number; date: string } => !!r && isoRe.test(r.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const days = rows.length > 0
+    ? rows.map(r => ({ date: r.date, start: parseTimeText(cfv[`event_start_time_${r.n}`]), end: parseTimeText(cfv[`event_end_time_${r.n}`]) }))
+    : (isoRe.test(cfv.event_date || "") ? [{ date: cfv.event_date, start: parseTimeText(cfv.event_start_time), end: parseTimeText(cfv.event_end_time) }] : []);
+  if (days.length === 0) return;
+
+  // A project type is mandatory: prefer an event-ish one, else the org's
+  // first, else create a plain "Event" type.
+  const { data: types } = await supabase.from("project_types").select("id, name").eq("org_id", proposal.org_id);
+  let typeId = (types || []).find(t => /event/i.test(t.name || ""))?.id || (types || [])[0]?.id || "";
+  if (!typeId) {
+    typeId = `pt_${nanoid(8)}`;
+    await supabase.from("project_types").insert({ id: typeId, org_id: proposal.org_id, name: "Event" });
+  }
+
+  const venue = [cfv.event_venue_name, cfv.event_address, [cfv.event_city_state, cfv.event_zip].filter(Boolean).join(" ")]
+    .map(x => String(x || "").trim()).filter(Boolean).join(", ");
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const now = new Date().toISOString();
+  let firstId = "";
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    const projId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+    if (!firstId) firstId = projId;
+    const { error } = await supabase.from("projects").insert({
+      id: projId,
+      org_id: proposal.org_id,
+      client_id: proposal.client_id,
+      project_type_id: typeId,
+      date: d.date,
+      start_time: d.start || "",
+      end_time: d.end || "",
+      status: "tentative",
+      crew: [],
+      billing_model: "per_project",
+      project_rate: i === 0 ? Number(proposal.total || 0) : 0,
+      notes: [
+        `Booked via signed proposal: ${proposal.title || ""} [proposal:${proposal.id}]`,
+        venue ? `Venue: ${venue}` : "",
+        days.length > 1 ? `Day ${i + 1} of ${days.length}` : "",
+      ].filter(Boolean).join("\n"),
+    });
+    if (error) throw new Error(error.message);
+  }
+  await supabase.from("proposals").update({ project_id: firstId, updated_at: now }).eq("id", proposal.id);
 }
 
 /**
