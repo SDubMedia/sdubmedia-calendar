@@ -202,7 +202,10 @@ export default function ProposalsPage() {
   const { data, addClient, addContractTemplate, addProposalTemplate, deleteProposalTemplate, addProposal, updateProposal, deleteProposal } = useApp();
   const { profile } = useAuth();
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState<"proposals" | "templates">("templates");
+  // Proposals first: the page is for the deals you have, templates are the
+  // workshop behind them (Geoff, 2026-08-22 — landing on Templates hid a
+  // freshly created proposal and read as "sending me to new template").
+  const [tab, setTab] = useState<"proposals" | "templates">("proposals");
 
   // Proposal dialog state
   const [proposalDialogOpen, setProposalDialogOpen] = useState(false);
