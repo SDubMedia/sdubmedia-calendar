@@ -357,7 +357,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             paid_date: today,
           }).eq("id", session.metadata.invoiceId);
 
-          const { data: invoice } = await supabase.from("invoices").select("line_items, org_id, total, invoice_number").eq("id", session.metadata.invoiceId).maybeSingle();
+          const { data: invoice } = await supabase.from("invoices").select("line_items, org_id, total, invoice_number, client_info").eq("id", session.metadata.invoiceId).maybeSingle();
+          // A proposal-balance invoice (created when the deposit settled)
+          // carries client_info.proposalId. Paying it settles the deal:
+          // stamp the proposal + its projects paid, advance the pipeline,
+          // and record how the invoice was paid for its banner.
+          const balanceProposalId = (invoice?.client_info as Record<string, string> | null)?.proposalId;
+          if (balanceProposalId) {
+            const nowIso = new Date().toISOString();
+            await supabase.from("invoices").update({
+              client_info: { ...(invoice?.client_info as Record<string, unknown>), paidVia: "card via Stripe" },
+            }).eq("id", session.metadata.invoiceId);
+            await supabase.from("proposals").update({ paid_at: nowIso, updated_at: nowIso })
+              .eq("id", balanceProposalId).is("paid_at", null);
+            await supabase.from("projects")
+              .update({ paid_date: today, updated_at: nowIso })
+              .eq("org_id", invoice?.org_id as string)
+              .is("paid_date", null)
+              .like("notes", `%[proposal:${balanceProposalId}]%`);
+            await supabase.from("pipeline_leads")
+              .update({ recent_activity: "Balance paid — paid in full", recent_activity_at: nowIso, updated_at: nowIso })
+              .eq("proposal_id", balanceProposalId)
+              .is("deleted_at", null);
+          }
           if (invoice?.line_items) {
             const projectIds = (invoice.line_items as { projectId?: string }[]).map(li => li.projectId).filter(Boolean);
             for (const pid of projectIds) {

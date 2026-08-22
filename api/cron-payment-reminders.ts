@@ -197,6 +197,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ---- Pass 2: proposal balance invoices ----
+  // A deposit-paid proposal auto-raises a "sent" invoice for the remaining
+  // balance (see proposal-accept's ensureBalanceInvoice), marked by
+  // client_info.proposalId. Nag on the same windows as milestones; the CTA
+  // is the public invoice page, whose existing Stripe button settles it.
+  // Scoped to that marker on purpose — ordinary owner-sent invoices are NOT
+  // auto-nagged, that would change behavior under every org's feet.
+  const { data: balanceInvoices, error: balErr } = await supabase
+    .from("invoices")
+    .select("id, org_id, invoice_number, total, due_date, view_token, client_info, client_id")
+    .eq("status", "sent")
+    .is("deleted_at", null)
+    .not("due_date", "is", null)
+    .not("client_info->>proposalId", "is", null);
+  if (balErr) errors.push(`balance-invoices query: ${balErr.message}`);
+
+  for (const inv of balanceInvoices ?? []) {
+    const ci = (inv.client_info && typeof inv.client_info === "object" ? inv.client_info : {}) as Record<string, string>;
+    const daysUntilDue = daysBetween(todayIso, inv.due_date as string);
+    if (!REMINDER_OFFSETS.includes(daysUntilDue as typeof REMINDER_OFFSETS[number])) { skipped++; continue; }
+    if (ci.balanceReminderSentAt && ci.balanceReminderSentAt.slice(0, 10) === todayIso) continue;
+
+    let toEmail = (ci.email || "").trim();
+    if (!toEmail && inv.client_id) {
+      const { data: client } = await supabase.from("clients").select("email").eq("id", inv.client_id).maybeSingle();
+      toEmail = (client?.email || "").trim();
+    }
+    if (!toEmail || !inv.view_token) { skipped++; continue; }
+
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("id, name, stripe_account_id, business_info")
+      .eq("id", inv.org_id)
+      .single<OrgRow>();
+    if (!org) { skipped++; continue; }
+
+    const amount = Number(inv.total || 0);
+    if (amount <= 0) { skipped++; continue; }
+
+    try {
+      const invoiceUrl = `${APP_BASE}/invoice/${inv.view_token}`;
+      if (!isAllowedUrl(invoiceUrl)) { skipped++; continue; }
+      const subject = formatSubject(amount, inv.due_date as string, daysUntilDue);
+      const html = renderBalanceEmail({
+        orgName: org.name,
+        businessInfo: org.business_info,
+        invoiceNumber: String(inv.invoice_number || ""),
+        amount,
+        dueIso: inv.due_date as string,
+        daysUntilDue,
+        invoiceUrl,
+      });
+      const orgEmail = org.business_info?.email?.trim() || VERIFIED_FROM_EMAIL;
+      await resend.emails.send({
+        from: `${org.name || "Your contractor"} <${VERIFIED_FROM_EMAIL}>`,
+        to: toEmail,
+        subject,
+        html,
+        replyTo: orgEmail,
+      });
+      const { error: updErr } = await supabase.from("invoices").update({
+        client_info: { ...ci, balanceReminderSentAt: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      }).eq("id", inv.id);
+      if (updErr) errors.push(`invoice=${inv.id} stamp=${updErr.message}`);
+      sent++;
+    } catch (err) {
+      errors.push(`invoice=${inv.id} err=${errorMessage(err)}`);
+    }
+  }
+
   if (CRONITOR_TELEMETRY_KEY) {
     const state = errors.length === 0 ? "complete" : "fail";
     try { await fetch(`https://cronitor.link/p/${CRONITOR_TELEMETRY_KEY}/${CRONITOR_MONITOR}?state=${state}&metric=count:${sent}`); }
@@ -298,6 +369,36 @@ function renderEmail({
       <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Due</td><td style="padding: 4px 0;">${escapeHtml(dueLabel)}</td></tr>
     </table>
     ${cta}
+    <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>`;
+  return brandedEmailWrapper({ orgName, businessInfo }, body);
+}
+
+function renderBalanceEmail({
+  orgName, businessInfo, invoiceNumber, amount, dueIso, daysUntilDue, invoiceUrl,
+}: {
+  orgName: string;
+  businessInfo: { email?: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; website?: string } | null;
+  invoiceNumber: string;
+  amount: number;
+  dueIso: string;
+  daysUntilDue: number;
+  invoiceUrl: string;
+}): string {
+  const dueLabel = formatHumanDate(dueIso);
+  const headline = daysUntilDue > 0
+    ? `Balance due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}`
+    : daysUntilDue === 0
+      ? "Balance due today"
+      : `Balance is ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? "" : "s"} past due`;
+  const body = `
+    <h2 style="margin: 0 0 4px; font-size: 18px;">${escapeHtml(headline)}</h2>
+    <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">A friendly reminder about the remaining balance on your booking.</p>
+    <table style="border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      ${invoiceNumber ? `<tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Invoice</td><td style="padding: 4px 0;">${escapeHtml(invoiceNumber)}</td></tr>` : ""}
+      <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Amount</td><td style="padding: 4px 0; font-weight: 600;">$${amount.toFixed(2)}</td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Due</td><td style="padding: 4px 0;">${escapeHtml(dueLabel)}</td></tr>
+    </table>
+    <p style="margin: 24px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display: inline-block; background: #059669; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">View invoice &amp; pay</a></p>
     <p style="margin: 24px 0 0; color: #94a3b8; font-size: 12px;">Questions? Reply to this email and we'll get back to you.</p>`;
   return brandedEmailWrapper({ orgName, businessInfo }, body);
 }

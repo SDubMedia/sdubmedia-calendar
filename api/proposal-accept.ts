@@ -542,8 +542,10 @@ export async function processProposalPayment(
 
   const invoiceToken = await ensurePaidInvoice(proposal, org, session, fullyPaid);
 
+  const balance = fullyPaid ? null : await ensureBalanceInvoice(proposal, org, paidAmount);
+
   try {
-    await sendClientReceiptEmail(proposal, org, invoiceToken, session, fullyPaid);
+    await sendClientReceiptEmail(proposal, org, invoiceToken, session, fullyPaid, balance);
   } catch (err) {
     console.warn(`[proposal-accept] client receipt email failed: ${errorMessage(err, "unknown")}`);
   }
@@ -562,6 +564,7 @@ async function sendClientReceiptEmail(
   invoiceToken: string | null,
   session: { amount_total?: number | null },
   fullyPaid: boolean,
+  balance: { dueIso: string; amount: number } | null,
 ) {
   const to = String(proposal.client_email || "").trim();
   if (!to || !proposal.view_token) return;
@@ -576,7 +579,7 @@ async function sendClientReceiptEmail(
     subject: `${fullyPaid ? "Payment received" : "Deposit received"} — ${proposal.title || "your booking"}`,
     html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
       <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${fullyPaid ? "Payment received" : "Deposit received"} ✓</h2>
-      <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your ${fullyPaid ? "payment" : "deposit"}${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.${fullyPaid ? "" : " The remaining balance will be invoiced separately."}</p>
+      <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your ${fullyPaid ? "payment" : "deposit"}${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.${fullyPaid ? "" : balance ? ` The remaining balance of $${balance.amount.toFixed(2)} is due ${balance.dueIso ? new Date(balance.dueIso + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "before the event"} — we'll email the invoice with a payment link as the date approaches.` : " The remaining balance will be invoiced separately."}</p>
       <p style="margin:0 0 8px;font-size:14px;">For your records:</p>
       <p style="margin:8px 0;"><a href="${escapeHtml(agreementUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your signed agreement</a></p>
       ${invoiceUrl ? `<p style="margin:8px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your paid invoice</a></p>` : ""}
@@ -584,6 +587,114 @@ async function sendClientReceiptEmail(
       <p style="margin:24px 0 0;color:#64748b;font-size:13px;">— ${escapeHtml(orgName)}</p>
     </body></html>`,
   });
+}
+
+
+/**
+ * When a deposit (not full payment) settles, raise the invoice for the
+ * remaining balance immediately: status "sent", due 14 days before the
+ * event (or 30 days out when no event date is known), payable through the
+ * public invoice page's existing Stripe flow. The reminder cron nags on it
+ * and the Stripe webhook completes the proposal when it's paid — the
+ * client_info.proposalId marker is what ties those together.
+ * Idempotent via that same marker. Never throws.
+ */
+async function ensureBalanceInvoice(
+  proposal: { id: string; org_id: string; client_id: string; title: string; tax_rate: number; tax_amount: number; total: number; client_field_values?: Record<string, string> | null },
+  org: { name?: string | null; business_info?: Record<string, unknown> | null },
+  paidAmount: number,
+): Promise<{ dueIso: string; amount: number } | null> {
+  try {
+    const balance = Math.round((Number(proposal.total ?? 0) - paidAmount) * 100) / 100;
+    if (balance <= 0) return null;
+
+    const { data: existing } = await supabase
+      .from("invoices").select("id, due_date, total")
+      .eq("org_id", proposal.org_id)
+      .eq("client_info->>proposalId", proposal.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existing) return { dueIso: existing.due_date || "", amount: Number(existing.total || balance) };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const cfv = (proposal.client_field_values && typeof proposal.client_field_values === "object")
+      ? proposal.client_field_values : {};
+    const iso = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+    const rowDates = Object.entries(cfv)
+      .filter(([k]) => /^event_date_\d+$/.test(k))
+      .map(([, v]) => iso(v)).filter(Boolean).sort();
+    const serviceDate = rowDates[0] || iso(cfv.event_start_date) || iso(cfv.event_date) || "";
+    const serviceEnd = rowDates[rowDates.length - 1] || iso(cfv.event_end_date) || serviceDate;
+    // Due 14 days before the event, per the agreement's payment terms —
+    // never in the past (a booking inside the window is due immediately).
+    let dueIso: string;
+    if (serviceDate) {
+      const d = new Date(serviceDate + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - 14);
+      dueIso = d.toISOString().slice(0, 10);
+      if (dueIso < today) dueIso = today;
+    } else {
+      const d = new Date(today + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + 30);
+      dueIso = d.toISOString().slice(0, 10);
+    }
+
+    const bi = (org.business_info && typeof org.business_info === "object" ? org.business_info : {}) as Record<string, string>;
+    const companyInfo = {
+      name: org.name || bi.name || "", email: bi.email || "", phone: bi.phone || "",
+      address: bi.address || "", city: bi.city || "", state: bi.state || "", zip: bi.zip || "",
+      website: bi.website || "",
+    };
+    const { data: client } = await supabase
+      .from("clients").select("company, contact_name, email, phone").eq("id", proposal.client_id).maybeSingle();
+    const cleanV = (v: unknown) => String(v || "").trim();
+    const venueLine = (cleanV(cfv.event_location) || [
+      cleanV(cfv.event_venue_name),
+      cleanV(cfv.event_address),
+      [cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", ")).slice(0, 300);
+    const clientInfo: Record<string, string> = {
+      company: client?.company || "", contactName: client?.contact_name || "",
+      email: client?.email || "", phone: client?.phone || "",
+      proposalId: proposal.id,
+      ...(cfv.po_number ? { poNumber: String(cfv.po_number).slice(0, 100) } : {}),
+      ...(venueLine ? { eventLocation: venueLine } : {}),
+    };
+
+    // The deposit invoice charged no tax, so the full tax rides here.
+    const taxAmount = Number(proposal.tax_amount ?? 0);
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+    const viewToken = randomBytes(8).toString("hex");
+    const insErr = await insertInvoiceNumbered(proposal.org_id, {
+      id: invoiceId,
+      org_id: proposal.org_id,
+      client_id: proposal.client_id,
+      ...(serviceDate ? { period_start: serviceDate, period_end: serviceEnd } : {}),
+      subtotal: Math.round((balance - taxAmount) * 100) / 100,
+      tax_rate: Number(proposal.tax_rate ?? 0),
+      tax_amount: taxAmount,
+      total: balance,
+      status: "sent",
+      issue_date: today, due_date: dueIso,
+      line_items: [{
+        ...(serviceDate ? { date: serviceDate } : { date: dueIso }),
+        ...(serviceEnd && serviceEnd !== serviceDate ? { dateEnd: serviceEnd } : {}),
+        amount: balance, quantity: 1, unitPrice: balance,
+        description: `Remaining balance — ${proposal.title || "Proposal"}`,
+      }],
+      company_info: companyInfo,
+      client_info: clientInfo,
+      notes: `Remaining balance per signed proposal: ${proposal.title || ""}. Deposit of $${paidAmount.toFixed(2)} received ${today}.`,
+      payment_methods: ["stripe"],
+      view_token: viewToken,
+    });
+    if (insErr) { console.warn(`[proposal-accept] balance invoice create failed: ${insErr}`); return null; }
+    return { dueIso, amount: balance };
+  } catch (err) {
+    console.warn(`[proposal-accept] balance invoice failed: ${errorMessage(err, "unknown")}`);
+    return null;
+  }
 }
 
 /** "8:30 AM" / "5 pm" / "08:30" → "HH:MM" 24h, or "" when unparseable. */
@@ -667,6 +778,32 @@ async function createProjectsForProposal(
 }
 
 /**
+ * Allocate the org's next INV-YYYY-NNNN number and insert the invoice row.
+ * invoice_number is globally unique in the schema, so on a cross-org
+ * collision we walk upward a few slots instead of failing.
+ */
+async function insertInvoiceNumbered(orgId: string, row: Record<string, unknown>): Promise<string | null> {
+  const year = new Date().getFullYear();
+  const prefix = `INV-${year}-`;
+  const { data: latest } = await supabase
+    .from("invoices").select("invoice_number").eq("org_id", orgId)
+    .like("invoice_number", `${prefix}%`)
+    .order("invoice_number", { ascending: false }).limit(1);
+  const nextNum = (latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0) + 1;
+  let insErr: { message: string; code?: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { error } = await supabase.from("invoices").insert({
+      ...row,
+      invoice_number: `${prefix}${String(nextNum + attempt).padStart(4, "0")}`,
+    });
+    insErr = error;
+    if (!error) return null;
+    if (error.code !== "23505") break; // only retry unique collisions
+  }
+  return insErr ? insErr.message : null;
+}
+
+/**
  * Create (or fetch) the paid invoice for a proposal payment. Returns its
  * public view token, or null when creation fails — payment verification
  * must never fail because the receipt could not be written.
@@ -740,18 +877,6 @@ async function ensurePaidInvoice(
     };
 
 
-    // Same numbering scheme as the app: INV-YYYY-NNNN from the ORG's max
-    // (matches the client-side generator, which is implicitly org-scoped by
-    // RLS). invoice_number is globally unique in the schema, so the insert
-    // below retries upward on a cross-org collision.
-    const year = new Date().getFullYear();
-    const prefix = `INV-${year}-`;
-    const { data: latest } = await supabase
-      .from("invoices").select("invoice_number").eq("org_id", proposal.org_id)
-      .like("invoice_number", `${prefix}%`)
-      .order("invoice_number", { ascending: false }).limit(1);
-    const nextNum = (latest?.[0]?.invoice_number ? (parseInt(latest[0].invoice_number.slice(prefix.length), 10) || 0) : 0) + 1;
-
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
     const viewToken = randomBytes(8).toString("hex");
@@ -787,34 +912,25 @@ async function ensurePaidInvoice(
     // reads THIS, not the offered-methods list, so it never misattributes.
     (clientInfo as Record<string, string>).paidVia = "card via Stripe";
 
-    // invoice_number is globally unique; another org may hold this year's
-    // next number. Walk upward a few slots on collision instead of failing.
-    let insErr: { message: string; code?: string } | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { error } = await supabase.from("invoices").insert({
-        id: invoiceId,
-        org_id: proposal.org_id,
-        invoice_number: `${prefix}${String(nextNum + attempt).padStart(4, "0")}`,
-        client_id: proposal.client_id,
-        period_start: serviceDate, period_end: serviceEnd,
-        subtotal,
-        tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
-        tax_amount: taxCharged,
-        total: paidAmount,
-        status: "paid",
-        issue_date: today, due_date: today, paid_date: today,
-        line_items: lineItems,
-        company_info: companyInfo,
-        client_info: clientInfo,
-        notes,
-        payment_methods: ["stripe"],
-        view_token: viewToken,
-      });
-      insErr = error;
-      if (!error) break;
-      if (error.code !== "23505") break; // only retry unique collisions
-    }
-    if (insErr) { console.warn(`[proposal-accept] invoice create failed: ${insErr.message}`); return null; }
+    const insErr = await insertInvoiceNumbered(proposal.org_id, {
+      id: invoiceId,
+      org_id: proposal.org_id,
+      client_id: proposal.client_id,
+      period_start: serviceDate, period_end: serviceEnd,
+      subtotal,
+      tax_rate: fullyPaid ? Number(proposal.tax_rate ?? 0) : 0,
+      tax_amount: taxCharged,
+      total: paidAmount,
+      status: "paid",
+      issue_date: today, due_date: today, paid_date: today,
+      line_items: lineItems,
+      company_info: companyInfo,
+      client_info: clientInfo,
+      notes,
+      payment_methods: ["stripe"],
+      view_token: viewToken,
+    });
+    if (insErr) { console.warn(`[proposal-accept] invoice create failed: ${insErr}`); return null; }
 
     await supabase.from("proposals").update({ invoice_id: invoiceId, updated_at: new Date().toISOString() }).eq("id", proposal.id);
     return viewToken;
