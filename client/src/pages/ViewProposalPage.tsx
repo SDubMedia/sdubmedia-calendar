@@ -113,6 +113,10 @@ export default function ViewProposalPage() {
   const [signatureType, setSignatureType] = useState<"typed" | "drawn">("typed");
   const [typedName, setTypedName] = useState("");
   const [signerEmail, setSignerEmail] = useState("");
+  // Corporate signers state their role/title; it prints on the signed
+  // record ("Elizabeth Mallory, Director of Brand"). Only asked when the
+  // proposal is addressed to a company — meaningless on a wedding.
+  const [signerTitle, setSignerTitle] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
@@ -279,7 +283,7 @@ export default function ViewProposalPage() {
           additionalSignature: showPartner && partnerSignature.trim()
             ? { name: (clientFields.partner_name || "").trim(), email: (clientFields.partner_email || "").trim(), typedName: partnerSignature.trim() }
             : null,
-          signature: { name: typedName.trim() || "Client", email: signerEmail, signatureData, signatureType },
+          signature: { name: typedName.trim() || "Client", email: signerEmail, title: signerTitle.trim(), signatureData, signatureType },
         }),
       });
       const result = await res.json();
@@ -1074,6 +1078,8 @@ export default function ViewProposalPage() {
             <h2 className="text-lg font-bold text-gray-900 mb-2">Signed &amp; Accepted</h2>
             <p className="text-sm text-gray-600">
               Signed by <strong>{proposal?.clientSignature?.name || "the client"}</strong>
+              {proposal?.clientSignature?.title ? `, ${proposal.clientSignature.title}` : ""}
+              {proposal?.clientCompany ? ` of ${proposal.clientCompany}` : ""}
               {proposal?.clientSignature?.email ? ` (${proposal.clientSignature.email})` : ""}
               {proposal?.acceptedAt ? ` on ${new Date(proposal.acceptedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}` : ""}.
               {proposal?.paidAt ? " Paid in full." : ""}
@@ -1128,6 +1134,13 @@ export default function ViewProposalPage() {
               <input value={typedName} onChange={e => setTypedName(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900" placeholder="Full legal name" />
             </div>
+            {!!proposal?.clientCompany && (
+              <div>
+                <label className="text-sm text-gray-500 block mb-1">Your Role / Title at {proposal.clientCompany}</label>
+                <input value={signerTitle} onChange={e => setSignerTitle(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-gray-900" placeholder="e.g. Director of Communications" />
+              </div>
+            )}
             <div>
               <label className="text-sm text-gray-500 block mb-1">Your Email</label>
               <input value={signerEmail} onChange={e => setSignerEmail(e.target.value)}
@@ -1168,7 +1181,7 @@ export default function ViewProposalPage() {
 
             <button
               onClick={handleAccept}
-              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim() || (hasPackages && packages.length > 1 && !selectedPackageId) || missingClientFields.length > 0 || unmetRequired.length > 0}
+              disabled={submitting || (!typedName.trim() && signatureType === "typed") || !signerEmail.trim() || (!!proposal?.clientCompany && !signerTitle.trim()) || (hasPackages && packages.length > 1 && !selectedPackageId) || missingClientFields.length > 0 || unmetRequired.length > 0}
               title={
                 missingClientFields.length > 0
                   ? `Fill in: ${missingClientFields.map(f => f.label).join(", ")}`

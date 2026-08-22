@@ -84,6 +84,15 @@ async function getProposal(token: string, res: VercelResponse) {
 
   const alreadyAccepted = !!proposal.accepted_at;
 
+  // Company on the client record → the viewer asks the signer for their
+  // role/title (corporate signature block). Individuals never see it.
+  let clientCompany = "";
+  if (proposal.client_id) {
+    const { data: pClient } = await supabase
+      .from("clients").select("company").eq("id", proposal.client_id).maybeSingle();
+    clientCompany = String(pClient?.company || "").trim();
+  }
+
   // The org's package library, in the shape the block renderer expects.
   // Without this, every package_row and package_group in a proposal rendered
   // "package not found" for the client and priced at zero — the blocks resolve
@@ -144,6 +153,7 @@ async function getProposal(token: string, res: VercelResponse) {
     paymentMilestones: proposal.payment_milestones || [],
     status: proposal.status,
     clientEmail: proposal.client_email,
+    clientCompany,
     // Values the owner already knows (event date, venue) or the client
     // previously submitted. The viewer treats non-empty entries as known:
     // it prefills them into the agreement and stops asking for them.
@@ -187,6 +197,9 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const ip = req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "unknown";
   const fullSignature = {
     ...signature,
+    // Corporate signers state their role; cap it like the other free-text
+    // signature fields so a hostile payload can't bloat the row.
+    ...(typeof signature.title === "string" ? { title: signature.title.trim().slice(0, 120) } : {}),
     ip: Array.isArray(ip) ? ip[0] : ip,
     timestamp: new Date().toISOString(),
   };
