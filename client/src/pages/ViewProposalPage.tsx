@@ -950,6 +950,65 @@ export default function ViewProposalPage() {
             never asking. */}
         {!agreementPages.some((p: any) => p.type === "agreement") && yourDetailsPanel}
 
+        {/* ---- CONFIRMED EVENT DETAILS (part of the signed record) ----
+            The agreement prose may not reference these via merge fields, so
+            the details the client confirmed at signing are printed on the
+            document itself — venue, coverage schedule, PO. Without this the
+            signed record never showed what was agreed to. */}
+        {accepted && (() => {
+          const cfv: Record<string, string> = (proposal?.clientFieldValues && typeof proposal.clientFieldValues === "object") ? proposal.clientFieldValues : {};
+          const val = (k: string) => String(cfv[k] || "").trim();
+          const fmtDate = (iso: string) => /^\d{4}-\d{2}-\d{2}$/.test(iso)
+            ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+            : iso;
+          const days = Object.keys(cfv)
+            .map(k => k.match(/^event_date_(\d+)$/))
+            .filter((m): m is RegExpMatchArray => !!m)
+            .map(m => Number(m[1]))
+            .sort((a, b) => a - b)
+            .map(n => ({ date: val(`event_date_${n}`), start: val(`event_start_time_${n}`), end: val(`event_end_time_${n}`) }))
+            .filter(d => d.date);
+          if (days.length === 0 && val("event_date")) days.push({ date: val("event_date"), start: val("event_start_time"), end: val("event_end_time") });
+          const venueLines = [
+            val("event_venue_name"),
+            val("event_address"),
+            [val("event_city_state"), val("event_zip")].filter(Boolean).join(" "),
+          ].filter(Boolean);
+          const legacyLoc = val("event_location");
+          const po = val("po_number");
+          if (days.length === 0 && venueLines.length === 0 && !legacyLoc && !po) return null;
+          return (
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-3">Confirmed Event Details</h2>
+              <div className="grid gap-4 sm:grid-cols-2 text-sm">
+                {(venueLines.length > 0 || legacyLoc) && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">Location</p>
+                    {legacyLoc ? <p className="text-gray-900">{legacyLoc}</p>
+                      : venueLines.map((l, i) => <p key={i} className="text-gray-900">{l}</p>)}
+                  </div>
+                )}
+                {days.length > 0 && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">Coverage</p>
+                    {days.map((d, i) => (
+                      <p key={i} className="text-gray-900">
+                        {fmtDate(d.date)}{d.start ? ` · ${d.start}${d.end ? ` – ${d.end}` : ""}` : ""}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {po && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">PO / Reference</p>
+                    <p className="text-gray-900">{po}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ---- SIGNED RECORD (document view after acceptance) ---- */}
         {accepted && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
