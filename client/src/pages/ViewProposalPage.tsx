@@ -419,10 +419,18 @@ export default function ViewProposalPage() {
   // Plus the booking details, always. A proposal is for a job on a date at a
   // place — Geoff's agreement doesn't happen to reference them, and without
   // this there was nowhere to say when or where the wedding is.
+  // Structured venue fields, in the order the cursor should travel: name,
+  // address, city/state, zip. Tab order follows DOM order, so this list IS
+  // the tab flow. A legacy single event_location value (older proposals)
+  // satisfies all four.
   const ALWAYS: { field: string; label: string }[] = [
     { field: "event_date", label: "Event Date" },
-    { field: "event_location", label: "Event location (venue name and address)" },
+    { field: "event_venue_name", label: "Event Name" },
+    { field: "event_address", label: "Event Address" },
+    { field: "event_city_state", label: "Event City and State" },
+    { field: "event_zip", label: "Event Zip Code" },
   ];
+  const legacyLocationKnown = !!String((proposal?.clientFieldValues || {}).event_location || "").trim();
   // Fields the owner pre-filled on the proposal are already answered: a
   // corporate offsite's dates are known when the proposal is written, and
   // asking the client to re-type them (into a single-date input that can't
@@ -434,10 +442,12 @@ export default function ViewProposalPage() {
       .filter(([, v]) => String(v || "").trim())
       .map(([k]) => k),
   );
+  const VENUE_FIELDS = ["event_venue_name", "event_address", "event_city_state", "event_zip"];
   const requiredClientFields = [
     ...fromContract.filter(f => !f.field.startsWith("partner_")),
     ...ALWAYS.filter(a => !fromContract.some(f => f.field === a.field)),
-  ].filter(f => !preKnown.has(f.field));
+  ].filter(f => !preKnown.has(f.field))
+   .filter(f => !(legacyLocationKnown && VENUE_FIELDS.includes(f.field)));
 
   // The second person is optional to add, but once added their name is
   // needed — half a set of details is worse than none. Not always a fiancé:
@@ -476,6 +486,7 @@ export default function ViewProposalPage() {
             </label>
             <input
               type={f.field === "event_date" ? "date" : f.field.endsWith("_email") ? "email" : "text"}
+              inputMode={f.field.endsWith("_zip") ? "numeric" : undefined}
               value={clientFields[f.field] || ""}
               onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm"

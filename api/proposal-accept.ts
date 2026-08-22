@@ -554,8 +554,17 @@ async function ensurePaidInvoice(
       .join("\n\n");
     const notes = [
       `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
-      // The venue the client confirmed at signing (event_location field).
-      cfv.event_location ? `Event location: ${String(cfv.event_location).slice(0, 300)}` : "",
+      // The venue the client confirmed at signing: legacy single field, or
+      // composed from the structured name/address/city-state/zip fields.
+      (() => {
+        const clean = (v: unknown) => String(v || "").trim();
+        const venue = clean(cfv.event_location) || [
+          clean(cfv.event_venue_name),
+          clean(cfv.event_address),
+          [clean(cfv.event_city_state), clean(cfv.event_zip)].filter(Boolean).join(" "),
+        ].filter(Boolean).join(", ");
+        return venue ? `Event location: ${venue.slice(0, 300)}` : "";
+      })(),
       detailText,
     ].filter(Boolean).join("\n\n");
 

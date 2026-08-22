@@ -116,7 +116,10 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
   const [pLineItems, setPLineItems] = useState<ProposalLineItem[]>([]);
   const [bookingStart, setBookingStart] = useState("");
   const [bookingEnd, setBookingEnd] = useState("");
-  const [bookingLocation, setBookingLocation] = useState("");
+  const [bookingVenueName, setBookingVenueName] = useState("");
+  const [bookingAddress, setBookingAddress] = useState("");
+  const [bookingCityState, setBookingCityState] = useState("");
+  const [bookingZip, setBookingZip] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [bookingDateText, setBookingDateText] = useState("");
 
@@ -144,7 +147,10 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
     const cfv = existingProposal.clientFieldValues || {};
     setBookingStart(cfv.event_start_date || "");
     setBookingEnd(cfv.event_end_date || "");
-    setBookingLocation(cfv.event_location || "");
+    setBookingVenueName(cfv.event_venue_name || "");
+    setBookingAddress(cfv.event_address || "");
+    setBookingCityState(cfv.event_city_state || "");
+    setBookingZip(cfv.event_zip || "");
     setPoNumber(cfv.po_number || "");
     setBookingDateText(cfv.event_date || "");
     // Narrow deps by design: realtime refreshes hand back new object
@@ -316,7 +322,10 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
         const setOrClear = (k: string, v: string) => { if (v.trim()) cfv[k] = v.trim(); else delete cfv[k]; };
         setOrClear("event_start_date", bookingStart);
         setOrClear("event_end_date", bookingEnd);
-        setOrClear("event_location", bookingLocation);
+        setOrClear("event_venue_name", bookingVenueName);
+        setOrClear("event_address", bookingAddress);
+        setOrClear("event_city_state", bookingCityState);
+        setOrClear("event_zip", bookingZip);
         setOrClear("po_number", poNumber);
         setOrClear("event_date", bookingDateText);
         await updateProposal(params.id!, {
@@ -848,8 +857,22 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Event location (leave blank to ask the client)</p>
-                      <input value={bookingLocation} onChange={e => setBookingLocation(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Venue name and address" />
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Event name (leave blank to ask the client)</p>
+                      <input value={bookingVenueName} onChange={e => setBookingVenueName(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Venue / hotel name" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Event address</p>
+                      <input value={bookingAddress} onChange={e => setBookingAddress(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Street address" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-0.5">City and state</p>
+                        <input value={bookingCityState} onChange={e => setBookingCityState(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Nashville, TN" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Zip</p>
+                        <input value={bookingZip} onChange={e => setBookingZip(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="37201" />
+                      </div>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground mb-0.5">PO / Reference (prints on the invoice)</p>
