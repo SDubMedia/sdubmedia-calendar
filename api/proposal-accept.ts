@@ -523,9 +523,17 @@ async function ensurePaidInvoice(
     const viewToken = randomBytes(8).toString("hex");
 
     const subtotal = fullyPaid ? Number(proposal.subtotal ?? paidAmount) : paidAmount;
-    // Itemization comes from the proposal's line items; notes stay short
-    // (Geoff, 2026-08-22: a wall of detail text read worse than line items).
-    const notes = `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim();
+    // One modest notes block: the proposal reference plus each line item's
+    // details sentence. Line items stay as priced on the proposal (Geoff,
+    // 2026-08-22: one investment figure, not split sub-prices).
+    const detailText = srcItems
+      .map(li => String(li.details || "").trim())
+      .filter(Boolean)
+      .join("\n\n");
+    const notes = [
+      `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      detailText,
+    ].filter(Boolean).join("\n\n");
 
     const { error: insErr } = await supabase.from("invoices").insert({
       id: invoiceId,
