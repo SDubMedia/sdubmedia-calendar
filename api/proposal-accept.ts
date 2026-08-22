@@ -548,6 +548,8 @@ async function ensurePaidInvoice(
       .join("\n\n");
     const notes = [
       `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
+      // The venue the client confirmed at signing (event_location field).
+      cfv.event_location ? `Event location: ${String(cfv.event_location).slice(0, 300)}` : "",
       detailText,
     ].filter(Boolean).join("\n\n");
 

@@ -421,7 +421,7 @@ export default function ViewProposalPage() {
   // this there was nowhere to say when or where the wedding is.
   const ALWAYS: { field: string; label: string }[] = [
     { field: "event_date", label: "Event Date" },
-    { field: "event_location", label: "Event Location" },
+    { field: "event_location", label: "Event location (venue name and address)" },
   ];
   // Fields the owner pre-filled on the proposal are already answered: a
   // corporate offsite's dates are known when the proposal is written, and
@@ -485,8 +485,11 @@ export default function ViewProposalPage() {
         ))}
       </div>
       {/* Weddings usually have two people on the agreement, and it isn't
-          always a couple — sometimes a parent is paying. Optional, because a
-          corporate booking has exactly one. */}
+          always a couple — sometimes a parent is paying. Only offered when
+          there IS an agreement to co-sign: a proposal without a contract
+          (corporate bookings) has nothing for a second person to sign, and
+          the partner/fiance wording read wrong there (Geoff, 2026-08-22). */}
+      {!!(proposal?.agreementPreview || (proposal?.contractContent || "").trim()) && (
       <div className="mt-4 pt-4 border-t border-gray-200">
         {!showPartner ? (
           <button
@@ -546,6 +549,7 @@ export default function ViewProposalPage() {
           </>
         )}
       </div>
+      )}
 
       {missingClientFields.length > 0 && (
         <p className="text-xs text-amber-700 mt-3">
