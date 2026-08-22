@@ -564,7 +564,7 @@ async function sendClientReceiptEmail(
   invoiceToken: string | null,
   session: { amount_total?: number | null },
   fullyPaid: boolean,
-  balance: { dueIso: string; amount: number } | null,
+  balance: { dueIso: string; amount: number; viewToken: string } | null,
 ) {
   const to = String(proposal.client_email || "").trim();
   if (!to || !proposal.view_token) return;
@@ -582,7 +582,8 @@ async function sendClientReceiptEmail(
       <p style="margin:0 0 16px;color:#64748b;font-size:14px;">Thank you! Your ${fullyPaid ? "payment" : "deposit"}${paid ? ` of $${paid.toFixed(2)}` : ""} for <strong>${escapeHtml(proposal.title || "")}</strong> has been received, and your booking is confirmed.${fullyPaid ? "" : balance ? ` The remaining balance of $${balance.amount.toFixed(2)} is due ${balance.dueIso ? new Date(balance.dueIso + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "before the event"} — we'll email the invoice with a payment link as the date approaches.` : " The remaining balance will be invoiced separately."}</p>
       <p style="margin:0 0 8px;font-size:14px;">For your records:</p>
       <p style="margin:8px 0;"><a href="${escapeHtml(agreementUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your signed agreement</a></p>
-      ${invoiceUrl ? `<p style="margin:8px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your paid invoice</a></p>` : ""}
+      ${invoiceUrl ? `<p style="margin:8px 0;"><a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#0f172a;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your ${fullyPaid ? "paid invoice" : "deposit receipt invoice"}</a></p>` : ""}
+      ${balance?.viewToken ? `<p style="margin:8px 0;"><a href="${escapeHtml(`${appBase}/invoice/${balance.viewToken}`)}" style="display:inline-block;background:#475569;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View balance invoice ($${balance.amount.toFixed(2)}${balance.dueIso ? ` — due ${new Date(balance.dueIso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""})</a></p>` : ""}
       <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">Both pages can be printed or saved as PDF. Questions? Just reply to this email.</p>
       <p style="margin:24px 0 0;color:#64748b;font-size:13px;">— ${escapeHtml(orgName)}</p>
     </body></html>`,
@@ -603,18 +604,18 @@ async function ensureBalanceInvoice(
   proposal: { id: string; org_id: string; client_id: string; title: string; tax_rate: number; tax_amount: number; total: number; client_field_values?: Record<string, string> | null },
   org: { name?: string | null; business_info?: Record<string, unknown> | null },
   paidAmount: number,
-): Promise<{ dueIso: string; amount: number } | null> {
+): Promise<{ dueIso: string; amount: number; viewToken: string } | null> {
   try {
     const balance = Math.round((Number(proposal.total ?? 0) - paidAmount) * 100) / 100;
     if (balance <= 0) return null;
 
     const { data: existing } = await supabase
-      .from("invoices").select("id, due_date, total")
+      .from("invoices").select("id, due_date, total, view_token")
       .eq("org_id", proposal.org_id)
       .eq("client_info->>proposalId", proposal.id)
       .is("deleted_at", null)
       .maybeSingle();
-    if (existing) return { dueIso: existing.due_date || "", amount: Number(existing.total || balance) };
+    if (existing) return { dueIso: existing.due_date || "", amount: Number(existing.total || balance), viewToken: existing.view_token || "" };
 
     const today = new Date().toISOString().slice(0, 10);
     const cfv = (proposal.client_field_values && typeof proposal.client_field_values === "object")
@@ -690,7 +691,7 @@ async function ensureBalanceInvoice(
       view_token: viewToken,
     });
     if (insErr) { console.warn(`[proposal-accept] balance invoice create failed: ${insErr}`); return null; }
-    return { dueIso, amount: balance };
+    return { dueIso, amount: balance, viewToken };
   } catch (err) {
     console.warn(`[proposal-accept] balance invoice failed: ${errorMessage(err, "unknown")}`);
     return null;
