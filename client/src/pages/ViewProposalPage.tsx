@@ -10,6 +10,67 @@ import { CheckCircle, AlertCircle, DollarSign, Check } from "lucide-react";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 import { clientFieldsIn } from "@/lib/mergeFieldPreview";
 
+
+/** "845" → "8:45", "1230" → "12:30"; digits only, colon inserted for the
+ *  last two. Reformats from raw digits on every keystroke so backspace
+ *  behaves naturally. */
+function formatTimeDigits(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 4);
+  if (d.length <= 2) return d;
+  return `${d.slice(0, d.length - 2)}:${d.slice(-2)}`;
+}
+
+/**
+ * Time entry as two controls — auto-colon text ("8:45") + an AM/PM select —
+ * stored as one string ("8:45 AM") so the accept API's parseTimeText and
+ * everything downstream stay unchanged. Native <input type="time"> is
+ * banned (iOS WebKit width bugs, see CLAUDE.md); a select is the sanctioned
+ * pattern. defaultMeridiem: coverage starts are usually AM, ends PM.
+ */
+function TimePartsInput({ value, onChange, defaultMeridiem, label }: {
+  value: string;
+  onChange: (v: string) => void;
+  defaultMeridiem: "AM" | "PM";
+  label: string;
+}) {
+  const m = value.match(/^(.*?)\s*(AM|PM)\.?$/i);
+  const text = (m ? m[1] : value).trim();
+  const storedMer = m ? (m[2].toUpperCase() as "AM" | "PM") : null;
+  // Remembers an AM/PM choice made before any digits are typed (nothing is
+  // stored until there's a time, so the stored string can't carry it yet).
+  const [pickedMer, setPickedMer] = useState<"AM" | "PM" | null>(null);
+  const mer = storedMer || pickedMer || defaultMeridiem;
+  return (
+    <div className="flex gap-1.5 min-w-0">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => {
+          const t = formatTimeDigits(e.target.value);
+          onChange(t ? `${t} ${mer}` : "");
+        }}
+        placeholder="8:30"
+        aria-label={label}
+        className={`w-full min-w-0 rounded border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 ${text ? "text-gray-900" : "text-gray-400"}`}
+      />
+      <select
+        value={mer}
+        onChange={(e) => {
+          const mm = e.target.value as "AM" | "PM";
+          setPickedMer(mm);
+          if (text) onChange(`${text} ${mm}`);
+        }}
+        aria-label={`${label} AM or PM`}
+        className="shrink-0 rounded border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900"
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+}
+
 export default function ViewProposalPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
@@ -557,22 +618,20 @@ export default function ViewProposalPage() {
               </div>
               <div className="min-w-0">
                 <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">Start Time <span className="text-red-600">*</span></label>
-                <input
-                  type="text"
+                <TimePartsInput
                   value={clientFields[`event_start_time_${i}`] || ""}
-                  onChange={(e) => setClientFields(v => ({ ...v, [`event_start_time_${i}`]: e.target.value }))}
-                  placeholder="8:30 AM"
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+                  onChange={(v) => setClientFields(prev => ({ ...prev, [`event_start_time_${i}`]: v }))}
+                  defaultMeridiem="AM"
+                  label={`Start time day ${i}`}
                 />
               </div>
               <div className="min-w-0">
                 <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1">End Time <span className="text-red-600">*</span></label>
-                <input
-                  type="text"
+                <TimePartsInput
                   value={clientFields[`event_end_time_${i}`] || ""}
-                  onChange={(e) => setClientFields(v => ({ ...v, [`event_end_time_${i}`]: e.target.value }))}
-                  placeholder="5:00 PM"
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+                  onChange={(v) => setClientFields(prev => ({ ...prev, [`event_end_time_${i}`]: v }))}
+                  defaultMeridiem="PM"
+                  label={`End time day ${i}`}
                 />
               </div>
             </div>
