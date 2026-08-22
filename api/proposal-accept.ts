@@ -523,15 +523,9 @@ async function ensurePaidInvoice(
     const viewToken = randomBytes(8).toString("hex");
 
     const subtotal = fullyPaid ? Number(proposal.subtotal ?? paidAmount) : paidAmount;
-    // The invoice reads as a full receipt, not a bare line: each proposal
-    // line item's details paragraph lands in the notes, under the title.
-    const detailBlocks = srcItems
-      .map(li => ({ d: String(li.description || ""), t: String(li.details || "").trim() }))
-      .filter(x => x.t);
-    const notes = [
-      `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim(),
-      ...detailBlocks.map(x => (x.d ? `${x.d}:\n${x.t}` : x.t)),
-    ].join("\n\n");
+    // Itemization comes from the proposal's line items; notes stay short
+    // (Geoff, 2026-08-22: a wall of detail text read worse than line items).
+    const notes = `Paid in full via proposal acceptance: ${proposal.title || ""}`.trim();
 
     const { error: insErr } = await supabase.from("invoices").insert({
       id: invoiceId,
