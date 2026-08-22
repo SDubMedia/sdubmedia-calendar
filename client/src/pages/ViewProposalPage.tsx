@@ -531,7 +531,7 @@ export default function ViewProposalPage() {
               inputMode={f.field.endsWith("_zip") ? "numeric" : undefined}
               value={clientFields[f.field] || ""}
               onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className={`w-full rounded border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 ${(clientFields[f.field] || "").trim() ? "text-gray-900" : "text-gray-400"}`}
               placeholder={f.label}
             />
           </div>
@@ -552,7 +552,7 @@ export default function ViewProposalPage() {
                   type="date"
                   value={clientFields[`event_date_${i}`] || ""}
                   onChange={(e) => setClientFields(v => ({ ...v, [`event_date_${i}`]: e.target.value }))}
-                  className="w-full min-w-0 max-w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  className={`w-full min-w-0 max-w-full rounded border border-gray-300 px-3 py-2 text-sm ${clientFields[`event_date_${i}`] ? "text-gray-900" : "text-gray-400"}`}
                 />
               </div>
               <div className="min-w-0">
@@ -562,7 +562,7 @@ export default function ViewProposalPage() {
                   value={clientFields[`event_start_time_${i}`] || ""}
                   onChange={(e) => setClientFields(v => ({ ...v, [`event_start_time_${i}`]: e.target.value }))}
                   placeholder="8:30 AM"
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
                 />
               </div>
               <div className="min-w-0">
@@ -572,7 +572,7 @@ export default function ViewProposalPage() {
                   value={clientFields[`event_end_time_${i}`] || ""}
                   onChange={(e) => setClientFields(v => ({ ...v, [`event_end_time_${i}`]: e.target.value }))}
                   placeholder="5:00 PM"
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
                 />
               </div>
             </div>
@@ -638,7 +638,7 @@ export default function ViewProposalPage() {
                     type={f.field.endsWith("_email") ? "email" : "text"}
                     value={clientFields[f.field] || ""}
                     onChange={(e) => setClientFields(v => ({ ...v, [f.field]: e.target.value }))}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
                     placeholder={f.label}
                   />
                 </div>
@@ -657,7 +657,7 @@ export default function ViewProposalPage() {
                 value={partnerSignature}
                 onChange={(e) => setPartnerSignature(e.target.value)}
                 placeholder="Full name"
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
                 style={{ fontFamily: "'Brush Script MT', cursive", fontSize: "1.1rem" }}
               />
               <p className="text-[11px] text-gray-500 mt-1">
