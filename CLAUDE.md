@@ -390,6 +390,33 @@ means a silently truncated file.
 - **Meetings = unpaid calendar entries.** Separate table `meetings`, optional client tie, per-meeting `visible_to_client` toggle controls whether the assigned client sees it. RLS enforces both org_id AND visible_to_client for the client role.
 - **Per-meeting color.** Use `getMeetingColor(value)` from `MeetingDialog.tsx` — same swatch shape as `getEventColor` for personal events. Empty value = slate default.
 
+### Multi-day projects (Aug 2026)
+
+One project spans N days via `projects.day_schedules` jsonb:
+`[{date, startTime, endTime, crewMemberIds?}]`. The contract, enforced by
+`client/src/lib/projectDays.ts` (+ `api/_projectDays.ts` mirror) — use these
+helpers, never hand-roll day logic:
+
+- **Empty array = single-day** (date/start_time/end_time authoritative).
+  Non-empty is ALWAYS >= 2 sorted rows, and `date/start_time/end_time` mirror
+  row 0 — every writer (AppContext, ProjectDialog, api/slate.ts, proposal
+  booking) syncs this; keep it that way so un-migrated surfaces (iOS!) degrade
+  to "shows on day 1".
+- **Top-level `crew` stays the full roster with pay/hours.** `crewMemberIds`
+  on a day is a display/scheduling SUBSET only. NEVER put pay data in
+  day_schedules — `projects_client` passes the column through unscrubbed.
+- **Occurrence vs totals:** calendar cells, conflicts, busy blocks, schedules,
+  ICS are occurrence-based (`projectOccursOn`); hours/revenue totals and
+  reports stay keyed to `p.date` (first day) or you double-count.
+- Adding a projects column still means rebuilding `projects_client` AND now
+  `shooter_busy` (it LATERAL-expands day_schedules per day with per-day crew).
+- ICS: multi-day emits per-day VEVENTs (`slate-{id}-d{n}`); single-day keeps
+  the historic UID — don't churn subscriber calendars.
+- Calendar month grid fuses span segments into a solid bar (solid colors on
+  purpose — translucent fills let cell borders show through as seams).
+- Event-reminder cron is deliberately first-day-only ("your event is
+  tomorrow" = the start). Per-day reminders are a future task, not a bug.
+
 ### Cron pattern
 - **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
 - **Schedule.** Register in `vercel.json` `crons` array. Times in UTC.
