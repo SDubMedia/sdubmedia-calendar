@@ -18,10 +18,12 @@ import { Plus, Trash2, ArrowLeft, Save, ChevronRight, Images, Upload, ArrowUpRig
 import { useLocation } from "wouter";
 import { getAuthToken } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { showInviteCredentials } from "@/lib/inviteCredentials";
 import ProjectHistorySection from "@/components/ProjectHistorySection";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { toUploadableImage } from "@/lib/heic";
-import { formatPhoneDisplay, parsePastedAddress } from "@/lib/utils";
+import { cn, formatPhoneDisplay, parsePastedAddress } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectDaySchedule, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
 import { normalizeDaySchedules } from "@/lib/projectDays";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
@@ -202,6 +204,7 @@ function readImageDims(file: File): Promise<{ width: number | null; height: numb
 
 export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
   const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, updateClient, addCrewMember, createReShootGallery, registerDeliveryFile, ensureLocationDistances } = useApp();
+  const { createUser } = useAuth();
   const isEdit = !!project;
 
   // New projects start with NO client preselected — silently defaulting to
@@ -246,6 +249,15 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [locationTab, setLocationTab] = useState<"saved" | "one-time">("saved");
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
+  // Inline new-client details: enough to book AND invite in one stop —
+  // contact info, the photography/regular type, and an optional app login
+  // sent on save (same temp-password flow the client profile uses).
+  const [newClientContact, setNewClientContact] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientType, setNewClientType] = useState<"standard" | "photography">("standard");
+  const [newClientSendLogin, setNewClientSendLogin] = useState(false);
+  const [savingNewClient, setSavingNewClient] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   // Inline quick-create crew member — tracks which row requested the new person
   const [quickAddCrew, setQuickAddCrew] = useState<{ idx: number; section: "crew" | "post" } | null>(null);
@@ -687,15 +699,26 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const savedLocations = useMemo(() => data.locations.filter(l => !l.oneTimeUse), [data.locations]);
   const oneTimeLocations = useMemo(() => data.locations.filter(l => l.oneTimeUse), [data.locations]);
 
-  // Inline create: save new client
+  // Same shape ClientProfileSheet uses for portal invites.
+  const genTempPassword = () => "Ph" + Math.random().toString(36).slice(2, 10) + "7a";
+
+  // Inline create: save new client (with contact info + type), and
+  // optionally send their app login in the same motion.
   const handleSaveNewClient = async () => {
     if (!newClientName.trim()) return;
+    const email = newClientEmail.trim();
+    if (newClientSendLogin && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email to send the app login");
+      return;
+    }
+    setSavingNewClient(true);
     try {
       const newClient = await addClient({
+        clientType: newClientType,
         company: newClientName.trim(),
-        contactName: "",
-        phone: "",
-        email: "",
+        contactName: newClientContact.trim(),
+        phone: newClientPhone.trim(),
+        email,
         address: "",
         city: "",
         state: "",
@@ -712,11 +735,32 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setClientId(newClient.id);
       setProjectTypeId("");
       setProjectRate(null);
+      // Optional app login, same temp-password flow as the client profile:
+      // creates the auth user tied to this client and emails the welcome
+      // (with the in-app credentials fallback if the email fails).
+      if (newClientSendLogin) {
+        try {
+          const tempPassword = genTempPassword();
+          const userId = await createUser(email, tempPassword, newClientContact.trim() || newClientName.trim(), "client", [newClient.id]);
+          const authToken = await getAuthToken();
+          const res = await fetch("/api/invite-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ userId, tempPassword }),
+          });
+          showInviteCredentials("Login sent", tempPassword, res.ok);
+        } catch (e) {
+          toast.error(e instanceof Error ? `Client saved, but the login couldn't be sent: ${e.message}` : "Client saved, but the login couldn't be sent");
+        }
+      }
       setShowNewClient(false);
-      setNewClientName("");
+      setNewClientName(""); setNewClientContact(""); setNewClientEmail(""); setNewClientPhone("");
+      setNewClientType("standard"); setNewClientSendLogin(false);
       toast.success("Client created");
     } catch (err: any) {
       toast.error(err.message || "Failed to create client");
+    } finally {
+      setSavingNewClient(false);
     }
   };
 
@@ -994,17 +1038,37 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Client</Label>
               {showNewClient ? (
-                <div className="flex gap-2">
+                <div className="rounded-md border border-border bg-secondary/40 p-3 space-y-2.5">
                   <Input
                     value={newClientName}
                     onChange={(e) => setNewClientName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSaveNewClient()}
                     className="bg-secondary border-border"
-                    placeholder="Client name"
+                    placeholder="Client / company name"
                     autoFocus
                   />
-                  <Button size="sm" onClick={handleSaveNewClient} className="bg-primary text-primary-foreground shrink-0 h-9">Save</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowNewClient(false); setNewClientName(""); }} className="shrink-0 h-9">Cancel</Button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Input value={newClientContact} onChange={(e) => setNewClientContact(e.target.value)} className="bg-secondary border-border min-w-0" placeholder="Contact name (optional)" />
+                    <Input value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} type="tel" className="bg-secondary border-border min-w-0" placeholder="Phone" />
+                  </div>
+                  <Input value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} type="email" className="bg-secondary border-border" placeholder="Email" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setNewClientType("standard")}
+                      className={cn("rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                        newClientType === "standard" ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5")}
+                    >Regular client</button>
+                    <button type="button" onClick={() => setNewClientType("photography")}
+                      className={cn("rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                        newClientType === "photography" ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-white/5")}
+                    >Photography</button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <Checkbox checked={newClientSendLogin} onCheckedChange={(v) => setNewClientSendLogin(v === true)} />
+                    Email them an app login now
+                  </label>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => { setShowNewClient(false); setNewClientName(""); setNewClientContact(""); setNewClientEmail(""); setNewClientPhone(""); setNewClientType("standard"); setNewClientSendLogin(false); }} className="h-9">Cancel</Button>
+                    <Button size="sm" onClick={handleSaveNewClient} disabled={savingNewClient || !newClientName.trim()} className="bg-primary text-primary-foreground shrink-0 h-9">{savingNewClient ? "Saving…" : "Save client"}</Button>
+                  </div>
                 </div>
               ) : (
                 <Select value={brokerSelectId || clientId} onValueChange={(v) => { if (v === "__new__") { setShowNewClient(true); } else { handleClientDropdown(v); } }}>
