@@ -53,7 +53,10 @@ export async function generateInvoiceNumberFromDB(supabase: any): Promise<string
     .from("invoices")
     .select("invoice_number")
     .like("invoice_number", `${prefix}%`)
-    .limit(2000);
+    // Desc order so a server row-cap keeps the TOP of the sequence —
+    // an unordered subset could hide the current max.
+    .order("invoice_number", { ascending: false })
+    .limit(1000);
   let maxNum = 0;
   for (const r of (data || []) as { invoice_number?: string }[]) {
     const n = parseInt(String(r.invoice_number || "").slice(prefix.length), 10);

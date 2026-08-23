@@ -159,12 +159,14 @@ async function sendSignedDocuments(res: VercelResponse, userId: string, proposal
       });
     }
   }
-  const { data: balInv } = await supabase
+  const { data: balRows } = await supabase
     .from("invoices").select("view_token, invoice_number, total, status, due_date")
     .eq("org_id", callerOrgId)
     .eq("client_info->>proposalId", proposal.id)
     .is("deleted_at", null)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const balInv = balRows?.[0];
   if (balInv?.view_token) {
     const due = balInv.due_date
       ? new Date(String(balInv.due_date) + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })

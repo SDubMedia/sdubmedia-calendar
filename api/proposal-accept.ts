@@ -198,8 +198,9 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
   const fullSignature = {
     ...signature,
     // Corporate signers state their role; cap it like the other free-text
-    // signature fields so a hostile payload can't bloat the row.
-    ...(typeof signature.title === "string" ? { title: signature.title.trim().slice(0, 120) } : {}),
+    // signature fields. Explicit override so a non-string payload can't
+    // ride the spread into the row.
+    title: typeof signature.title === "string" ? signature.title.trim().slice(0, 120) : undefined,
     ip: Array.isArray(ip) ? ip[0] : ip,
     timestamp: new Date().toISOString(),
   };
@@ -429,10 +430,27 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
         stripeAccount: org.stripe_account_id,
       });
 
-      // Store session ID on proposal
-      await supabase.from("proposals").update({
+      // Store session ID on proposal. verifyPayment and the webhook BOTH
+      // hard-require this id to match, so if the write fails the client
+      // would pay against a session we can never verify. Retry once, then
+      // refuse to hand out the checkout URL rather than strand a payment.
+      let sessErr = (await supabase.from("proposals").update({
         stripe_session_id: session.id,
-      }).eq("id", proposal.id);
+      }).eq("id", proposal.id)).error;
+      if (sessErr) {
+        sessErr = (await supabase.from("proposals").update({
+          stripe_session_id: session.id,
+        }).eq("id", proposal.id)).error;
+      }
+      if (sessErr) {
+        console.error(`[proposal-accept] stripe_session_id write failed: ${sessErr.message}`);
+        await notifySignedAllChannels(proposal.org_id, proposal.title, signature.name || proposal.client_email);
+        return res.status(200).json({
+          success: true,
+          paymentRequired: true,
+          paymentError: "Your signature was recorded, but the payment page could not be prepared. Please reload and try the payment again.",
+        });
+      }
 
       // The signature is already recorded, so the countersign nudge goes out
       // now — the client may abandon the checkout tab, and the owner should
@@ -528,8 +546,36 @@ export async function processProposalPayment(
   session: { amount_total?: number | null },
 ): Promise<string | null> {
   const now = new Date().toISOString();
-  const paidAmount = Math.round(Number(session.amount_total ?? 0)) / 100;
+  // amount_total should always be set on a paid checkout session; if it
+  // ever isn't, fall back to the proposal total rather than minting a $0
+  // "paid" invoice (pre-refactor behavior).
+  const rawPaid = Math.round(Number(session.amount_total ?? 0)) / 100;
+  const paidAmount = rawPaid > 0 ? rawPaid : Number(proposal.total ?? 0);
   const fullyPaid = paidAmount > 0 && Math.abs(paidAmount - Number(proposal.total ?? 0)) < 0.01;
+
+  // Atomic claim: the browser redirect (verifyPayment) and the Stripe
+  // webhook can arrive in the same second, and both guard on a stale read
+  // of invoice_id. Pre-allocate the invoice id and CLAIM it with a
+  // conditional update — only the caller that flips NULL→id proceeds; the
+  // other returns whatever the winner produced. Without this, a same-second
+  // race minted two invoices and sent two receipt emails.
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const claimedInvoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+  const { data: claimRows, error: claimErr } = await supabase
+    .from("proposals")
+    .update({ invoice_id: claimedInvoiceId, updated_at: now })
+    .eq("id", proposal.id)
+    .is("invoice_id", null)
+    .select("id");
+  if (claimErr || !claimRows || claimRows.length === 0) {
+    if (claimErr) console.warn(`[proposal-accept] payment claim failed: ${claimErr.message}`);
+    const { data: cur } = await supabase.from("proposals").select("invoice_id").eq("id", proposal.id).maybeSingle();
+    if (cur?.invoice_id) {
+      const { data: inv } = await supabase.from("invoices").select("view_token").eq("id", cur.invoice_id).maybeSingle();
+      return inv?.view_token || null;
+    }
+    return null;
+  }
 
   await supabase.from("proposals").update({
     ...(fullyPaid ? { paid_at: now } : {}),
@@ -553,7 +599,7 @@ export async function processProposalPayment(
     .eq("status", "tentative")
     .like("notes", `%[proposal:${proposal.id}]%`);
 
-  const invoiceToken = await ensurePaidInvoice(proposal, org, session, fullyPaid);
+  const invoiceToken = await ensurePaidInvoice(proposal, org, session, fullyPaid, claimedInvoiceId);
 
   const balance = fullyPaid ? null : await ensureBalanceInvoice(proposal, org, paidAmount);
 
@@ -572,14 +618,21 @@ export async function processProposalPayment(
  * survives in their inbox.
  */
 async function sendClientReceiptEmail(
-  proposal: { title: string; total: number; view_token?: string; client_email?: string | null },
+  proposal: { title: string; total: number; view_token?: string; client_email?: string | null; client_id?: string | null },
   org: { name?: string | null },
   invoiceToken: string | null,
   session: { amount_total?: number | null },
   fullyPaid: boolean,
   balance: { dueIso: string; amount: number; viewToken: string } | null,
 ) {
-  const to = String(proposal.client_email || "").trim();
+  // Same fallback the send flow uses: a proposal built without its own
+  // email still has a linked client record. Without this, the person who
+  // just paid gets no receipt, no agreement link, no invoice links.
+  let to = String(proposal.client_email || "").trim();
+  if (!to && proposal.client_id) {
+    const { data: client } = await supabase.from("clients").select("email").eq("id", proposal.client_id).maybeSingle();
+    to = String(client?.email || "").trim();
+  }
   if (!to || !proposal.view_token) return;
   const appBase = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
   const agreementUrl = `${appBase}/proposal/${proposal.view_token}?view=document`;
@@ -622,12 +675,14 @@ async function ensureBalanceInvoice(
     const balance = Math.round((Number(proposal.total ?? 0) - paidAmount) * 100) / 100;
     if (balance <= 0) return null;
 
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from("invoices").select("id, due_date, total, view_token")
       .eq("org_id", proposal.org_id)
       .eq("client_info->>proposalId", proposal.id)
       .is("deleted_at", null)
-      .maybeSingle();
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const existing = existingRows?.[0];
     if (existing) return { dueIso: existing.due_date || "", amount: Number(existing.total || balance), viewToken: existing.view_token || "" };
 
     const today = new Date().toISOString().slice(0, 10);
@@ -675,8 +730,10 @@ async function ensureBalanceInvoice(
       ...(venueLine ? { eventLocation: venueLine } : {}),
     };
 
-    // The deposit invoice charged no tax, so the full tax rides here.
-    const taxAmount = Number(proposal.tax_amount ?? 0);
+    // The deposit invoice charged no tax, so the full tax rides here —
+    // clamped to the balance so a large deposit can't drive the pre-tax
+    // subtotal negative.
+    const taxAmount = Math.min(Number(proposal.tax_amount ?? 0), balance);
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
     const viewToken = randomBytes(8).toString("hex");
@@ -805,7 +862,12 @@ async function insertInvoiceNumbered(orgId: string, row: Record<string, unknown>
   // the 2026-08-22 dry run — both test invoices minted as INV-2026-0001).
   const { data: rows } = await supabase
     .from("invoices").select("invoice_number").eq("org_id", orgId)
-    .like("invoice_number", `${prefix}%`).limit(2000);
+    .like("invoice_number", `${prefix}%`)
+    // Desc order so if the server row-cap truncates, we keep the TOP of
+    // the sequence (zero-padded numbers sort correctly) — an unordered
+    // subset could hide the current max and re-issue a number.
+    .order("invoice_number", { ascending: false })
+    .limit(1000);
   let maxNum = 0;
   for (const r of rows || []) {
     const n = parseInt(String(r.invoice_number || "").slice(prefix.length), 10);
@@ -835,6 +897,7 @@ async function ensurePaidInvoice(
   org: { name?: string | null; business_info?: Record<string, unknown> | null },
   session: { amount_total?: number | null },
   fullyPaid: boolean,
+  claimedInvoiceId: string,
 ): Promise<string | null> {
   try {
     if (proposal.invoice_id) {
@@ -844,7 +907,8 @@ async function ensurePaidInvoice(
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const paidAmount = Math.round(Number(session.amount_total ?? 0)) / 100;
+    const rawPaid = Math.round(Number(session.amount_total ?? 0)) / 100;
+    const paidAmount = rawPaid > 0 ? rawPaid : Number(proposal.total ?? 0);
 
     // Full payment carries the proposal's own line items onto the invoice;
     // a partial payment (deposit / milestone) gets one line for the amount
@@ -899,8 +963,7 @@ async function ensurePaidInvoice(
     };
 
 
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    const invoiceId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+    const invoiceId = claimedInvoiceId;
     const viewToken = randomBytes(8).toString("hex");
 
     const taxCharged = fullyPaid ? Number(proposal.tax_amount ?? 0) : 0;

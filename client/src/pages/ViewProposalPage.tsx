@@ -33,9 +33,9 @@ function TimePartsInput({ value, onChange, defaultMeridiem, label }: {
   defaultMeridiem: "AM" | "PM";
   label: string;
 }) {
-  const m = value.match(/^(.*?)\s*(AM|PM)\.?$/i);
+  const m = value.match(/^(.*?)\s*(a\.?m\.?|p\.?m\.?)$/i);
   const text = (m ? m[1] : value).trim();
-  const storedMer = m ? (m[2].toUpperCase() as "AM" | "PM") : null;
+  const storedMer = m ? ((m[2].toLowerCase().startsWith("p") ? "PM" : "AM") as "AM" | "PM") : null;
   // Remembers an AM/PM choice made before any digits are typed (nothing is
   // stored until there's a time, so the stored string can't carry it yet).
   const [pickedMer, setPickedMer] = useState<"AM" | "PM" | null>(null);
@@ -1019,7 +1019,14 @@ export default function ViewProposalPage() {
             document itself — venue, coverage schedule, PO. Without this the
             signed record never showed what was agreed to. */}
         {accepted && (() => {
-          const cfv: Record<string, string> = (proposal?.clientFieldValues && typeof proposal.clientFieldValues === "object") ? proposal.clientFieldValues : {};
+          // Server-stored values merged with what was typed THIS session —
+          // right after an in-session acceptance the GET payload predates
+          // the signing, so without the merge the block renders empty until
+          // a reload.
+          const cfv: Record<string, string> = {
+            ...((proposal?.clientFieldValues && typeof proposal.clientFieldValues === "object") ? proposal.clientFieldValues : {}),
+            ...clientFields,
+          };
           const val = (k: string) => String(cfv[k] || "").trim();
           const fmtDate = (iso: string) => /^\d{4}-\d{2}-\d{2}$/.test(iso)
             ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })

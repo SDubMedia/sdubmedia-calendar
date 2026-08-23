@@ -166,6 +166,13 @@ async function verifyPayment(req: VercelRequest, res: VercelResponse) {
   });
 
   if (session.payment_status === "paid" && session.metadata?.invoiceId) {
+    // Record HOW it was paid for the public page's paid banner.
+    const { data: paidInv } = await supabase.from("invoices").select("client_info").eq("id", session.metadata.invoiceId).maybeSingle();
+    if (paidInv) {
+      await supabase.from("invoices").update({
+        client_info: { ...(paidInv.client_info as Record<string, unknown> | null ?? {}), paidVia: "card via Stripe" },
+      }).eq("id", session.metadata.invoiceId);
+    }
     // Mark invoice as paid
     const today = new Date().toISOString().slice(0, 10);
     await supabase.from("invoices").update({
