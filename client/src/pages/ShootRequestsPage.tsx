@@ -106,6 +106,7 @@ export default function ShootRequestsPage() {
         date: req.preferredDate ?? "",
         startTime,
         endTime,
+        daySchedules: [],
         status: "upcoming",
         crew,
         postProduction: [],

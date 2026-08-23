@@ -4,6 +4,7 @@
 
 import { nanoid } from "nanoid";
 import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense } from "./types";
+import { projectOccursOn, dayCrewFor, projectFirstDate } from "./projectDays";
 
 /**
  * A client's partner split, but only if it's active for the given project date.
@@ -157,12 +158,20 @@ export function conflictsForDate(
   prefs: Record<string, { shootMinutes: number; bufferMinutes: number; maxPerDay: number }>,
   date: string,
 ): ShootConflict[] {
-  const shoots = projects.filter(p => p.date === date && p.status !== "cancelled");
   const byCrew = new Map<string, { id: string; start: number; end: number }[]>();
-  for (const p of shoots) {
-    const members = new Set([...(p.crew || []), ...(p.postProduction || [])].map(c => c.crewMemberId).filter(Boolean));
-    const start = toMin(p.startTime || "00:00");
-    const end = Math.max(toMin(p.endTime || p.startTime || "00:00"), start);
+  for (const p of projects) {
+    if (p.status === "cancelled") continue;
+    const day = projectOccursOn(p, date);
+    if (!day) continue;
+    // Per-day crew works that day; editors (postProduction) aren't per-day
+    // people — count them on the FIRST day only, or a multi-day span flags
+    // phantom double-bookings for them on days 2..N.
+    const members = new Set(dayCrewFor(p, day).map(c => c.crewMemberId).filter(Boolean));
+    if (date === projectFirstDate(p)) {
+      for (const c of (p.postProduction || [])) if (c.crewMemberId) members.add(c.crewMemberId);
+    }
+    const start = toMin(day.startTime || "00:00");
+    const end = Math.max(toMin(day.endTime || day.startTime || "00:00"), start);
     for (const m of Array.from(members)) {
       if (!byCrew.has(m)) byCrew.set(m, []);
       byCrew.get(m)!.push({ id: p.id, start, end });
@@ -232,10 +241,13 @@ export function getCrewShootStatus(
   if (windows.length === 0 || !windows.some(([ws, we]) => s >= ws && e <= we)) return "off";
   const buf = prefs[crewMemberId]?.bufferMinutes ?? 0;
   for (const p of projects) {
-    if (p.id === excludeProjectId || p.date !== date || p.status === "cancelled") continue;
-    const assigned = [...(p.crew || []), ...(p.postProduction || [])].some(c => c.crewMemberId === crewMemberId);
+    if (p.id === excludeProjectId || p.status === "cancelled") continue;
+    const day = projectOccursOn(p, date);
+    if (!day) continue;
+    const assigned = dayCrewFor(p, day).some(c => c.crewMemberId === crewMemberId)
+      || (date === projectFirstDate(p) && (p.postProduction || []).some(c => c.crewMemberId === crewMemberId));
     if (!assigned) continue;
-    const ps = toMin(p.startTime || "00:00"), pe = Math.max(toMin(p.endTime || p.startTime || "00:00"), ps);
+    const ps = toMin(day.startTime || "00:00"), pe = Math.max(toMin(day.endTime || day.startTime || "00:00"), ps);
     if (s < pe + buf && ps < e + buf) return "busy";
   }
   return "available";
@@ -328,6 +340,7 @@ export const seedData: AppData = {
       date: "2026-03-09",
       startTime: "12:00",
       endTime: "14:00",
+      daySchedules: [],
       status: "upcoming",
       crew: [{ crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1, payRatePerHour: 0 }],
@@ -348,6 +361,7 @@ export const seedData: AppData = {
       date: "2026-03-12",
       startTime: "10:00",
       endTime: "13:00",
+      daySchedules: [],
       status: "upcoming",
       crew: [
         { crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 0 },
@@ -371,6 +385,7 @@ export const seedData: AppData = {
       date: "2026-03-15",
       startTime: "09:00",
       endTime: "12:00",
+      daySchedules: [],
       status: "upcoming",
       crew: [{ crewMemberId: "crew_zach", role: "Photographer", hoursWorked: 3, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_melissa", role: "Photo Editor", hoursWorked: 2, payRatePerHour: 0 }],
@@ -391,6 +406,7 @@ export const seedData: AppData = {
       date: "2026-02-20",
       startTime: "14:00",
       endTime: "16:00",
+      daySchedules: [],
       status: "editing_done",
       crew: [{ crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_geoff", role: "Video Editor", hoursWorked: 1.5, payRatePerHour: 0 }],
@@ -411,6 +427,7 @@ export const seedData: AppData = {
       date: "2026-02-27",
       startTime: "12:00",
       endTime: "14:00",
+      daySchedules: [],
       status: "in_editing",
       crew: [{ crewMemberId: "crew_geoff", role: "Main Videographer", hoursWorked: 2, payRatePerHour: 0 }],
       postProduction: [{ crewMemberId: "crew_antonio", role: "Video Editor", hoursWorked: 1, payRatePerHour: 0 }],

@@ -14,6 +14,7 @@ import type { Project, PersonalEvent, PersonalEventTemplate, Meeting } from "@/l
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectPayerId, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
+import { projectDays, projectOccursOn, dayCrewFor, dayIndexInfo } from "@/lib/projectDays";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
@@ -130,7 +131,7 @@ export default function CalendarPage() {
   const doubleBookedDates = useMemo(() => {
     if (!canSeeAvail) return new Set<string>();
     const dates = new Set<string>();
-    for (const d of Array.from(new Set(data.projects.map(p => p.date)))) {
+    for (const d of Array.from(new Set(data.projects.flatMap(p => projectDays(p).map(day => day.date))))) {
       if (conflictsForDate(data.projects, data.availability, prefsMap, d).some(c => c.type === "double")) dates.add(d);
     }
     return dates;
@@ -147,10 +148,12 @@ export default function CalendarPage() {
     const out: Record<string, string[]> = {};
     if (!isOwner || !selectedDate) return out;
     const busy = data.projects
-      .filter(p => p.date === selectedDate && p.status !== "cancelled")
+      .filter(p => p.status !== "cancelled")
       .flatMap(p => {
-        const ids = Array.from(new Set((p.crew ?? []).map(c => c.crewMemberId).filter(Boolean)));
-        return ids.map(cm => ({ crewMemberId: cm, date: p.date, start: p.startTime, end: p.endTime || p.startTime }));
+        const day = projectOccursOn(p, selectedDate);
+        if (!day) return [];
+        const ids = Array.from(new Set(dayCrewFor(p, day).map(c => c.crewMemberId).filter(Boolean)));
+        return ids.map(cm => ({ crewMemberId: cm, date: day.date, start: day.startTime, end: day.endTime || day.startTime }));
       });
     const day = getOpenDays(data.availability, { fromDate: selectedDate, days: 1, busy, prefs: prefsMap })[0];
     if (day) {
@@ -402,7 +405,7 @@ export default function CalendarPage() {
   const monthProjects = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     return data.projects.filter((p) =>
-      p.date.startsWith(prefix) && matchesClientFilter(p)
+      projectDays(p).some(d => d.date.startsWith(prefix)) && matchesClientFilter(p)
     );
   }, [data.projects, year, month, matchesClientFilter]);
 
@@ -467,7 +470,7 @@ export default function CalendarPage() {
   const filteredProjects = useMemo(() => {
     let projects;
     if (selectedDate) {
-      projects = data.projects.filter(p => p.date === selectedDate);
+      projects = data.projects.filter(p => projectOccursOn(p, selectedDate));
     } else {
       projects = viewScope === "month" ? monthProjects : data.projects;
     }
@@ -499,7 +502,7 @@ export default function CalendarPage() {
 
   const getProjectsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return monthProjects.filter((p) => p.date === dateStr);
+    return monthProjects.filter((p) => projectOccursOn(p, dateStr));
   };
 
   const getClient = (id: string) => data.clients.find((c) => c.id === id);
@@ -969,7 +972,7 @@ export default function CalendarPage() {
                         >
                           {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
                           {depositRecentlyPaid(p.depositPaidAt) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline-block flex-shrink-0 mr-0.5" aria-label="Deposit paid" />}
-                          <span className="hidden sm:inline">{p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}</span>
+                          <span className="hidden sm:inline">{(projectOccursOn(p, dateStr || "")?.startTime ?? p.startTime)} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}{(() => { const di = dayIndexInfo(p, dateStr || ""); return di && di.count > 1 ? ` · Day ${di.index}/${di.count}` : ""; })()}</span>
                           <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
                         </div>
                       ))}
@@ -1325,7 +1328,7 @@ export default function CalendarPage() {
 
                         {/* Time + hours */}
                         <div className="text-right flex-shrink-0">
-                          <div className="text-xs text-foreground">{project.startTime} – {project.endTime}</div>
+                          <div className="text-xs text-foreground">{(selectedDate ? projectOccursOn(project, selectedDate)?.startTime : null) ?? project.startTime} – {(selectedDate ? projectOccursOn(project, selectedDate)?.endTime : null) ?? project.endTime}</div>
                           {/* Owner only: billed hours, the flat rate, and the paid
                               marker are all money. Staff see their own pay on the
                               project sheet; clients see nothing here. */}

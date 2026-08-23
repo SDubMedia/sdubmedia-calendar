@@ -100,6 +100,7 @@ export default function SeriesWorkspacePage() {
           date: ep.draftDate,
           startTime: ep.draftStartTime || "09:00",
           endTime: ep.draftEndTime || "12:00",
+          daySchedules: [],
           status: "upcoming",
           crew: ep.draftCrew.map(crewId => ({ crewMemberId: crewId, role: "", hoursWorked: 0, payRatePerHour: 0 })),
           postProduction: [],

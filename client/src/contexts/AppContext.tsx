@@ -7,6 +7,7 @@ import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Proj
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
+import { normalizeDaySchedules } from "@/lib/projectDays";
 import { useAuth } from "./AuthContext";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
@@ -563,6 +564,7 @@ function rowToProject(r: any): Project {
     date: r.date,
     startTime: r.start_time,
     endTime: r.end_time,
+    daySchedules: Array.isArray(r.day_schedules) ? r.day_schedules : [],
     status: r.status,
     crew: (r.crew || []).map(normalizeCrewEntry),
     postProduction: (r.post_production || []).map(normalizeCrewEntry),
@@ -2903,15 +2905,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addProject = useCallback(async (p: Omit<Project, "id" | "createdAt">): Promise<Project> => {
     const id = nanoid(10);
+    // Multi-day: canonicalize the day rows and mirror day 1 into
+    // date/start_time/end_time (defensive even if the caller already did).
+    const dayRows = normalizeDaySchedules(p.daySchedules ?? [], (p.crew || []).map(c => c.crewMemberId).filter(Boolean));
+    const firstDay = dayRows[0];
     const { data: row, error } = await supabase.from("projects").insert({
       id,
       ...(orgId ? { org_id: orgId } : {}),
       client_id: p.clientId,
       project_type_id: p.projectTypeId,
       location_id: p.locationId || null,
-      date: p.date,
-      start_time: p.startTime,
-      end_time: p.endTime,
+      date: firstDay ? firstDay.date : p.date,
+      start_time: firstDay ? firstDay.startTime : p.startTime,
+      end_time: firstDay ? firstDay.endTime : p.endTime,
+      day_schedules: dayRows,
       status: p.status,
       crew: p.crew,
       post_production: p.postProduction,
@@ -2957,6 +2964,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.endTime !== undefined) patch.end_time = p.endTime;
     if (p.status !== undefined) patch.status = p.status;
     if (p.crew !== undefined) patch.crew = p.crew;
+    // Multi-day: canonicalize and mirror day 1 into date/start/end AFTER the
+    // plain date/time lines so day-schedule sync wins when both are passed.
+    // A crew patch on a multi-day project re-normalizes the STORED schedule so
+    // removed members don't linger in any day's crewMemberIds.
+    {
+      const rosterIds = (p.crew !== undefined ? p.crew : prev?.crew ?? [])
+        .map(c => c.crewMemberId).filter(Boolean);
+      if (p.daySchedules !== undefined) {
+        const ds = normalizeDaySchedules(p.daySchedules, rosterIds);
+        patch.day_schedules = ds;
+        if (ds.length) { patch.date = ds[0].date; patch.start_time = ds[0].startTime; patch.end_time = ds[0].endTime; }
+      } else if (p.crew !== undefined && prev && prev.daySchedules.length > 0) {
+        patch.day_schedules = normalizeDaySchedules(prev.daySchedules, rosterIds);
+      }
+    }
     if (p.postProduction !== undefined) patch.post_production = p.postProduction;
     if (p.editorBilling !== undefined) patch.editor_billing = p.editorBilling;
     // Auto-finalize editor billing when project transitions to a

@@ -10,6 +10,7 @@ import { Link } from "wouter";
 import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, CheckCircle2, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCrewMemberProjectPay } from "@/lib/data";
+import { projectDays, dayCrewFor, projectFirstDate } from "@/lib/projectDays";
 import type { Project, ProjectDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import StaffAgreementResign from "@/components/StaffAgreementResign";
@@ -198,10 +199,13 @@ export default function StaffDashboardPage() {
 
   // Upcoming projects
   const upcomingProjects = useMemo(() => {
+    const mine = (p: typeof myProjects[number]) => projectDays(p).filter(d =>
+      dayCrewFor(p, d).some(c => c.crewMemberId === crewMemberId) ||
+      (d.date === projectFirstDate(p) && p.postProduction.some(c => c.crewMemberId === crewMemberId)));
     return myProjects
-      .filter(p => p.date >= todayStr)
+      .filter(p => mine(p).some(d => d.date >= todayStr))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [myProjects, todayStr]);
+  }, [myProjects, todayStr, crewMemberId]);
 
   // Next shoot
   const _nextShoot = upcomingProjects[0];

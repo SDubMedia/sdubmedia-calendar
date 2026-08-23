@@ -129,6 +129,7 @@ export default function NewContractPage() {
           date: today,
           startTime: "09:00",
           endTime: "11:00",
+          daySchedules: [],
           status: "upcoming",
           crew: [],
           postProduction: [],

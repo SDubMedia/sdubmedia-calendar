@@ -153,7 +153,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
               <View key={i} style={s.groupHeaderRow}>
                 <Text style={s.groupHeaderText}>{li.description}</Text>
                 {li.date && li.date !== invoice.issueDate && (
-                  <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
+                  <Text style={s.tableRowDesc}>{formatDate(li.date)}{li.dateEnd && li.dateEnd !== li.date ? ` – ${formatDate(li.dateEnd)}` : ""}</Text>
                 )}
               </View>
             ) : (
@@ -166,7 +166,7 @@ export default function InvoicePDF({ invoice }: { invoice: Invoice }) {
                   <Text style={[s.colAmount, { fontFamily: "Helvetica-Bold" }]}>{formatCurrency(li.amount)}</Text>
                 </View>
                 {li.date && li.date !== invoice.issueDate && (
-                  <Text style={s.tableRowDesc}>{formatDate(li.date)}</Text>
+                  <Text style={s.tableRowDesc}>{formatDate(li.date)}{li.dateEnd && li.dateEnd !== li.date ? ` – ${formatDate(li.dateEnd)}` : ""}</Text>
                 )}
               </View>
             )

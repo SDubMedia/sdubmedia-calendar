@@ -55,6 +55,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     date: "2026-04-01",
     startTime: "10:00",
     endTime: "14:00",
+    daySchedules: [],
     status: "editing_done",
     crew: [],
     postProduction: [],

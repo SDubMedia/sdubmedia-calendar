@@ -6,6 +6,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import { projectDaysRow, dayHasCrewMember } from "./_projectDays.js";
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || "";
@@ -180,19 +181,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const typeName = types[p.project_type_id] || "Project";
     const clientName = clients[p.client_id] || "";
     const loc = locs[p.location_id];
-    const summary = clientName ? `${typeName} - ${clientName}` : typeName;
+    const baseSummary = clientName ? `${typeName} - ${clientName}` : typeName;
+
+    // Multi-day: one VEVENT per day. Staff feeds skip days whose per-day crew
+    // excludes the viewer (project-level access already passed projectInFeed).
+    // Single-day projects keep the historic UID — a blanket -d suffix would
+    // churn every subscriber's existing calendar entries.
+    const allDays = projectDaysRow(p);
+    const feedDays = viewer && viewer.role === "staff" && viewer.crewMemberId
+      ? allDays.filter(d => dayHasCrewMember(d, viewer.crewMemberId as string))
+      : allDays;
+    for (const day of feedDays) {
+    const multi = allDays.length > 1;
+    const dayNo = multi ? allDays.findIndex(x => x.date === day.date) + 1 : 0;
+    const summary = multi ? `${baseSummary} (Day ${dayNo}/${allDays.length})` : baseSummary;
 
     let vevent = `BEGIN:VEVENT
-UID:slate-${p.id}@sdubmedia.com
+UID:slate-${p.id}${multi ? `-d${dayNo}` : ""}@sdubmedia.com
 DTSTAMP:${formatICalDate(new Date().toISOString().slice(0, 10), "000000")}
 SUMMARY:${esc(summary)}`;
 
-    if (p.start_time && p.end_time) {
-      vevent += `\nDTSTART:${formatICalDate(p.date, p.start_time)}`;
-      vevent += `\nDTEND:${formatICalDate(p.date, p.end_time)}`;
+    if (day.start_time && day.end_time) {
+      vevent += `\nDTSTART:${formatICalDate(day.date, day.start_time)}`;
+      vevent += `\nDTEND:${formatICalDate(day.date, day.end_time)}`;
     } else {
-      vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(p.date)}`;
-      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(p.date)}`;
+      vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(day.date)}`;
+      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(day.date)}`;
     }
 
     if (loc) {
@@ -213,6 +227,7 @@ SUMMARY:${esc(summary)}`;
     vevent += `\nCATEGORIES:Production`;
     vevent += `\nEND:VEVENT`;
     events.push(vevent);
+    }
   }
 
   for (const e of personalEvents) {

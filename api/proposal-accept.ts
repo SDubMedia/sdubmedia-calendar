@@ -820,32 +820,34 @@ async function createProjectsForProposal(
     .map(x => String(x || "").trim()).filter(Boolean).join(", ");
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const now = new Date().toISOString();
-  let firstId = "";
-  for (let i = 0; i < days.length; i++) {
-    const d = days[i];
-    const projId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
-    if (!firstId) firstId = projId;
-    const { error } = await supabase.from("projects").insert({
-      id: projId,
-      org_id: proposal.org_id,
-      client_id: proposal.client_id,
-      project_type_id: typeId,
-      date: d.date,
-      start_time: d.start || "",
-      end_time: d.end || "",
-      status: "tentative",
-      crew: [],
-      billing_model: "per_project",
-      project_rate: i === 0 ? Number(acceptedTotal || 0) : 0,
-      notes: [
-        `Booked via signed proposal: ${proposal.title || ""} [proposal:${proposal.id}]`,
-        venue ? `Venue: ${venue}` : "",
-        days.length > 1 ? `Day ${i + 1} of ${days.length}` : "",
-      ].filter(Boolean).join("\n"),
-    });
-    if (error) throw new Error(error.message);
-  }
-  await supabase.from("proposals").update({ project_id: firstId, updated_at: now }).eq("id", proposal.id);
+  // ONE project for the whole booking: single-day events stay plain rows;
+  // multi-day events carry every day in day_schedules (sorted, day 1 mirrored
+  // into date/start/end) so the calendar spans, one status flips on payment,
+  // and the invoice is one line. No more $0 tail rows.
+  const projId = Array.from(randomBytes(10)).map(b => alphabet[b % alphabet.length]).join("");
+  const sortedDays = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const { error } = await supabase.from("projects").insert({
+    id: projId,
+    org_id: proposal.org_id,
+    client_id: proposal.client_id,
+    project_type_id: typeId,
+    date: sortedDays[0].date,
+    start_time: sortedDays[0].start || "",
+    end_time: sortedDays[0].end || "",
+    day_schedules: sortedDays.length > 1
+      ? sortedDays.map(d => ({ date: d.date, startTime: d.start || "", endTime: d.end || "" }))
+      : [],
+    status: "tentative",
+    crew: [],
+    billing_model: "per_project",
+    project_rate: Number(acceptedTotal || 0),
+    notes: [
+      `Booked via signed proposal: ${proposal.title || ""} [proposal:${proposal.id}]`,
+      venue ? `Venue: ${venue}` : "",
+    ].filter(Boolean).join("\n"),
+  });
+  if (error) throw new Error(error.message);
+  await supabase.from("proposals").update({ project_id: projId, updated_at: now }).eq("id", proposal.id);
 }
 
 /**

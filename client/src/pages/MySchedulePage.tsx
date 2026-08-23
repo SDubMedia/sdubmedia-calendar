@@ -7,7 +7,8 @@ import { useState, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays, List, Clock, MapPin, DollarSign } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project } from "@/lib/types";
+import type { Project, ProjectDaySchedule } from "@/lib/types";
+import { projectDays, dayCrewFor, projectFirstDate } from "@/lib/projectDays";
 import { cn } from "@/lib/utils";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 
@@ -47,29 +48,37 @@ export default function MySchedulePage() {
     );
   }, [data.projects, crewMemberId]);
 
-  // Monthly filtered projects
-  const monthProjects = useMemo(() => {
-    return myProjects.filter(p => {
-      const d = new Date(p.date + "T00:00:00");
-      return d.getFullYear() === year && d.getMonth() === month;
-    });
-  }, [myProjects, year, month]);
+  // The days of a project THIS member actually works: per-day crew subset when
+  // set, whole-crew days otherwise; editors ride the first day.
+  const myDays = useCallback((p: Project): ProjectDaySchedule[] => {
+    if (!crewMemberId) return [];
+    return projectDays(p).filter(d =>
+      dayCrewFor(p, d).some(c => c.crewMemberId === crewMemberId) ||
+      (d.date === projectFirstDate(p) && p.postProduction.some(c => c.crewMemberId === crewMemberId))
+    );
+  }, [crewMemberId]);
 
-  // Upcoming projects (from today forward) for schedule view
+  // Monthly filtered projects — any of MY days in the viewed month
+  const monthProjects = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return myProjects.filter(p => myDays(p).some(d => d.date.startsWith(prefix)));
+  }, [myProjects, year, month, myDays]);
+
+  // Upcoming projects (any of my days from today forward)
   const upcomingProjects = useMemo(() => {
     const todayStr = today.toISOString().split("T")[0];
     return [...myProjects]
-      .filter(p => p.date >= todayStr)
+      .filter(p => myDays(p).some(d => d.date >= todayStr))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [myProjects, today]);
+  }, [myProjects, today, myDays]);
 
-  // Past projects for schedule view
+  // Past projects (all of my days behind us)
   const pastProjects = useMemo(() => {
     const todayStr = today.toISOString().split("T")[0];
     return [...myProjects]
-      .filter(p => p.date < todayStr)
+      .filter(p => { const mine = myDays(p); return mine.length > 0 && mine.every(d => d.date < todayStr); })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [myProjects, today]);
+  }, [myProjects, today, myDays]);
 
   const getClient = (id: string) => data.clients.find(c => c.id === id);
   const getLocation = (id: string) => data.locations.find(l => l.id === id);
@@ -159,7 +168,7 @@ export default function MySchedulePage() {
 
   const getProjectsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return monthProjects.filter(p => p.date === dateStr);
+    return monthProjects.filter(p => myDays(p).some(d => d.date === dateStr));
   };
 
   // Calendar grid
@@ -185,7 +194,7 @@ export default function MySchedulePage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-semibold text-foreground">
-                {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                {(() => { const mine = myDays(project); const d0 = mine[0]?.date ?? project.date; const label = new Date(d0 + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); return mine.length > 1 ? `${label} +${mine.length - 1} more day${mine.length > 2 ? "s" : ""}` : label; })()}
               </span>
               <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded border",
                 project.status === "tentative" && "border-dashed border-amber-400/50 text-amber-300 bg-amber-400/10",
@@ -212,7 +221,7 @@ export default function MySchedulePage() {
         <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            {project.startTime} – {project.endTime}
+            {(() => { const d0 = myDays(project)[0]; return `${d0?.startTime ?? project.startTime} – ${d0?.endTime ?? project.endTime}`; })()}
           </span>
           {location && (
             <span className="flex items-center gap-1 truncate">
@@ -458,7 +467,7 @@ export default function MySchedulePage() {
                               p.status === "delivered" && "bg-green-500/25 text-green-300",
                             )}
                           >
-                            {p.startTime} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
+                            {(myDays(p).find(d => d.date === `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`)?.startTime ?? p.startTime)} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}
                           </div>
                         );
                       })}

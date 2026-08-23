@@ -22,7 +22,8 @@ import ProjectHistorySection from "@/components/ProjectHistorySection";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { toUploadableImage } from "@/lib/heic";
 import { formatPhoneDisplay, parsePastedAddress } from "@/lib/utils";
-import type { Project, ProjectCrewEntry, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
+import type { Project, ProjectCrewEntry, ProjectDaySchedule, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
+import { normalizeDaySchedules } from "@/lib/projectDays";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
 import { toast } from "sonner";
 import { getProjectLimitState } from "@/lib/tier-limits";
@@ -99,6 +100,89 @@ const emptyPostEntry = (): ProjectPostEntry => ({
   payRatePerHour: 0,
 });
 
+function addDaysISO(dateStr: string, n: number): string {
+  const d = new Date((dateStr || new Date().toISOString().slice(0, 10)) + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Per-day crew picker: checkbox chips of the project's named crew. All checked
+// (the default) stores undefined = "the whole crew works this day". Top-level
+// component per the no-nested-components rule.
+function DayCrewChips({ roster, selectedIds, onChange }: {
+  roster: { crewMemberId: string; name: string }[];
+  selectedIds: string[] | undefined;
+  onChange: (ids: string[] | undefined) => void;
+}) {
+  if (roster.length === 0) return null;
+  const effective = selectedIds && selectedIds.length > 0 ? selectedIds : roster.map(r => r.crewMemberId);
+  const toggle = (id: string) => {
+    const next = effective.includes(id) ? effective.filter(x => x !== id) : [...effective, id];
+    // Everyone selected (or nobody left) = whole crew.
+    onChange(next.length === 0 || next.length === roster.length ? undefined : next);
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {roster.map(r => {
+        const on = effective.includes(r.crewMemberId);
+        return (
+          <button
+            key={r.crewMemberId}
+            type="button"
+            onClick={() => toggle(r.crewMemberId)}
+            className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${on ? "bg-primary/15 border-primary/50 text-primary" : "bg-secondary border-border text-muted-foreground"}`}
+          >{r.name}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+// One additional day of a multi-day project (day 2+; day 1 is the dialog's
+// main Date/Start/End fields). Controlled by index-patch callbacks.
+function DayScheduleRow({ day, index, roster, onPatch, onRemove }: {
+  day: ProjectDaySchedule;
+  index: number;
+  roster: { crewMemberId: string; name: string }[];
+  onPatch: (index: number, patch: Partial<ProjectDaySchedule>) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-secondary/40 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground">Day {index + 2}</span>
+        <button type="button" onClick={() => onRemove(index)} aria-label={`Remove day ${index + 2}`} className="p-1 text-muted-foreground hover:text-red-400">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="space-y-1 min-w-0">
+          <Label className="text-xs text-muted-foreground">Date</Label>
+          <DateField value={day.date} onChange={(v) => onPatch(index, { date: v })} className="bg-secondary border-border w-full min-w-0" />
+        </div>
+        <div className="space-y-1 min-w-0">
+          <Label className="text-xs text-muted-foreground">Start Time</Label>
+          <select value={day.startTime} onChange={(e) => onPatch(index, { startTime: e.target.value })} className="w-full h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+            {timeOptionsWith(day.startTime).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1 min-w-0">
+          <Label className="text-xs text-muted-foreground">End Time</Label>
+          <select value={day.endTime} onChange={(e) => onPatch(index, { endTime: e.target.value })} className="w-full h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+            {timeOptionsWith(day.endTime).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+      </div>
+      {roster.length > 0 && (
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Who works this day</Label>
+          <DayCrewChips roster={roster} selectedIds={day.crewMemberIds} onChange={(ids) => onPatch(index, { crewMemberIds: ids })} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // First crew row for a NEW project — pre-assigned to a shooter when booking into
 // an open calendar slot, otherwise blank.
 const initialCrew = (crewMemberId?: string): ProjectCrewEntry[] =>
@@ -129,6 +213,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "upcoming");
   const [crew, setCrew] = useState<ProjectCrewEntry[]>(project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId));
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
+  // Multi-day: day 1 IS the main Date/Start/End fields; these are days 2+.
+  // Mount-initialized only (no effect resets — realtime rule).
+  const [extraDays, setExtraDays] = useState<ProjectDaySchedule[]>((project?.daySchedules ?? []).slice(1));
+  const [day1CrewIds, setDay1CrewIds] = useState<string[] | undefined>(project?.daySchedules?.[0]?.crewMemberIds);
   // Raw text for the hours inputs while typing, so intermediate decimal states
   // like "0." or "1." survive (a number model would strip the point and block
   // half-hour entries). The numeric hoursWorked stays authoritative for totals.
@@ -376,6 +464,12 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     [data.projectTypes, projectTypeId],
   );
   const isLightweight = useMemo(() => data.projectTypes.find(pt => pt.id === projectTypeId)?.lightweight || false, [data.projectTypes, projectTypeId]);
+  // Named crew for the per-day "who works this day" chips.
+  const dayRoster = useMemo(() =>
+    crew.filter(c => c.crewMemberId).map(c => ({
+      crewMemberId: c.crewMemberId,
+      name: data.crewMembers.find(m => m.id === c.crewMemberId)?.name || c.role || "Crew",
+    })), [crew, data.crewMembers]);
 
   // Real-estate flat crew rates: each picked service piece tagged "Pays: Shooter/
   // Editor" carries a flat payout (set in Manage → Services). Read it LIVE from
@@ -780,8 +874,25 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     // travel buffer, default 90 min) instead of a 0-minute 9:00–9:00 window.
     const reCrewId = crew.find((c) => c.crewMemberId)?.crewMemberId;
     const reEnd = startTime ? addMinutesT(startTime, shootDurationMinFor(reCrewId, data.shooterPrefs)) : startTime;
+    // Multi-day: day 1 = the main fields; canonicalize + mirror day 1 back
+    // into date/start/end so the stored row is always first-day-synced.
+    const dayRows = extraDays.length > 0
+      ? normalizeDaySchedules(
+          [{ date, startTime, endTime: isRealEstate ? reEnd : endTime, crewMemberIds: day1CrewIds }, ...extraDays],
+          crew.filter(c => c.crewMemberId).map(c => c.crewMemberId),
+        )
+      : [];
+    if (extraDays.length > 0) {
+      const wanted = new Set([date, ...extraDays.map(d => d.date)].filter(Boolean));
+      if (extraDays.some(d => !d.date)) { toast.error("Every day needs a date"); return; }
+      if (wanted.size !== extraDays.length + 1) { toast.error("Two days have the same date — remove the duplicate"); return; }
+    }
     const payload: Omit<Project, "id" | "createdAt"> = {
-      clientId, projectTypeId, locationId: finalLocationId || "", date, startTime, endTime: isRealEstate ? reEnd : endTime,
+      clientId, projectTypeId, locationId: finalLocationId || "",
+      date: dayRows.length ? dayRows[0].date : date,
+      startTime: dayRows.length ? dayRows[0].startTime : startTime,
+      endTime: dayRows.length ? dayRows[0].endTime : (isRealEstate ? reEnd : endTime),
+      daySchedules: dayRows,
       status: isLightweight ? "delivered" : status,
       crew: crew.filter((c) => c.crewMemberId),
       postProduction: postProduction.filter((c) => c.crewMemberId),
@@ -1017,6 +1128,45 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
               </div>
             )}
           </div>
+
+          {/* Multi-day: the fields above are Day 1; these are additional days,
+              each with its own times and (optionally) its own crew subset.
+              One project, one status, one cost, one invoice. Hidden for
+              real-estate and lightweight types (inherently single-day). */}
+          {!isRealEstate && !isLightweight && (
+            <div className="space-y-3">
+              {extraDays.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-muted-foreground">Day 1 is the date above{dayRoster.length > 0 ? " — who works Day 1:" : ""}</Label>
+                  </div>
+                  {dayRoster.length > 0 && (
+                    <DayCrewChips roster={dayRoster} selectedIds={day1CrewIds} onChange={setDay1CrewIds} />
+                  )}
+                  {extraDays.map((d, i) => (
+                    <DayScheduleRow
+                      key={i}
+                      day={d}
+                      index={i}
+                      roster={dayRoster}
+                      onPatch={(idx, patch) => setExtraDays(list => list.map((x, j) => j === idx ? { ...x, ...patch } : x))}
+                      onRemove={(idx) => setExtraDays(list => list.filter((_, j) => j !== idx))}
+                    />
+                  ))}
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setExtraDays(list => [...list, {
+                  date: addDaysISO(list.length ? list[list.length - 1].date : date, 1),
+                  startTime, endTime,
+                }])}
+                className="text-sm text-primary hover:text-primary/80 flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add day{extraDays.length > 0 ? ` ${extraDays.length + 2}` : " (multi-day project)"}
+              </button>
+            </div>
+          )}
 
           {/* Row 3: Location/Address + Status */}
           <div className={`grid grid-cols-1 ${isLightweight ? "" : "sm:grid-cols-2"} gap-4`}>

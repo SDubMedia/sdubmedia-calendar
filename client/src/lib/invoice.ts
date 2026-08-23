@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { Client, Project, ProjectType, Location, Invoice, InvoiceLineItem, Organization } from "./types";
+import { isMultiDay, projectLastDate } from "./projectDays";
 import { getProjectBillableHours, getProjectSubtotal, getProjectDiscountValue, getProjectPayerId } from "./data";
 
 export function formatPhone(phone: string): string {
@@ -198,7 +199,11 @@ export function buildLineItems(
       // Production/Editing split. Discount (below) still renders as a
       // separate negative line.
       const amount = projectSubtotal;
-      items.push({ projectId: p.id, date: p.date, description: projectLabel, quantity: 1, unitPrice: amount, amount });
+      items.push({
+        projectId: p.id, date: p.date,
+        ...(isMultiDay(p) ? { dateEnd: projectLastDate(p) } : {}),
+        description: projectLabel, quantity: 1, unitPrice: amount, amount,
+      });
     } else {
       // Hourly billing — use getProjectBillableHours to apply role multipliers + editorBilling
       const rate = Number(p.billingRate ?? pricingClient.billingRatePerHour ?? 0);
@@ -210,6 +215,7 @@ export function buildLineItems(
         if (billed > 0) {
           items.push({
             projectId: p.id, date: p.date,
+            ...(isMultiDay(p) ? { dateEnd: projectLastDate(p) } : {}),
             description: projectLabel,
             quantity: billed, unitPrice: rate, amount: billed * rate,
           });

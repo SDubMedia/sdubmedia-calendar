@@ -18,6 +18,7 @@ import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument } from "@/lib/types";
+import { isMultiDay, projectDays, dayCrewFor } from "@/lib/projectDays";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
@@ -1152,6 +1153,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
                 <div className="text-sm font-medium">
                   {new Date(project.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric", year: "numeric" })}
+                  {isMultiDay(project) && <span className="text-xs text-muted-foreground"> +{projectDays(project).length - 1} more day{projectDays(project).length > 2 ? "s" : ""}</span>}
                 </div>
               </div>
               <div className="bg-secondary rounded-lg p-3 space-y-1">
@@ -1160,6 +1162,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                 </div>
                 <div className="text-sm font-medium">{project.startTime} – {project.endTime}</div>
               </div>
+              {isMultiDay(project) && (
+                <div className="bg-secondary rounded-lg p-3 space-y-1.5 col-span-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Calendar className="w-3.5 h-3.5" /> Coverage days
+                  </div>
+                  {projectDays(project).map((d, i) => (
+                    <div key={d.date} className="flex items-center justify-between text-sm">
+                      <span className="font-medium">Day {i + 1} · {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+                      <span className="text-muted-foreground">
+                        {d.startTime}{d.endTime ? ` – ${d.endTime}` : ""}
+                        {(() => {
+                          const names = dayCrewFor(project, d)
+                            .map(c => data.crewMembers.find(m => m.id === c.crewMemberId)?.name?.split(" ")[0])
+                            .filter(Boolean);
+                          const all = !d.crewMemberIds || d.crewMemberIds.length === 0;
+                          return names.length > 0 && !all ? ` · ${names.join(", ")}` : "";
+                        })()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="bg-secondary rounded-lg p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <User className="w-3.5 h-3.5" /> Client
@@ -1959,7 +1983,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   {project.status === "cancelled" ? "Email cancellation to client" : "Email project details to client"}
                 </Button>
               )}
-              {isOwner && project.status !== "cancelled" && (
+              {isOwner && project.status !== "cancelled" && !isMultiDay(project) && (
                 <Button
                   variant="outline"
                   onClick={() => {

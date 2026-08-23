@@ -37,6 +37,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     date: "2026-04-01",
     startTime: "10:00",
     endTime: "14:00",
+    daySchedules: [],
     status: "editing_done",
     crew: [{ crewMemberId: "c1", role: "Main Videographer", hoursWorked: 3, payRatePerHour: 100 }],
     postProduction: [{ crewMemberId: "c1", role: "Video Editor", hoursWorked: 2, payRatePerHour: 80 }],
@@ -106,6 +107,32 @@ describe("buildLineItems", () => {
     ];
     const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
     expect(items.length).toBeGreaterThanOrEqual(2); // At least one per project (may be more with production/editing split)
+  });
+
+  it("a multi-day per-project job bills once with a date range", () => {
+    const projects = [
+      makeProject({
+        id: "p1", date: "2026-10-09", status: "editing_done",
+        billingModel: "per_project", projectRate: 5000,
+        daySchedules: [
+          { date: "2026-10-09", startTime: "08:30", endTime: "17:00" },
+          { date: "2026-10-10", startTime: "09:00", endTime: "14:00" },
+        ],
+      }),
+    ];
+    const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-10-01", "2026-10-31");
+    expect(items.length).toBe(1);
+    expect(items[0].amount).toBe(5000);
+    expect(items[0].date).toBe("2026-10-09");
+    expect(items[0].dateEnd).toBe("2026-10-10");
+  });
+
+  it("single-day jobs emit no dateEnd", () => {
+    const projects = [
+      makeProject({ id: "p1", date: "2026-04-01", status: "editing_done", billingModel: "per_project", projectRate: 500 }),
+    ];
+    const items = buildLineItems(projects, makeClient(), projectTypes, locations, "2026-04-01", "2026-04-30");
+    expect(items[0].dateEnd).toBeUndefined();
   });
 
   it("excludes upcoming projects", () => {

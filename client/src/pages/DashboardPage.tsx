@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectPayerId, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
+import { projectDays } from "@/lib/projectDays";
 import { isOpenLead, pipelineValueByStage, totalPipelineValue } from "@/lib/pipelineInsights";
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -97,7 +98,8 @@ export default function DashboardPage() {
   // Upcoming projects (next 7 days) — includes tentative (agreement sent, deposit pending)
   const upcomingProjects = useMemo(() => {
     return data.projects
-      .filter(p => p.date >= todayStr && p.date <= weekFromNow && (p.status === "upcoming" || p.status === "tentative"))
+      .filter(p => (p.status === "upcoming" || p.status === "tentative")
+        && projectDays(p).some(d => d.date >= todayStr && d.date <= weekFromNow))
       .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
   }, [data.projects, todayStr, weekFromNow]);
 

@@ -581,6 +581,18 @@ export interface ProjectDocument {
   createdAt: string;
 }
 
+// One day of a multi-day project. crewMemberIds is an optional SUBSET of the
+// project's crew roster (by crewMemberId) working THIS day; absent/empty = the
+// whole crew works the day. Pay and hours stay on the top-level crew entries —
+// never in here (projects_client passes this column through to client logins
+// unscrubbed).
+export interface ProjectDaySchedule {
+  date: string; // ISO date YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  crewMemberIds?: string[];
+}
+
 export interface Project {
   id: string;
   clientId: string;
@@ -589,6 +601,10 @@ export interface Project {
   date: string; // ISO date YYYY-MM-DD
   startTime: string; // HH:MM
   endTime: string; // HH:MM
+  // Multi-day span. Empty = single-day (date/startTime/endTime authoritative).
+  // Non-empty is always >= 2 rows sorted by date, and date/startTime/endTime
+  // mirror row 0 (every writer keeps them synced).
+  daySchedules: ProjectDaySchedule[];
   status: ProjectStatus;
   crew: ProjectCrewEntry[];
   postProduction: ProjectPostEntry[];
@@ -892,6 +908,8 @@ export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 export interface InvoiceLineItem {
   projectId: string;
   date: string;
+  // Multi-day service span — renderers print "date – dateEnd" when set.
+  dateEnd?: string;
   description: string;
   quantity: number;    // hours or 1 (for per-project)
   unitPrice: number;   // rate per hour or flat rate

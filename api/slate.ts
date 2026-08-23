@@ -148,6 +148,7 @@ async function createProject(req: VercelRequest, res: VercelResponse) {
     location_id: body.location_id || null,
     date: body.date,
     start_time: body.start_time || "",
+    day_schedules: Array.isArray(body.day_schedules) ? body.day_schedules : [],
     end_time: body.end_time || "",
     status: body.status || "upcoming",
     crew: body.crew || [],
@@ -183,6 +184,18 @@ async function updateProject(req: VercelRequest, res: VercelResponse) {
   if (body.status !== undefined) patch.status = body.status;
   if (body.crew !== undefined) patch.crew = body.crew;
   if (body.post_production !== undefined) patch.post_production = body.post_production;
+  // Multi-day schedule: accept the rows and keep date/start/end mirrored to
+  // day 1 so an API patch can't desync the first-day invariant.
+  if (body.day_schedules !== undefined) {
+    const ds = Array.isArray(body.day_schedules) ? body.day_schedules : [];
+    patch.day_schedules = ds;
+    const first = ds[0];
+    if (first && typeof first.date === "string" && first.date) {
+      patch.date = first.date;
+      patch.start_time = typeof first.startTime === "string" ? first.startTime : "";
+      patch.end_time = typeof first.endTime === "string" ? first.endTime : "";
+    }
+  }
   if (body.editor_billing !== undefined) patch.editor_billing = body.editor_billing;
   if (body.project_rate !== undefined) patch.project_rate = body.project_rate;
   if (body.paid_date !== undefined) patch.paid_date = body.paid_date;
