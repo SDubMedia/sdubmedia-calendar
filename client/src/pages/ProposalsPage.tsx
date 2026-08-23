@@ -1133,7 +1133,7 @@ export default function ProposalsPage() {
 
       {/* ============ SEND CONFIRMATION DIALOG ============ */}
       <Dialog open={!!confirmSendProposal} onOpenChange={(open) => { if (!open) setConfirmSendProposal(null); }}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-lg">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               {confirmSendProposal?.status === "sent" ? "Resend this proposal?" : "Send this proposal?"}
@@ -1142,20 +1142,42 @@ export default function ProposalsPage() {
           {confirmSendProposal && (() => {
             const client = data.clients.find(c => c.id === confirmSendProposal.clientId);
             const toEmail = confirmSendProposal.clientEmail || client?.email || "";
+            const orgName = data.organization?.name || "";
+            const payOpt = confirmSendProposal.paymentConfig?.option;
+            const payLine = payOpt === "full" ? "Full payment required at signing"
+              : payOpt === "deposit" ? `Deposit of ${confirmSendProposal.paymentConfig?.depositPercent || 0}% due at signing`
+              : "";
             return (
               <div className="space-y-4 py-2">
                 <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-1.5">
-                  <p className="text-sm font-semibold text-foreground">{confirmSendProposal.title}</p>
-                  {confirmSendProposal.total > 0 && (
-                    <p className="text-xs text-muted-foreground">${confirmSendProposal.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                  )}
-                  <div className="pt-2 mt-2 border-t border-border space-y-0.5">
+                  <div className="space-y-0.5">
                     <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Sending to</p>
                     {client?.contactName && <p className="text-sm text-foreground">{client.contactName}</p>}
                     {client?.company && <p className="text-xs text-muted-foreground">{client.company}</p>}
                     {toEmail
                       ? <p className="text-sm text-blue-400">{toEmail}</p>
                       : <p className="text-sm text-red-400">No email on file — add one to the client before sending.</p>}
+                  </div>
+                </div>
+
+                {/* Faithful miniature of the email send-proposal-email.ts
+                    builds — same letterhead, card, payment line and CTA, so
+                    Send is pressed knowing exactly what lands in the inbox. */}
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Email preview</p>
+                  <div className="rounded-lg border border-border bg-white max-h-72 overflow-y-auto p-5 text-center pointer-events-none select-none">
+                    <p className="text-lg font-semibold text-slate-800 pb-3 mb-4 border-b border-gray-200" style={{ fontFamily: "Georgia, serif" }}>{orgName}</p>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-5">
+                      <p className="text-base font-semibold text-slate-800 mb-1.5">You have a proposal to review</p>
+                      <p className="text-xs text-slate-500 mb-3"><strong>{orgName}</strong> has sent you a proposal:<br /><strong className="text-slate-800">{confirmSendProposal.title}</strong></p>
+                      {confirmSendProposal.total > 0 && (
+                        <p className="text-sm font-bold text-slate-800">Total: ${confirmSendProposal.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                      )}
+                      {payLine && <p className="text-[11px] text-slate-500 mb-3">{payLine}</p>}
+                      <span className="inline-block mt-1 px-5 py-2.5 rounded-lg bg-[#0088ff] text-white text-sm font-semibold">Review &amp; Accept Proposal</span>
+                      <p className="text-[10px] text-slate-400 mt-3 break-all">slate.sdubmedia.com/proposal/{confirmSendProposal.viewToken}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-3">{orgName} · Sent via Slate</p>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
