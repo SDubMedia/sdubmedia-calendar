@@ -1175,7 +1175,6 @@ export default function ProposalsPage() {
                       )}
                       {payLine && <p className="text-[11px] text-slate-500 mb-3">{payLine}</p>}
                       <span className="inline-block mt-1 px-5 py-2.5 rounded-lg bg-[#0088ff] text-white text-sm font-semibold">Review &amp; Accept Proposal</span>
-                      <p className="text-[10px] text-slate-400 mt-3 break-all">slate.sdubmedia.com/proposal/{confirmSendProposal.viewToken}</p>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-3">{orgName} · Sent via Slate</p>
                   </div>

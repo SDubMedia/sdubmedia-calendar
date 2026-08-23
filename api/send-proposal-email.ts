@@ -89,10 +89,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               Review & Accept Proposal
             </a>
 
-            <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">
-              Or open this link in your browser:<br/>
-              <a href="${safeProposalUrl}" style="color: #0088ff; word-break: break-all;">${safeProposalUrl}</a>
-            </p>
           </div>
 
           ${brandedFooter}
