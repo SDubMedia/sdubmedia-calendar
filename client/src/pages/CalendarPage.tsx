@@ -984,20 +984,38 @@ export default function CalendarPage() {
                           onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
-                            "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 transition-opacity",
                             fuseRight && "rounded-r-none -mr-[5px] sm:-mr-[7px]",
                             fuseLeft && "rounded-l-none -ml-[5px] sm:-ml-[7px]",
-                            // Tentative = agreement sent but not yet paid.
-                            // Dashed border + softer fill so it visually
-                            // reads "not locked in yet" vs the solid blue
-                            // of an upcoming/confirmed booking.
-                            p.status === "tentative" && "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-dashed border-amber-500/50",
-                            p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
-                            p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
-                            p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
-                            p.status === "editing_done" && "bg-teal-500/25 text-teal-700 dark:text-teal-300",
-                            p.status === "delivered" && "bg-green-500/25 text-green-700 dark:text-green-300",
-                            p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
+                            // Fused span segments paint SOLID — the default
+                            // translucent fills let the cell borders show
+                            // through the bar as seams. The labeled segment
+                            // lets its text overflow across the run (same
+                            // solid color underneath, z-20 so later cells'
+                            // segments don't paint over it).
+                            isSpan && showLabel && "overflow-visible whitespace-nowrap relative z-20",
+                            (!isSpan || !showLabel) && "truncate",
+                            isSpan ? cn(
+                              p.status === "tentative" && cn("bg-amber-500 text-amber-950 border-y border-dashed border-amber-700", !fuseLeft && "border-l", !fuseRight && "border-r"),
+                              p.status === "upcoming" && "bg-blue-600 text-white",
+                              p.status === "filming_done" && "bg-purple-600 text-white",
+                              p.status === "in_editing" && "bg-amber-600 text-white",
+                              p.status === "editing_done" && "bg-teal-600 text-white",
+                              p.status === "delivered" && "bg-green-600 text-white",
+                              p.status === "cancelled" && "bg-red-600 text-white line-through opacity-80",
+                            ) : cn(
+                              // Tentative = agreement sent but not yet paid.
+                              // Dashed border + softer fill so it visually
+                              // reads "not locked in yet" vs the solid blue
+                              // of an upcoming/confirmed booking.
+                              p.status === "tentative" && "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-dashed border-amber-500/50",
+                              p.status === "upcoming" && "bg-blue-500/25 text-blue-700 dark:text-blue-300",
+                              p.status === "filming_done" && "bg-purple-500/25 text-purple-700 dark:text-purple-300",
+                              p.status === "in_editing" && "bg-amber-500/25 text-amber-700 dark:text-amber-300",
+                              p.status === "editing_done" && "bg-teal-500/25 text-teal-700 dark:text-teal-300",
+                              p.status === "delivered" && "bg-green-500/25 text-green-700 dark:text-green-300",
+                              p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
+                            ),
                           )}
                         >
                           {showLabel && p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
