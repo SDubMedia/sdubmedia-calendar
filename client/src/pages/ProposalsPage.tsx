@@ -758,6 +758,11 @@ export default function ProposalsPage() {
                             {client?.company || "Unknown"} · {p.clientEmail}
                             {p.total > 0 && <> · <span className="font-mono">${p.total.toFixed(2)}</span>{payLabel}</>}
                           </p>
+                          {p.viewedAt && !p.acceptedAt && (
+                            <p className="text-xs text-blue-400 mt-1 flex items-center gap-1">
+                              <Eye className="w-3 h-3" /> Viewed {new Date(p.viewedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                            </p>
+                          )}
                           {p.acceptedAt && <p className="text-xs text-green-400 mt-1">Client accepted {new Date(p.acceptedAt).toLocaleDateString()}</p>}
                           {p.paidAt && <p className="text-xs text-green-400">Paid {new Date(p.paidAt).toLocaleDateString()}</p>}
                           {p.completedAt && <p className="text-xs text-green-400">Completed {new Date(p.completedAt).toLocaleDateString()}</p>}
