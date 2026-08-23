@@ -204,7 +204,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, updateClient, addCrewMember, createReShootGallery, registerDeliveryFile, ensureLocationDistances } = useApp();
   const isEdit = !!project;
 
-  const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? data.clients[0]?.id ?? "");
+  // New projects start with NO client preselected — silently defaulting to
+  // the alphabetically-first client meant a missed change booked (and could
+  // bill) the wrong person.
+  const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? "");
   const [projectTypeId, setProjectTypeId] = useState(project?.projectTypeId ?? "");
   const [locationId, setLocationId] = useState(project?.locationId ?? "");
   const [date, setDate] = useState(project?.date ?? defaultDate ?? "");
@@ -330,7 +333,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setBrokerSelectId(initClient?.clientType === "agent" ? (initClient.brokerId ?? "") : "");
       setShowNewAgent(false);
       setNewAgentName("");
-      setClientId(project?.clientId ?? defaultClientId ?? data.clients.find(c => (c.clientType ?? "standard") === "standard")?.id ?? "");
+      setClientId(project?.clientId ?? defaultClientId ?? "");
       setProjectTypeId(project?.projectTypeId ?? reType?.id ?? "");
       setLocationId(project?.locationId ?? "");
       // Prefill the RE address field from the project's location (if any).
