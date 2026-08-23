@@ -351,6 +351,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setCrew((project?.crew?.length ? project.crew : initialCrew(defaultCrewMemberId)).map(e => fillRate(e, reRates.shoot)));
       setPostProduction((project?.postProduction?.length ? project.postProduction : [emptyPostEntry()]).map(e => fillRate(e, reRates.edit)));
       setEditTypes(project?.editTypes ?? []);
+      // Multi-day day rows follow the same open-transition reset — without
+      // this, reopening the dialog for another project shows stale days.
+      setExtraDays((project?.daySchedules ?? []).slice(1));
+      setDay1CrewIds(project?.daySchedules?.[0]?.crewMemberIds);
       setNotes(project?.notes ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
       setCancellationReason(project?.cancellationReason ?? "");
