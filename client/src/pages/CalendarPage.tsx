@@ -502,7 +502,26 @@ export default function CalendarPage() {
 
   const getProjectsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return monthProjects.filter((p) => projectOccursOn(p, dateStr));
+    return monthProjects
+      .filter((p) => projectOccursOn(p, dateStr))
+      .sort((a, b) => {
+        // Multi-day bars first (stable slot across their cells), then by that
+        // day's start time.
+        const am = projectDays(a).length > 1 ? 0 : 1;
+        const bm = projectDays(b).length > 1 ? 0 : 1;
+        if (am !== bm) return am - bm;
+        if (am === 0) return a.id.localeCompare(b.id);
+        return (projectOccursOn(a, dateStr)?.startTime || "").localeCompare(projectOccursOn(b, dateStr)?.startTime || "");
+      });
+  };
+
+  // For the spanning bar: does this project also occur on the neighboring
+  // calendar day? (Days can be non-consecutive — 18th and 20th without the
+  // 19th — so a segment only fuses toward a neighbor that's actually booked.)
+  const shiftDateStr = (dateStr: string, delta: number) => {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
   const getClient = (id: string) => data.clients.find((c) => c.id === id);
@@ -950,13 +969,24 @@ export default function CalendarPage() {
                   {/* Production chips (mobile + desktop) */}
                   {(calendarMode === "production" || calendarMode === "both") && (
                     <div className="space-y-0.5">
-                      {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => (
+                      {dayProjects.slice(0, calendarMode === "both" ? 2 : 3).map((p) => {
+                        // Multi-day span segments: fuse this chip with its
+                        // neighbor cells when the adjacent day is also part
+                        // of the project (and we're not at a week edge).
+                        const col = i % 7;
+                        const isSpan = dateStr ? projectDays(p).length > 1 : false;
+                        const fuseLeft = isSpan && col !== 0 && !!projectOccursOn(p, shiftDateStr(dateStr || "", -1));
+                        const fuseRight = isSpan && col !== 6 && !!projectOccursOn(p, shiftDateStr(dateStr || "", 1));
+                        const showLabel = !isSpan || !fuseLeft; // label on the first segment of each week-run
+                        return (
                         <div
                           key={p.id}
                           onClick={(e) => { e.stopPropagation(); setSelectedProject(p); }}
                           onPointerDown={(e) => e.stopPropagation()}
                           className={cn(
                             "text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 transition-opacity",
+                            fuseRight && "rounded-r-none -mr-[5px] sm:-mr-[7px]",
+                            fuseLeft && "rounded-l-none -ml-[5px] sm:-ml-[7px]",
                             // Tentative = agreement sent but not yet paid.
                             // Dashed border + softer fill so it visually
                             // reads "not locked in yet" vs the solid blue
@@ -970,12 +1000,19 @@ export default function CalendarPage() {
                             p.status === "cancelled" && "bg-red-500/25 text-red-700 dark:text-red-300 line-through opacity-70",
                           )}
                         >
-                          {p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
-                          {depositRecentlyPaid(p.depositPaidAt) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline-block flex-shrink-0 mr-0.5" aria-label="Deposit paid" />}
-                          <span className="hidden sm:inline">{(projectOccursOn(p, dateStr || "")?.startTime ?? p.startTime)} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}{(() => { const di = dayIndexInfo(p, dateStr || ""); return di && di.count > 1 ? ` · Day ${di.index}/${di.count}` : ""; })()}</span>
-                          <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
+                          {showLabel && p.paidDate && <DollarSign className="w-2.5 h-2.5 text-green-400 inline-block flex-shrink-0" />}
+                          {showLabel && depositRecentlyPaid(p.depositPaidAt) && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 inline-block flex-shrink-0 mr-0.5" aria-label="Deposit paid" />}
+                          {showLabel ? (
+                            <>
+                              <span className="hidden sm:inline">{(projectOccursOn(p, dateStr || "")?.startTime ?? p.startTime)} {getProjectType(p.projectTypeId)?.name ?? "Project"} · {getClient(p.clientId)?.company ?? ""}{(() => { const di = dayIndexInfo(p, dateStr || ""); return di && di.count > 1 ? ` · ${di.count} days` : ""; })()}</span>
+                              <span className="sm:hidden">{getProjectType(p.projectTypeId)?.name ?? "Project"}</span>
+                            </>
+                          ) : (
+                            <span className="opacity-0 select-none">·</span>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                       {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
