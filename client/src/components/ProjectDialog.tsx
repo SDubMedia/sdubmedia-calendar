@@ -909,7 +909,10 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       toast.error("Please fill in client, project type, and date");
       return;
     }
-    if (isRealEstate && !propertyAddress.trim()) {
+    // Tentative is the "penciled in" state: an agent rings up to hold a slot
+    // before the listing exists, so demanding the property address made the
+    // one status that means "details pending" impossible to save.
+    if (isRealEstate && !propertyAddress.trim() && status !== "tentative") {
       toast.error("Enter the property address");
       return;
     }
@@ -926,7 +929,9 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
     // project's existing one if it already has one). End time mirrors start.
     let finalLocationId = locationId;
     try {
-      if (isRealEstate) {
+      // No address yet (a tentative hold) means no one-time location to make.
+      // It gets created on the edit that fills the address in.
+      if (isRealEstate && propertyAddress.trim()) {
         const addr = propertyAddress.trim();
         const existingOneTime = data.locations.find(l => l.id === locationId && l.oneTimeUse);
         if (existingOneTime) {
@@ -1271,7 +1276,11 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                     className="bg-secondary border-border"
                     placeholder="123 Main St, Nashville, TN"
                   />
-                  <p className="text-[11px] text-muted-foreground">Saved with this shoot only — not added to your locations list.</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {status === "tentative"
+                      ? "Optional while tentative — add it once the listing is confirmed."
+                      : "Saved with this shoot only — not added to your locations list."}
+                  </p>
                 </>
               ) : showNewLocation ? (
                 <div className="space-y-2 rounded-md border border-border p-3 bg-secondary/30">
