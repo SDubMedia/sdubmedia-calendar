@@ -111,6 +111,17 @@ export default function DashboardPage() {
     const localToday = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
     return data.miniSessions.filter(m => m.date === localToday && m.status !== "draft");
   }, [data.miniSessions]);
+
+  // Everything still to come, soonest first. Drafts are in on purpose: an
+  // unpublished date is the one most likely to be forgotten, and it is the
+  // only place the dashboard can remind you it was never put on sale.
+  const upcomingMinis = useMemo(() => {
+    const n = new Date();
+    const localToday = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    return data.miniSessions
+      .filter(m => m.date > localToday && m.status !== "done")
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.miniSessions]);
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
@@ -427,6 +438,81 @@ export default function DashboardPage() {
             </button>
           );
         })}
+
+        {/* Upcoming mini sessions. Renders nothing when there are none, so it
+            never takes up space on a week without any. */}
+        {isFeatureVisible("miniSessions") && isWidgetEnabled("miniSessions") && upcomingMinis.length > 0 && (
+          <div className="bg-card border border-border rounded-lg overflow-hidden" style={{ order: orderOf("miniSessions") }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Upcoming Mini Sessions
+              </h3>
+              <Link href="/mini-sessions" className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                All <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+            <div className="divide-y divide-border">
+              {upcomingMinis.slice(0, 5).map(ev => {
+                const booked = data.miniSessionBookings.filter(b => b.miniSessionId === ev.id && b.status === "booked");
+                const total = generateSlots(ev).length;
+                const left = Math.max(0, total - booked.length);
+                // Money that didn't land: a failed card is the one thing here
+                // worth chasing before shoot day.
+                const owed = booked.filter(b => b.paymentStatus === "balance_failed" || b.paymentStatus === "pending").length;
+                return (
+                  <button
+                    key={ev.id}
+                    onClick={() => setRosterEventId(ev.id)}
+                    className="w-full text-left px-4 py-3 hover:bg-white/3 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-foreground">{ev.title}</span>
+                          {ev.status === "draft" && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-300 bg-amber-500/10">
+                              Not published
+                            </span>
+                          )}
+                          {ev.status === "closed" && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Closed</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />{formatSlot(ev.startTime)} — {formatSlot(ev.endTime)}
+                          </span>
+                          {ev.locationText && (
+                            <span className="flex items-center gap-1 min-w-0">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{ev.locationText}</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs mt-1">
+                          <span className="text-muted-foreground">{booked.length}/{total} booked</span>
+                          {ev.status === "published" && left > 0 && left <= 3 && (
+                            <span className="text-amber-400"> · only {left} left</span>
+                          )}
+                          {ev.status === "published" && left === 0 && (
+                            <span className="text-emerald-400"> · sold out</span>
+                          )}
+                          {owed > 0 && <span className="text-red-400"> · {owed} unpaid</span>}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-primary shrink-0">{formatDate(ev.date)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {upcomingMinis.length > 5 && (
+              <Link href="/mini-sessions" className="block px-4 py-2.5 text-xs text-center text-muted-foreground hover:text-foreground border-t border-border">
+                {upcomingMinis.length - 5} more
+              </Link>
+            )}
+          </div>
+        )}
 
         {isRealOwner && <GettingStartedCard />}
         {/* Metric Cards */}
