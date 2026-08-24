@@ -14,9 +14,14 @@ import TodosWidget from "@/components/TodosWidget";
 import { mergeDashboardWidgets } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
+import BookingTypeChooser, { type BookingFlow } from "@/components/BookingTypeChooser";
+import MiniSessionRoster from "@/components/MiniSessionRoster";
+import { generateSlots, formatSlot } from "@/lib/miniSlots";
 import ProjectDialog from "@/components/ProjectDialog";
-import { Link } from "wouter";
-import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users, Plus, Image as ImageIcon } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { CalendarDays, FileText, TrendingUp, ArrowRight, Clock, MapPin, Eye, Film, Car, Users, Plus, Image as ImageIcon,
+  QrCode,
+} from "lucide-react";
 import { DEFAULT_PIPELINE_STAGES } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -89,8 +94,19 @@ export default function DashboardPage() {
   };
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [bookOpen, setBookOpen] = useState(false);
+  const [, navigate] = useLocation();
+  const [rosterEventId, setRosterEventId] = useState<string | null>(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [flowTypeId, setFlowTypeId] = useState<string | undefined>();
+  const [flowMultiDay, setFlowMultiDay] = useState(false);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
+  // Shoot day: today's mini sessions jump to the top of the dashboard so the
+  // roster is one tap away when you're standing at the venue.
+  const todaysMinis = useMemo(
+    () => data.miniSessions.filter(m => m.date === todayStr && m.status !== "draft"),
+    [data.miniSessions, todayStr],
+  );
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
@@ -342,11 +358,19 @@ export default function DashboardPage() {
                 <ImageIcon className="w-4 h-4" /> Galleries
               </Link>
             )}
+            {isFeatureVisible("miniSessions") && (
+              <Link
+                href="/mini-sessions"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground text-xs font-semibold hover:bg-secondary/80 transition-colors shrink-0"
+              >
+                <QrCode className="w-4 h-4" /> Mini Sessions
+              </Link>
+            )}
             <button
-              onClick={() => setBookOpen(true)}
+              onClick={() => setChooserOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shrink-0"
             >
-              <Plus className="w-4 h-4" /> Book a shoot
+              <Plus className="w-4 h-4" /> Book
             </button>
             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
             <select
@@ -364,6 +388,42 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 flex flex-col gap-5">
+        {/* Today's mini sessions — only on the day, so it can't become noise. */}
+        {todaysMinis.map(ev => {
+          const booked = data.miniSessionBookings.filter(b => b.miniSessionId === ev.id && b.status === "booked");
+          const total = generateSlots(ev).length;
+          const nowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+          const nextUp = booked.map(b => b.slotTime).filter(t => t >= nowHHMM).sort()[0];
+          const owed = booked.filter(b => b.paymentStatus === "balance_failed").length;
+          return (
+            <button
+              key={ev.id}
+              onClick={() => setRosterEventId(ev.id)}
+              className="text-left rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 p-4 hover:bg-fuchsia-500/15 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-fuchsia-300">Today</p>
+                  <p className="text-base font-semibold text-foreground mt-0.5">{ev.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formatSlot(ev.startTime)}–{formatSlot(ev.endTime)}
+                    {ev.locationText ? ` · ${ev.locationText}` : ""}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-lg font-semibold text-foreground">{booked.length}/{total}</p>
+                  <p className="text-[11px] text-muted-foreground">booked</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-2 flex-wrap text-xs">
+                {nextUp && <span className="text-fuchsia-300 font-medium">Next up {formatSlot(nextUp)}</span>}
+                {owed > 0 && <span className="text-red-400">{owed} card issue{owed === 1 ? "" : "s"}</span>}
+                <span className="text-muted-foreground">Open roster →</span>
+              </div>
+            </button>
+          );
+        })}
+
         {isRealOwner && <GettingStartedCard />}
         {/* Metric Cards */}
         {isWidgetEnabled("metrics") && (<div style={{ order: orderOf("metrics") }}>
@@ -815,7 +875,30 @@ export default function DashboardPage() {
       )}
 
       {/* Book a shoot — quick create from the dashboard launchpad */}
-      <ProjectDialog open={bookOpen} onClose={() => setBookOpen(false)} />
+      {rosterEventId && (() => {
+        const ev = data.miniSessions.find(m => m.id === rosterEventId);
+        return ev ? <MiniSessionRoster event={ev} open onClose={() => setRosterEventId(null)} /> : null;
+      })()}
+
+      <BookingTypeChooser
+        open={chooserOpen}
+        onClose={() => setChooserOpen(false)}
+        onPick={(flow: BookingFlow, seededTypeId) => {
+          setFlowTypeId(seededTypeId);
+          setFlowMultiDay(flow === "multi_day");
+          // Mini sessions and meetings live on their own pages — send them
+          // there rather than half-opening a project form.
+          if (flow === "mini") { navigate("/mini-sessions"); return; }
+          if (flow === "meeting") { navigate("/calendar"); return; }
+          setBookOpen(true);
+        }}
+      />
+      <ProjectDialog
+        open={bookOpen}
+        onClose={() => { setBookOpen(false); setFlowTypeId(undefined); setFlowMultiDay(false); }}
+        defaultProjectTypeId={flowTypeId}
+        defaultMultiDay={flowMultiDay}
+      />
     </div>
   );
 }

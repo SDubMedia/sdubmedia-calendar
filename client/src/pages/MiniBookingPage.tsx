@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { Calendar, MapPin, CheckCircle, AlertCircle, Images } from "lucide-react";
 import { formatSlot } from "@/lib/miniSlots";
+import { qrImageUrl } from "@/lib/publicUrl";
 
 interface BookingPayload {
   name: string; slotTime: string; status: string; paymentStatus: string;
@@ -34,6 +35,7 @@ export default function MiniBookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAgreement, setShowAgreement] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     let tries = 0;
@@ -53,6 +55,21 @@ export default function MiniBookingPage() {
     fetchOnce();
   }, [token, justPaid]);
 
+  async function payNow() {
+    setPaying(true);
+    try {
+      const res = await fetch("/api/mini-public?action=pay", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const body = await res.json();
+      if (res.ok && body.checkoutUrl) window.location.assign(body.checkoutUrl);
+      else { setError(body.error || "Couldn't start checkout"); setPaying(false); }
+    } catch {
+      setError("Couldn't start checkout"); setPaying(false);
+    }
+  }
+
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Loading…</div>;
   if (error || !b) {
     return (
@@ -66,8 +83,9 @@ export default function MiniBookingPage() {
     );
   }
 
-  const bookingUrl = `${window.location.origin}/msb/${b.bookingToken}`;
-  const qrSrc = `/api/qr?d=${encodeURIComponent(bookingUrl)}&s=420`;
+  // Canonical origin so the code scans the same whether they opened this page
+  // from the email, a preview build, or localhost.
+  const qrSrc = qrImageUrl(`/msb/${b.bookingToken}`, 420);
   const confirmed = b.status === "booked";
 
   return (
@@ -116,12 +134,23 @@ export default function MiniBookingPage() {
               </div>
             )}
           </div>
-          {b.paymentStatus === "balance_failed" ? (
-            <p className="mt-3 text-sm text-red-600">
-              We couldn't charge your card for the balance. Your session is still on — settle up with {b.orgName} and they'll sort it out.
-            </p>
-          ) : b.balanceCents > 0 ? (
-            <p className="mt-3 text-xs text-gray-500">The balance is charged to the card you used, the day before your session.</p>
+          {b.balanceCents > 0 ? (
+            <>
+              <p className="mt-3 text-sm text-gray-600">
+                {b.paymentStatus === "balance_failed"
+                  ? "We couldn't charge your card for the balance — your session is still on, you can settle it here."
+                  : b.depositPaidCents > 0
+                    ? "The balance is charged to the card you used, the day before your session — or pay it now."
+                    : "Your spot is held. You can pay here whenever you're ready."}
+              </p>
+              <button
+                onClick={payNow}
+                disabled={paying}
+                className="mt-3 w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm"
+              >
+                {paying ? "Starting checkout…" : `Pay ${money(b.balanceCents)} now`}
+              </button>
+            </>
           ) : (
             <p className="mt-3 text-xs text-emerald-600 font-medium">Paid in full ✓</p>
           )}

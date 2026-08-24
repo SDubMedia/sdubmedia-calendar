@@ -82,6 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const b of bookings) {
         // --- balance auto-charge ---
         const owed = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
+        // An owner-added phone booking never handed over a card — that's an
+        // outstanding balance, not a decline, and must not be worded as one.
+        const noCardOnFile = !b.stripe_customer_id;
         let declineReason: string | null = null;
         if (owed > 0 && !b.balance_charged_at && b.payment_status !== "balance_failed") {
           if (!org?.stripe_account_id) {
@@ -114,9 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             </table>
             ${declineReason ? `
               <div style="margin:16px 0;padding:14px;border:1px solid #fecaca;background:#fef2f2;border-radius:8px;">
-                <p style="margin:0 0 6px;font-weight:600;color:#991b1b;font-size:14px;">We couldn't charge your card for the balance</p>
-                <p style="margin:0 0 10px;color:#7f1d1d;font-size:13px;">${money(owed)} is still due. Your session is still on — you can settle it here or in person.</p>
-                <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#dc2626;color:#fff;padding:9px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">Pay balance</a>
+                <p style="margin:0 0 6px;font-weight:600;color:#991b1b;font-size:14px;">${noCardOnFile
+                  ? `${money(owed)} is still due`
+                  : "We couldn't charge your card for the balance"}</p>
+                <p style="margin:0 0 10px;color:#7f1d1d;font-size:13px;">${noCardOnFile
+                  ? "Your session is still on — you can pay online now or settle up in person."
+                  : `${money(owed)} is still due. Your session is still on — you can settle it here or in person.`}</p>
+                <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#dc2626;color:#fff;padding:9px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;">Pay ${money(owed)}</a>
               </div>` : (owed > 0 ? `<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Your remaining ${money(owed)} has been charged to the card on file.</p>` : "")}
             <div style="text-align:center;margin:20px 0;padding:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
               <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1e293b;">Have this ready when you arrive</p>
@@ -126,7 +133,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await resend.emails.send({
             from: sender.from, replyTo: sender.replyTo, to: b.email,
             subject: declineReason
-              ? `Tomorrow at ${formatSlot(b.slot_time)} — and a card issue`
+              ? (noCardOnFile
+                  ? `Tomorrow at ${formatSlot(b.slot_time)} — ${money(owed)} still due`
+                  : `Tomorrow at ${formatSlot(b.slot_time)} — and a card issue`)
               : `Tomorrow at ${formatSlot(b.slot_time)} — ${ev.title || "your mini session"}`,
             html: brandedEmailWrapper({ orgName: sender.orgName, businessInfo: sender.businessInfo as never }, body),
           });

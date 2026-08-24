@@ -56,8 +56,10 @@ export function qrImgUrl(target: string, size = 320): string {
 export async function confirmMiniBooking(bookingId: string, session: { amount_total?: number | null; id?: string; payment_intent?: unknown }) {
   const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!b) return;
-  // Already confirmed (webhook replay / double delivery) — do nothing.
-  if (b.status === "booked") return;
+  // Already settled (webhook replay / double delivery) — do nothing. Keyed on
+  // PAYMENT, not status: an owner-added booking is already "booked" while its
+  // pay link is still outstanding, and that payment must still register.
+  if (b.payment_status === "paid" || b.payment_status === "deposit_paid") return;
   // Only the session we created for THIS booking may confirm it.
   if (b.checkout_session_id && session.id && b.checkout_session_id !== session.id) return;
 

@@ -91,5 +91,22 @@ export default defineConfig({
     port: 3000,
     strictPort: false,
     host: true,
+    // `vite dev` serves the React app but NOT the api/*.ts serverless
+    // functions, and `vercel dev` has never worked in this pnpm workspace. So
+    // any local page that calls /api (public proposal + mini-session pages,
+    // the /api/qr images, Stripe checkout) used to get index.html back and
+    // fail in confusing ways — "event isn't available", broken QR images.
+    //
+    // Forward /api straight to the deployed functions instead. Note this means
+    // local pages act on PRODUCTION data — which is already true of the app,
+    // since the browser talks to the live Supabase project either way.
+    // Override the target with SLATE_API_PROXY when testing a preview deploy.
+    proxy: {
+      "/api": {
+        target: process.env.SLATE_API_PROXY || "https://slate.sdubmedia.com",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
 });

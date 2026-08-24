@@ -889,7 +889,14 @@ export interface MiniSession {
   orgId: string;
   title: string;
   date: string;              // YYYY-MM-DD
+  // Composed one-line version, derived from the parts below on save — the
+  // public page, emails and the calendar feed all read this.
   locationText: string;
+  locationName: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
   locationId: string | null;
   startTime: string;         // HH:MM window start
   endTime: string;           // HH:MM window end

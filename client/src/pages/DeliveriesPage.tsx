@@ -90,6 +90,7 @@ export default function DeliveriesPage() {
 function DeliveriesList() {
   const { data, addDelivery, deleteDelivery } = useApp();
   const [createOpen, setCreateOpen] = useState(false);
+  const [openMiniGroup, setOpenMiniGroup] = useState<string | null>(null);
   const confirm = useConfirm();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -142,8 +143,29 @@ function DeliveriesList() {
     if (clientsById[project.clientId]?.clientType === "agent") return true;
     return clientsById[getProjectPayerId(project, clientsById)]?.clientType === "broker";
   };
-  const reGalleries = galleries.filter(isRealEstate);
-  const clientGalleries = galleries.filter(d => !isRealEstate(d));
+  // Mini sessions produce one gallery per family — a dozen cards for a single
+  // Saturday. They're collected under the event, so show the event once and
+  // let it expand, rather than burying everything else.
+  const miniCollectionIds = useMemo(() => {
+    const ids = new Set(data.miniSessionBookings.map(b => b.deliveryId).filter(Boolean) as string[]);
+    return new Set(
+      data.deliveries.filter(d => ids.has(d.id) && d.collectionId).map(d => d.collectionId as string),
+    );
+  }, [data.miniSessionBookings, data.deliveries]);
+
+  const isMini = (d: typeof galleries[number]) => !!d.collectionId && miniCollectionIds.has(d.collectionId);
+  const miniGroups = useMemo(() => {
+    const out: { id: string; name: string; items: typeof galleries }[] = [];
+    for (const cid of miniCollectionIds) {
+      const items = galleries.filter(d => d.collectionId === cid);
+      if (items.length === 0) continue;
+      out.push({ id: cid, name: data.deliveryCollections.find(c => c.id === cid)?.name || "Mini sessions", items });
+    }
+    return out;
+  }, [miniCollectionIds, galleries, data.deliveryCollections]);
+
+  const reGalleries = galleries.filter(d => !isMini(d) && isRealEstate(d));
+  const clientGalleries = galleries.filter(d => !isMini(d) && !isRealEstate(d));
 
   const renderGalleryCard = (d: typeof galleries[number]) => {
     const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
@@ -257,6 +279,27 @@ function DeliveriesList() {
         </div>
       ) : (
         <div className="space-y-8">
+          {miniGroups.map(g => (
+            <div key={g.id}>
+              <button
+                onClick={() => setOpenMiniGroup(openMiniGroup === g.id ? null : g.id)}
+                className="w-full flex items-center justify-between gap-2 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-4 py-3 hover:bg-fuchsia-500/15 transition-colors"
+              >
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-semibold text-slate-100">{g.name}</span>
+                  <span className="block text-xs text-slate-400">
+                    {g.items.length} galler{g.items.length === 1 ? "y" : "ies"} · one per session
+                  </span>
+                </span>
+                <span className="text-xs text-slate-400 shrink-0">{openMiniGroup === g.id ? "Hide" : "Show"}</span>
+              </button>
+              {openMiniGroup === g.id && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+                  {g.items.map(renderGalleryCard)}
+                </div>
+              )}
+            </div>
+          ))}
           {reGalleries.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Real Estate ({reGalleries.length})</h2>

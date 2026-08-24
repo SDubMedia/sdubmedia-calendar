@@ -23,7 +23,7 @@ import { showInviteCredentials } from "@/lib/inviteCredentials";
 import ProjectHistorySection from "@/components/ProjectHistorySection";
 import { getProjectInvoiceAmount, getProjectCrewCost, getProjectProductCost, shootDurationMinFor, getCrewShootStatus } from "@/lib/data";
 import { toUploadableImage } from "@/lib/heic";
-import { cn, formatPhoneDisplay, parsePastedAddress } from "@/lib/utils";
+import { cn, formatPhoneDisplay, formatPhoneInput, parsePastedAddress } from "@/lib/utils";
 import type { Project, ProjectCrewEntry, ProjectDaySchedule, ProjectPostEntry, ProjectStatus, BillingModel, ProjectServiceSelection, ProjectProductSelection, EditType } from "@/lib/types";
 import { normalizeDaySchedules } from "@/lib/projectDays";
 import ProjectServiceBundlePicker from "@/components/ProjectServiceBundlePicker";
@@ -45,6 +45,11 @@ interface Props {
   onCreated?: (project: Project) => void;
   /** Open restoring the saved draft (the "Resume Project" entry point). */
   resume?: boolean;
+  /** Pre-select the work type — what the booking-type chooser uses to drop
+   *  straight into the real-estate flow. */
+  defaultProjectTypeId?: string;
+  /** Open with a second day row already there (the multi-day entry point). */
+  defaultMultiDay?: boolean;
 }
 
 // A half-entered NEW project is stashed here on close so it can be resumed.
@@ -202,7 +207,7 @@ function readImageDims(file: File): Promise<{ width: number | null; height: numb
   });
 }
 
-export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume }: Props) {
+export default function ProjectDialog({ open, onClose, project, defaultDate, defaultClientId, defaultNotes, defaultStartTime, defaultCrewMemberId, onCreated, resume, defaultProjectTypeId, defaultMultiDay }: Props) {
   const { data, addProject, updateProject, addProjectType, addEditType, updateEditType, deleteEditType, addLocation, updateLocation, addClient, updateClient, addCrewMember, createReShootGallery, registerDeliveryFile, ensureLocationDistances } = useApp();
   const { createUser } = useAuth();
   const isEdit = !!project;
@@ -211,7 +216,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   // the alphabetically-first client meant a missed change booked (and could
   // bill) the wrong person.
   const [clientId, setClientId] = useState(project?.clientId ?? defaultClientId ?? "");
-  const [projectTypeId, setProjectTypeId] = useState(project?.projectTypeId ?? "");
+  const [projectTypeId, setProjectTypeId] = useState(project?.projectTypeId ?? defaultProjectTypeId ?? "");
   const [locationId, setLocationId] = useState(project?.locationId ?? "");
   const [date, setDate] = useState(project?.date ?? defaultDate ?? "");
   const [startTime, setStartTime] = useState(project?.startTime ?? defaultStartTime ?? "09:00");
@@ -221,7 +226,14 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
   const [postProduction, setPostProduction] = useState<ProjectPostEntry[]>(project?.postProduction ?? [emptyPostEntry()]);
   // Multi-day: day 1 IS the main Date/Start/End fields; these are days 2+.
   // Mount-initialized only (no effect resets — realtime rule).
-  const [extraDays, setExtraDays] = useState<ProjectDaySchedule[]>((project?.daySchedules ?? []).slice(1));
+  const [extraDays, setExtraDays] = useState<ProjectDaySchedule[]>(() => {
+    const existing = (project?.daySchedules ?? []).slice(1);
+    if (existing.length > 0 || !defaultMultiDay) return existing;
+    // Entered from "Multi-day event": start with day 2 already there so the
+    // multi-day UI is visible instead of hidden behind "+ Add day".
+    const base = project?.date ?? defaultDate ?? "";
+    return [{ date: base ? addDaysISO(base, 1) : "", startTime: defaultStartTime ?? "09:00", endTime: "11:00" }];
+  });
   const [day1CrewIds, setDay1CrewIds] = useState<string[] | undefined>(project?.daySchedules?.[0]?.crewMemberIds);
   // Raw text for the hours inputs while typing, so intermediate decimal states
   // like "0." or "1." survive (a number model would strip the point and block
@@ -346,7 +358,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setShowNewAgent(false);
       setNewAgentName("");
       setClientId(project?.clientId ?? defaultClientId ?? "");
-      setProjectTypeId(project?.projectTypeId ?? reType?.id ?? "");
+      setProjectTypeId(project?.projectTypeId ?? defaultProjectTypeId ?? reType?.id ?? "");
       setLocationId(project?.locationId ?? "");
       // Prefill the RE address field from the project's location (if any).
       const initLoc = data.locations.find(l => l.id === project?.locationId);
@@ -368,7 +380,15 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       setEditTypes(project?.editTypes ?? []);
       // Multi-day day rows follow the same open-transition reset — without
       // this, reopening the dialog for another project shows stale days.
-      setExtraDays((project?.daySchedules ?? []).slice(1));
+      {
+        const existingDays = (project?.daySchedules ?? []).slice(1);
+        if (existingDays.length === 0 && defaultMultiDay) {
+          const base = project?.date ?? defaultDate ?? "";
+          setExtraDays([{ date: base ? addDaysISO(base, 1) : "", startTime: defaultStartTime ?? "09:00", endTime: "11:00" }]);
+        } else {
+          setExtraDays(existingDays);
+        }
+      }
       setDay1CrewIds(project?.daySchedules?.[0]?.crewMemberIds);
       setNotes(project?.notes ?? "");
       setDeliverableUrl(project?.deliverableUrl ?? "");
@@ -1048,7 +1068,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <Input value={newClientContact} onChange={(e) => setNewClientContact(e.target.value)} className="bg-secondary border-border min-w-0" placeholder="Contact name (optional)" />
-                    <Input value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} type="tel" className="bg-secondary border-border min-w-0" placeholder="Phone" />
+                    <Input value={newClientPhone} onChange={(e) => setNewClientPhone(formatPhoneInput(e.target.value))} type="tel" inputMode="tel" className="bg-secondary border-border min-w-0" placeholder="Phone" />
                   </div>
                   <Input value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} type="email" className="bg-secondary border-border" placeholder="Email" />
                   <div className="grid grid-cols-2 gap-2">

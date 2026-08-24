@@ -492,6 +492,11 @@ function rowToMiniSession(r: any): MiniSession {
     title: r.title || "",
     date: r.date,
     locationText: r.location_text || "",
+    locationName: r.location_name || "",
+    address: r.address || "",
+    city: r.city || "",
+    state: r.state || "",
+    zip: r.zip || "",
     locationId: r.location_id || null,
     startTime: r.start_time || "",
     endTime: r.end_time || "",
@@ -3453,6 +3458,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       title: m.title,
       date: m.date,
       location_text: m.locationText,
+      location_name: m.locationName || "",
+      address: m.address || "",
+      city: m.city || "",
+      state: m.state || "",
+      zip: m.zip || "",
       location_id: m.locationId || null,
       start_time: m.startTime,
       end_time: m.endTime,
@@ -3480,6 +3490,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.title !== undefined) patch.title = m.title;
     if (m.date !== undefined) patch.date = m.date;
     if (m.locationText !== undefined) patch.location_text = m.locationText;
+    if (m.locationName !== undefined) patch.location_name = m.locationName;
+    if (m.address !== undefined) patch.address = m.address;
+    if (m.city !== undefined) patch.city = m.city;
+    if (m.state !== undefined) patch.state = m.state;
+    if (m.zip !== undefined) patch.zip = m.zip;
     if (m.locationId !== undefined) patch.location_id = m.locationId || null;
     if (m.startTime !== undefined) patch.start_time = m.startTime;
     if (m.endTime !== undefined) patch.end_time = m.endTime;

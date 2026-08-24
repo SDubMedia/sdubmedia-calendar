@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectPayerId, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
 import { projectDays, projectOccursOn, dayCrewFor, dayIndexInfo } from "@/lib/projectDays";
 import { generateSlots } from "@/lib/miniSlots";
+import BookingTypeChooser, { type BookingFlow } from "@/components/BookingTypeChooser";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
@@ -98,6 +99,12 @@ export default function CalendarPage() {
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
   const [meetingOpen, setMeetingOpen] = useState(false);
+  // "What are you booking?" gate in front of the project form — the five
+  // flows each need a different form, so ask once instead of making the user
+  // reverse-engineer it from a type dropdown.
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [flowTypeId, setFlowTypeId] = useState<string | undefined>();
+  const [flowMultiDay, setFlowMultiDay] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [addUserOpen, setAddUserOpen] = useState(false);
@@ -662,12 +669,12 @@ export default function CalendarPage() {
             )}
             {!isClient && (
               <Button
-                onClick={() => { setResumeProject(false); openAddForDate(null); }}
+                onClick={() => { setResumeProject(false); setChooserOpen(true); }}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 px-3 sm:px-4"
-                title="Add a new project"
+                title="Book something"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Project</span>
+                <span className="hidden sm:inline">Book</span>
               </Button>
             )}
           </div>
@@ -1542,13 +1549,27 @@ export default function CalendarPage() {
       )}
 
       {/* New Project Dialog */}
+      <BookingTypeChooser
+        open={chooserOpen}
+        onClose={() => setChooserOpen(false)}
+        onPick={(flow: BookingFlow, seededTypeId) => {
+          setFlowTypeId(seededTypeId);
+          setFlowMultiDay(flow === "multi_day");
+          if (flow === "mini") { navigate("/mini-sessions"); return; }
+          if (flow === "meeting") { setMeetingOpen(true); return; }
+          setNewProjectOpen(true);
+        }}
+      />
+
       <ProjectDialog
         open={newProjectOpen}
         resume={resumeProject}
-        onClose={() => { setNewProjectOpen(false); setResumeProject(false); setSelectedDate(null); setBookStartTime(null); setBookCrewMemberId(null); setHasDraft(hasProjectDraft()); }}
+        onClose={() => { setNewProjectOpen(false); setResumeProject(false); setSelectedDate(null); setBookStartTime(null); setBookCrewMemberId(null); setFlowTypeId(undefined); setFlowMultiDay(false); setHasDraft(hasProjectDraft()); }}
         defaultDate={selectedDate ?? undefined}
         defaultStartTime={bookStartTime ?? undefined}
         defaultCrewMemberId={bookCrewMemberId ?? undefined}
+        defaultProjectTypeId={flowTypeId}
+        defaultMultiDay={flowMultiDay}
       />
 
       {/* Meeting Dialog */}

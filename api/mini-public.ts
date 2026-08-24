@@ -31,6 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "get": return await getEvent(token as string, res);
       case "book": return await book(req, res);
       case "booking": return await getBooking(token as string, res);
+      case "pay": return await payBalance(req, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err) {
@@ -214,6 +215,60 @@ async function book(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     // Free the slot again rather than leaving a zombie pending row on it.
     await supabase.from("mini_session_bookings").update({ status: "cancelled" }).eq("id", bookingId);
+    return res.status(500).json({ error: errorMessage(err, "Couldn't start checkout") });
+  }
+}
+
+/**
+ * Pay whatever is still owed on a booking, from their own booking page.
+ * Needed because a booking can be outstanding for reasons that have nothing
+ * to do with a declined card — an owner-added phone booking never had one —
+ * and "contact the photographer" is a dead end when they just want to pay.
+ */
+async function payBalance(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
+  const bookingToken = clean(req.body?.token, 64);
+  if (!bookingToken) return res.status(400).json({ error: "Missing token" });
+
+  const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("booking_token", bookingToken).maybeSingle();
+  if (!b) return res.status(404).json({ error: "Booking not found" });
+  if (b.status === "cancelled") return res.status(400).json({ error: "This booking was cancelled" });
+
+  const owed = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
+  if (owed <= 0) return res.status(400).json({ error: "Nothing left to pay" });
+
+  const { data: ev } = await supabase.from("mini_sessions").select("title, date, org_id").eq("id", b.mini_session_id).maybeSingle();
+  const { data: org } = await supabase.from("organizations").select("stripe_account_id, name").eq("id", b.org_id).single();
+  if (!org?.stripe_account_id) return res.status(400).json({ error: "Payment isn't set up for this photographer." });
+
+  const bookingUrl = `${APP_BASE}/msb/${b.booking_token}`;
+  const successUrl = `${bookingUrl}?paid=1`;
+  if (!isAllowedUrl(successUrl) || !isAllowedUrl(bookingUrl)) return res.status(400).json({ error: "Invalid redirect URL" });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      ...(b.email ? { customer_email: b.email } : {}),
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `${ev?.title || "Mini session"} — ${formatSlot(b.slot_time)}`,
+            description: `${ev?.date || ""} · ${org.name || ""}`.trim(),
+          },
+          unit_amount: owed,
+        },
+        quantity: 1,
+      }],
+      metadata: { kind: "mini_session", bookingId: b.id, miniSessionId: b.mini_session_id },
+      success_url: successUrl,
+      cancel_url: bookingUrl,
+    }, { stripeAccount: org.stripe_account_id });
+
+    // The webhook requires the session id to match before it settles anything.
+    await supabase.from("mini_session_bookings").update({ checkout_session_id: session.id }).eq("id", b.id);
+    return res.status(200).json({ ok: true, checkoutUrl: session.url });
+  } catch (err) {
     return res.status(500).json({ error: errorMessage(err, "Couldn't start checkout") });
   }
 }

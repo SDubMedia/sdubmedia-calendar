@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { CheckCircle, Clock, MapPin, Calendar, AlertCircle } from "lucide-react";
 import { formatSlot } from "@/lib/miniSlots";
+import { formatPhoneInput } from "@/lib/utils";
 
 interface EventPayload {
   title: string; date: string; locationText: string; slotMinutes: number;
@@ -168,7 +169,7 @@ export default function MiniSessionSignupPage() {
                     className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400" />
                   <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email"
                     className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400" />
-                  <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="Phone"
+                  <input value={phone} onChange={e => setPhone(formatPhoneInput(e.target.value))} type="tel" inputMode="tel" placeholder="Phone"
                     className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400" />
                   <p className="text-xs text-gray-500">Your photos and check-in code are sent to this email.</p>
                 </div>
