@@ -4,9 +4,10 @@
 // authorization boundary — every query must be scoped by a token.
 //
 // Actions:
-//   get      ?token=<public_token>   event + live availability for the sign-up page
-//   book     POST                    claim a slot → pending row → Stripe checkout
-//   booking  ?token=<booking_token>  the party's own booking page (their QR)
+//   get       ?token=<public_token>  event + live availability for the sign-up page
+//   book      POST                   claim a slot → pending row → Stripe checkout
+//   booking   ?token=<booking_token> the party's own booking page (their QR)
+//   schedule  ?slug=<org slug>       every upcoming event for one photographer
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -25,13 +26,23 @@ const supabase = createClient(
 const APP_BASE = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { action, token } = req.query;
+  const { action, token, slug } = req.query;
+  // `schedule` is read-only and exists to be embedded in the photographer's own
+  // marketing site, so it alone is CORS-open. The state-changing actions below
+  // deliberately stay same-origin.
+  if (action === "schedule") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.status(204).end();
+  }
   try {
     switch (action) {
       case "get": return await getEvent(token as string, res);
       case "book": return await book(req, res);
       case "booking": return await getBooking(token as string, res);
       case "pay": return await payBalance(req, res);
+      case "schedule": return await getSchedule(slug as string, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
   } catch (err) {
@@ -101,6 +112,92 @@ async function getEvent(publicToken: string, res: VercelResponse) {
 }
 
 const clean = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/**
+ * Every upcoming mini session for one photographer, by org slug.
+ *
+ * This is the "here's my season" page — one stable link and QR that never has
+ * to be reprinted, unlike a per-event link. It's also what a photographer's own
+ * website embeds, hence the CORS header on this action only.
+ *
+ * Deliberately never exposes the org id, crew, internal ids or anything a
+ * booking needs — only what a poster would say, plus the per-event public token
+ * so a card can link straight into the existing sign-up flow.
+ */
+async function getSchedule(slug: string, res: VercelResponse) {
+  const s = clean(slug, 80).toLowerCase();
+  if (!s) return res.status(400).json({ error: "Missing slug" });
+
+  const { data: org } = await supabase
+    .from("organizations").select("id, name, logo_url, business_info").eq("slug", s).maybeSingle();
+  if (!org) return res.status(404).json({ error: "Photographer not found" });
+
+  // One day of slack on the low end: the server runs UTC but the people reading
+  // this are in the photographer's timezone, so a same-day event must not
+  // vanish at 7pm local. The page does the exact filtering in the viewer's own
+  // local time.
+  const floor = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+  const { data: events } = await supabase
+    .from("mini_sessions").select("*")
+    .eq("org_id", org.id).is("deleted_at", null)
+    .in("status", ["published", "closed"])
+    .gte("date", floor)
+    .order("date", { ascending: true });
+
+  const ids = (events || []).map(e => e.id);
+  const { data: allBookings } = ids.length
+    ? await supabase.from("mini_session_bookings")
+        .select("mini_session_id, slot_time, status, created_at").in("mini_session_id", ids)
+    : { data: [] };
+
+  const items = (events || []).map(ev => {
+    const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
+    const mine = (allBookings || []).filter(b => b.mini_session_id === ev.id);
+    const blocked = Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [];
+    // A closed event keeps its row on the page (so the season doesn't look
+    // empty) but offers nothing to book.
+    const open = ev.status === "published" ? openSlots(spec, heldSlots(mine), blocked) : [];
+    const dueNow = ev.payment_mode === "deposit"
+      ? Math.round(ev.price_cents * (Number(ev.deposit_percent) || 50) / 100)
+      : ev.price_cents;
+    return {
+      token: ev.public_token,
+      title: ev.title,
+      date: ev.date,
+      startTime: ev.start_time,
+      endTime: ev.end_time,
+      locationText: ev.location_text,
+      slotMinutes: ev.slot_minutes,
+      priceCents: ev.price_cents,
+      paymentMode: ev.payment_mode,
+      dueNowCents: dueNow,
+      includedPhotos: ev.included_photos,
+      status: ev.status,
+      openCount: open.length,
+      nextOpenSlot: open[0] || null,
+      totalSlots: generateSlots(spec).length,
+      bookUrl: `${APP_BASE}/minis/${ev.public_token}`,
+    };
+  });
+
+  // Narrower than publicBusinessInfo(): that allowlist includes the business
+  // address because invoices and proposals need it, but this endpoint is
+  // CORS-open and meant to be embedded in a public marketing page — and plenty
+  // of photographers have a home address in that field. Contact details only.
+  const info = publicBusinessInfo(org.business_info) || {};
+  const contact = {
+    phone: info.phone, email: info.email, website: info.website, companyName: info.companyName,
+  };
+
+  return res.status(200).json({
+    orgName: org.name || "",
+    orgLogo: org.logo_url || "",
+    orgBusinessInfo: contact,
+    scheduleUrl: `${APP_BASE}/book/${s}`,
+    events: items,
+  });
+}
 
 async function book(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });

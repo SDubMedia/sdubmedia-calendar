@@ -4,12 +4,15 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar, Users } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus, Calendar, Users, Copy, QrCode, Download, ExternalLink, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateSlots } from "@/lib/miniSlots";
+import { publicUrl, qrImageUrl } from "@/lib/publicUrl";
 import type { MiniSession } from "@/lib/types";
 import MiniSessionForm from "@/components/MiniSessionForm";
 import MiniSessionRoster from "@/components/MiniSessionRoster";
@@ -25,6 +28,20 @@ export default function MiniSessionsPage() {
   // away, so the tap that said "mini sessions" actually starts one.
   const [creating, setCreating] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [showScheduleQr, setShowScheduleQr] = useState(false);
+
+  // The permanent public schedule — every published event, one link that never
+  // needs reprinting. Per-event links still exist; this is the one for a
+  // website, a business card or a sign in the studio.
+  const orgSlug = data.organization?.slug || "";
+  const schedulePath = `/book/${orgSlug}`;
+  const scheduleUrl = publicUrl(schedulePath);
+
+  const copy = (text: string, what: string) => {
+    navigator.clipboard?.writeText(text)
+      .then(() => toast.success(`${what} copied`))
+      .catch(() => toast.error("Couldn't copy"));
+  };
 
   const events = useMemo(
     () => [...data.miniSessions].sort((a, b) => b.date.localeCompare(a.date)),
@@ -49,6 +66,38 @@ export default function MiniSessionsPage() {
           <Button onClick={() => setCreating(true)} className="gap-2"><Plus className="w-4 h-4" /> New Mini Session</Button>
         )}
       </div>
+
+      {/* One permanent link + QR for the whole season. Shown to owners only:
+          staff can work a roster but don't publish marketing. */}
+      {isOwner && orgSlug && (
+        <div className="bg-card border border-border rounded-lg p-4 overflow-hidden">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Globe className="w-4 h-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Your booking page</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Every published session, always current. Put this link on your website or a printed QR — it never changes, even when the dates do.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2 break-all font-mono">{scheduleUrl}</p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => copy(scheduleUrl, "Booking page link")}>
+                  <Copy className="w-3.5 h-3.5" /> Copy link
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowScheduleQr(true)}>
+                  <QrCode className="w-3.5 h-3.5" /> QR code
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5" asChild>
+                  <a href={schedulePath} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-3.5 h-3.5" /> Preview
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {events.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
@@ -100,6 +149,23 @@ export default function MiniSessionsPage() {
       {openEvent && (
         <MiniSessionRoster event={openEvent} open={!!openEvent} onClose={() => setOpenEventId(null)} />
       )}
+
+      <Dialog open={showScheduleQr} onOpenChange={setShowScheduleQr}>
+        <DialogContent className="bg-card border-border text-foreground max-w-xs">
+          <DialogHeader><DialogTitle className="text-base">Booking page code</DialogTitle></DialogHeader>
+          <div className="text-center pb-2">
+            <img src={qrImageUrl(schedulePath, 600)} alt="Booking page QR" className="w-60 h-60 mx-auto rounded-lg bg-white p-2" />
+            <p className="text-xs text-muted-foreground mt-2 break-all">{scheduleUrl}</p>
+            <a href={qrImageUrl(schedulePath, 1200)} download="booking-page-qr.png"
+              className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80">
+              <Download className="w-3.5 h-3.5" /> Download for print
+            </a>
+            <p className="text-[11px] text-muted-foreground mt-3">
+              Safe to print once — it always shows whatever you have published.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

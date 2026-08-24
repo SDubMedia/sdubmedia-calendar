@@ -57,6 +57,11 @@ export default defineConfig({
           /^\/g\//,          // gallery (slug)
           /^\/proposal\//,   // proposal viewing
           /^\/c\//,          // collection
+          /^\/invoice\//,    // public invoice
+          /^\/review\/series\//, // series review
+          /^\/minis\//,      // mini session sign-up (scanned off a flyer)
+          /^\/msb\//,        // a party's own booking page
+          /^\/book\//,       // the org's public mini session schedule
           /^\/api\//,        // never intercept API calls
         ],
         runtimeCaching: [

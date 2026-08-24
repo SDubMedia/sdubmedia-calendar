@@ -178,6 +178,15 @@ if (window.location.pathname.startsWith("/proposal/")) { ... }
 1. Add the pathname check in `App.tsx` before the `return` with `AuthProvider`
 2. Render inside `ErrorBoundary` + `Suspense` + `Toaster` (no AuthProvider, no AppProvider)
 3. Use token-based verification in the API, not Bearer auth
+4. **Add the route prefix to `navigateFallbackDenylist` in `vite.config.ts`.** Without
+   it the service worker answers that navigation from its own cache, so a recipient
+   who once loaded the app gets a stale `index.html` referencing asset hashes that no
+   longer exist — a blank page that looks exactly like "lost connection", on the one
+   surface where the visitor is a stranger who will simply give up. Four public routes
+   (`/invoice/`, `/review/series/`, `/minis/`, `/msb/`) were live for months without
+   this before it was noticed in Aug 2026; nothing errors, so only a real recipient on
+   a real stale cache would ever surface it.
+5. Public pages don't get a feature flag — the recipient has no role to check.
 
 ## Stripe — Connected Accounts
 

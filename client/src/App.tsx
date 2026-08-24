@@ -71,6 +71,7 @@ const EditContractTemplatePage = lazy(() => import("./pages/EditContractTemplate
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const MiniSessionSignupPage = lazy(() => import("@/pages/MiniSessionSignupPage"));
 const MiniBookingPage = lazy(() => import("@/pages/MiniBookingPage"));
+const MiniSchedulePage = lazy(() => import("@/pages/MiniSchedulePage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const CollectionPage = lazy(() => import("./pages/CollectionPage"));
@@ -336,6 +337,21 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/minis/:token" component={MiniSessionSignupPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // The photographer's permanent "all my upcoming mini sessions" link — what
+  // goes on a website or a printed QR, since it survives every event change.
+  if (window.location.pathname.startsWith("/book/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/book/:slug" component={MiniSchedulePage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>
