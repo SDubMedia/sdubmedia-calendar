@@ -106,6 +106,15 @@ export default defineConfig({
         target: process.env.SLATE_API_PROXY || "https://slate.sdubmedia.com",
         changeOrigin: true,
         secure: true,
+        configure: (proxy) => {
+          // Unlike Supabase reads (RLS-scoped rows), these routes have real
+          // outbound side effects: Stripe checkouts on the connected account,
+          // Resend emails to real customers, galleries marked delivered. Say
+          // so on every boot rather than letting it be a quiet default.
+          const target = process.env.SLATE_API_PROXY || "https://slate.sdubmedia.com";
+          console.warn(`\n  ⚠  /api proxied to ${target} — local calls hit LIVE Stripe + email.\n     Set SLATE_API_PROXY to a preview deployment to avoid that.\n`);
+          proxy.on("error", (err) => console.warn(`  /api proxy error: ${err.message}`));
+        },
       },
     },
   },

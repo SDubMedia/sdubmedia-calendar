@@ -28,9 +28,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const callerOrgId = await getUserOrgId(user.userId);
   if (!callerOrgId) return res.status(403).json({ error: "No organization" });
 
+  // Org membership alone isn't enough: a client/agent login has an org_id too,
+  // and this route sends branded email to every participant / takes money on
+  // the org's connected account. Same role gate as api/deliveries.ts.
+  const { data: callerProfile } = await supabase
+    .from("user_profiles").select("role").eq("id", user.userId).single();
+  const role = callerProfile?.role;
+  if (role !== "owner" && role !== "partner" && role !== "staff") {
+    return res.status(403).json({ error: "Not allowed" });
+  }
+
   const miniSessionId = typeof req.body?.miniSessionId === "string" ? req.body.miniSessionId.slice(0, 40) : "";
   // Optional: resend one person's gallery rather than the whole event.
   const onlyBookingId = typeof req.body?.bookingId === "string" ? req.body.bookingId.slice(0, 40) : "";
+  // Deliberate re-send of galleries that already went out, rather than the
+  // default "only the ones nobody has received yet".
+  const force = req.body?.force === true;
   if (!miniSessionId) return res.status(400).json({ error: "Missing session" });
 
   try {
@@ -54,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select("id, token, slug, status").eq("id", b.delivery_id).maybeSingle();
       if (!d) { skipped++; continue; }
       // Already delivered — don't spam them on a second run over the event.
-      if (!onlyBookingId && d.status === "delivered") { skipped++; continue; }
+      if (!onlyBookingId && !force && d.status === "delivered") { skipped++; continue; }
 
       const galleryUrl = `${APP_BASE}/${d.slug ? `g/${d.slug}` : `deliver/${d.token}`}`;
       if (!isAllowedUrl(galleryUrl)) { skipped++; continue; }

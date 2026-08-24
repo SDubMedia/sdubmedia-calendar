@@ -134,7 +134,11 @@ export default function MiniBookingPage() {
               </div>
             )}
           </div>
-          {b.balanceCents > 0 ? (
+          {/* Only once the booking is settled as booked: while a payment is
+              still landing the page shows "finishing…", and letting them start
+              a second checkout there would overwrite the session id the
+              first one still needs to be recognised. */}
+          {b.balanceCents > 0 && confirmed ? (
             <>
               <p className="mt-3 text-sm text-gray-600">
                 {b.paymentStatus === "balance_failed"
@@ -151,6 +155,8 @@ export default function MiniBookingPage() {
                 {paying ? "Starting checkout…" : `Pay ${money(b.balanceCents)} now`}
               </button>
             </>
+          ) : b.balanceCents > 0 ? (
+            <p className="mt-3 text-xs text-gray-500">Finishing up your payment…</p>
           ) : (
             <p className="mt-3 text-xs text-emerald-600 font-medium">Paid in full ✓</p>
           )}

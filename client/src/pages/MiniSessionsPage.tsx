@@ -21,7 +21,9 @@ export default function MiniSessionsPage() {
   const { effectiveProfile } = useAuth();
   const isOwner = effectiveProfile?.role === "owner";
 
-  const [creating, setCreating] = useState(false);
+  // Arriving from the booking chooser with ?new=1 opens the creator straight
+  // away, so the tap that said "mini sessions" actually starts one.
+  const [creating, setCreating] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [openEventId, setOpenEventId] = useState<string | null>(null);
 
   const events = useMemo(
@@ -29,8 +31,10 @@ export default function MiniSessionsPage() {
     [data.miniSessions],
   );
 
+  // Booked only — counting unconfirmed checkouts here made this card disagree
+  // with the roster, the calendar chip and the dashboard.
   const bookingsFor = (id: string) =>
-    data.miniSessionBookings.filter(b => b.miniSessionId === id && (b.status === "booked" || b.status === "pending"));
+    data.miniSessionBookings.filter(b => b.miniSessionId === id && b.status === "booked");
 
   const openEvent = events.find(e => e.id === openEventId) || null;
 
@@ -87,7 +91,10 @@ export default function MiniSessionsPage() {
         </div>
       )}
 
-      <MiniSessionForm open={creating} onClose={() => setCreating(false)} />
+      {/* Mounted only while open: the form's state is mount-initialised (the
+          realtime rule), so a permanently-mounted one would still be filled
+          with the previous event the second time you opened it. */}
+      {creating && <MiniSessionForm open onClose={() => setCreating(false)} />}
 
       {/* ---------- Roster ---------- */}
       {openEvent && (

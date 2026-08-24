@@ -98,7 +98,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [personalEventOpen, setPersonalEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PersonalEvent | null>(null);
-  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [meetingOpen, setMeetingOpen] = useState(() => new URLSearchParams(window.location.search).get("newMeeting") === "1");
   // "What are you booking?" gate in front of the project form — the five
   // flows each need a different form, so ask once instead of making the user
   // reverse-engineer it from a type dropdown.

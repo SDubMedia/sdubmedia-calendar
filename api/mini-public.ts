@@ -260,13 +260,18 @@ async function payBalance(req: VercelRequest, res: VercelResponse) {
         },
         quantity: 1,
       }],
-      metadata: { kind: "mini_session", bookingId: b.id, miniSessionId: b.mini_session_id },
+      // Distinct kind: a balance payment must NOT go through the
+      // first-payment path, whose replay guard would ignore it (and leave the
+      // cron to charge the same card again the day before).
+      metadata: { kind: "mini_session_balance", bookingId: b.id, miniSessionId: b.mini_session_id },
       success_url: successUrl,
       cancel_url: bookingUrl,
     }, { stripeAccount: org.stripe_account_id });
 
-    // The webhook requires the session id to match before it settles anything.
-    await supabase.from("mini_session_bookings").update({ checkout_session_id: session.id }).eq("id", b.id);
+    // Its OWN column: overwriting checkout_session_id would orphan the
+    // original booking payment if they abandoned this one and went back to
+    // finish the first — the webhook would reject it as a mismatch.
+    await supabase.from("mini_session_bookings").update({ balance_checkout_session_id: session.id }).eq("id", b.id);
     return res.status(200).json({ ok: true, checkoutUrl: session.url });
   } catch (err) {
     return res.status(500).json({ error: errorMessage(err, "Couldn't start checkout") });

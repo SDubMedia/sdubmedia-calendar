@@ -103,10 +103,14 @@ export default function DashboardPage() {
   const todayStr = today.toISOString().slice(0, 10);
   // Shoot day: today's mini sessions jump to the top of the dashboard so the
   // roster is one tap away when you're standing at the venue.
-  const todaysMinis = useMemo(
-    () => data.miniSessions.filter(m => m.date === todayStr && m.status !== "draft"),
-    [data.miniSessions, todayStr],
-  );
+  const todaysMinis = useMemo(() => {
+    // LOCAL date, not todayStr (which is UTC): in Central time a UTC date
+    // flips at 7pm, so the "Today" banner appeared the evening before the
+    // shoot and vanished partway through the actual day.
+    const n = new Date();
+    const localToday = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    return data.miniSessions.filter(m => m.date === localToday && m.status !== "draft");
+  }, [data.miniSessions]);
   const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
@@ -888,8 +892,10 @@ export default function DashboardPage() {
           setFlowMultiDay(flow === "multi_day");
           // Mini sessions and meetings live on their own pages — send them
           // there rather than half-opening a project form.
-          if (flow === "mini") { navigate("/mini-sessions"); return; }
-          if (flow === "meeting") { navigate("/calendar"); return; }
+          // Carry the intent so the target page opens its dialog — landing on
+          // a page where nothing happens reads as a broken button.
+          if (flow === "mini") { navigate("/mini-sessions?new=1"); return; }
+          if (flow === "meeting") { navigate("/calendar?newMeeting=1"); return; }
           setBookOpen(true);
         }}
       />

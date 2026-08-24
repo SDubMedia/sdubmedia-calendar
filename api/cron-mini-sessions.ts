@@ -102,6 +102,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // --- reminder (+ dunning when the card failed) ---
+        // A cash walk-up can be on the roster with no email at all (that's
+        // allowed) — trying to send would throw and fail the whole cron run.
+        if (!b.email) continue;
         if (b.reminder_sent_at && String(b.reminder_sent_at).slice(0, 10) === ymd(new Date())) continue;
         const bookingUrl = `${APP_BASE}/msb/${b.booking_token}`;
         if (!isAllowedUrl(bookingUrl)) continue;

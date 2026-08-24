@@ -34,6 +34,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const callerOrgId = await getUserOrgId(user.userId);
   if (!callerOrgId) return res.status(403).json({ error: "No organization" });
 
+  // Org membership alone isn't enough: a client/agent login has an org_id too,
+  // and this route sends branded email to every participant / takes money on
+  // the org's connected account. Same role gate as api/deliveries.ts.
+  const { data: callerProfile } = await supabase
+    .from("user_profiles").select("role").eq("id", user.userId).single();
+  const role = callerProfile?.role;
+  if (role !== "owner" && role !== "partner" && role !== "staff") {
+    return res.status(403).json({ error: "Not allowed" });
+  }
+
   const { miniSessionId, slotTime, name, email, phone, mode } = req.body || {};
   const nm = clean(name), em = clean(email), ph = clean(phone, 40);
   const slot = clean(slotTime, 5);

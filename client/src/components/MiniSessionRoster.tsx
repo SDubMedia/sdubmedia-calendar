@@ -4,7 +4,7 @@
 // drop the whole card in to be split into per-family galleries.
 // ============================================================
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/contexts/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,9 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const [groups, setGroups] = useState<PhotoGroup[] | null>(null);
   const [qrIds, setQrIds] = useState<string[]>([]);
   const [delivering, setDelivering] = useState(false);
+  // Groups whose photos fully uploaded this session, so a retry after a
+  // failure resumes instead of duplicating what already landed.
+  const doneGroupIds = useRef<Set<string>>(new Set());
 
   const slots = useMemo(() => generateSlots(event), [event]);
   const bookings = useMemo(
@@ -80,7 +83,12 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   // Canonical origin, never window.location — this URL gets printed on flyers.
   const signupUrl = publicUrl(`/minis/${event.publicToken}`);
   const bookedCount = bookings.filter(b => b.status === "booked").length;
-  const owedCount = bookings.filter(b => b.status === "booked" && b.paymentStatus === "balance_failed").length;
+  // Anyone booked who hasn't fully paid — a failed card OR an owner-added
+  // booking whose pay link is still outstanding. The latter showed nothing at
+  // all, which defeated the point of the pay-link flow.
+  const owedCount = bookings.filter(b =>
+    b.status === "booked" && (b.paymentStatus === "balance_failed" || b.paymentStatus === "pending"
+      || (b.paymentStatus === "deposit_paid" && b.totalCents > b.depositPaidCents))).length;
 
   const copy = (text: string, what: string) => {
     navigator.clipboard?.writeText(text).then(() => toast.success(`${what} copied`)).catch(() => toast.error("Couldn't copy"));
@@ -133,14 +141,14 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
     }
   }
 
-  async function sendGalleries() {
+  async function sendGalleries(force = false) {
     setSendingGalleries(true);
     try {
       const token = await getAuthToken();
       const res = await fetch("/api/mini-deliver", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ miniSessionId: event.id }),
+        body: JSON.stringify({ miniSessionId: event.id, force }),
       });
       const body = await res.json();
       if (!res.ok) { toast.error(body.error || "Couldn't send"); setSendingGalleries(false); return; }
@@ -162,6 +170,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
 
     setScanning(true);
     setGroups(null);
+    doneGroupIds.current = new Set();
     try {
       const scanned: ScannedPhoto[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -218,6 +227,10 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
       for (const g of real) {
         const booking = bookings.find(b => b.id === g.bookingId);
         if (!booking) continue;
+        // Restartable: if an upload failed halfway, clicking Build again must
+        // finish the rest — not re-upload every photo into galleries that
+        // already completed, duplicating every image in them.
+        if (doneGroupIds.current.has(g.bookingId as string)) continue;
         setScanMsg(`Building ${booking.name}'s gallery…`);
 
         // Galleries can exist without a project or client record — minis are
@@ -279,7 +292,12 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
             position: position++,
           });
         }
-        await updateDelivery(deliveryId, { status: "sent" });
+        // Only promote a draft — never knock a delivered gallery back to sent.
+        const existing = data.deliveries.find(x => x.id === deliveryId);
+        if (!existing || existing.status === "draft") {
+          await updateDelivery(deliveryId, { status: "sent" });
+        }
+        doneGroupIds.current.add(g.bookingId as string);
       }
       toast.success(`${real.length} galler${real.length === 1 ? "y" : "ies"} built — review them, then send.`);
       setGroups(null); setPendingFiles([]); setQrIds([]);
@@ -324,7 +342,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
             )}
             <p className="text-xs text-muted-foreground">
               {bookedCount} of {slots.length} booked
-              {owedCount > 0 && <span className="text-red-400"> · {owedCount} card issue{owedCount === 1 ? "" : "s"}</span>}
+              {owedCount > 0 && <span className="text-red-400"> · {owedCount} unpaid</span>}
             </p>
           </div>
 
@@ -365,7 +383,10 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                           <p className={cn("text-sm truncate", b.status === "no_show" ? "text-muted-foreground line-through" : "text-foreground")}>{b.name}</p>
                           <p className="text-[11px] text-muted-foreground truncate">
                             {b.email}
-                            {b.paymentStatus === "paid" ? " · paid" : b.paymentStatus === "deposit_paid" ? ` · ${money(b.depositPaidCents)} paid, ${money(b.totalCents - b.depositPaidCents)} due` : ""}
+                            {b.paymentStatus === "paid" ? " · paid"
+                              : b.paymentStatus === "deposit_paid" ? ` · ${money(b.depositPaidCents)} paid, ${money(b.totalCents - b.depositPaidCents)} due`
+                              : b.paymentStatus === "pending" ? ` · unpaid · ${money(b.totalCents)} due`
+                              : ""}
                             {b.paymentStatus === "balance_failed" ? " · card declined" : ""}
                           </p>
                         </>
@@ -410,7 +431,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                       : "All sent. Re-sending is safe: they'd get the same private link."}
                   </p>
                 </div>
-                <Button size="sm" onClick={sendGalleries} disabled={sendingGalleries} className="gap-1.5 shrink-0">
+                <Button size="sm" onClick={() => sendGalleries(unsentGalleries.length === 0)} disabled={sendingGalleries} className="gap-1.5 shrink-0">
                   <Send className="w-3.5 h-3.5" />
                   {sendingGalleries ? "Sending…" : unsentGalleries.length > 0 ? `Email ${unsentGalleries.length}` : "Re-send"}
                 </Button>
@@ -617,14 +638,19 @@ function ReviewPanel({ groups, qrCount, files, busy, busyMsg, onReassign, onCanc
 }
 
 function Thumbs({ ids, files }: { ids: string[]; files: File[] }) {
-  const shown = ids.slice(0, 8);
+  const shown = useMemo(() => ids.slice(0, 8), [ids]);
+  // Minted once per file and revoked on unmount. Created inline during render,
+  // every reassign click leaked a fresh blob URL per visible thumbnail.
+  const urls = useMemo(() => shown.map(id => {
+    const f = files[Number(id)];
+    return f ? { id, url: URL.createObjectURL(f) } : null;
+  }).filter(Boolean) as { id: string; url: string }[], [shown, files]);
+  useEffect(() => () => { urls.forEach(u => URL.revokeObjectURL(u.url)); }, [urls]);
   return (
     <div className="flex gap-1.5 flex-wrap">
-      {shown.map(id => {
-        const f = files[Number(id)];
-        if (!f) return null;
-        return <img key={id} src={URL.createObjectURL(f)} alt="" className="w-12 h-12 rounded object-cover border border-border" />;
-      })}
+      {urls.map(u => (
+        <img key={u.id} src={u.url} alt="" className="w-12 h-12 rounded object-cover border border-border" />
+      ))}
       {ids.length > shown.length && (
         <div className="w-12 h-12 rounded border border-border flex items-center justify-center text-[11px] text-muted-foreground">
           +{ids.length - shown.length}

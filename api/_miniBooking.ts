@@ -118,6 +118,60 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
   });
 }
 
+/**
+ * An outstanding balance was paid by hand (their booking page's Pay button, or
+ * an owner-sent pay link on a booking that already had a deposit). Adds the
+ * amount, marks it settled, and — critically — stamps balance_charged_at so
+ * the day-before cron doesn't charge the card for money already received.
+ */
+export async function settleMiniBalance(bookingId: string, session: { amount_total?: number | null; id?: string }) {
+  const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("id", bookingId).maybeSingle();
+  if (!b) return;
+  if (b.payment_status === "paid") return; // replay
+  // Only the balance session we minted for this booking may credit it — a
+  // stale session from an abandoned attempt at a different amount must not.
+  if (b.balance_checkout_session_id && session.id && b.balance_checkout_session_id !== session.id) return;
+
+  const paid = Math.round(Number(session.amount_total ?? 0));
+  const already = Number(b.deposit_paid_cents || 0);
+  const total = Number(b.total_cents || 0);
+  const nowIso = new Date().toISOString();
+
+  await supabase.from("mini_session_bookings").update({
+    deposit_paid_cents: already + paid,
+    payment_status: already + paid >= total ? "paid" : "deposit_paid",
+    balance_charged_at: nowIso,
+    balance_error: "",
+    updated_at: nowIso,
+  }).eq("id", bookingId);
+
+  const { data: ev } = await supabase.from("mini_sessions").select("title").eq("id", b.mini_session_id).maybeSingle();
+  const results = await Promise.allSettled([
+    (async () => {
+      if (!b.email) return;
+      const { from, replyTo, orgName, businessInfo } = await orgSender(b.org_id);
+      const body = `
+        <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">Payment received ✓</h2>
+        <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
+          Thanks ${escapeHtml(b.name)} — we've received ${money(paid)} for ${escapeHtml(ev?.title || "your session")}. You're paid in full.
+        </p>`;
+      await resend.emails.send({
+        from, replyTo, to: b.email,
+        subject: `Payment received — ${ev?.title || "your session"}`,
+        html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, body),
+      });
+    })(),
+    sendPushToOwner(b.org_id, {
+      title: "Balance paid",
+      body: `${b.name} paid ${money(paid)}`,
+      data: { type: "mini_session" },
+    }),
+  ]);
+  results.forEach((x, i) => {
+    if (x.status === "rejected") console.warn(`[mini-balance] ${i === 0 ? "receipt" : "push"} failed: ${errorMessage(x.reason)}`);
+  });
+}
+
 /** Off-session charge of the outstanding balance, mirroring the per-card retry
  *  shape of charge-agent-card.ts. Returns null on success, else the error. */
 export async function chargeMiniBalance(

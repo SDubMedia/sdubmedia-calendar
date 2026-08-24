@@ -35,7 +35,7 @@ import { saveSelectionsAndAlert } from "./delivery-public.js";
 import { syncConversionToScout } from "./_scoutSync.js";
 import { sendPushToOwner } from "./_apns.js";
 import { processProposalPayment, PROPOSAL_PAYMENT_SELECT } from "./proposal-accept.js";
-import { confirmMiniBooking } from "./_miniBooking.js";
+import { confirmMiniBooking, settleMiniBalance } from "./_miniBooking.js";
 
 const CRONITOR_MONITOR = "slate-stripe-webhook";
 
@@ -418,6 +418,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 .maybeSingle();
               if (org) await processProposalPayment(proposal, org, session);
             }
+          }
+        } else if (session.mode === "payment" && session.metadata?.kind === "mini_session_balance" && session.metadata?.bookingId) {
+          // Balance settled by hand — adds to what's already paid rather than
+          // replacing it, and blocks the day-before auto-charge.
+          if (session.payment_status === "paid") {
+            await settleMiniBalance(session.metadata.bookingId, session);
           }
         } else if (session.mode === "payment" && session.metadata?.kind === "mini_session" && session.metadata?.bookingId) {
           // A mini-session slot was just paid for. Until this fires the row is
