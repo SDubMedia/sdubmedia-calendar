@@ -5,7 +5,7 @@
 // so the rules are pure functions and pinned here.
 
 import { describe, expect, it } from "vitest";
-import { projectInFeed, meetingInFeed, type FeedViewer } from "../../../../api/calendar.ics";
+import { projectInFeed, meetingInFeed, miniSessionInFeed, type FeedViewer } from "../../../../api/calendar.ics";
 
 const david: FeedViewer = { userId: "u_david", role: "staff", crewMemberId: "crew_david", clientIds: [] };
 const melissa: FeedViewer = { userId: "u_mel", role: "staff", crewMemberId: "crew_mel", clientIds: [] };
@@ -87,5 +87,31 @@ describe("meetingInFeed", () => {
   it("passes everything through for family and the org feed", () => {
     expect(meetingInFeed({ assigned_user_ids: [] }, family)).toBe(true);
     expect(meetingInFeed({ assigned_user_ids: [] }, null)).toBe(true);
+  });
+});
+
+describe("miniSessionInFeed", () => {
+  const mini = { assigned_crew: ["cm_jess"] };
+
+  it("gives the org-wide feed (no viewer) everything", () => {
+    expect(miniSessionInFeed(mini, null)).toBe(true);
+  });
+
+  it("owner sees mini sessions", () => {
+    expect(miniSessionInFeed(mini, { role: "owner", userId: "u1", crewMemberId: "", clientIds: [] })).toBe(true);
+  });
+
+  it("staff see only the ones they're shooting", () => {
+    expect(miniSessionInFeed(mini, { role: "staff", userId: "u2", crewMemberId: "cm_jess", clientIds: [] })).toBe(true);
+    expect(miniSessionInFeed(mini, { role: "staff", userId: "u3", crewMemberId: "cm_other", clientIds: [] })).toBe(false);
+    expect(miniSessionInFeed({ assigned_crew: [] }, { role: "staff", userId: "u2", crewMemberId: "cm_jess", clientIds: [] })).toBe(false);
+  });
+
+  it("clients never see mini sessions — a public event day isn't their business", () => {
+    expect(miniSessionInFeed(mini, { role: "client", userId: "u4", crewMemberId: "", clientIds: ["c1"] })).toBe(false);
+  });
+
+  it("malformed assigned_crew doesn't throw", () => {
+    expect(miniSessionInFeed({ assigned_crew: null }, { role: "staff", userId: "u2", crewMemberId: "cm_jess", clientIds: [] })).toBe(false);
   });
 });

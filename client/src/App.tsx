@@ -61,6 +61,7 @@ const ContractsPage = lazy(() => import("./pages/ContractsPage"));
 const NewContractPage = lazy(() => import("./pages/NewContractPage"));
 const EditContractPage = lazy(() => import("./pages/EditContractPage"));
 const DeliveriesPage = lazy(() => import("./pages/DeliveriesPage"));
+const MiniSessionsPage = lazy(() => import("@/pages/MiniSessionsPage"));
 const SignContractPage = lazy(() => import("./pages/SignContractPage"));
 const ProposalsPage = lazy(() => import("./pages/ProposalsPage"));
 const TemplateEditorPage = lazy(() => import("./pages/TemplateEditorPage"));
@@ -68,6 +69,8 @@ const PackagesPage = lazy(() => import("./pages/PackagesPage"));
 const ReviewContractPage = lazy(() => import("./pages/ReviewContractPage"));
 const EditContractTemplatePage = lazy(() => import("./pages/EditContractTemplatePage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
+const MiniSessionSignupPage = lazy(() => import("@/pages/MiniSessionSignupPage"));
+const MiniBookingPage = lazy(() => import("@/pages/MiniBookingPage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const CollectionPage = lazy(() => import("./pages/CollectionPage"));
@@ -252,6 +255,7 @@ function Router() {
         {/* Owner-only bench: does this camera embed a preview worth showing?
             Runs entirely in the browser — nothing uploads, nothing is saved. */}
         <Route path="/raw-check">{() => isOwner ? <RawCheckPage /> : <Redirect to="/" />}</Route>
+        <Route path="/mini-sessions">{() => internal || isStaff ? <MiniSessionsPage /> : <Redirect to="/" />}</Route>
         <Route path="/deliveries">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/deliveries/:id">{() => internal || isStaff ? <DeliveriesPage /> : <Redirect to="/" />}</Route>
         <Route path="/proposals">{() => internal ? <ProposalsPage /> : <Redirect to="/" />}</Route>
@@ -317,6 +321,34 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/sign/:token" component={SignContractPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // Mini sessions: the flyer QR (/minis/:token) and each party's own booking
+  // page (/msb/:token). Public by design — participants never have logins.
+  if (window.location.pathname.startsWith("/minis/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/minis/:token" component={MiniSessionSignupPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (window.location.pathname.startsWith("/msb/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/msb/:token" component={MiniBookingPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

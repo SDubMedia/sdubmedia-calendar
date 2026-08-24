@@ -44,6 +44,7 @@ import {
   AlertCircle,
   DollarSign,
   Building2,
+  QrCode,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -105,6 +106,7 @@ const navStructure: NavEntry[] = [
     { label: "Packages", href: "/packages", icon: PackageIcon, roles: ["owner"], feature: "proposals" },
     { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
     { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "staff"], feature: "deliveries" },
+    { label: "Mini Sessions", href: "/mini-sessions", icon: QrCode, roles: ["owner", "staff"], feature: "miniSessions" },
   ]},
 
   // Production — owner, partner, client (Series), staff (Series)

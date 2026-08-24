@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getProjectWorkedHours, getProjectBillableHours, getProjectInvoiceAmount, getProjectPayerId, conflictsForDate, availabilityForDate, getOpenDays } from "@/lib/data";
 import { projectDays, projectOccursOn, dayCrewFor, dayIndexInfo } from "@/lib/projectDays";
+import { generateSlots } from "@/lib/miniSlots";
 import ProjectDialog, { hasProjectDraft } from "@/components/ProjectDialog";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import AvailabilityDayEditor from "@/components/AvailabilityDayEditor";
@@ -450,6 +451,16 @@ export default function CalendarPage() {
     );
   }, [data.meetings, year, month, clientFilter]);
 
+  // Mini sessions sit on their date as their own chip — one event, N slots.
+  const monthMiniSessions = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return data.miniSessions.filter(m => m.date.startsWith(prefix));
+  }, [data.miniSessions, year, month]);
+  const getMiniSessionsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return monthMiniSessions.filter(m => m.date === dateStr);
+  };
+
   const getMeetingsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return monthMeetings.filter((m) => m.date === dateStr);
@@ -847,6 +858,7 @@ export default function CalendarPage() {
               const dayEvents = isCurrentMonth ? getPersonalEventsForDay(day) : [];
               const dayExternalEvents = isCurrentMonth ? getExternalEventsForDay(day) : [];
               const dayMeetings = isCurrentMonth ? getMeetingsForDay(day) : [];
+              const dayMinis = isCurrentMonth ? getMiniSessionsForDay(day) : [];
               const dayTodos = isCurrentMonth ? getTodosForDay(day) : [];
 
               // For non-current-month cells, compute the actual date in
@@ -1034,6 +1046,26 @@ export default function CalendarPage() {
                       {dayProjects.length > (calendarMode === "both" ? 2 : 3) && (
                         <div className="text-[9px] sm:text-[10px] text-muted-foreground px-1">+{dayProjects.length - (calendarMode === "both" ? 2 : 3)}</div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Mini-session chips — booked/total at a glance. */}
+                  {(calendarMode === "production" || calendarMode === "both") && dayMinis.length > 0 && (
+                    <div className="space-y-0.5">
+                      {dayMinis.map(m => {
+                        const booked = data.miniSessionBookings.filter(b => b.miniSessionId === m.id && b.status === "booked").length;
+                        const total = generateSlots(m).length;
+                        return (
+                          <div key={m.id}
+                            onClick={(e) => { e.stopPropagation(); navigate("/mini-sessions"); }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="text-[10px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 bg-fuchsia-500/25 text-fuchsia-700 dark:text-fuchsia-300"
+                          >
+                            <span className="hidden sm:inline">{m.title} · {booked}/{total}</span>
+                            <span className="sm:hidden">Minis {booked}/{total}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 

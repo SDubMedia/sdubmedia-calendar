@@ -79,6 +79,22 @@ export function meetingInFeed(
   return false;
 }
 
+/** Mini sessions in the feed. Owner-side work: owner/partner/family see them,
+ *  staff see the ones they're assigned to shoot, clients NEVER — a client login
+ *  must not learn that a public mini-session day exists, let alone who booked.
+ *  This file runs under the service role, so RLS is NOT filtering it. */
+export function miniSessionInFeed(
+  mini: { assigned_crew?: unknown },
+  viewer: FeedViewer,
+): boolean {
+  if (!viewer) return true;
+  if (viewer.role === "owner" || viewer.role === "partner" || viewer.role === "family") return true;
+  if (viewer.role === "staff") {
+    return !!viewer.crewMemberId && Array.isArray(mini.assigned_crew) && mini.assigned_crew.includes(viewer.crewMemberId);
+  }
+  return false;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Auth via query param (calendar apps can't send headers)
   const key = req.query.key as string;
@@ -164,6 +180,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // admin-side, and putting the owner's diary on a contractor's phone is the
     // same leak in a smaller box. Mirrors AppContext's impersonation filter.
     meetings = meetings.filter(m => meetingInFeed(m, viewer));
+  }
+
+  // Fetch mini sessions — one all-day-ish block per event.
+  let minis: { id: string; title: string; date: string; start_time: string; end_time: string; location_text: string; assigned_crew: unknown }[] = [];
+  if (calType === "all" || calType === "production") {
+    const { data } = await db.from("mini_sessions")
+      .select("id, title, date, start_time, end_time, location_text, assigned_crew")
+      .eq("org_id", callerOrgId).is("deleted_at", null).neq("status", "draft").order("date");
+    minis = ((data as typeof minis) || []).filter(m => miniSessionInFeed(m, viewer));
   }
 
   // Fetch reference data for project names — scoped to org
@@ -273,6 +298,25 @@ SUMMARY:${esc(summary)}`;
     if (m.notes) vevent += `\nDESCRIPTION:${esc(m.notes)}`;
     vevent += `\nSTATUS:CONFIRMED`;
     vevent += `\nCATEGORIES:Meeting`;
+    vevent += `\nEND:VEVENT`;
+    events.push(vevent);
+  }
+
+  for (const m of minis) {
+    let vevent = `BEGIN:VEVENT
+UID:slate-mini-${m.id}@sdubmedia.com
+DTSTAMP:${formatICalDate(new Date().toISOString().slice(0, 10), "000000")}
+SUMMARY:${esc(m.title || "Mini sessions")}`;
+    if (m.start_time && m.end_time) {
+      vevent += `\nDTSTART:${formatICalDate(m.date, m.start_time)}`;
+      vevent += `\nDTEND:${formatICalDate(m.date, m.end_time)}`;
+    } else {
+      vevent += `\nDTSTART;VALUE=DATE:${formatICalDate(m.date)}`;
+      vevent += `\nDTEND;VALUE=DATE:${nextDayDate(m.date)}`;
+    }
+    if (m.location_text) vevent += `\nLOCATION:${esc(m.location_text)}`;
+    vevent += `\nSTATUS:CONFIRMED`;
+    vevent += `\nCATEGORIES:Production`;
     vevent += `\nEND:VEVENT`;
     events.push(vevent);
   }

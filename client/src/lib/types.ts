@@ -18,6 +18,7 @@ export interface OrgFeatures {
   proposals: boolean;
   contracts: boolean;
   deliveries: boolean;
+  miniSessions: boolean;
   clientHealth: boolean;
   profitLoss: boolean;
   contractor1099: boolean;
@@ -49,6 +50,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
   proposals: true,
   contracts: true,
   deliveries: true,
+  miniSessions: true,
   clientHealth: true,
   profitLoss: true,
   contractor1099: false,
