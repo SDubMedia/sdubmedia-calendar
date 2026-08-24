@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking } from "@/lib/types";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -58,6 +58,10 @@ interface AppContextValue {
   addProduct: (p: Omit<Product, "id" | "orgId" | "createdAt">) => Promise<Product>;
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  addMiniSession: (m: Omit<MiniSession, "id" | "orgId" | "publicToken" | "createdAt" | "updatedAt" | "deletedAt">) => Promise<MiniSession>;
+  updateMiniSession: (id: string, m: Partial<MiniSession>) => Promise<void>;
+  deleteMiniSession: (id: string) => Promise<void>;
+  updateMiniBooking: (id: string, b: Partial<MiniSessionBooking>) => Promise<void>;
   addShootRequest: (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">) => Promise<ShootRequest>;
   updateShootRequest: (id: string, r: Partial<ShootRequest>) => Promise<void>;
   deleteShootRequest: (id: string) => Promise<void>;
@@ -478,6 +482,63 @@ function rowToProduct(r: any): Product {
     active: r.active !== false,
     sortOrder: Number(r.sort_order ?? 0),
     createdAt: r.created_at,
+  };
+}
+
+function rowToMiniSession(r: any): MiniSession {
+  return {
+    id: r.id,
+    orgId: r.org_id || "",
+    title: r.title || "",
+    date: r.date,
+    locationText: r.location_text || "",
+    locationId: r.location_id || null,
+    startTime: r.start_time || "",
+    endTime: r.end_time || "",
+    slotMinutes: Number(r.slot_minutes ?? 15),
+    breakMinutes: Number(r.break_minutes ?? 0),
+    priceCents: Number(r.price_cents ?? 0),
+    paymentMode: (r.payment_mode || "full") as MiniSession["paymentMode"],
+    depositPercent: Number(r.deposit_percent ?? 50),
+    agreementText: r.agreement_text || "",
+    includedPhotos: Number(r.included_photos ?? 0),
+    perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
+    publicToken: r.public_token || "",
+    status: (r.status || "draft") as MiniSession["status"],
+    blockedSlots: Array.isArray(r.blocked_slots) ? r.blocked_slots : [],
+    assignedCrew: Array.isArray(r.assigned_crew) ? r.assigned_crew : [],
+    notes: r.notes || "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at || r.created_at,
+    deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToMiniSessionBooking(r: any): MiniSessionBooking {
+  return {
+    id: r.id,
+    orgId: r.org_id || "",
+    miniSessionId: r.mini_session_id,
+    slotTime: r.slot_time || "",
+    name: r.name || "",
+    email: r.email || "",
+    phone: r.phone || "",
+    source: r.source || "",
+    bookingToken: r.booking_token || "",
+    signature: r.signature || null,
+    stripeCustomerId: r.stripe_customer_id || null,
+    checkoutSessionId: r.checkout_session_id || null,
+    depositPaidCents: Number(r.deposit_paid_cents ?? 0),
+    totalCents: Number(r.total_cents ?? 0),
+    balanceChargedAt: r.balance_charged_at || null,
+    balancePaymentIntentId: r.balance_payment_intent_id || null,
+    balanceError: r.balance_error || "",
+    paymentStatus: (r.payment_status || "pending") as MiniSessionBooking["paymentStatus"],
+    status: (r.status || "pending") as MiniSessionBooking["status"],
+    deliveryId: r.delivery_id || null,
+    reminderSentAt: r.reminder_sent_at || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at || r.created_at,
   };
 }
 
@@ -995,7 +1056,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1039,6 +1100,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Staff have no shoot-request access (mirrors RLS — no staff policy).
         // Availability passes through via ...rawData so they can manage their own.
         shootRequests: [],
+        // Mini sessions pass through: staff shoot them and need the roster
+        // (RLS gives staff SELECT on both tables).
       };
     }
 
@@ -1124,6 +1187,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Agents (client role) keep their own shoot requests; partners see
         // requests for their assigned clients. Scoped to allowed clients.
         shootRequests: rawData.shootRequests.filter(r => allowedClientIds.has(r.clientId)),
+        // Mini sessions are owner/staff only — a client login must never see
+        // another family's booking (participants have no logins at all).
+        miniSessions: [],
+        miniSessionBookings: [],
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],
         crewPayments: [],
@@ -1163,6 +1230,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveryCollections: [],
         timeEntries: [],
         shootRequests: [],
+        miniSessions: [],
+        miniSessionBookings: [],
         // Owner-only data — never visible to non-owner without clients
         contractorInvoices: [],
         crewPayments: [],
@@ -1251,6 +1320,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: serviceVariantsData, error: _e8i },
         { data: orgData, error: _e9 },
         { data: shootRequestsData, error: e7sr },
+        { data: miniSessionsData },
+        { data: miniBookingsData },
         { data: availabilityData, error: e7av },
         { data: shooterPrefsData, error: e7sp },
         { data: staffAgreementsData, error: _eSA },
@@ -1295,6 +1366,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from(isClient ? "service_variants_client" : "service_variants").select("*").is("deleted_at", null).order("position"),
         orgId ? supabase.from("organizations").select("*").eq("id", orgId).single() : Promise.resolve({ data: null, error: null }),
         supabase.from("shoot_requests").select("*").order("created_at", { ascending: false }),
+        supabase.from("mini_sessions").select("*").is("deleted_at", null).order("date", { ascending: false }),
+        supabase.from("mini_session_bookings").select("*").order("slot_time"),
         supabase.from("availability").select("*"),
         supabase.from("shooter_prefs").select("*"),
         supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
@@ -1319,6 +1392,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         crewPayments: (crewPaymentsData || []).map(r => { try { return rowToCrewPayment(r); } catch { return null; } }).filter(Boolean) as CrewPayment[],
         products: (productsData || []).map(r => { try { return rowToProduct(r); } catch { return null; } }).filter(Boolean) as Product[],
         shootRequests: (shootRequestsData || []).map(r => { try { return rowToShootRequest(r); } catch { return null; } }).filter(Boolean) as ShootRequest[],
+        miniSessions: (miniSessionsData || []).map(r => { try { return rowToMiniSession(r); } catch { return null; } }).filter(Boolean) as MiniSession[],
+        miniSessionBookings: (miniBookingsData || []).map(r => { try { return rowToMiniSessionBooking(r); } catch { return null; } }).filter(Boolean) as MiniSessionBooking[],
         availability: (availabilityData || []).map(r => { try { return rowToAvailability(r); } catch { return null; } }).filter(Boolean) as Availability[],
         shooterPrefs: (shooterPrefsData || []).map(r => { try { return rowToShooterPref(r); } catch { return null; } }).filter(Boolean) as ShooterPref[],
         crewLocationDistances: (distances || []).map(r => { try { return rowToCrewLocationDistance(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1413,6 +1488,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       crew_payments: { key: "crewPayments", convert: rowToCrewPayment },
       products: { key: "products", convert: rowToProduct },
       shoot_requests: { key: "shootRequests", convert: rowToShootRequest },
+      mini_sessions: { key: "miniSessions", convert: rowToMiniSession, softDelete: true },
+      mini_session_bookings: { key: "miniSessionBookings", convert: rowToMiniSessionBooking },
       availability: { key: "availability", convert: rowToAvailability },
       crew_location_distances: { key: "crewLocationDistances", convert: rowToCrewLocationDistance },
       manual_trips: { key: "manualTrips", convert: rowToManualTrip },
@@ -3365,6 +3442,88 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ---- Shoot Requests (agent-submitted, owner-approved) ----
+  const addMiniSession = useCallback(async (m: Omit<MiniSession, "id" | "orgId" | "publicToken" | "createdAt" | "updatedAt" | "deletedAt">): Promise<MiniSession> => {
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("mini_sessions").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      // The public token IS the event's front door (QR + link) — long enough
+      // that it can't be guessed off a flyer.
+      public_token: nanoid(16),
+      title: m.title,
+      date: m.date,
+      location_text: m.locationText,
+      location_id: m.locationId || null,
+      start_time: m.startTime,
+      end_time: m.endTime,
+      slot_minutes: m.slotMinutes,
+      break_minutes: m.breakMinutes,
+      price_cents: m.priceCents,
+      payment_mode: m.paymentMode,
+      deposit_percent: m.depositPercent,
+      agreement_text: m.agreementText,
+      included_photos: m.includedPhotos,
+      per_extra_photo_cents: m.perExtraPhotoCents,
+      status: m.status,
+      blocked_slots: m.blockedSlots ?? [],
+      assigned_crew: m.assignedCrew ?? [],
+      notes: m.notes ?? "",
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const created = rowToMiniSession(row);
+    setRawData(d => ({ ...d, miniSessions: [created, ...d.miniSessions] }));
+    return created;
+  }, [orgId]);
+
+  const updateMiniSession = useCallback(async (id: string, m: Partial<MiniSession>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (m.title !== undefined) patch.title = m.title;
+    if (m.date !== undefined) patch.date = m.date;
+    if (m.locationText !== undefined) patch.location_text = m.locationText;
+    if (m.locationId !== undefined) patch.location_id = m.locationId || null;
+    if (m.startTime !== undefined) patch.start_time = m.startTime;
+    if (m.endTime !== undefined) patch.end_time = m.endTime;
+    if (m.slotMinutes !== undefined) patch.slot_minutes = m.slotMinutes;
+    if (m.breakMinutes !== undefined) patch.break_minutes = m.breakMinutes;
+    if (m.priceCents !== undefined) patch.price_cents = m.priceCents;
+    if (m.paymentMode !== undefined) patch.payment_mode = m.paymentMode;
+    if (m.depositPercent !== undefined) patch.deposit_percent = m.depositPercent;
+    if (m.agreementText !== undefined) patch.agreement_text = m.agreementText;
+    if (m.includedPhotos !== undefined) patch.included_photos = m.includedPhotos;
+    if (m.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = m.perExtraPhotoCents;
+    if (m.status !== undefined) patch.status = m.status;
+    if (m.blockedSlots !== undefined) patch.blocked_slots = m.blockedSlots;
+    if (m.assignedCrew !== undefined) patch.assigned_crew = m.assignedCrew;
+    if (m.notes !== undefined) patch.notes = m.notes;
+    const { data: row, error } = await supabase.from("mini_sessions").update(patch).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    const updated = rowToMiniSession(row);
+    setRawData(d => ({ ...d, miniSessions: d.miniSessions.map(x => x.id === id ? updated : x) }));
+  }, []);
+
+  const deleteMiniSession = useCallback(async (id: string) => {
+    // Soft delete: bookings (and the money attached to them) stay auditable.
+    const { error } = await supabase.from("mini_sessions").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(d => ({ ...d, miniSessions: d.miniSessions.filter(x => x.id !== id) }));
+  }, []);
+
+  const updateMiniBooking = useCallback(async (id: string, b: Partial<MiniSessionBooking>) => {
+    const patch: any = { updated_at: new Date().toISOString() };
+    if (b.status !== undefined) patch.status = b.status;
+    if (b.paymentStatus !== undefined) patch.payment_status = b.paymentStatus;
+    if (b.slotTime !== undefined) patch.slot_time = b.slotTime;
+    if (b.name !== undefined) patch.name = b.name;
+    if (b.email !== undefined) patch.email = b.email;
+    if (b.phone !== undefined) patch.phone = b.phone;
+    if (b.deliveryId !== undefined) patch.delivery_id = b.deliveryId;
+    if (b.balanceError !== undefined) patch.balance_error = b.balanceError;
+    const { data: row, error } = await supabase.from("mini_session_bookings").update(patch).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    const updated = rowToMiniSessionBooking(row);
+    setRawData(d => ({ ...d, miniSessionBookings: d.miniSessionBookings.map(x => x.id === id ? updated : x) }));
+  }, []);
+
   const addShootRequest = useCallback(async (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">): Promise<ShootRequest> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("shoot_requests").insert({
@@ -3601,6 +3760,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addContractorInvoice, updateContractorInvoice, deleteContractorInvoice,
       addCrewPayment, updateCrewPayment, deleteCrewPayment,
       addProduct, updateProduct, deleteProduct,
+      addMiniSession, updateMiniSession, deleteMiniSession, updateMiniBooking,
       addShootRequest, updateShootRequest, deleteShootRequest,
       addAvailability, updateAvailability, deleteAvailability,
       upsertShooterPref,

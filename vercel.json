@@ -3,26 +3,78 @@
   "outputDirectory": "dist/public",
   "framework": null,
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/deliver/:token", "destination": "/api/gallery-preview?token=:token" },
-    { "source": "/g/:slug", "destination": "/api/gallery-preview?slug=:slug" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/deliver/:token",
+      "destination": "/api/gallery-preview?token=:token"
+    },
+    {
+      "source": "/g/:slug",
+      "destination": "/api/gallery-preview?slug=:slug"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",
-      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
     }
   ],
   "crons": [
-    { "path": "/api/daily-summary", "schedule": "0 11 * * *" },
-    { "path": "/api/cleanup-orphans", "schedule": "0 4 * * *" },
-    { "path": "/api/cron-gallery-expiry-reminders", "schedule": "0 13 * * *" },
-    { "path": "/api/cron-contract-reminders", "schedule": "0 14 * * *" },
-    { "path": "/api/cron-payment-reminders", "schedule": "30 14 * * *" },
-    { "path": "/api/cron-lead-followup", "schedule": "0 15 * * *" },
-    { "path": "/api/cron-monthly-recap", "schedule": "0 14 1 * *" },
-    { "path": "/api/cron-contract-expiry", "schedule": "0 5 * * *" },
-    { "path": "/api/cron-refresh-external-calendars", "schedule": "*/30 * * * *" }
+    {
+      "path": "/api/daily-summary",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cleanup-orphans",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron-gallery-expiry-reminders",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron-contract-reminders",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron-payment-reminders",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron-lead-followup",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron-monthly-recap",
+      "schedule": "0 14 1 * *"
+    },
+    {
+      "path": "/api/cron-contract-expiry",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron-refresh-external-calendars",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron-event-reminders",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron-mini-sessions",
+      "schedule": "30 13 * * *"
+    }
   ]
 }

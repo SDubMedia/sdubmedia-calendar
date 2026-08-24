@@ -447,6 +447,8 @@ export const seedData: AppData = {
   crewPayments: [],
   products: [],
   shootRequests: [],
+  miniSessions: [],
+  miniSessionBookings: [],
   availability: [],
   shooterPrefs: [],
   crewLocationDistances: [],

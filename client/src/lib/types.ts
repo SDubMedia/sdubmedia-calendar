@@ -877,6 +877,67 @@ export interface ShootRequest {
   createdAt: string;
 }
 
+// ---- Mini sessions (bookable slot events) ----
+
+export type MiniSessionStatus = "draft" | "published" | "closed" | "done";
+export type MiniPaymentMode = "full" | "deposit";
+
+export interface MiniSession {
+  id: string;
+  orgId: string;
+  title: string;
+  date: string;              // YYYY-MM-DD
+  locationText: string;
+  locationId: string | null;
+  startTime: string;         // HH:MM window start
+  endTime: string;           // HH:MM window end
+  slotMinutes: number;
+  breakMinutes: number;
+  priceCents: number;
+  paymentMode: MiniPaymentMode;
+  depositPercent: number;
+  agreementText: string;
+  includedPhotos: number;    // becomes the gallery's selection_limit
+  perExtraPhotoCents: number;
+  publicToken: string;       // the event QR / sign-up link
+  status: MiniSessionStatus;
+  blockedSlots: string[];    // times pulled from sale ("14:30")
+  assignedCrew: string[];    // crewMemberIds shooting it
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export type MiniBookingStatus = "pending" | "booked" | "cancelled" | "no_show" | "waitlist";
+export type MiniPaymentStatus = "pending" | "deposit_paid" | "paid" | "balance_failed";
+
+export interface MiniSessionBooking {
+  id: string;
+  orgId: string;
+  miniSessionId: string;
+  slotTime: string;          // "" for waitlist rows
+  name: string;
+  email: string;
+  phone: string;
+  source: string;            // ?src= tag from the scanned link
+  bookingToken: string;      // the party's personal QR payload
+  signature: { name?: string; ip?: string; timestamp?: string; agreementHash?: string } | null;
+  stripeCustomerId: string | null;
+  checkoutSessionId: string | null;
+  depositPaidCents: number;
+  totalCents: number;
+  balanceChargedAt: string | null;
+  balancePaymentIntentId: string | null;
+  balanceError: string;
+  paymentStatus: MiniPaymentStatus;
+  status: MiniBookingStatus;
+  deliveryId: string | null; // their gallery, once photos are sorted
+  reminderSentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- Availability (per shooter open times) ----
 export interface Availability {
   id: string;
@@ -1847,6 +1908,8 @@ export interface AppData {
   crewPayments: CrewPayment[];
   products: Product[];
   shootRequests: ShootRequest[];
+  miniSessions: MiniSession[];
+  miniSessionBookings: MiniSessionBooking[];
   availability: Availability[];
   shooterPrefs: ShooterPref[];
   crewLocationDistances: CrewLocationDistance[];
