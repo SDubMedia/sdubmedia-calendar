@@ -311,7 +311,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-foreground sm:max-w-2xl max-h-[92vh] overflow-y-auto grid-cols-[minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{event.title}</DialogTitle>
         </DialogHeader>

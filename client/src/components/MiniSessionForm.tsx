@@ -137,7 +137,7 @@ export default function MiniSessionForm({ open, onClose, event }: {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-foreground sm:max-w-lg max-h-[90vh] overflow-y-auto grid-cols-[minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             {editing ? "Edit Mini Session" : "New Mini Session"}
