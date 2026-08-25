@@ -467,7 +467,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
               <input ref={fileInput} type="file" accept="image/*,.cr2,.cr3,.nef,.arw,.dng,.raf,.orf,.rw2" multiple className="hidden"
                 onChange={e => handleFiles(e.target.files)} />
               <Images className="w-6 h-6 mx-auto mb-2 text-muted-foreground opacity-60" />
-              <p className="text-sm text-foreground font-medium mb-1">Drop the whole card in</p>
+              <p className="text-sm text-foreground font-medium mb-1">Add every photo from the shoot</p>
               <p className="text-xs text-muted-foreground mb-3">
                 Slate reads each QR frame and splits the photos into per-family galleries. You review before anything is built.
               </p>
