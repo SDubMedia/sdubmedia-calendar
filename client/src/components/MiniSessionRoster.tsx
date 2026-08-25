@@ -10,9 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Copy, Download, QrCode, Upload, Ban, UserX, ExternalLink, Check, AlertTriangle, Images, Pencil, UserPlus, Send } from "lucide-react";
+import { Copy, Download, QrCode, Upload, Ban, UserX, ExternalLink, Check, AlertTriangle, Images, Pencil, UserPlus, Send, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { cn, formatPhoneInput } from "@/lib/utils";
+import { cn, formatPhoneInput, mapsUrlFor } from "@/lib/utils";
 import { generateSlots, formatSlot } from "@/lib/miniSlots";
 import { captureTimeOf } from "@/lib/captureTime";
 import { scanFileForToken } from "@/lib/qrScan";
@@ -89,6 +89,17 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const owedCount = bookings.filter(b =>
     b.status === "booked" && (b.paymentStatus === "balance_failed" || b.paymentStatus === "pending"
       || (b.paymentStatus === "deposit_paid" && b.totalCents > b.depositPaidCents))).length;
+
+  // Header address: venue on its own line, then the street address, which opens
+  // Maps. Falls back to locationText for events created before the structured
+  // fields existed.
+  const venueName = event.locationName?.trim() || "";
+  const cityStateZip = [
+    [event.city, event.state].filter(Boolean).join(", "),
+    event.zip,
+  ].filter(Boolean).join(" ").trim();
+  const addressLine = [event.address?.trim(), cityStateZip].filter(Boolean).join(", ");
+  const mapsUrl = mapsUrlFor([venueName, addressLine].filter(Boolean).join(", ") || event.locationText || "");
 
   const copy = (text: string, what: string) => {
     navigator.clipboard?.writeText(text).then(() => toast.success(`${what} copied`)).catch(() => toast.error("Couldn't copy"));
@@ -319,20 +330,32 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
         <div className="space-y-4 py-1">
           {/* Share + status */}
           <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-xs text-muted-foreground">
-                {new Date(event.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-                {event.locationText ? ` · ${event.locationText}` : ""}
-              </p>
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div className="min-w-0 text-xs text-muted-foreground space-y-0.5 mb-1">
+                <p className="text-foreground font-medium">
+                  {new Date(event.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                </p>
+                {venueName && <p className="break-words">{venueName}</p>}
+                {addressLine ? (
+                  <a href={mapsUrl} target="_blank" rel="noreferrer"
+                    className="text-primary hover:underline break-words inline-flex items-start gap-1 py-2 -my-1 min-h-11">
+                    <MapPin className="w-3 h-3 mt-0.5 shrink-0" /> {addressLine}
+                  </a>
+                ) : (
+                  // Events created before the structured address fields only
+                  // have the composed one-liner. Still worth showing.
+                  !venueName && event.locationText && <p className="break-words">{event.locationText}</p>
+                )}
+              </div>
               <div className="flex gap-1.5">
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(true)}><Pencil className="w-3.5 h-3.5" /> Edit</Button>
-                {event.status !== "published" && <Button size="sm" onClick={() => setStatus("published")}>Publish</Button>}
-                {event.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus("closed")}>Close bookings</Button>}
+                <Button variant="outline" className="gap-1.5" onClick={() => setEditing(true)}><Pencil className="w-3.5 h-3.5" /> Edit</Button>
+                {event.status !== "published" && <Button onClick={() => setStatus("published")}>Publish</Button>}
+                {event.status === "published" && <Button variant="outline" onClick={() => setStatus("closed")}>Close bookings</Button>}
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowEventQr(true)}><QrCode className="w-3.5 h-3.5" /> Event QR</Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => copy(signupUrl, "Sign-up link")}><Copy className="w-3.5 h-3.5" /> Copy link</Button>
+              <Button variant="outline" className="gap-1.5" onClick={() => setShowEventQr(true)}><QrCode className="w-3.5 h-3.5" /> Event QR</Button>
+              <Button variant="outline" className="gap-1.5" onClick={() => copy(signupUrl, "Sign-up link")}><Copy className="w-3.5 h-3.5" /> Copy link</Button>
               <a href={signupUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
                 <ExternalLink className="w-3 h-3" /> Preview
               </a>
@@ -467,9 +490,9 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
               <input ref={fileInput} type="file" accept="image/*,.cr2,.cr3,.nef,.arw,.dng,.raf,.orf,.rw2" multiple className="hidden"
                 onChange={e => handleFiles(e.target.files)} />
               <Images className="w-6 h-6 mx-auto mb-2 text-muted-foreground opacity-60" />
-              <p className="text-sm text-foreground font-medium mb-1">Add every photo from the shoot</p>
+              <p className="text-sm text-foreground font-medium mb-1">Upload Final Photos with QR Codes</p>
               <p className="text-xs text-muted-foreground mb-3">
-                Slate reads each QR frame and splits the photos into per-family galleries. You review before anything is built.
+                Slate reads each QR frame and splits everything into one gallery per family. You check the groupings before gallery deliveries.
               </p>
               <Button size="sm" onClick={() => fileInput.current?.click()} disabled={scanning} className="gap-1.5">
                 <Upload className="w-3.5 h-3.5" /> {scanning ? (scanMsg || "Reading…") : "Choose photos"}
