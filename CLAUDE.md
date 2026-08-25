@@ -162,6 +162,16 @@ into a new dated file and run it). Keep sensitive columns (pay/cost) scrubbed in
 - Headings use `fontFamily: "'Space Grotesk', sans-serif"`
 - Dark theme is the default — all components must look correct in dark mode first
 - Mobile responsive — every page must work at 375px width
+- **A card in a scrolling flex column needs `shrink-0`.** The dashboard body is
+  `flex-1 overflow-auto … flex flex-col`, so every child is shrinkable by
+  default. Once the page is taller than the viewport, flexbox squashes them —
+  and a card that also has `overflow-hidden` clips its own contents to nothing.
+  The result is an element that is in the DOM, passes every condition, throws no
+  error, and is simply **invisible**. Cost hours on the Upcoming Mini Sessions
+  widget (Aug 2026): the data was right, the flags were right, the CSS order was
+  right, and a marker div with the identical condition rendered fine — only the
+  card with `overflow-hidden` vanished. If you add a dashboard card, add
+  `shrink-0`.
 - **No content bleeds past a card. Section/form cards (`bg-card … rounded-lg`) use `overflow-hidden` so a too-wide child clips at the rounded border instead of spilling into the next section.** And fix the cause, not just the symptom: width-constrain wide children — never use `<input type="time">`/`type="date"` (they ignore width on iOS WebKit and overflow; use a styled `<select>` of time options or the `Calendar` component instead), give flex/grid children `min-w-0`, and wrap intrinsically-wide children (calendars, tables) in `overflow-x-auto`. We've been back in AvailabilityPage 4× for this.
 - **When portalling to `document.body` from inside an open Radix Dialog/AlertDialog/Sheet, you MUST add `pointer-events-auto` on the portalled overlay.** Radix's modal isolation sets `pointer-events: none` on `<body>`, so any sibling portal inherits it and becomes inert (X buttons, backdrop clicks, and Escape are all swallowed at the DOM level — symptoms look like "the button does nothing"). The focus trap is only half the story; the other half is the body-level pointer-events lock.
 

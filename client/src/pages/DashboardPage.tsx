@@ -403,7 +403,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-3 sm:p-6 flex flex-col gap-5">
-        {/* Today's mini sessions — only on the day, so it can't become noise. */}
+        {/* Today's mini sessions — only on the day, so it can't become noise.
+            shrink-0: this is a flex column that scrolls, so children are
+            shrinkable by default and get squashed once the page is tall. */}
         {todaysMinis.map(ev => {
           const booked = data.miniSessionBookings.filter(b => b.miniSessionId === ev.id && b.status === "booked");
           const total = generateSlots(ev).length;
@@ -414,7 +416,7 @@ export default function DashboardPage() {
             <button
               key={ev.id}
               onClick={() => setRosterEventId(ev.id)}
-              className="text-left rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 p-4 hover:bg-fuchsia-500/15 transition-colors"
+              className="text-left rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 p-4 hover:bg-fuchsia-500/15 transition-colors shrink-0"
             >
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
@@ -440,9 +442,14 @@ export default function DashboardPage() {
         })}
 
         {/* Upcoming mini sessions. Renders nothing when there are none, so it
-            never takes up space on a week without any. */}
+            never takes up space on a week without any.
+            shrink-0 is load-bearing: the parent is a scrolling flex column, so
+            a child is shrinkable by default. Combined with overflow-hidden on
+            this card, being squashed clipped its contents to nothing and the
+            widget rendered as an invisible sliver — present in the DOM, with
+            every condition true, and no error anywhere. */}
         {isFeatureVisible("miniSessions") && isWidgetEnabled("miniSessions") && upcomingMinis.length > 0 && (
-          <div className="bg-card border border-border rounded-lg overflow-hidden" style={{ order: orderOf("miniSessions") }}>
+          <div className="bg-card border border-border rounded-lg overflow-hidden shrink-0" style={{ order: orderOf("miniSessions") }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 Upcoming Mini Sessions
