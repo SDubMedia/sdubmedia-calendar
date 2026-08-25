@@ -255,6 +255,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't drop an RLS policy without grepping for policies that subquery that table.** A policy's `USING` subquery runs under RLS too, so removing a read policy silently empties every policy that leans on it. Dropping `client_read_projects` blanked client galleries. Use a `SECURITY DEFINER` lookup instead.
 - **Don't push to a whole org.** `sendPushToOrg` is gone; `device_tokens` holds staff, client and family devices too, so an org-wide push puts another client's payment amounts on a client's phone. Use `sendPushToOwner` / `sendPushToRoles` / `sendPushToUser` and name the audience.
 - **Don't add a column that only the capture API writes without a UI that reads it.** `pipeline_leads.description` held every website visitor's message for months with nothing in the app rendering it, so inquiries were captured but unreadable. If an endpoint persists user-authored text, something must display it.
+- **Don't build anything on Partner & Revenue Splits.** Retired permanently (Geoff, 2026-08-24). It is kept only so this year's tax figures still compute. Don't extend it, don't reference it in new features, and don't delete it either — the numbers are records. See the retirement section above.
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
@@ -315,6 +316,31 @@ Format: add the rule where it belongs (API section, Security section, etc.) and 
 - **Never trust silent catch blocks.** If a catch block swallows errors, fix it — log or surface the error.
 - **Test the actual endpoint** (`curl`) before assuming the problem is in the frontend.
 - **When the user reports a symptom, find the root cause.** Don't fix the surface-level error message — trace it back to what's actually broken.
+
+## Partner & Revenue Splits is RETIRED — frozen, never build on it
+
+Geoff's decision, stated 2026-08-24 and permanent: **partner splits are not a
+feature any more.** They exist solely so this year's numbers can be filed. Do not
+extend them, reference them in new work, surface them in a new screen, port them
+to another client, or "modernise" them. If a task seems to need partner splits,
+the answer is that the task does not need partner splits.
+
+**Do not remove them either.** The historical figures have to keep reading exactly
+as they do today, because they are tax records. Deleting the column, the flag, or
+the calculation would restate settled history.
+
+Current state, which is already correct and should stay:
+- `partnerSplits` is `false` in `DEFAULT_FEATURES`, so no new org gets it.
+- The Settings toggle renders only when an org already has it `true`
+  (`SettingsPage.tsx`, retired 2026-08-03), so it can be reviewed or switched off
+  but never switched on. `org_sdubmedia` is the only org with it enabled.
+- `ProfitLossPage`'s partner-split basis deliberately uses gross labour
+  (`getProjectCrewCost(p)` with no owner exclusion). That is NOT the owner-draw
+  bug fixed elsewhere — the Jan-Apr 2026 partner figures were weighted this way
+  and changing the basis would silently restate them. Leave it.
+
+Treat any partner-split code you meet as read-only. Fix a crash in it if one
+appears; add nothing.
 
 ## Stable Slate Conventions
 
