@@ -540,6 +540,7 @@ function rowToMiniSessionBooking(r: any): MiniSessionBooking {
     balanceError: r.balance_error || "",
     paymentStatus: (r.payment_status || "pending") as MiniSessionBooking["paymentStatus"],
     status: (r.status || "pending") as MiniSessionBooking["status"],
+    shotAt: r.shot_at || null,
     deliveryId: r.delivery_id || null,
     reminderSentAt: r.reminder_sent_at || null,
     createdAt: r.created_at,
@@ -3531,6 +3532,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (b.name !== undefined) patch.name = b.name;
     if (b.email !== undefined) patch.email = b.email;
     if (b.phone !== undefined) patch.phone = b.phone;
+    if (b.shotAt !== undefined) patch.shot_at = b.shotAt;
     if (b.deliveryId !== undefined) patch.delivery_id = b.deliveryId;
     if (b.balanceError !== undefined) patch.balance_error = b.balanceError;
     const { data: row, error } = await supabase.from("mini_session_bookings").update(patch).eq("id", id).select().single();

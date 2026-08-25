@@ -946,6 +946,10 @@ export interface MiniSessionBooking {
   balanceError: string;
   paymentStatus: MiniPaymentStatus;
   status: MiniBookingStatus;
+  // Stamped when the photographer ticks them off on shoot day. NULL = not
+  // yet photographed. Deliberately separate from status, which stays
+  // "booked" — a no-show and an un-shot booking are different things.
+  shotAt: string | null;
   deliveryId: string | null; // their gallery, once photos are sorted
   reminderSentAt: string | null;
   createdAt: string;

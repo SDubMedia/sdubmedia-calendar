@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Copy, Download, QrCode, Upload, Ban, UserX, ExternalLink, Check, AlertTriangle, Images, Pencil, UserPlus, Send, MapPin } from "lucide-react";
+import { Copy, Download, QrCode, Upload, Ban, UserX, ExternalLink, Check, AlertTriangle, Images, Pencil, UserPlus, Send, MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatPhoneInput, mapsUrlFor } from "@/lib/utils";
 import { generateSlots, formatSlot } from "@/lib/miniSlots";
@@ -83,6 +83,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   // Canonical origin, never window.location — this URL gets printed on flyers.
   const signupUrl = publicUrl(`/minis/${event.publicToken}`);
   const bookedCount = bookings.filter(b => b.status === "booked").length;
+  const shotCount = bookings.filter(b => b.status === "booked" && b.shotAt).length;
   // Anyone booked who hasn't fully paid — a failed card OR an owner-added
   // booking whose pay link is still outstanding. The latter showed nothing at
   // all, which defeated the point of the pay-link flow.
@@ -273,7 +274,11 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
           await updateMiniBooking(booking.id, { deliveryId });
         }
 
-        let position = 0;
+        // Start after whatever is already in this gallery. Uploading a
+        // family at a time is a perfectly reasonable way to work — and a
+        // second batch for the SAME family would otherwise restart at 0 and
+        // collide with the photos already there, scrambling the order.
+        let position = data.deliveryFiles.filter(f => f.deliveryId === deliveryId).length;
         for (const photoId of g.photoIds) {
           const file = pendingFiles[Number(photoId)];
           if (!file) continue;
@@ -364,7 +369,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
               <p className="text-[11px] text-amber-400">Still a draft — publish before you hand the QR out, or the link shows nothing.</p>
             )}
             <p className="text-xs text-muted-foreground">
-              {bookedCount} of {slots.length} booked
+              {bookedCount} of {slots.length} booked{shotCount > 0 ? ` · ${shotCount} shot` : ""}
               {owedCount > 0 && <span className="text-red-400"> · {owedCount} unpaid</span>}
             </p>
           </div>
@@ -398,12 +403,21 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 const blocked = event.blockedSlots.includes(time);
                 return (
                   <div key={time} className={cn("flex items-center gap-2 rounded-md border p-2.5",
-                    b ? "border-border bg-secondary/30" : blocked ? "border-border bg-secondary/10 opacity-60" : "border-dashed border-border")}>
-                    <span className="text-sm font-mono text-muted-foreground w-20 shrink-0">{formatSlot(time)}</span>
+                    b?.status === "no_show" ? "border-red-500/50 bg-red-500/10"
+                      : b?.shotAt ? "border-emerald-500/50 bg-emerald-500/10"
+                      : b ? "border-border bg-secondary/30"
+                      : blocked ? "border-border bg-secondary/10 opacity-60"
+                      : "border-dashed border-border")}>
+                    <span className={cn("text-sm font-mono w-16 shrink-0",
+                      b?.status === "no_show" ? "text-red-400"
+                        : b?.shotAt ? "text-emerald-400" : "text-muted-foreground")}>
+                      {formatSlot(time)}
+                    </span>
                     <div className="min-w-0 flex-1">
                       {b ? (
                         <>
-                          <p className={cn("text-sm truncate", b.status === "no_show" ? "text-muted-foreground line-through" : "text-foreground")}>{b.name}</p>
+                          <p className={cn("text-sm leading-tight", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</p>
+                          {b.status === "no_show" && <p className="text-[11px] font-semibold text-red-400">No-show</p>}
                           <p className="text-[11px] text-muted-foreground truncate">
                             {b.email}
                             {b.paymentStatus === "paid" ? " · paid"
@@ -419,10 +433,19 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                     </div>
                     {b ? (
                       <div className="flex gap-1 shrink-0">
-                        <button onClick={() => setQrFor(b)} title="Show their code" className="p-1.5 rounded text-primary hover:bg-primary/10"><QrCode className="w-4 h-4" /></button>
+                        <button
+                          onClick={() => updateMiniBooking(b.id, { shotAt: b.shotAt ? null : new Date().toISOString() })}
+                          title={b.shotAt ? "Not shot yet" : "Mark as shot"}
+                          aria-label={b.shotAt ? `Undo shot for ${b.name}` : `Mark ${b.name} as shot`}
+                          className={cn("p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center",
+                            b.shotAt ? "text-emerald-400 bg-emerald-500/15" : "text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10")}>
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setQrFor(b)} title="Show their code" aria-label={`Show code for ${b.name}`} className="p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center text-primary hover:bg-primary/10"><QrCode className="w-4 h-4" /></button>
                         <button onClick={() => updateMiniBooking(b.id, { status: b.status === "no_show" ? "booked" : "no_show" })}
                           title={b.status === "no_show" ? "Undo no-show" : "Mark no-show"}
-                          className="p-1.5 rounded text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10"><UserX className="w-4 h-4" /></button>
+                          className={cn("p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center",
+                            b.status === "no_show" ? "text-red-400 bg-red-500/15" : "text-muted-foreground hover:text-red-400 hover:bg-red-500/10")}><UserX className="w-4 h-4" /></button>
                       </div>
                     ) : (
                       <div className="flex gap-1 shrink-0">
