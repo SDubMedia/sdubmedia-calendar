@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense, MiniSession, MiniSessionBooking } from "./types";
 import { projectOccursOn, dayCrewFor, projectFirstDate } from "./projectDays";
 
 /**
@@ -786,11 +786,58 @@ export function calcHoursWorked(
 
 // ---- Monthly Earnings Breakdown (shared by P&L and Reports) ----
 
+/**
+ * Money actually collected per mini-session event, for a given month.
+ *
+ * `depositPaidCents` is the running total taken, not just the deposit — the
+ * day-before balance charge adds to it — so it is what hit the bank. Cancelled
+ * bookings are excluded; a no-show is NOT, because they were charged and the
+ * slot was held.
+ *
+ * One row per EVENT rather than per family: seven families is one working day
+ * and one payout. The per-person detail lives on the roster.
+ */
+export interface MiniEventRevenue {
+  id: string;
+  title: string;
+  date: string;
+  collected: number;
+  bookingCount: number;
+  /** Still owed across the event — a declined card or an unpaid manual booking. */
+  outstanding: number;
+}
+
+export function miniRevenueForMonth(
+  sessions: MiniSession[],
+  bookings: MiniSessionBooking[],
+  year: number,
+  month: number,
+): MiniEventRevenue[] {
+  const monthStr = `${year}-${String(month).padStart(2, "0")}`;
+  return sessions
+    .filter(m => m.date.startsWith(monthStr))
+    .map(m => {
+      const mine = bookings.filter(b => b.miniSessionId === m.id && b.status !== "cancelled" && b.status !== "pending");
+      const collected = mine.reduce((sum, b) => sum + Number(b.depositPaidCents || 0), 0);
+      const outstanding = mine.reduce(
+        (sum, b) => sum + Math.max(0, Number(b.totalCents || 0) - Number(b.depositPaidCents || 0)), 0);
+      return {
+        id: m.id, title: m.title, date: m.date,
+        collected: collected / 100,
+        outstanding: outstanding / 100,
+        bookingCount: mine.length,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export interface MonthlyEarnings {
   year: number;
   month: number;
   projectCount: number;
   revenue: number;
+  /** Part of `revenue` above — broken out so the P&L can show where it came from. */
+  miniRevenue: number;
   crewCost: number;
   ownerCrewPay: number;
   travelCost: number;
@@ -817,11 +864,17 @@ export function getMonthlyEarningsBreakdown(
   year: number,
   month: number,
   businessExpenses: BusinessExpense[] = [],
+  miniSessions: MiniSession[] = [],
+  miniBookings: MiniSessionBooking[] = [],
 ): MonthlyEarnings {
   const monthStr = `${year}-${String(month).padStart(2, "0")}`;
   const monthProjects = projects.filter(p => p.date.startsWith(monthStr));
+  // Mini sessions are not projects and have no invoice, so their money never
+  // reached this function — a full Saturday of bookings read as zero revenue.
+  const miniRevenue = miniRevenueForMonth(miniSessions, miniBookings, year, month)
+    .reduce((sum, e) => sum + e.collected, 0);
 
-  let revenue = 0;
+  let revenue = miniRevenue;
   let totalCrewCost = 0;
   let ownerCrewPay = 0;
   let travelCost = 0;
@@ -1001,6 +1054,7 @@ export function getMonthlyEarningsBreakdown(
   return {
     year, month,
     projectCount: monthProjects.length,
+    miniRevenue,
     revenue,
     crewCost: totalCrewCost,
     ownerCrewPay,

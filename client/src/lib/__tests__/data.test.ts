@@ -15,6 +15,7 @@ import {
   getProjectPayerId,
   getProjectProductCost,
   getProjectServiceCost,
+  miniRevenueForMonth,
   getProjectProfit,
   getProjectServicePayByRole,
   getCrewMemberServicePay,
@@ -22,7 +23,7 @@ import {
   activePartnerSplit,
   getMonthlyEarningsBreakdown,
 } from "../data";
-import type { Client, Project, ProjectCrewEntry, PartnerSplit, BusinessExpense } from "../types";
+import type { Client, Project, ProjectCrewEntry, PartnerSplit, BusinessExpense, MiniSession, MiniSessionBooking } from "../types";
 
 // ---- Factory helpers ----
 
@@ -886,5 +887,66 @@ describe("getMonthlyEarningsBreakdown owner handling", () => {
     const m = getMonthlyEarningsBreakdown([proj() as never], [client() as never], [], "someone_else", 2026, 6);
     expect(m.crewCost).toBe(250);
     expect(m.ownerCrewPay).toBe(0);
+  });
+});
+
+// ---- Mini session revenue (added 2026-08-25) ----
+// Mini money never reached the P&L: no invoice is created, and the monthly
+// breakdown only walked projects. A full day of bookings read as zero.
+describe("miniRevenueForMonth", () => {
+  const ev = (over: Partial<MiniSession> = {}) => ({
+    id: "m1", title: "Fall Family Minis", date: "2026-09-03", ...over,
+  } as MiniSession);
+  const bk = (over: Partial<MiniSessionBooking> = {}) => ({
+    id: "b", miniSessionId: "m1", status: "booked", paymentStatus: "paid",
+    depositPaidCents: 17500, totalCents: 17500, ...over,
+  } as MiniSessionBooking);
+
+  it("sums what was actually collected, in dollars", () => {
+    const rows = miniRevenueForMonth([ev()], [bk({ id: "a" }), bk({ id: "b" })], 2026, 9);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].collected).toBe(350);
+    expect(rows[0].bookingCount).toBe(2);
+  });
+
+  it("counts a part-paid deposit as only what has landed, and tracks the rest", () => {
+    const rows = miniRevenueForMonth([ev()], [bk({ depositPaidCents: 8750 })], 2026, 9);
+    expect(rows[0].collected).toBe(87.5);
+    expect(rows[0].outstanding).toBe(87.5);
+  });
+
+  it("excludes cancelled and still-pending checkouts", () => {
+    const rows = miniRevenueForMonth([ev()],
+      [bk({ id: "a" }), bk({ id: "b", status: "cancelled" }), bk({ id: "c", status: "pending" })], 2026, 9);
+    expect(rows[0].collected).toBe(175);
+    expect(rows[0].bookingCount).toBe(1);
+  });
+
+  it("still counts a no-show — they were charged and the slot was held", () => {
+    const rows = miniRevenueForMonth([ev()], [bk({ status: "no_show" })], 2026, 9);
+    expect(rows[0].collected).toBe(175);
+  });
+
+  it("ignores events in other months", () => {
+    expect(miniRevenueForMonth([ev({ date: "2026-10-01" })], [bk()], 2026, 9)).toHaveLength(0);
+  });
+});
+
+describe("getMonthlyEarningsBreakdown — mini sessions", () => {
+  it("adds mini money to revenue and breaks it out", () => {
+    const m = getMonthlyEarningsBreakdown(
+      [], [], [], "owner", 2026, 9, [],
+      [{ id: "m1", title: "Minis", date: "2026-09-03" } as MiniSession],
+      [{ id: "b1", miniSessionId: "m1", status: "booked", paymentStatus: "paid",
+         depositPaidCents: 17500, totalCents: 17500 } as MiniSessionBooking],
+    );
+    expect(m.miniRevenue).toBe(175);
+    expect(m.revenue).toBe(175);
+  });
+
+  it("is zero when there are none, so existing months are untouched", () => {
+    const m = getMonthlyEarningsBreakdown([], [], [], "owner", 2026, 9);
+    expect(m.miniRevenue).toBe(0);
+    expect(m.revenue).toBe(0);
   });
 });

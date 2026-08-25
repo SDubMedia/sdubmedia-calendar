@@ -5,10 +5,11 @@
 
 import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
-import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown, activePartnerSplit } from "@/lib/data";
+import { getProjectInvoiceAmount, getProjectCrewCost, getMonthlyEarningsBreakdown, activePartnerSplit, miniRevenueForMonth } from "@/lib/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import MiniSessionRoster from "@/components/MiniSessionRoster";
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -51,12 +52,33 @@ export default function ProfitLossPage() {
 
   // Company overhead (incl. imported card spending) only applies to the whole
   // business, not a single client — so only fold it in on the "all clients" view.
+  const [rosterEventId, setRosterEventId] = useState<string | null>(null);
   const bizExpensesForPnl = clientFilter === "all" ? data.businessExpenses : [];
+  // Mini bookings are strangers, not clients, so they only belong on the
+  // all-clients view — filtering by a client must not attribute them to it.
+  const miniSessionsForPnl = useMemo(
+    () => (clientFilter === "all" ? data.miniSessions : []), [clientFilter, data.miniSessions]);
+  const miniBookingsForPnl = useMemo(
+    () => (clientFilter === "all" ? data.miniSessionBookings : []), [clientFilter, data.miniSessionBookings]);
   const monthlyData = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) =>
-      getMonthlyEarningsBreakdown(scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, m + 1, bizExpensesForPnl)
+      getMonthlyEarningsBreakdown(
+        scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, m + 1,
+        bizExpensesForPnl, miniSessionsForPnl, miniBookingsForPnl,
+      )
     );
-  }, [scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, bizExpensesForPnl]);
+  }, [scopedProjects, data.clients, scopedMarketingExpenses, ownerCrewMemberId, year, bizExpensesForPnl, miniSessionsForPnl, miniBookingsForPnl]);
+
+  // Every mini event in the year, one row each — that is the level Geoff wants
+  // to see it at: seven families is one working day and one payout. Tapping a
+  // row opens the roster, which is where the per-person "who paid what" lives
+  // if an accountant ever needs it.
+  const miniRows = useMemo(
+    () => Array.from({ length: 12 }, (_, m) => miniRevenueForMonth(miniSessionsForPnl, miniBookingsForPnl, year, m + 1)).flat(),
+    [miniSessionsForPnl, miniBookingsForPnl, year],
+  );
+  const miniTotal = miniRows.reduce((sum, r) => sum + r.collected, 0);
+  const miniOutstanding = miniRows.reduce((sum, r) => sum + r.outstanding, 0);
 
   // Revenue by client for the year
   const clientBreakdown = useMemo(() => {
@@ -348,6 +370,45 @@ export default function ProfitLossPage() {
           </div>
         </div>
 
+        {/* Mini sessions — one row per event, not per family. Tapping a row
+            opens that event's roster, which is where per-person amounts live
+            for an accountant who needs the detail. */}
+        {miniRows.length > 0 && (
+          <div className="bg-card border border-border rounded-lg overflow-hidden shrink-0 mb-6">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border flex-wrap">
+              <h3 className="text-sm font-semibold text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Mini Sessions
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {formatCurrency(miniTotal)} collected
+                {miniOutstanding > 0 ? ` · ${formatCurrency(miniOutstanding)} outstanding` : ""}
+              </span>
+            </div>
+            <div className="divide-y divide-border">
+              {miniRows.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => setRosterEventId(r.id)}
+                  className="w-full text-left px-4 py-3 hover:bg-white/3 transition-colors flex items-center justify-between gap-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm text-foreground">{r.title}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {new Date(r.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {" · "}{r.bookingCount} booking{r.bookingCount === 1 ? "" : "s"}
+                      {r.outstanding > 0 ? ` · ${formatCurrency(r.outstanding)} outstanding` : ""}
+                    </span>
+                  </span>
+                  <span className="text-sm font-semibold text-foreground shrink-0">{formatCurrency(r.collected)}</span>
+                </button>
+              ))}
+            </div>
+            <p className="px-4 py-2.5 text-[11px] text-muted-foreground border-t border-border">
+              Counted in Revenue above. Open an event to see who paid what.
+            </p>
+          </div>
+        )}
+
         {/* Revenue by Client */}
         <div className="bg-card border border-border rounded-lg print:border-gray-300">
           <div className="px-4 py-3 border-b border-border print:border-gray-300">
@@ -487,6 +548,10 @@ export default function ProfitLossPage() {
           </div>
         </div>
       </div>
+      {(() => {
+        const ev = data.miniSessions.find(m => m.id === rosterEventId);
+        return ev ? <MiniSessionRoster event={ev} open onClose={() => setRosterEventId(null)} /> : null;
+      })()}
     </div>
   );
 }

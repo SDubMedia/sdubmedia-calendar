@@ -23,6 +23,22 @@ import { publicUrl, qrImageUrl } from "@/lib/publicUrl";
 import MiniSessionForm from "@/components/MiniSessionForm";
 import type { MiniSession, MiniSessionBooking } from "@/lib/types";
 
+/** What this family still owes, at a glance. Order matters: a failed card is
+ *  more urgent than "half paid", which is how it would otherwise read. */
+function payBadge(b: MiniSessionBooking): { label: string; className: string } {
+  const owed = Math.max(0, Number(b.totalCents || 0) - Number(b.depositPaidCents || 0));
+  if (b.paymentStatus === "balance_failed") {
+    return { label: `Card declined · ${money(owed)}`, className: "border-red-500/50 text-red-300 bg-red-500/15" };
+  }
+  if (owed <= 0) {
+    return { label: "Paid", className: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10" };
+  }
+  if (Number(b.depositPaidCents || 0) > 0) {
+    return { label: `${money(owed)} due`, className: "border-amber-500/40 text-amber-300 bg-amber-500/10" };
+  }
+  return { label: `Unpaid · ${money(owed)}`, className: "border-red-500/50 text-red-300 bg-red-500/15" };
+}
+
 const money = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
 
 export default function MiniSessionRoster({ event, open, onClose }: { event: MiniSession; open: boolean; onClose: () => void }) {
@@ -37,6 +53,11 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const [mPhone, setMPhone] = useState("");
   const [mMode, setMMode] = useState<"paid" | "paylink">("paid");
   const [adding, setAdding] = useState(false);
+  // A manual pay-link booking, shown as a QR for the person in front of you.
+  // Encodes their BOOKING page, not the Stripe URL: /api/qr only encodes Slate
+  // links (deliberately — it would otherwise mint phishing codes on our own
+  // domain), and a Stripe checkout URL expires while a booking link doesn't.
+  const [payQr, setPayQr] = useState<{ token: string; name: string } | null>(null);
   const [sendingGalleries, setSendingGalleries] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -125,8 +146,10 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   async function addManually() {
     if (!addSlot) return;
     if (!mName.trim()) { toast.error("Enter their name"); return; }
-    if (mMode === "paylink" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mEmail.trim())) {
-      toast.error("A valid email is needed to send a pay link"); return;
+    // Email optional on a pay link — a walk-up pays by scanning the QR we
+    // show them. Only validate it when they actually typed one.
+    if (mEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mEmail.trim())) {
+      toast.error("That email doesn't look right"); return;
     }
     setAdding(true);
     try {
@@ -144,7 +167,10 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
       if (body.warning) toast.warning(body.warning);
       else toast.success(mMode === "paid"
         ? `${mName.trim()} added${body.emailed ? " and emailed their code" : ""}`
-        : `${mName.trim()} added — pay link sent`);
+        : body.emailed ? `${mName.trim()} added — pay link sent` : `${mName.trim()} added`);
+      // Pay link with no email is the walk-up case: put the code on screen so
+      // they can scan and pay right there.
+      if (body.payUrl && body.bookingToken) setPayQr({ token: body.bookingToken, name: mName.trim() });
       setAddSlot(null); setMName(""); setMEmail(""); setMPhone(""); setMMode("paid");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't add them");
@@ -418,14 +444,15 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                         <>
                           <p className={cn("text-sm leading-tight", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</p>
                           {b.status === "no_show" && <p className="text-[11px] font-semibold text-red-400">No-show</p>}
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            {b.email}
-                            {b.paymentStatus === "paid" ? " · paid"
-                              : b.paymentStatus === "deposit_paid" ? ` · ${money(b.depositPaidCents)} paid, ${money(b.totalCents - b.depositPaidCents)} due`
-                              : b.paymentStatus === "pending" ? ` · unpaid · ${money(b.totalCents)} due`
-                              : ""}
-                            {b.paymentStatus === "balance_failed" ? " · card declined" : ""}
-                          </p>
+                          {/* A badge, not text tacked onto the email — appended
+                              it got truncated away on a phone, which is exactly
+                              where you need to know who still owes. */}
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
+                              {payBadge(b).label}
+                            </span>
+                            {b.email && <span className="text-[11px] text-muted-foreground truncate min-w-0">{b.email}</span>}
+                          </div>
                         </>
                       ) : (
                         <p className="text-sm text-muted-foreground">{blocked ? "Blocked" : "Open"}</p>
@@ -585,6 +612,31 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 <img src={qrImageUrl(`/msb/${qrFor.bookingToken}`, 420)}
                   alt="Check-in code" className="w-56 h-56 mx-auto rounded-lg bg-white p-2" />
                 <p className="text-xs text-muted-foreground mt-2">{formatSlot(qrFor.slotTime)} · photograph this before their session</p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Walk-up payment: they scan, they pay on their own phone. No email
+            to spell out, nothing to type, and the money is taken before they
+            walk away. */}
+        <Dialog open={!!payQr} onOpenChange={(o) => { if (!o) setPayQr(null); }}>
+          <DialogContent className="bg-card border-border text-foreground max-w-xs">
+            <DialogHeader><DialogTitle className="text-base">Have them scan to pay</DialogTitle></DialogHeader>
+            {payQr && (
+              <div className="text-center pb-2">
+                <img
+                  src={qrImageUrl(`/msb/${payQr.token}`, 600)}
+                  alt="Payment code"
+                  className="w-56 h-56 mx-auto rounded-lg bg-white p-2"
+                />
+                <p className="text-sm text-foreground mt-2">{payQr.name} · {money(event.priceCents)}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Their spot is already held. This opens their booking, where they can pay.
+                </p>
+                <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={() => copy(publicUrl(`/msb/${payQr.token}`), "Payment link")}>
+                  <Copy className="w-3.5 h-3.5" /> Copy link instead
+                </Button>
               </div>
             )}
           </DialogContent>

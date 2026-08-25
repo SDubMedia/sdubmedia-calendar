@@ -53,8 +53,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!miniSessionId || !slot) return res.status(400).json({ error: "Missing session or slot" });
   if (!nm) return res.status(400).json({ error: "Name is required" });
-  if (payMode === "paylink" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
-    return res.status(400).json({ error: "A valid email is required to send a pay link" });
+  // Email is OPTIONAL for a pay link. A walk-up at the park doesn't want to
+  // spell out an address before they can hand over money — the owner shows
+  // them the link as a QR and they pay on their own phone. If an email IS
+  // given we still send it, so they get their booking and gallery too.
+  if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+    return res.status(400).json({ error: "That email doesn't look right" });
   }
 
   try {
