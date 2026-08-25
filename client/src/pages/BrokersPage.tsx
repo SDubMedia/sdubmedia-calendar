@@ -78,7 +78,11 @@ export default function BrokersPage() {
   const [returnBroker, setReturnBroker] = useState<Client | null>(null);
 
   // Presence: which agents/brokers have an account, and whether on the app.
-  const { allProfiles, refreshProfiles } = useAuth();
+  const { allProfiles, refreshProfiles, effectiveProfile } = useAuth();
+  // Same exclusion BrokerDetailSheet applies: the owner's own pay is a draw,
+  // not an expense. Without it this list reported a lower profit than the sheet
+  // you get by tapping the very same broker.
+  const ownerCrewMemberId = effectiveProfile?.crewMemberId || "";
   const [appUserIds, setAppUserIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
@@ -167,10 +171,10 @@ export default function BrokersPage() {
       const r = (out[payer] ||= { homes: 0, revenue: 0, profit: 0 });
       r.homes += 1;
       r.revenue += getProjectInvoiceAmount(p, agent);
-      r.profit += getProjectProfit(p, agent);
+      r.profit += getProjectProfit(p, agent, ownerCrewMemberId);
     }
     return out;
-  }, [data.projects, clientsById, month]);
+  }, [data.projects, clientsById, month, ownerCrewMemberId]);
 
   function openAddBroker() {
     setSheetClient(null); setSheetType("broker"); setSheetBrokerId(null); setSheetOpen(true);
