@@ -17,6 +17,12 @@ interface EventPayload {
   perExtraPhotoCents: number; status: string; openSlots: string[]; totalSlots: number;
   orgName: string; orgLogo: string; stripeConnected: boolean;
   orgBusinessInfo: { phone?: string; email?: string; website?: string } | null;
+  // Pre-sale: buying a place, not a time. The date is a placeholder inside the
+  // right month and must never be shown as if it were the real day.
+  dateTbd: boolean;
+  reservationCap: number;
+  placesLeft: number | null;   // null = uncapped
+  unclaimedBlurb: string;
 }
 
 const money = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
@@ -59,7 +65,7 @@ export default function MiniSessionSignupPage() {
 
   async function submit() {
     setFormError("");
-    if (!slot) { setFormError("Pick a time first"); return; }
+    if (!ev?.dateTbd && !slot) { setFormError("Pick a time first"); return; }
     if (!name.trim()) { setFormError("Enter your name"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setFormError("Enter a valid email"); return; }
     if (!agreed || !signature.trim()) { setFormError("Please read and sign the agreement"); return; }
@@ -99,7 +105,8 @@ export default function MiniSessionSignupPage() {
     );
   }
 
-  const soldOut = ev.openSlots.length === 0;
+  // A pre-sale sells out on places, not slots.
+  const soldOut = ev.dateTbd ? (ev.placesLeft !== null && ev.placesLeft <= 0) : ev.openSlots.length === 0;
   const balance = ev.priceCents - ev.dueNowCents;
 
   return (
@@ -111,7 +118,12 @@ export default function MiniSessionSignupPage() {
             : <p className="text-sm font-semibold text-gray-500 mb-2">{ev.orgName}</p>}
           <h1 className="text-2xl font-bold text-gray-900">{ev.title}</h1>
           <div className="mt-3 space-y-1 text-sm text-gray-600">
-            <p className="flex items-center justify-center gap-1.5"><Calendar className="w-4 h-4" /> {humanDate(ev.date)}</p>
+            <p className="flex items-center justify-center gap-1.5">
+              <Calendar className="w-4 h-4" />
+              {ev.dateTbd
+                ? `${new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })} — exact date to be confirmed`
+                : humanDate(ev.date)}
+            </p>
             {ev.locationText && <p className="flex items-center justify-center gap-1.5"><MapPin className="w-4 h-4" /> {ev.locationText}</p>}
             <p className="flex items-center justify-center gap-1.5"><Clock className="w-4 h-4" /> {ev.slotMinutes}-minute sessions</p>
           </div>
@@ -133,11 +145,41 @@ export default function MiniSessionSignupPage() {
 
         {soldOut ? (
           <div className="bg-white rounded-xl shadow-sm border p-6 text-center">
-            <p className="font-semibold text-gray-900 mb-1">All booked up</p>
-            <p className="text-sm text-gray-500">Every slot for this date is taken. Reach out to {ev.orgName} about the next one.</p>
+            <p className="font-semibold text-gray-900 mb-1">{ev.dateTbd ? "All places have gone" : "All booked up"}</p>
+            <p className="text-sm text-gray-500">
+              {ev.dateTbd
+                ? `All ${ev.reservationCap} places are taken. Reach out to ${ev.orgName} about the next one.`
+                : `Every slot for this date is taken. Reach out to ${ev.orgName} about the next one.`}
+            </p>
           </div>
         ) : (
           <>
+            {ev.dateTbd ? (
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
+                  <h2 className="font-bold text-gray-900">Hold your place</h2>
+                  {ev.placesLeft !== null && (
+                    <span className={`text-xs font-semibold ${ev.placesLeft <= 3 ? "text-amber-600" : "text-gray-500"}`}>
+                      {ev.placesLeft} of {ev.reservationCap} left
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600">
+                  The exact date isn't set yet. Pay {money(ev.dueNowCents)} now to hold one of{" "}
+                  {ev.reservationCap > 0 ? `only ${ev.reservationCap}` : "a limited number of"} places.
+                  When the date is announced you'll be emailed to choose your time and pay the rest.
+                </p>
+                {/* The two facts that decide whether this is a fair deal, stated
+                    before they pay rather than buried in the terms below. */}
+                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-1.5">
+                  <p className="text-sm font-semibold text-amber-900">Before you pay</p>
+                  <p className="text-sm text-amber-900">
+                    This holds a place, not a time. Everyone is emailed together and chooses on a first-come basis.
+                  </p>
+                  <p className="text-sm text-amber-900">{ev.unclaimedBlurb}</p>
+                </div>
+              </div>
+            ) : (
             <div className="bg-white rounded-xl shadow-sm border p-6">
               <div className="flex items-baseline justify-between mb-3">
                 <h2 className="font-bold text-gray-900">Pick your time</h2>
@@ -160,8 +202,9 @@ export default function MiniSessionSignupPage() {
                 ))}
               </div>
             </div>
+            )}
 
-            {slot && (
+            {(ev.dateTbd || slot) && (
               <>
                 <div className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
                   <h2 className="font-bold text-gray-900">Your details</h2>
@@ -203,11 +246,15 @@ export default function MiniSessionSignupPage() {
                     disabled={submitting || !ev.stripeConnected}
                     className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {submitting ? "Starting checkout…" : <><CheckCircle className="w-4 h-4" /> Book {formatSlot(slot)} · {money(ev.dueNowCents)}</>}
+                    {submitting ? "Starting checkout…"
+                      : ev.dateTbd
+                      ? <><CheckCircle className="w-4 h-4" /> Hold my place · {money(ev.dueNowCents)}</>
+                      : <><CheckCircle className="w-4 h-4" /> Book {formatSlot(slot)} · {money(ev.dueNowCents)}</>}
                   </button>
                   <p className="text-xs text-gray-400 text-center mt-3">
-                    Your spot is held once payment goes through.
-                    {ev.paymentMode === "deposit" && ` The remaining ${money(balance)} is charged to the same card the day before.`}
+                    {ev.dateTbd
+                      ? `Your place is held once payment goes through. The remaining ${money(balance)} is due when you claim your time.`
+                      : `Your spot is held once payment goes through.${ev.paymentMode === "deposit" ? ` The remaining ${money(balance)} is charged to the same card the day before.` : ""}`}
                   </p>
                 </div>
               </>

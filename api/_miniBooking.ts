@@ -67,8 +67,14 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
   const total = Number(b.total_cents || 0);
   const fullyPaid = paid >= total;
 
+  // A pre-sale reservation has no slot yet — it stays on the waitlist until the
+  // date is announced and they claim a time. Forcing it to "booked" would both
+  // lie about what they hold and put it under the slot-uniqueness index with an
+  // empty slot_time, where the second reservation would collide with the first.
+  const isReservation = !b.slot_time;
+
   await supabase.from("mini_session_bookings").update({
-    status: "booked",
+    status: isReservation ? "waitlist" : "booked",
     payment_status: fullyPaid ? "paid" : "deposit_paid",
     deposit_paid_cents: paid,
     updated_at: new Date().toISOString(),

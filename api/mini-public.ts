@@ -16,7 +16,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { nanoid } from "nanoid";
 import { errorMessage, isAllowedUrl, publicBusinessInfo } from "./_auth.js";
-import { generateSlots, openSlots, pendingExpired, formatSlot } from "./_miniSlots.js";
+import { generateSlots, openSlots, pendingExpired, formatSlot, depositDueCents, reservationsLeft } from "./_miniSlots.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -24,6 +24,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLL_KEY || ""
 );
 const APP_BASE = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
+
+// Must stay word-for-word identical to UNCLAIMED_BLURB in MiniSessionForm.tsx.
+// If these two ever disagree, the owner picked one promise and the customer
+// agreed to another.
+const UNCLAIMED_BLURB: Record<string, string> = {
+  forfeit: "The deposit is not refunded if they don't claim a time.",
+  half_refund: "Half the deposit is refunded if they don't claim a time; you keep the other half.",
+  credit: "The deposit is held as credit toward a future session if they don't claim a time.",
+};
+
+/** Reservations that still hold a place. An unpaid one whose checkout was
+ *  abandoned doesn't — otherwise a walked-away browser eats a place forever. */
+function livePlaces(rows: { status: string; payment_status: string; created_at: string }[]) {
+  return rows.filter(b => {
+    if (b.status === "waitlist" && b.payment_status === "pending") return !pendingExpired(b.created_at);
+    return true;
+  });
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action, token, slug } = req.query;
@@ -71,7 +89,7 @@ async function getEvent(publicToken: string, res: VercelResponse) {
   if (ev.status === "draft") return res.status(404).json({ error: "This event isn't open yet" });
 
   const { data: bookings } = await supabase
-    .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+    .from("mini_session_bookings").select("slot_time, status, created_at, payment_status").eq("mini_session_id", ev.id);
 
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
   const open = ev.status === "published"
@@ -88,11 +106,24 @@ async function getEvent(publicToken: string, res: VercelResponse) {
     stripeConnected = !!org?.stripe_account_id;
   }
 
-  const depositCents = ev.payment_mode === "deposit"
-    ? Math.round(ev.price_cents * (Number(ev.deposit_percent) || 50) / 100)
-    : ev.price_cents;
+  const depositCents = depositDueCents({
+    priceCents: ev.price_cents,
+    paymentMode: ev.payment_mode,
+    depositPercent: ev.deposit_percent,
+    depositFlatCents: ev.deposit_flat_cents,
+  });
+
+  const placesLeft = ev.date_tbd
+    ? reservationsLeft(ev.reservation_cap, livePlaces((bookings || []) as never))
+    : null;
 
   return res.status(200).json({
+    dateTbd: !!ev.date_tbd,
+    reservationCap: Number(ev.reservation_cap || 0),
+    placesLeft,
+    unclaimedPolicy: ev.unclaimed_policy || "forfeit",
+    unclaimedBlurb: UNCLAIMED_BLURB[ev.unclaimed_policy || "forfeit"] || UNCLAIMED_BLURB.forfeit,
+    bookingDeadline: ev.booking_deadline || null,
     title: ev.title,
     date: ev.date,
     locationText: ev.location_text,
@@ -202,7 +233,7 @@ async function getSchedule(slug: string, res: VercelResponse) {
 async function book(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
   const { token, slotTime, name, email, phone, source, signatureName } = req.body || {};
-  if (!token || !slotTime) return res.status(400).json({ error: "Missing token or slot" });
+  if (!token) return res.status(400).json({ error: "Missing token" });
 
   const nm = clean(name), em = clean(email), ph = clean(phone, 40);
   const signed = clean(signatureName);
@@ -214,21 +245,38 @@ async function book(req: VercelRequest, res: VercelResponse) {
   if (!ev) return res.status(404).json({ error: "Session not found" });
   if (ev.status !== "published") return res.status(400).json({ error: "This event isn't taking bookings" });
 
-  // Re-derive availability server-side — never trust the browser's slot list.
   const { data: existing } = await supabase
-    .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+    .from("mini_session_bookings")
+    .select("slot_time, status, created_at, payment_status").eq("mini_session_id", ev.id);
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
-  const slot = clean(slotTime, 5);
-  if (!openSlots(spec, heldSlots(existing || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : []).includes(slot)) {
-    return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
+
+  // Pre-sale: they're buying a PLACE, not a time. The cap is the whole promise
+  // — oversell it and somebody pays and never gets photographed — so it is
+  // enforced here, server-side, not by hiding a button.
+  const isReservation = !!ev.date_tbd;
+  let slot = "";
+  if (isReservation) {
+    const left = reservationsLeft(ev.reservation_cap, livePlaces((existing || []) as never));
+    if (left !== null && left <= 0) {
+      return res.status(409).json({ error: "All the places have gone.", soldOut: true });
+    }
+  } else {
+    // Re-derive availability server-side — never trust the browser's slot list.
+    slot = clean(slotTime, 5);
+    if (!openSlots(spec, heldSlots(existing || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : []).includes(slot)) {
+      return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
+    }
   }
 
   const { data: org } = await supabase.from("organizations").select("stripe_account_id, name").eq("id", ev.org_id).single();
   if (!org?.stripe_account_id) return res.status(400).json({ error: "Payment isn't set up for this photographer yet." });
 
-  const dueNow = ev.payment_mode === "deposit"
-    ? Math.round(ev.price_cents * (Number(ev.deposit_percent) || 50) / 100)
-    : ev.price_cents;
+  const dueNow = depositDueCents({
+    priceCents: ev.price_cents,
+    paymentMode: ev.payment_mode,
+    depositPercent: ev.deposit_percent,
+    depositFlatCents: ev.deposit_flat_cents,
+  });
   if (dueNow <= 0) return res.status(400).json({ error: "This event has no price set." });
 
   const bookingId = nanoid(10);
@@ -254,7 +302,7 @@ async function book(req: VercelRequest, res: VercelResponse) {
       agreementHash: createHash("sha256").update(String(ev.agreement_text || "")).digest("hex").slice(0, 32),
     },
     total_cents: ev.price_cents,
-    status: "pending",
+    status: isReservation ? "waitlist" : "pending",
     payment_status: "pending",
   });
   if (insErr) {
@@ -273,7 +321,9 @@ async function book(req: VercelRequest, res: VercelResponse) {
     const cancelUrl = `${APP_BASE}/minis/${ev.public_token}`;
     if (!isAllowedUrl(successUrl) || !isAllowedUrl(cancelUrl)) return res.status(400).json({ error: "Invalid redirect URL" });
 
-    const label = ev.payment_mode === "deposit"
+    const label = isReservation
+      ? `${ev.title || "Mini session"} — place held (deposit)`
+      : ev.payment_mode === "deposit"
       ? `${ev.title || "Mini session"} — ${formatSlot(slot)} (deposit)`
       : `${ev.title || "Mini session"} — ${formatSlot(slot)}`;
 

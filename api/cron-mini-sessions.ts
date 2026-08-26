@@ -48,10 +48,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // ---- 1. Sweep abandoned checkouts (frees the slot) ----
     const cutoff = new Date(Date.now() - PENDING_HOLD_MINUTES * 60_000).toISOString();
-    const { data: stale } = await supabase
+    // Two shapes of abandoned checkout, and both must free what they hold:
+    //   pending  — a slot booking, holding a time
+    //   waitlist + payment_status pending — a pre-sale reservation, holding one
+    //   of a capped number of places, which is scarcer than a time slot
+    const { data: staleSlots } = await supabase
       .from("mini_session_bookings").select("id")
       .eq("status", "pending").lt("created_at", cutoff);
-    if (stale && stale.length > 0) {
+    const { data: staleHolds } = await supabase
+      .from("mini_session_bookings").select("id")
+      .eq("status", "waitlist").eq("payment_status", "pending").lt("created_at", cutoff);
+    const stale = [...(staleSlots || []), ...(staleHolds || [])];
+    if (stale.length > 0) {
       const { error } = await supabase.from("mini_session_bookings")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .in("id", stale.map(x => x.id));
