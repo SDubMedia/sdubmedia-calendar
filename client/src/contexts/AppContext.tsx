@@ -508,6 +508,11 @@ function rowToMiniSession(r: any): MiniSession {
     agreementText: r.agreement_text || "",
     includedPhotos: Number(r.included_photos ?? 0),
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
+    dateTbd: !!r.date_tbd,
+    reservationCap: Number(r.reservation_cap ?? 0),
+    depositFlatCents: Number(r.deposit_flat_cents ?? 0),
+    bookingDeadline: r.booking_deadline || null,
+    bookingOpenedAt: r.booking_opened_at || null,
     publicToken: r.public_token || "",
     status: (r.status || "draft") as MiniSession["status"],
     blockedSlots: Array.isArray(r.blocked_slots) ? r.blocked_slots : [],
@@ -3476,6 +3481,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       included_photos: m.includedPhotos,
       per_extra_photo_cents: m.perExtraPhotoCents,
       status: m.status,
+      date_tbd: m.dateTbd ?? false,
+      reservation_cap: m.reservationCap ?? 0,
+      deposit_flat_cents: m.depositFlatCents ?? 0,
       blocked_slots: m.blockedSlots ?? [],
       assigned_crew: m.assignedCrew ?? [],
       notes: m.notes ?? "",
@@ -3508,6 +3516,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (m.includedPhotos !== undefined) patch.included_photos = m.includedPhotos;
     if (m.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = m.perExtraPhotoCents;
     if (m.status !== undefined) patch.status = m.status;
+    if (m.dateTbd !== undefined) patch.date_tbd = m.dateTbd;
+    if (m.reservationCap !== undefined) patch.reservation_cap = m.reservationCap;
+    if (m.depositFlatCents !== undefined) patch.deposit_flat_cents = m.depositFlatCents;
+    if (m.bookingDeadline !== undefined) patch.booking_deadline = m.bookingDeadline;
+    if (m.bookingOpenedAt !== undefined) patch.booking_opened_at = m.bookingOpenedAt;
     if (m.blockedSlots !== undefined) patch.blocked_slots = m.blockedSlots;
     if (m.assignedCrew !== undefined) patch.assigned_crew = m.assignedCrew;
     if (m.notes !== undefined) patch.notes = m.notes;

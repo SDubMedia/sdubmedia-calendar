@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   generateSlots, slotAvailability, openSlots, formatSlot,
-  pendingExpired, slotForTime, PENDING_HOLD_MINUTES,
-} from "../miniSlots";
+  pendingExpired, slotForTime, PENDING_HOLD_MINUTES, depositDueCents, reservationsLeft } from "../miniSlots";
 
 const spec = { startTime: "13:00", endTime: "16:00", slotMinutes: 15, breakMinutes: 5 };
 
@@ -83,5 +82,58 @@ describe("formatSlot", () => {
     expect(formatSlot("13:05")).toBe("1:05 PM");
     expect(formatSlot("00:30")).toBe("12:30 AM");
     expect(formatSlot("12:00")).toBe("12:00 PM");
+  });
+});
+
+// ---- Reservations (added 2026-08-26) ----
+describe("depositDueCents", () => {
+  it("charges the flat deposit when set, not a percentage of the price", () => {
+    // $50 of $150 is what the page promises. 33% would be $49.50.
+    expect(depositDueCents({ priceCents: 15000, paymentMode: "deposit", depositFlatCents: 5000 })).toBe(5000);
+  });
+
+  it("falls back to the percentage when there is no flat amount", () => {
+    expect(depositDueCents({ priceCents: 15000, paymentMode: "deposit", depositPercent: 50 })).toBe(7500);
+  });
+
+  it("defaults to half when neither is usable", () => {
+    expect(depositDueCents({ priceCents: 15000, paymentMode: "deposit" })).toBe(7500);
+    expect(depositDueCents({ priceCents: 15000, paymentMode: "deposit", depositPercent: 0 })).toBe(7500);
+  });
+
+  it("never asks for more than the price", () => {
+    expect(depositDueCents({ priceCents: 4000, paymentMode: "deposit", depositFlatCents: 5000 })).toBe(4000);
+  });
+
+  it("takes the whole price when not a deposit event", () => {
+    expect(depositDueCents({ priceCents: 15000, paymentMode: "full", depositFlatCents: 5000 })).toBe(15000);
+  });
+});
+
+describe("reservationsLeft", () => {
+  const rows = (...statuses: string[]) => statuses.map(status => ({ status }));
+
+  it("returns null when uncapped, so 'unlimited' isn't mistaken for 'sold out'", () => {
+    expect(reservationsLeft(0, rows("waitlist"))).toBeNull();
+  });
+
+  it("counts reservations against the cap", () => {
+    expect(reservationsLeft(12, rows("waitlist", "waitlist"))).toBe(10);
+  });
+
+  it("counts people already converted to a slot — they hold a place too", () => {
+    expect(reservationsLeft(3, rows("waitlist", "booked", "pending"))).toBe(0);
+  });
+
+  it("counts a no-show — they bought a place and used it", () => {
+    expect(reservationsLeft(2, rows("no_show"))).toBe(1);
+  });
+
+  it("frees the place when someone cancels", () => {
+    expect(reservationsLeft(2, rows("waitlist", "cancelled"))).toBe(1);
+  });
+
+  it("never goes negative if the cap is lowered after selling", () => {
+    expect(reservationsLeft(1, rows("waitlist", "waitlist", "waitlist"))).toBe(0);
   });
 });

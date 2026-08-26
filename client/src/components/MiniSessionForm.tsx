@@ -31,6 +31,8 @@ export const DEFAULT_AGREEMENT = `Session terms
 • Your edited images are delivered to an online gallery within two weeks. Additional images beyond those included may be purchased from the gallery.
 • We retain copyright to all images; you receive personal-use rights (printing, sharing, social media).`;
 
+const moneyStr = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
+
 export default function MiniSessionForm({ open, onClose, event }: {
   open: boolean;
   onClose: () => void;
@@ -58,7 +60,14 @@ export default function MiniSessionForm({ open, onClose, event }: {
   const [includedPhotos, setIncludedPhotos] = useState(String(event?.includedPhotos ?? 5));
   const [perExtra, setPerExtra] = useState(event ? String(event.perExtraPhotoCents / 100) : "25");
   const [agreementText, setAgreementText] = useState(event?.agreementText ?? DEFAULT_AGREEMENT);
+  // Pre-sale: sell a capped number of places before the date is announced.
+  const [dateTbd, setDateTbd] = useState(event?.dateTbd ?? false);
+  const [reservationCap, setReservationCap] = useState(String(event?.reservationCap || ""));
+  const [depositFlat, setDepositFlat] = useState(
+    event?.depositFlatCents ? (event.depositFlatCents / 100).toFixed(2) : "");
   const [saving, setSaving] = useState(false);
+  // Live price for the deposit hint — the save handler has its own copy.
+  const priceNow = Math.round(Number(price) * 100) || 0;
 
   // One-line version stored alongside the parts — everything downstream (the
   // sign-up page, confirmation + reminder emails, the calendar feed) reads a
@@ -110,6 +119,9 @@ export default function MiniSessionForm({ open, onClose, event }: {
       includedPhotos: Number(includedPhotos) || 0,
       perExtraPhotoCents: Math.round(Number(perExtra) * 100) || 0,
       agreementText,
+      dateTbd,
+      reservationCap: dateTbd ? (Number(reservationCap) || 0) : 0,
+      depositFlatCents: paymentMode === "deposit" ? Math.round(Number(depositFlat) * 100) || 0 : 0,
     };
 
     setSaving(true);
@@ -124,6 +136,7 @@ export default function MiniSessionForm({ open, onClose, event }: {
           ...payload,
           locationId: null, depositPercent: 50,
           status: "draft", blockedSlots: [], assignedCrew: [], notes: "",
+          bookingDeadline: null, bookingOpenedAt: null,
         });
         toast.success("Mini session created");
       }
@@ -254,7 +267,21 @@ export default function MiniSessionForm({ open, onClose, event }: {
             </div>
           </div>
           {paymentMode === "deposit" && (
-            <p className="text-xs text-muted-foreground -mt-2">The other half is charged to the same card the day before, automatically.</p>
+            <div className="-mt-1 space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Deposit taken up front ($) — leave blank for half</Label>
+              <Input
+                value={depositFlat}
+                onChange={e => setDepositFlat(e.target.value)}
+                inputMode="decimal" placeholder={(Math.round(priceNow / 2) / 100).toFixed(2)}
+                className="bg-secondary border-border"
+              />
+              <p className="text-xs text-muted-foreground">
+                {Number(depositFlat) > 0
+                  ? `${moneyStr(Math.round(Number(depositFlat) * 100))} now, ${moneyStr(Math.max(0, priceNow - Math.round(Number(depositFlat) * 100)))} to come.`
+                  : "Half now, half later."}
+                {" "}The rest is charged to the same card automatically.
+              </p>
+            </div>
           )}
           {editing && liveBookings.length > 0 && (
             <p className="text-[11px] text-amber-400">
@@ -274,6 +301,44 @@ export default function MiniSessionForm({ open, onClose, event }: {
           </div>
 
           <div className="space-y-1.5">
+            {/* Pre-sale block. Sits directly above the agreement on purpose:
+                the cap is the thing that has to be disclosed, and putting it
+                next to the words people sign makes that hard to forget. */}
+            <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2.5 mb-4">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={dateTbd} onChange={e => setDateTbd(e.target.checked)} className="mt-0.5" />
+                <span className="min-w-0">
+                  <span className="block text-sm text-foreground">Date not announced yet</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Sells a limited number of places instead of time slots. People pay the deposit now and pick a time when you set the date.
+                  </span>
+                </span>
+              </label>
+              {dateTbd && (
+                <>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">How many places can you sell?</Label>
+                    <Input
+                      value={reservationCap}
+                      onChange={e => setReservationCap(e.target.value.replace(/[^0-9]/g, ""))}
+                      type="text" inputMode="numeric" placeholder="12"
+                      className="bg-secondary border-border mt-1"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Sell more places than you have times and somebody pays and never gets photographed. An afternoon of {slotMinutes || 20}-minute sessions is usually about 12.
+                    </p>
+                  </div>
+                  {!reservationCap && (
+                    <p className="text-[11px] text-amber-400">
+                      No limit set — this will sell places until you close it.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    The page shows the month only, plus how many places are left. Your terms below must say the deposit is nonrefundable and what happens if none of the times suit them.
+                  </p>
+                </>
+              )}
+            </div>
             <Label className="text-xs text-muted-foreground">Agreement each person signs</Label>
             <Textarea value={agreementText} onChange={e => setAgreementText(e.target.value)} rows={8} className="bg-secondary border-border text-sm" />
             {editing && liveBookings.length > 0 && (

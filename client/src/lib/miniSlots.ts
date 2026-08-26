@@ -112,3 +112,47 @@ export function slotForTime(spec: SlotSpec, hhmm: string, slots?: string[]): str
   }
   return null;
 }
+
+// ---- Reservations (capped pre-sale, date not yet announced) ----
+
+/**
+ * What a person pays up front.
+ *
+ * A flat deposit wins over the percentage when set: "$50 of $150" is the thing
+ * being advertised, and 33.33% of it is $49.99. Never quote a percentage of a
+ * price when the customer was promised a round number.
+ */
+export function depositDueCents(spec: {
+  priceCents: number;
+  paymentMode: "full" | "deposit";
+  depositPercent?: number;
+  depositFlatCents?: number;
+}): number {
+  const price = Math.max(0, Math.round(Number(spec.priceCents) || 0));
+  if (spec.paymentMode !== "deposit") return price;
+  const flat = Math.max(0, Math.round(Number(spec.depositFlatCents) || 0));
+  if (flat > 0) return Math.min(flat, price);
+  const pct = Number(spec.depositPercent);
+  const percent = Number.isFinite(pct) && pct > 0 ? pct : 50;
+  return Math.min(price, Math.round((price * percent) / 100));
+}
+
+/**
+ * Places left on a capped pre-sale.
+ *
+ * Counts reservations AND anyone already converted to a real slot, because
+ * both occupy one of the places sold. A cap of 0 means no limit.
+ * Returns null when there is no cap, so callers can tell "unlimited" apart
+ * from "none left".
+ */
+export function reservationsLeft(
+  cap: number,
+  bookings: { status: string }[],
+): number | null {
+  const limit = Math.max(0, Math.round(Number(cap) || 0));
+  if (limit === 0) return null;
+  const taken = bookings.filter(
+    b => b.status === "waitlist" || b.status === "booked" || b.status === "pending" || b.status === "no_show",
+  ).length;
+  return Math.max(0, limit - taken);
+}

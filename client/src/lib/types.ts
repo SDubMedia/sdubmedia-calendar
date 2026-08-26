@@ -913,6 +913,21 @@ export interface MiniSession {
   agreementText: string;
   includedPhotos: number;    // becomes the gallery's selection_limit
   perExtraPhotoCents: number;
+  // ---- Capped pre-sale (date not yet announced) ----
+  // True while the exact day is unknown: the public page sells places instead
+  // of time slots and shows only the month. `date` still holds a placeholder
+  // inside that month so every other surface keeps working.
+  dateTbd: boolean;
+  // Hard limit on places sold up front. 0 = no limit. Disclosed on the page —
+  // overselling means people lose money and never get photographed.
+  reservationCap: number;
+  // Flat deposit in cents, overriding depositPercent when set. "$50 of $150"
+  // is what's advertised; a percentage of it isn't a round number.
+  depositFlatCents: number;
+  // When the window to claim a time slot closes. Null until booking opens.
+  bookingDeadline: string | null;
+  // Stamped when everyone is emailed to pick a time, so it can't go out twice.
+  bookingOpenedAt: string | null;
   publicToken: string;       // the event QR / sign-up link
   status: MiniSessionStatus;
   blockedSlots: string[];    // times pulled from sale ("14:30")
