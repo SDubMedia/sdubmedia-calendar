@@ -23,10 +23,15 @@ import { publicUrl, qrImageUrl } from "@/lib/publicUrl";
 import MiniSessionForm from "@/components/MiniSessionForm";
 import type { MiniSession, MiniSessionBooking } from "@/lib/types";
 
+/** Money still outstanding on a booking. */
+function owedOn(b: MiniSessionBooking): number {
+  return Math.max(0, Number(b.totalCents || 0) - Number(b.depositPaidCents || 0));
+}
+
 /** What this family still owes, at a glance. Order matters: a failed card is
  *  more urgent than "half paid", which is how it would otherwise read. */
 function payBadge(b: MiniSessionBooking): { label: string; className: string } {
-  const owed = Math.max(0, Number(b.totalCents || 0) - Number(b.depositPaidCents || 0));
+  const owed = owedOn(b);
   if (b.paymentStatus === "balance_failed") {
     return { label: `Card declined · ${money(owed)}`, className: "border-red-500/50 text-red-300 bg-red-500/15" };
   }
@@ -58,6 +63,9 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   // links (deliberately — it would otherwise mint phishing codes on our own
   // domain), and a Stripe checkout URL expires while a booking link doesn't.
   const [payQr, setPayQr] = useState<{ token: string; name: string } | null>(null);
+  // The family whose outstanding balance we're collecting right now.
+  const [collectFor, setCollectFor] = useState<MiniSessionBooking | null>(null);
+  const [charging, setCharging] = useState(false);
   const [sendingGalleries, setSendingGalleries] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -141,6 +149,33 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
       await updateMiniSession(event.id, { status });
       toast.success(status === "published" ? "Live — the link is open for bookings" : status === "closed" ? "Closed to new bookings" : "Updated");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't update"); }
+  }
+
+  async function chargeNow(b: MiniSessionBooking) {
+    setCharging(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/mini-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bookingId: b.id }),
+      });
+      const body = await res.json();
+      if (body.ok) {
+        toast.success(`${money(body.charged)} charged to ${b.name}'s card`);
+        setCollectFor(null);
+        return;
+      }
+      // A booking with no card was never going to be chargeable — that's the
+      // normal state of a phone booking, not a decline. Say which it is, and
+      // leave the sheet open so the pay code is one tap away.
+      toast.error(body.noCard ? "No card on file — show them the code instead"
+        : body.error || "The card was declined");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't charge the card");
+    } finally {
+      setCharging(false);
+    }
   }
 
   async function addManually() {
@@ -448,9 +483,19 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                               it got truncated away on a phone, which is exactly
                               where you need to know who still owes. */}
                           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                            <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
-                              {payBadge(b).label}
-                            </span>
+                            {owedOn(b) > 0 ? (
+                              <button
+                                onClick={() => setCollectFor(b)}
+                                aria-label={`Collect ${money(owedOn(b))} from ${b.name}`}
+                                className={cn("text-[10px] font-semibold px-1.5 py-1 rounded border shrink-0 hover:brightness-125", payBadge(b).className)}
+                              >
+                                {payBadge(b).label} →
+                              </button>
+                            ) : (
+                              <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
+                                {payBadge(b).label}
+                              </span>
+                            )}
                             {b.email && <span className="text-[11px] text-muted-foreground truncate min-w-0">{b.email}</span>}
                           </div>
                         </>
@@ -612,6 +657,46 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 <img src={qrImageUrl(`/msb/${qrFor.bookingToken}`, 420)}
                   alt="Check-in code" className="w-56 h-56 mx-auto rounded-lg bg-white p-2" />
                 <p className="text-xs text-muted-foreground mt-2">{formatSlot(qrFor.slotTime)} · photograph this before their session</p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Collect what's still owed — either from the card they booked with,
+            or by showing them a code if they're standing there. */}
+        <Dialog open={!!collectFor} onOpenChange={(o) => { if (!o) setCollectFor(null); }}>
+          <DialogContent className="bg-card border-border text-foreground max-w-xs">
+            <DialogHeader><DialogTitle className="text-base">Collect payment</DialogTitle></DialogHeader>
+            {collectFor && (
+              <div className="space-y-3 pb-1">
+                <div>
+                  <p className="text-sm text-foreground">{collectFor.name}</p>
+                  <p className="text-2xl font-semibold text-foreground mt-0.5">{money(owedOn(collectFor))}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    still owed of {money(collectFor.totalCents)}
+                  </p>
+                </div>
+                {collectFor.stripeCustomerId ? (
+                  <Button className="w-full gap-1.5" disabled={charging} onClick={() => chargeNow(collectFor)}>
+                    {charging ? "Charging…" : <>Charge card on file · {money(owedOn(collectFor))}</>}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No card on file — this booking was added by hand, so there's nothing to charge.
+                  </p>
+                )}
+                <Button
+                  variant="outline"
+                  className="w-full gap-1.5"
+                  onClick={() => { setPayQr({ token: collectFor.bookingToken, name: collectFor.name }); setCollectFor(null); }}
+                >
+                  <QrCode className="w-4 h-4" /> Show code to scan
+                </Button>
+                {collectFor.paymentStatus === "balance_failed" && (
+                  <p className="text-[11px] text-red-400">
+                    Their card was declined overnight and they've had an email with a pay link.
+                  </p>
+                )}
               </div>
             )}
           </DialogContent>
