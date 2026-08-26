@@ -888,6 +888,7 @@ export interface ShootRequest {
 
 export type MiniSessionStatus = "draft" | "published" | "closed" | "done";
 export type MiniPaymentMode = "full" | "deposit";
+export type MiniUnclaimedPolicy = "forfeit" | "half_refund" | "credit";
 
 export interface MiniSession {
   id: string;
@@ -928,6 +929,10 @@ export interface MiniSession {
   bookingDeadline: string | null;
   // Stamped when everyone is emailed to pick a time, so it can't go out twice.
   bookingOpenedAt: string | null;
+  // What happens to the deposit if the claim window closes unused. Rendered
+  // verbatim into the disclosure they sign, so it can never differ from what
+  // the customer was told.
+  unclaimedPolicy: MiniUnclaimedPolicy;
   publicToken: string;       // the event QR / sign-up link
   status: MiniSessionStatus;
   blockedSlots: string[];    // times pulled from sale ("14:30")

@@ -16,7 +16,7 @@ import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn, parsePastedAddress } from "@/lib/utils";
 import { generateSlots, formatSlot } from "@/lib/miniSlots";
-import type { MiniSession } from "@/lib/types";
+import type { MiniSession, MiniUnclaimedPolicy } from "@/lib/types";
 
 const TIMES = Array.from({ length: 4 * 24 }, (_, i) => {
   const v = `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`;
@@ -30,6 +30,12 @@ export const DEFAULT_AGREEMENT = `Session terms
 • Weather: outdoor sessions may be moved to a rain date. You'll be emailed the new time and your booking moves with it.
 • Your edited images are delivered to an online gallery within two weeks. Additional images beyond those included may be purchased from the gallery.
 • We retain copyright to all images; you receive personal-use rights (printing, sharing, social media).`;
+
+export const UNCLAIMED_BLURB: Record<MiniUnclaimedPolicy, string> = {
+  forfeit: "The deposit is not refunded if they don't claim a time.",
+  half_refund: "Half the deposit is refunded if they don't claim a time; you keep the other half.",
+  credit: "The deposit is held as credit toward a future session if they don't claim a time.",
+};
 
 const moneyStr = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
 
@@ -63,6 +69,7 @@ export default function MiniSessionForm({ open, onClose, event }: {
   // Pre-sale: sell a capped number of places before the date is announced.
   const [dateTbd, setDateTbd] = useState(event?.dateTbd ?? false);
   const [reservationCap, setReservationCap] = useState(String(event?.reservationCap || ""));
+  const [unclaimedPolicy, setUnclaimedPolicy] = useState<MiniUnclaimedPolicy>(event?.unclaimedPolicy ?? "forfeit");
   const [depositFlat, setDepositFlat] = useState(
     event?.depositFlatCents ? (event.depositFlatCents / 100).toFixed(2) : "");
   const [saving, setSaving] = useState(false);
@@ -122,6 +129,7 @@ export default function MiniSessionForm({ open, onClose, event }: {
       dateTbd,
       reservationCap: dateTbd ? (Number(reservationCap) || 0) : 0,
       depositFlatCents: paymentMode === "deposit" ? Math.round(Number(depositFlat) * 100) || 0 : 0,
+      unclaimedPolicy,
     };
 
     setSaving(true);
@@ -333,8 +341,29 @@ export default function MiniSessionForm({ open, onClose, event }: {
                       No limit set — this will sell places until you close it.
                     </p>
                   )}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">If they never pick a time</Label>
+                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                      {([
+                        ["forfeit", "Keep it"],
+                        ["half_refund", "Half back"],
+                        ["credit", "Credit"],
+                      ] as [MiniUnclaimedPolicy, string][]).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setUnclaimedPolicy(value)}
+                          className={cn("rounded-md border px-2 py-2 text-xs font-medium transition-colors",
+                            unclaimedPolicy === value
+                              ? "border-primary bg-primary/15 text-foreground"
+                              : "border-border text-muted-foreground hover:bg-white/5")}
+                        >{label}</button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1.5">{UNCLAIMED_BLURB[unclaimedPolicy]}</p>
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
-                    The page shows the month only, plus how many places are left. Your terms below must say the deposit is nonrefundable and what happens if none of the times suit them.
+                    The page shows the month only, plus how many places are left. This choice is printed on the sign-up page word for word, so they agree to it before paying.
                   </p>
                 </>
               )}
