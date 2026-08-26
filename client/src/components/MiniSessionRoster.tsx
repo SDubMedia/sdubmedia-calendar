@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateField } from "@/components/DateTimeField";
 import { Copy, Download, QrCode, Upload, Ban, UserX, ExternalLink, Check, AlertTriangle, Images, Pencil, UserPlus, Send, MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatPhoneInput, mapsUrlFor } from "@/lib/utils";
@@ -66,6 +67,39 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   // The family whose outstanding balance we're collecting right now.
   const [collectFor, setCollectFor] = useState<MiniSessionBooking | null>(null);
   const [charging, setCharging] = useState(false);
+  // Announcing the date on a pre-sale: everyone gets their claim link at once.
+  const [opening, setOpening] = useState(false);
+  const [openDate, setOpenDate] = useState(event.date);
+  const [openStart, setOpenStart] = useState(event.startTime);
+  const [openEnd, setOpenEnd] = useState(event.endTime);
+  const [openHours, setOpenHours] = useState("72");
+  const [showOpen, setShowOpen] = useState(false);
+
+  async function openBooking() {
+    setOpening(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/mini-open-booking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          miniSessionId: event.id, date: openDate,
+          startTime: openStart, endTime: openEnd, hours: Number(openHours) || 72,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) { toast.error(body.error || "Couldn't open booking"); setOpening(false); return; }
+      toast.success(`${body.emailed} emailed at once — ${body.slots} times available`
+        + (body.failed ? `. ${body.failed} email${body.failed === 1 ? "" : "s"} failed.` : ""));
+      setShowOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't open booking");
+    } finally {
+      setOpening(false);
+    }
+  }
+
+
   const [sendingGalleries, setSendingGalleries] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -85,6 +119,11 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
     () => data.miniSessionBookings.filter(b => b.miniSessionId === event.id),
     [data.miniSessionBookings, event.id],
   );
+  const placeHolders = useMemo(
+    () => bookings.filter(b => b.status === "waitlist" && (b.paymentStatus === "paid" || b.paymentStatus === "deposit_paid")),
+    [bookings],
+  );
+
   const bySlot = useMemo(() => {
     const m = new Map<string, MiniSessionBooking>();
     for (const b of bookings) if (b.status === "booked" || b.status === "no_show") m.set(b.slotTime, b);
@@ -419,6 +458,25 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 {event.status === "published" && <Button variant="outline" onClick={() => setStatus("closed")}>Close bookings</Button>}
               </div>
             </div>
+            {event.dateTbd && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+                <p className="text-xs text-amber-200">
+                  <span className="font-semibold">Date not announced.</span>{" "}
+                  {placeHolders.length} of {event.reservationCap || "∞"} place{placeHolders.length === 1 ? "" : "s"} sold.
+                  Set the date to email everyone at once.
+                </p>
+                <Button size="sm" className="mt-2 gap-1.5" onClick={() => setShowOpen(true)}>
+                  <Send className="w-3.5 h-3.5" /> Set date &amp; open booking
+                </Button>
+              </div>
+            )}
+            {!event.dateTbd && event.bookingOpenedAt && (
+              <p className="text-xs text-muted-foreground">
+                Booking opened {new Date(event.bookingOpenedAt).toLocaleString()}
+                {event.bookingDeadline ? ` · closes ${new Date(event.bookingDeadline).toLocaleString()}` : ""}
+                {" · "}{placeHolders.length} still to pick
+              </p>
+            )}
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" className="gap-1.5" onClick={() => setShowEventQr(true)}><QrCode className="w-3.5 h-3.5" /> Event QR</Button>
               <Button variant="outline" className="gap-1.5" onClick={() => copy(signupUrl, "Sign-up link")}><Copy className="w-3.5 h-3.5" /> Copy link</Button>
@@ -659,6 +717,50 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 <p className="text-xs text-muted-foreground mt-2">{formatSlot(qrFor.slotTime)} · photograph this before their session</p>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Announcing the date. Everyone is emailed in one pass — see the note
+            in api/mini-open-booking.ts. This can only be done once. */}
+        <Dialog open={showOpen} onOpenChange={(o) => { if (!o) setShowOpen(false); }}>
+          <DialogContent className="bg-card border-border text-foreground max-w-sm grid-cols-[minmax(0,1fr)]">
+            <DialogHeader><DialogTitle className="text-base">Set the date &amp; open booking</DialogTitle></DialogHeader>
+            <div className="space-y-3 pb-1">
+              <p className="text-xs text-muted-foreground">
+                {placeHolders.length} {placeHolders.length === 1 ? "person has" : "people have"} paid to hold a place.
+                They all get emailed the moment you do this, and it can only be done once.
+              </p>
+              <div>
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <DateField value={openDate} onChange={setOpenDate} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-w-0">
+                  <Label className="text-xs text-muted-foreground">Start</Label>
+                  <Input value={openStart} onChange={e => setOpenStart(e.target.value)} placeholder="10:00" className="bg-secondary border-border mt-1" />
+                </div>
+                <div className="min-w-0">
+                  <Label className="text-xs text-muted-foreground">End</Label>
+                  <Input value={openEnd} onChange={e => setOpenEnd(e.target.value)} placeholder="16:00" className="bg-secondary border-border mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Hours they get to choose</Label>
+                <Input
+                  value={openHours}
+                  onChange={e => setOpenHours(e.target.value.replace(/[^0-9]/g, ""))}
+                  inputMode="numeric" placeholder="72"
+                  className="bg-secondary border-border mt-1"
+                />
+              </div>
+              <Button className="w-full gap-1.5" disabled={opening} onClick={openBooking}>
+                <Send className="w-4 h-4" />
+                {opening ? "Emailing everyone…" : `Email all ${placeHolders.length} now`}
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                Slate refuses if those hours don't make enough times for everyone who has paid.
+              </p>
+            </div>
           </DialogContent>
         </Dialog>
 

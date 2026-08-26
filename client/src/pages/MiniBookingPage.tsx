@@ -13,6 +13,8 @@ import { qrImageUrl } from "@/lib/publicUrl";
 interface BookingPayload {
   name: string; slotTime: string; status: string; paymentStatus: string;
   depositPaidCents: number; totalCents: number; balanceCents: number;
+  // Pre-sale holder who hasn't picked a time yet.
+  canClaim?: boolean; claimSlots?: string[]; claimClosed?: boolean; claimDeadline?: string | null;
   bookingToken: string; galleryToken: string | null;
   event: { title: string; date: string; locationText: string; slotMinutes: number; includedPhotos: number; agreementText: string; paymentMode: string } | null;
   orgName: string;
@@ -36,6 +38,42 @@ export default function MiniBookingPage() {
   const [loading, setLoading] = useState(true);
   const [showAgreement, setShowAgreement] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  /** Refetch after a claim — someone else may have taken the time meanwhile. */
+  const load = () => {
+    fetch(`/api/mini-public?action=booking&token=${encodeURIComponent(token || "")}`)
+      .then(r => r.json().then(body => ({ ok: r.ok, body })))
+      .then(({ ok, body }) => { if (ok) setB(body); })
+      .catch(() => { /* the page keeps what it already has */ });
+  };
+  const [claimError, setClaimError] = useState("");
+
+  async function claim(slotTime: string) {
+    setClaimError("");
+    setClaiming(true);
+    try {
+      const res = await fetch("/api/mini-public?action=claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, slotTime }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setClaimError(body.error || "Couldn't take that time");
+        // Somebody beat them to it — refresh what's actually left.
+        if (body.slotTaken || body.closed) load();
+        setClaiming(false);
+        return;
+      }
+      if (body.checkoutUrl) { window.location.assign(body.checkoutUrl); return; }
+      load();
+      setClaiming(false);
+    } catch {
+      setClaimError("Couldn't take that time — try again");
+      setClaiming(false);
+    }
+  }
 
   useEffect(() => {
     let tries = 0;
@@ -100,17 +138,69 @@ export default function MiniBookingPage() {
             </>
           ) : (
             <h1 className="text-xl font-bold text-gray-900">
-              {b.status === "pending" ? "Finishing your booking…" : b.status === "cancelled" ? "This booking was cancelled" : "Your booking"}
+              {b.canClaim ? "Pick your time"
+                : b.status === "pending" ? "Finishing your booking…"
+                : b.status === "cancelled" ? "This booking was cancelled"
+                : "Your booking"}
             </h1>
           )}
           {b.event && (
             <div className="mt-3 space-y-1 text-sm text-gray-600">
               <p className="font-semibold text-gray-900">{b.event.title}</p>
-              <p className="flex items-center justify-center gap-1.5"><Calendar className="w-4 h-4" /> {humanDate(b.event.date)} at {formatSlot(b.slotTime)}</p>
+              <p className="flex items-center justify-center gap-1.5">
+                <Calendar className="w-4 h-4" />
+                {humanDate(b.event.date)}{b.slotTime ? ` at ${formatSlot(b.slotTime)}` : ""}
+              </p>
               {b.event.locationText && <p className="flex items-center justify-center gap-1.5"><MapPin className="w-4 h-4" /> {b.event.locationText}</p>}
             </div>
           )}
         </div>
+
+        {b.canClaim && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            {b.claimClosed ? (
+              <>
+                <p className="font-semibold text-gray-900 mb-1">The window has closed</p>
+                <p className="text-sm text-gray-600">
+                  Times were open until {b.claimDeadline ? new Date(b.claimDeadline).toLocaleString() : "the deadline"}.
+                  Get in touch with {b.orgName} and they'll let you know where you stand.
+                </p>
+              </>
+            ) : (b.claimSlots || []).length === 0 ? (
+              <>
+                <p className="font-semibold text-gray-900 mb-1">Every time has gone</p>
+                <p className="text-sm text-gray-600">Get in touch with {b.orgName} — they'll sort you out.</p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-2 flex-wrap mb-1">
+                  <p className="font-bold text-gray-900">Choose your time</p>
+                  {b.claimDeadline && (
+                    <span className="text-xs font-semibold text-amber-600">
+                      by {new Date(b.claimDeadline).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" })}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  First come, first served.
+                  {b.balanceCents > 0 ? ` Your remaining ${money(b.balanceCents)} is taken when you choose.` : ""}
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {(b.claimSlots || []).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      disabled={claiming}
+                      onClick={() => claim(t)}
+                      className="rounded-lg border border-gray-200 px-2 py-2.5 text-sm font-medium text-gray-700 hover:border-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                    >{formatSlot(t)}</button>
+                  ))}
+                </div>
+                {claimError && <p className="text-sm text-red-600 mt-3">{claimError}</p>}
+              </>
+            )}
+          </div>
+        )}
 
         {confirmed && (
           <div className="bg-white rounded-xl shadow-sm border p-6 text-center">

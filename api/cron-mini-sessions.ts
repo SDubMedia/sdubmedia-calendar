@@ -53,12 +53,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     //   waitlist + payment_status pending — a pre-sale reservation, holding one
     //   of a capped number of places, which is scarcer than a time slot
     const { data: staleSlots } = await supabase
-      .from("mini_session_bookings").select("id")
-      .eq("status", "pending").lt("created_at", cutoff);
+      .from("mini_session_bookings").select("id, deposit_paid_cents")
+      .eq("status", "pending").lt("updated_at", cutoff);
     const { data: staleHolds } = await supabase
       .from("mini_session_bookings").select("id")
       .eq("status", "waitlist").eq("payment_status", "pending").lt("created_at", cutoff);
-    const stale = [...(staleSlots || []), ...(staleHolds || [])];
+    // A pre-sale holder who started to claim a time and walked away has ALREADY
+    // PAID a nonrefundable deposit. Cancelling them would take their money and
+    // their place; they go back to holding the place, and the time returns to
+    // sale. Only a never-paid checkout is cancelled outright.
+    const abandonedClaims = (staleSlots || []).filter(b => Number(b.deposit_paid_cents || 0) > 0);
+    if (abandonedClaims.length > 0) {
+      const { error } = await supabase.from("mini_session_bookings")
+        .update({ status: "waitlist", slot_time: "", checkout_session_id: null, updated_at: new Date().toISOString() })
+        .in("id", abandonedClaims.map(x => x.id));
+      if (error) errors.push(`release-claims: ${error.message}`);
+    }
+
+    const stale = [
+      ...(staleSlots || []).filter(b => Number(b.deposit_paid_cents || 0) === 0),
+      ...(staleHolds || []),
+    ];
     if (stale.length > 0) {
       const { error } = await supabase.from("mini_session_bookings")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })

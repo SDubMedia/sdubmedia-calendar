@@ -8,6 +8,7 @@
 //   book      POST                   claim a slot → pending row → Stripe checkout
 //   booking   ?token=<booking_token> the party's own booking page (their QR)
 //   schedule  ?slug=<org slug>       every upcoming event for one photographer
+//   claim     POST                   a place-holder picks their time + pays the rest
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -60,6 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "book": return await book(req, res);
       case "booking": return await getBooking(token as string, res);
       case "pay": return await payBalance(req, res);
+      case "claim": return await claimSlot(req, res);
       case "schedule": return await getSchedule(slug as string, res);
       default: return res.status(400).json({ error: "Unknown action" });
     }
@@ -425,6 +427,103 @@ async function payBalance(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+/**
+ * A place-holder picks their time and pays the balance.
+ *
+ * The slot is taken at THIS moment, not when Stripe returns: status flips to
+ * `pending` with the slot set, which puts the row under the partial unique
+ * index and makes the race unwinnable by two people at once. If they then
+ * abandon checkout, the cron returns them to `waitlist` with the slot cleared —
+ * they keep the place they paid for, and the time goes back on sale.
+ */
+async function claimSlot(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "POST required" });
+  const bookingToken = clean(req.body?.token, 64);
+  const slot = clean(req.body?.slotTime, 5);
+  if (!bookingToken || !slot) return res.status(400).json({ error: "Missing booking or time" });
+
+  const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("booking_token", bookingToken).maybeSingle();
+  if (!b) return res.status(404).json({ error: "Booking not found" });
+  if (b.status === "cancelled") return res.status(400).json({ error: "This booking was cancelled" });
+  if (b.slot_time) return res.status(400).json({ error: "You've already got a time." });
+  if (b.status !== "waitlist") return res.status(400).json({ error: "This booking can't pick a time." });
+
+  const { data: ev } = await supabase.from("mini_sessions").select("*").eq("id", b.mini_session_id).maybeSingle();
+  if (!ev) return res.status(404).json({ error: "Session not found" });
+  if (!ev.booking_opened_at) return res.status(400).json({ error: "Times aren't open yet." });
+  if (ev.booking_deadline && new Date(ev.booking_deadline).getTime() < Date.now()) {
+    return res.status(400).json({ error: "The window to choose has closed.", closed: true });
+  }
+
+  const { data: siblings } = await supabase
+    .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+  const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
+  if (!openSlots(spec, heldSlots(siblings || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : []).includes(slot)) {
+    return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
+  }
+
+  const owed = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
+
+  // Take the slot now. The unique index is what actually settles a tie between
+  // two people claiming the same time in the same second.
+  const { error: claimErr } = await supabase.from("mini_session_bookings")
+    .update({ slot_time: slot, status: owed > 0 ? "pending" : "booked", updated_at: new Date().toISOString() })
+    .eq("id", b.id);
+  if (claimErr) {
+    if (String(claimErr.code) === "23505") return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
+    return res.status(500).json({ error: claimErr.message });
+  }
+
+  // Already paid in full at reservation time — nothing else to collect.
+  if (owed <= 0) return res.status(200).json({ ok: true, booked: true });
+
+  const { data: org } = await supabase.from("organizations").select("stripe_account_id, name").eq("id", b.org_id).single();
+  if (!org?.stripe_account_id) return res.status(400).json({ error: "Payment isn't set up for this photographer." });
+
+  const bookingUrl = `${APP_BASE}/msb/${b.booking_token}`;
+  const successUrl = `${bookingUrl}?paid=1`;
+  if (!isAllowedUrl(successUrl) || !isAllowedUrl(bookingUrl)) return res.status(400).json({ error: "Invalid redirect URL" });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      ...(b.email ? { customer_email: b.email } : {}),
+      ...(b.stripe_customer_id ? { customer: b.stripe_customer_id } : {}),
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `${ev.title || "Mini session"} — ${formatSlot(slot)}`,
+            description: `${ev.date} · ${org.name || ""}`.trim(),
+          },
+          unit_amount: owed,
+        },
+        quantity: 1,
+      }],
+      // The first-payment kind on purpose: this confirms the booking itself,
+      // which is what confirmMiniBooking does. `mini_session_balance` is for
+      // topping up a booking that is already confirmed.
+      metadata: { kind: "mini_session", bookingId: b.id, miniSessionId: ev.id },
+      success_url: successUrl,
+      cancel_url: bookingUrl,
+    }, { stripeAccount: org.stripe_account_id });
+
+    const { error: upErr } = await supabase.from("mini_session_bookings")
+      .update({ checkout_session_id: session.id }).eq("id", b.id);
+    if (upErr) {
+      // Hand the time back rather than issue a checkout we can't later verify.
+      await supabase.from("mini_session_bookings")
+        .update({ slot_time: "", status: "waitlist" }).eq("id", b.id);
+      return res.status(500).json({ error: "Couldn't start checkout — please try again." });
+    }
+    return res.status(200).json({ ok: true, checkoutUrl: session.url });
+  } catch (err) {
+    await supabase.from("mini_session_bookings")
+      .update({ slot_time: "", status: "waitlist" }).eq("id", b.id);
+    return res.status(500).json({ error: errorMessage(err, "Couldn't start checkout") });
+  }
+}
+
 async function getBooking(bookingToken: string, res: VercelResponse) {
   if (!bookingToken) return res.status(400).json({ error: "Missing token" });
   const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("booking_token", bookingToken).maybeSingle();
@@ -445,7 +544,30 @@ async function getBooking(bookingToken: string, res: VercelResponse) {
   }
 
   const balanceCents = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
+
+  // A place-holder who hasn't picked a time yet. Only offer the picker once the
+  // owner has actually opened booking — before that there is no real date.
+  const canClaim = b.status === "waitlist" && !b.slot_time && !!ev?.booking_opened_at;
+  let claimSlots: string[] = [];
+  let claimClosed = false;
+  if (canClaim && ev) {
+    claimClosed = !!ev.booking_deadline && new Date(ev.booking_deadline).getTime() < Date.now();
+    if (!claimClosed) {
+      const { data: siblings } = await supabase
+        .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+      claimSlots = openSlots(
+        { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes },
+        heldSlots(siblings || []),
+        Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [],
+      );
+    }
+  }
+
   return res.status(200).json({
+    canClaim,
+    claimSlots,
+    claimClosed,
+    claimDeadline: ev?.booking_deadline || null,
     name: b.name,
     slotTime: b.slot_time,
     status: b.status,
