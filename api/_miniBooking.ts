@@ -59,6 +59,110 @@ function monthOnly(iso: string): string {
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+interface MiniEmailBooking { name: string; email?: string | null; slot_time: string; booking_token: string }
+interface MiniEmailEvent { title?: string | null; date?: string | null; location_text?: string | null }
+
+/**
+ * The "you're booked" / "your place is held" email.
+ *
+ * Extracted so the roster's Resend button sends the SAME email the customer was
+ * originally sent, instead of a second near-copy that has to be kept in step by
+ * hand. A resent email that quietly disagrees with the first one is worse than
+ * no resend at all.
+ *
+ * Returns null when the booking URL doesn't validate — never a half-built email.
+ */
+export function buildMiniBookingEmail(
+  b: MiniEmailBooking,
+  ev: MiniEmailEvent | null,
+  paid: number,
+  balance: number,
+): { subject: string; body: string } | null {
+  const bookingUrl = `${APP_BASE}/msb/${b.booking_token}`;
+  if (!isAllowedUrl(bookingUrl)) return null;
+  const isReservation = !b.slot_time;
+  const body = `
+        <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${isReservation ? "Your place is held ✓" : "You're booked ✓"}</h2>
+        <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
+          ${escapeHtml(b.name)}, ${isReservation
+            ? `you have one of the places for ${escapeHtml(ev?.title || "our mini sessions")}.`
+            : `your ${escapeHtml(ev?.title || "mini session")} is confirmed.`}
+        </p>
+        <table style="border-collapse:collapse;margin:0 0 16px;font-size:14px;">
+          ${isReservation
+            // NEVER the stored date — it is a placeholder chosen only to file
+            // the event in the right month. Saying it would be inventing a day.
+            ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(monthOnly(ev?.date || ""))} — date to be confirmed</td></tr>`
+            : `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(ev?.date || ""))} at ${escapeHtml(formatSlot(b.slot_time))}</td></tr>`}
+          ${ev?.location_text && !isReservation ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Paid</td><td style="padding:4px 0;">${money(paid)}</td></tr>
+          ${balance > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">${isReservation ? "Still to pay" : "Balance"}</td><td style="padding:4px 0;">${money(balance)} — ${isReservation ? "due when you choose your time" : "charged to your card the day before"}</td></tr>` : ""}
+        </table>
+        ${isReservation ? `
+        <div style="margin:16px 0;padding:14px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
+          <p style="margin:0;color:#92400e;font-size:14px;">
+            This holds a place, not a time. When the date is set, everyone holding a place is emailed at the same moment and picks a time on a first-come basis.
+          </p>
+        </div>
+        <p style="margin:24px 0;text-align:center;">
+          <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">View your place</a>
+        </p>` : `
+        <div style="text-align:center;margin:24px 0;padding:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
+          <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1e293b;">Have this ready when you arrive</p>
+          <img src="${escapeHtml(qrImgUrl(bookingUrl))}" alt="Your check-in code" width="200" height="200" style="display:block;margin:0 auto;border-radius:8px;" />
+          <p style="margin:12px 0 0;font-size:12px;color:#64748b;">Your photographer scans this before your session — it's how your photos find their way back to you.</p>
+        </div>
+        <p style="margin:8px 0;text-align:center;">
+          <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your booking</a>
+        </p>`}`;
+  return {
+    subject: isReservation
+      ? `Your place is held — ${ev?.title || "mini session"}`
+      : `You're booked — ${ev?.title || "mini session"} ${formatSlot(b.slot_time)}`,
+    body,
+  };
+}
+
+/**
+ * The "date is set — pick your time" email sent to everyone holding a place.
+ *
+ * Shared with the resend path: someone who says they never got this is the most
+ * likely person to ever ask, because it's the one email with a deadline on it.
+ */
+export function buildMiniClaimEmail(
+  b: MiniEmailBooking & { total_cents?: number | null; deposit_paid_cents?: number | null },
+  ev: MiniEmailEvent & { org_name?: string },
+  deadlineText: string,
+  orgName = "your photographer",
+): { subject: string; body: string } | null {
+  const claimUrl = `${APP_BASE}/msb/${b.booking_token}`;
+  if (!isAllowedUrl(claimUrl)) return null;
+  const owed = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
+  const date = ev.date || "";
+  const body = `
+        <h2 style="margin:0 0 4px;font-size:18px;">The date is set — pick your time</h2>
+        <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
+          ${escapeHtml(b.name)}, ${escapeHtml(orgName)} has set the date for ${escapeHtml(ev.title || "your mini session")}.
+        </p>
+        <table style="border-collapse:collapse;margin:0 0 16px;font-size:14px;">
+          <tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(date))}</td></tr>
+          ${ev.location_text ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
+          ${owed > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Still to pay</td><td style="padding:4px 0;">${money(owed)}</td></tr>` : ""}
+        </table>
+        <div style="margin:16px 0;padding:14px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
+          <p style="margin:0;color:#92400e;font-size:14px;">
+            Times are first come, first served. You have until <strong>${escapeHtml(deadlineText)}</strong> to choose.
+          </p>
+        </div>
+        <p style="margin:24px 0;text-align:center;">
+          <a href="${escapeHtml(claimUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">Choose your time</a>
+        </p>
+        <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;text-align:center;">
+          Everyone holding a place was emailed at the same moment as you.
+        </p>`;
+  return { subject: `Pick your time — ${ev.title || "mini session"} on ${humanDate(date)}`, body };
+}
+
 export async function confirmMiniBooking(bookingId: string, session: { amount_total?: number | null; id?: string; payment_intent?: unknown }) {
   const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!b) return;
@@ -102,52 +206,17 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
 
   const { data: ev } = await supabase.from("mini_sessions").select("*").eq("id", b.mini_session_id).maybeSingle();
   const { from, replyTo, orgName, businessInfo } = await orgSender(b.org_id);
-  const bookingUrl = `${APP_BASE}/msb/${b.booking_token}`;
   const balance = Math.max(0, total - paid);
+
+  const mail = buildMiniBookingEmail(b, ev, paid, balance);
 
   const results = await Promise.allSettled([
     (async () => {
-      if (!isAllowedUrl(bookingUrl)) return;
-      const body = `
-        <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${isReservation ? "Your place is held ✓" : "You're booked ✓"}</h2>
-        <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
-          ${escapeHtml(b.name)}, ${isReservation
-            ? `you have one of the places for ${escapeHtml(ev?.title || "our mini sessions")}.`
-            : `your ${escapeHtml(ev?.title || "mini session")} is confirmed.`}
-        </p>
-        <table style="border-collapse:collapse;margin:0 0 16px;font-size:14px;">
-          ${isReservation
-            // NEVER the stored date — it is a placeholder chosen only to file
-            // the event in the right month. Saying it would be inventing a day.
-            ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(monthOnly(ev?.date || ""))} — date to be confirmed</td></tr>`
-            : `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(ev?.date || ""))} at ${escapeHtml(formatSlot(b.slot_time))}</td></tr>`}
-          ${ev?.location_text && !isReservation ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
-          <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Paid</td><td style="padding:4px 0;">${money(paid)}</td></tr>
-          ${balance > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">${isReservation ? "Still to pay" : "Balance"}</td><td style="padding:4px 0;">${money(balance)} — ${isReservation ? "due when you choose your time" : "charged to your card the day before"}</td></tr>` : ""}
-        </table>
-        ${isReservation ? `
-        <div style="margin:16px 0;padding:14px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
-          <p style="margin:0;color:#92400e;font-size:14px;">
-            This holds a place, not a time. When the date is set, everyone holding a place is emailed at the same moment and picks a time on a first-come basis.
-          </p>
-        </div>
-        <p style="margin:24px 0;text-align:center;">
-          <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">View your place</a>
-        </p>` : `
-        <div style="text-align:center;margin:24px 0;padding:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
-          <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1e293b;">Have this ready when you arrive</p>
-          <img src="${escapeHtml(qrImgUrl(bookingUrl))}" alt="Your check-in code" width="200" height="200" style="display:block;margin:0 auto;border-radius:8px;" />
-          <p style="margin:12px 0 0;font-size:12px;color:#64748b;">Your photographer scans this before your session — it's how your photos find their way back to you.</p>
-        </div>
-        <p style="margin:8px 0;text-align:center;">
-          <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your booking</a>
-        </p>`}`;
+      if (!mail || !b.email) return;
       await resend.emails.send({
         from, replyTo, to: b.email,
-        subject: isReservation
-          ? `Your place is held — ${ev?.title || "mini session"}`
-          : `You're booked — ${ev?.title || "mini session"} ${formatSlot(b.slot_time)}`,
-        html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, body),
+        subject: mail.subject,
+        html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, mail.body),
       });
     })(),
     sendPushToOwner(b.org_id, {

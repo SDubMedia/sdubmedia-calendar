@@ -14,9 +14,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { verifyAuth, getUserOrgId, errorMessage, escapeHtml, isAllowedUrl } from "./_auth.js";
+import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
-import { orgSender, humanDate, money, APP_BASE } from "./_miniBooking.js";
+import { orgSender, buildMiniClaimEmail } from "./_miniBooking.js";
 import { generateSlots } from "./_miniSlots.js";
 
 const supabase = createClient(
@@ -47,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = clean(req.body?.startTime, 5);
   const endTime = clean(req.body?.endTime, 5);
   const hours = Math.min(336, Math.max(1, Math.round(Number(req.body?.hours) || 72)));
+  const locationText = clean(req.body?.locationText, 200);
 
   if (!miniSessionId) return res.status(400).json({ error: "Missing session" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Pick the date" });
@@ -86,11 +87,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error: upErr } = await supabase.from("mini_sessions").update({
       date, start_time: startTime, end_time: endTime,
       date_tbd: false,
+      ...(locationText ? { location_text: locationText } : {}),
       booking_deadline: deadline.toISOString(),
       booking_opened_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", ev.id);
     if (upErr) return res.status(500).json({ error: upErr.message });
+
+    // `ev` was read before the update, so its location_text is the OLD one.
+    // The whole point of asking here is that this email carries the new address.
+    const whereText = locationText || ev.location_text || "";
 
     const { from, replyTo, orgName, businessInfo } = await orgSender(ev.org_id);
     // Vercel runs as UTC, so without an explicit zone this email told a
@@ -107,34 +113,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // All at once — see the note at the top of this file.
     const sends = people.map(b => (async () => {
       if (!b.email) return;
-      const claimUrl = `${APP_BASE}/msb/${b.booking_token}`;
-      if (!isAllowedUrl(claimUrl)) return;
-      const owed = Math.max(0, Number(b.total_cents || 0) - Number(b.deposit_paid_cents || 0));
-      const body = `
-        <h2 style="margin:0 0 4px;font-size:18px;">The date is set — pick your time</h2>
-        <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
-          ${escapeHtml(b.name)}, ${escapeHtml(orgName)} has set the date for ${escapeHtml(ev.title || "your mini session")}.
-        </p>
-        <table style="border-collapse:collapse;margin:0 0 16px;font-size:14px;">
-          <tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(date))}</td></tr>
-          ${ev.location_text ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
-          ${owed > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Still to pay</td><td style="padding:4px 0;">${money(owed)}</td></tr>` : ""}
-        </table>
-        <div style="margin:16px 0;padding:14px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
-          <p style="margin:0;color:#92400e;font-size:14px;">
-            Times are first come, first served. You have until <strong>${escapeHtml(deadlineText)}</strong> to choose.
-          </p>
-        </div>
-        <p style="margin:24px 0;text-align:center;">
-          <a href="${escapeHtml(claimUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">Choose your time</a>
-        </p>
-        <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;text-align:center;">
-          Everyone holding a place was emailed at the same moment as you.
-        </p>`;
+      const mail = buildMiniClaimEmail(b, { ...ev, date, location_text: whereText }, deadlineText, orgName);
+      if (!mail) return;
       await resend.emails.send({
         from, replyTo, to: b.email,
-        subject: `Pick your time — ${ev.title || "mini session"} on ${humanDate(date)}`,
-        html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, body),
+        subject: mail.subject,
+        html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, mail.body),
       });
     })());
 

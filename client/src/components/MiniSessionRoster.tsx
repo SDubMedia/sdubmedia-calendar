@@ -93,7 +93,39 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const [openStart, setOpenStart] = useState(event.startTime);
   const [openEnd, setOpenEnd] = useState(event.endTime);
   const [openHours, setOpenHours] = useState("72");
+  const [openWhere, setOpenWhere] = useState(event.locationText || "");
+  const [personFor, setPersonFor] = useState<MiniSessionBooking | null>(null);
+  const [pEmail, setPEmail] = useState("");
+  const [resending, setResending] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
+
+  /** Open one person's card. Their address is prefilled so a typo — by far the
+   *  commonest reason an email "never arrived" — can be fixed and resent in one
+   *  go, rather than corrected and then still not received. */
+  function openPerson(b: MiniSessionBooking) {
+    setPersonFor(b);
+    setPEmail(b.email || "");
+  }
+
+  async function resendEmail() {
+    if (!personFor) return;
+    setResending(true);
+    try {
+      const res = await fetch("/api/mini-resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAuthToken()}` },
+        body: JSON.stringify({ bookingId: personFor.id, email: pEmail.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Couldn't send it");
+      toast.success(`${body.kind} sent to ${body.sentTo}`);
+      setPersonFor(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send it");
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function openBooking() {
     setOpening(true);
@@ -105,6 +137,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
         body: JSON.stringify({
           miniSessionId: event.id, date: openDate,
           startTime: openStart, endTime: openEnd, hours: Number(openHours) || 72,
+          locationText: openWhere,
         }),
       });
       const body = await res.json();
@@ -545,7 +578,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 <div key={b.id} className="flex items-center gap-2 rounded-md border border-border bg-secondary/30 p-2.5">
                   <span className="text-sm font-mono text-muted-foreground w-20 shrink-0">{formatSlot(b.slotTime)}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground truncate">{b.name}</p>
+                    <button onClick={() => openPerson(b)} className="text-sm text-foreground truncate hover:underline text-left w-full">{b.name}</button>
                     <p className="text-[11px] text-muted-foreground truncate">{b.email}</p>
                   </div>
                   <button onClick={() => setQrFor(b)} title="Show their code" className="p-1.5 rounded text-primary hover:bg-primary/10 shrink-0"><QrCode className="w-4 h-4" /></button>
@@ -566,7 +599,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 {placeHolders.map(b => (
                   <div key={b.id} className="flex items-center gap-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2.5">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-foreground leading-tight">{b.name}</p>
+                      <button onClick={() => openPerson(b)} className="text-sm text-foreground leading-tight hover:underline text-left">{b.name}</button>
                       <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
                           {payBadge(b).label}
@@ -602,7 +635,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                     <div className="min-w-0 flex-1">
                       {b ? (
                         <>
-                          <p className={cn("text-sm leading-tight", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</p>
+                          <button onClick={() => openPerson(b)} className={cn("text-sm leading-tight hover:underline text-left", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</button>
                           {b.status === "no_show" && <p className="text-[11px] font-semibold text-red-400">No-show</p>}
                           {/* A badge, not text tacked onto the email — appended
                               it got truncated away on a phone, which is exactly
@@ -812,6 +845,18 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 </div>
               </div>
               <div>
+                <Label className="text-xs text-muted-foreground">Where</Label>
+                <Input
+                  value={openWhere}
+                  onChange={e => setOpenWhere(e.target.value)}
+                  placeholder="Venue and address"
+                  className="bg-secondary border-border mt-1"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Goes in the email everyone is about to get. Leave it and they'll be sent whatever the event says now.
+                </p>
+              </div>
+              <div>
                 <Label className="text-xs text-muted-foreground">Hours they get to choose</Label>
                 <Input
                   value={openHours}
@@ -828,6 +873,71 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 Slate refuses if those hours don't make enough times for everyone who has paid.
               </p>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* One person's card: confirm what we hold for them, fix a wrong address,
+            and send their email again. Slate picks WHICH email — the owner
+            shouldn't have to work out whether this person is owed a
+            confirmation or a pick-your-time. */}
+        <Dialog open={!!personFor} onOpenChange={(o) => { if (!o) setPersonFor(null); }}>
+          <DialogContent className="bg-card border-border text-foreground max-w-xs grid-cols-[minmax(0,1fr)]">
+            <DialogHeader><DialogTitle className="text-base truncate">{personFor?.name}</DialogTitle></DialogHeader>
+            {personFor && (
+              <div className="space-y-3 pb-1">
+                <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1 text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Holds</span>
+                    <span className="text-right min-w-0">
+                      {personFor.slotTime ? formatSlot(personFor.slotTime) : "a place — no time yet"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Paid</span>
+                    <span>{money(personFor.depositPaidCents || 0)}{owedOn(personFor) > 0 ? ` · ${money(owedOn(personFor))} owed` : ""}</span>
+                  </div>
+                  {personFor.phone && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Phone</span>
+                      <a href={`tel:${personFor.phone}`} className="text-primary hover:underline">{personFor.phone}</a>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">Email</Label>
+                  <Input
+                    value={pEmail} onChange={e => setPEmail(e.target.value)}
+                    type="email" placeholder="Add an email"
+                    className="bg-secondary border-border mt-1"
+                  />
+                  {pEmail.trim() !== (personFor.email || "") && (
+                    <p className="text-[11px] text-amber-400 mt-1">
+                      Saved when you send.
+                    </p>
+                  )}
+                </div>
+
+                <Button className="w-full gap-1.5" disabled={resending || !pEmail.trim()} onClick={resendEmail}>
+                  <Send className="w-4 h-4" />
+                  {resending ? "Sending…" : "Send their email again"}
+                </Button>
+                <p className="text-[11px] text-muted-foreground">
+                  {!personFor.slotTime && event.bookingOpenedAt
+                    ? "They'll get the pick-your-time email, with the same deadline as everyone else."
+                    : personFor.slotTime
+                      ? "They'll get their confirmation again, with their time and check-in code."
+                      : "They'll get their place-held email again."}
+                </p>
+
+                <button
+                  onClick={() => { setPersonFor(null); setQrFor(personFor); }}
+                  className="w-full text-xs text-primary hover:underline py-1"
+                >
+                  Show their check-in code instead
+                </button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 
