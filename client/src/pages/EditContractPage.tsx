@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { substituteManualContractFields } from "@/lib/manualContractSubstitute";
+import { letterheadFor } from "@/lib/letterhead";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Contract, ContractStatus, AdditionalSigner } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,9 @@ export default function EditContractPage() {
   const { profile } = useAuth();
 
   const contract = useMemo(() => data.contracts.find(c => c.id === id), [data.contracts, id]);
+  // A sent contract shows the business as it was that day; a draft shows it as
+  // it is now. Preview and sent document therefore agree, which is the point.
+  const letterhead = letterheadFor(contract?.letterheadSnapshot, data.organization, profile?.name || "");
   const client = useMemo(() => contract ? data.clients.find(cl => cl.id === contract.clientId) : null, [data.clients, contract]);
   const isDraft = contract?.status === "draft";
   const isReadOnly = !isDraft;
@@ -615,10 +619,10 @@ export default function EditContractPage() {
               // Read-only — render the contract as it appears to the client.
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <ContractLetterhead
-                  orgName={data.organization?.name}
-                  ownerName={profile?.name}
-                  orgLogo={data.organization?.logoUrl}
-                  businessInfo={data.organization?.businessInfo}
+                  orgName={letterhead.orgName}
+                  ownerName={letterhead.ownerName}
+                  orgLogo={letterhead.orgLogo}
+                  businessInfo={letterhead.businessInfo}
                   intro="The contract is ready for review and signature. If you have any questions, just ask."
                 />
                 {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(content) ? (
@@ -675,10 +679,10 @@ export default function EditContractPage() {
           </DialogHeader>
           <div className="bg-white text-black">
             <ContractLetterhead
-              orgName={data.organization?.name}
-              ownerName={profile?.name}
-              orgLogo={data.organization?.logoUrl}
-              businessInfo={data.organization?.businessInfo}
+              orgName={letterhead.orgName}
+              ownerName={letterhead.ownerName}
+              orgLogo={letterhead.orgLogo}
+              businessInfo={letterhead.businessInfo}
               intro="The contract is ready for review and signature. If you have any questions, just ask."
             />
             {/^\s*<(p|h[1-6]|ul|ol|div|span|strong|em|br)\b/i.test(content) ? (

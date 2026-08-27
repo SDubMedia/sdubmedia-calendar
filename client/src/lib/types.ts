@@ -1,3 +1,4 @@
+import type { LetterheadSnapshot } from "@/lib/letterhead";
 // ============================================================
 // Slate — Production Management Platform
 // Billing Model: Hourly — client billed at flat rate, crew paid individually
@@ -1275,6 +1276,9 @@ export interface AdditionalSigner {
 }
 
 export interface Contract {
+  /** Business details frozen at send time. Null = render live (drafts, and
+   *  anything sent before the freeze existed). See lib/letterhead.ts. */
+  letterheadSnapshot?: LetterheadSnapshot | null;
   id: string;
   templateId: string | null;
   clientId: string;
@@ -1569,6 +1573,9 @@ export interface ProposalTemplate {
 }
 
 export interface Proposal {
+  /** Business details frozen at send time. Null = render live (drafts, and
+   *  anything sent before the freeze existed). See lib/letterhead.ts. */
+  letterheadSnapshot?: LetterheadSnapshot | null;
   id: string;
   clientId: string;
   projectId: string | null;

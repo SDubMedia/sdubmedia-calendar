@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { LetterheadSnapshot } from "./_letterhead.js";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
@@ -45,7 +46,7 @@ async function findContractByToken(token: string): Promise<{ contract: Record<st
   // Try primary signer first.
   const primary = await supabase
     .from("contracts")
-    .select("id, title, content, pages, payment_milestones, status, client_email, client_signed_at, owner_signed_at, client_signature, owner_signature, additional_signers")
+    .select("id, title, content, pages, payment_milestones, status, client_email, client_signed_at, owner_signed_at, client_signature, owner_signature, additional_signers, letterhead_snapshot")
     .eq("sign_token", token)
     .maybeSingle();
   if (primary.data) {
@@ -64,7 +65,7 @@ async function findContractByToken(token: string): Promise<{ contract: Record<st
   // on the array shape `[{ "signToken": token }]` so PostgREST can index it.
   const additional = await supabase
     .from("contracts")
-    .select("id, title, content, pages, payment_milestones, status, client_email, client_signed_at, owner_signed_at, client_signature, owner_signature, additional_signers")
+    .select("id, title, content, pages, payment_milestones, status, client_email, client_signed_at, owner_signed_at, client_signature, owner_signature, additional_signers, letterhead_snapshot")
     .filter("additional_signers", "cs", JSON.stringify([{ signToken: token }]))
     .maybeSingle();
   if (!additional.data) return null;
@@ -126,6 +127,19 @@ async function getContract(token: string, res: VercelResponse) {
     orgLogo = orgData?.logo_url || "";
     orgBusinessInfo = (orgData?.business_info as Record<string, unknown>) || null;
     ownerName = (ownerProfiles?.[0]?.name as string) || "";
+  }
+
+  // A sent contract carries the business details as they were that day. The
+  // signer must see what was presented to them, not what the business has since
+  // become — this is the page where that matters most, because it's the one
+  // they put their name on. Contracts with no stamp predate the freeze and keep
+  // rendering live.
+  const stamp = (contract as { letterhead_snapshot?: LetterheadSnapshot | null }).letterhead_snapshot;
+  if (stamp) {
+    orgName = stamp.orgName || orgName;
+    orgLogo = stamp.logoUrl || orgLogo;
+    orgBusinessInfo = (stamp.businessInfo as Record<string, unknown>) || orgBusinessInfo;
+    ownerName = stamp.ownerName || ownerName;
   }
 
   return res.status(200).json({ ...contract, orgName, orgLogo, orgBusinessInfo, ownerName, signer, alreadySigned: false });

@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { LetterheadSnapshot } from "./_letterhead.js";
 import { randomBytes } from "crypto";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
@@ -80,6 +81,17 @@ async function getProposal(token: string, res: VercelResponse) {
     // Redacted: this object goes to anyone holding the proposal link.
     orgBusinessInfo = publicBusinessInfo(org?.business_info);
     stripeConnected = !!org?.stripe_account_id;
+  }
+
+  // A sent proposal shows the business as it was when it went out, so the price
+  // and the company quoting it belong to the same moment. Still redacted
+  // through publicBusinessInfo — the stamp holds the full record, and this
+  // object goes to anyone holding the link.
+  const propStamp = (proposal as { letterhead_snapshot?: LetterheadSnapshot | null }).letterhead_snapshot;
+  if (propStamp) {
+    orgName = propStamp.orgName || orgName;
+    orgLogo = propStamp.logoUrl || orgLogo;
+    orgBusinessInfo = publicBusinessInfo(propStamp.businessInfo) || orgBusinessInfo;
   }
 
   const alreadyAccepted = !!proposal.accepted_at;

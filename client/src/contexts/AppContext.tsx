@@ -5,6 +5,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking } from "@/lib/types";
 import { mapsQueryFor } from "@/lib/address";
+import { captureLetterhead, type LetterheadSnapshot } from "@/lib/letterhead";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -283,7 +284,10 @@ function rowToContractTemplate(r: any): ContractTemplate {
 }
 
 function rowToContract(r: any): Contract {
+  // Frozen at send; null on drafts and anything predating the freeze.
+  const letterheadSnapshot = (r.letterhead_snapshot as LetterheadSnapshot | null) || null;
   return {
+    letterheadSnapshot,
     id: r.id, templateId: r.template_id || null, clientId: r.client_id || "",
     projectId: r.project_id || null, title: r.title || "", content: r.content || "",
     status: r.status || "draft", sentAt: r.sent_at || null,
@@ -349,7 +353,10 @@ function rowToProposalTemplate(r: any): ProposalTemplate {
 }
 
 function rowToProposal(r: any): Proposal {
+  // Frozen at send; null on drafts and anything predating the freeze.
+  const letterheadSnapshot = (r.letterhead_snapshot as LetterheadSnapshot | null) || null;
   return {
+    letterheadSnapshot,
     id: r.id, clientId: r.client_id || "", projectId: r.project_id || null,
     title: r.title || "",
     pages: Array.isArray(r.pages) ? r.pages : [],
@@ -1476,6 +1483,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [fetchAll]);
 
   // ---- Supabase Realtime — sync changes from other users ----
+  // updateContract/updateProposal have empty dep arrays so their identity stays
+  // stable across the app — which means they cannot read rawData directly
+  // without capturing the first render's copy. This ref carries the current
+  // values in. Written in an effect, never during render.
+  const letterheadSourceRef = useRef<{ organization: Organization | null; ownerName: string }>({
+    organization: null, ownerName: "",
+  });
+  useEffect(() => {
+    letterheadSourceRef.current = {
+      organization: rawData.organization,
+      ownerName: profile?.name || "",
+    };
+  });
+
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
@@ -1822,6 +1843,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c.sendBackReason !== undefined) patch.send_back_reason = c.sendBackReason;
     if (c.pages !== undefined) patch.pages = c.pages;
     if (c.paymentMilestones !== undefined) patch.payment_milestones = c.paymentMilestones;
+    // Freeze the business details the moment this goes out — that is the
+    // version the client sees and keeps a copy of.
+    //
+    // `.is("letterhead_snapshot", null)` is what makes this safe: the write only
+    // lands while the column is still empty, so re-sending can never swap the
+    // header on a document the client already holds. That guarantee lives in the
+    // database, not in a local check that could read stale state.
+    if (c.status === "sent") {
+      const { organization: liveOrg, ownerName } = letterheadSourceRef.current;
+      const { error: stampErr } = await supabase.from("contracts")
+        .update({
+          letterhead_snapshot: captureLetterhead(
+            { name: liveOrg?.name, logoUrl: liveOrg?.logoUrl, businessInfo: liveOrg?.businessInfo },
+            ownerName,
+            new Date().toISOString(),
+          ),
+        })
+        .eq("id", id)
+        .is("letterhead_snapshot", null);
+      if (stampErr) console.warn(`[letterhead] couldn't stamp contract ${id}: ${stampErr.message}`);
+    }
+
     const { error } = await supabase.from("contracts").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, contracts: d.contracts.map(x => x.id === id ? { ...x, ...c, updatedAt: patch.updated_at } : x) }));
@@ -1963,6 +2006,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.clientEmail !== undefined) patch.client_email = p.clientEmail;
     if (p.notes !== undefined) patch.notes = p.notes;
     if (p.clientFieldValues !== undefined) patch.client_field_values = p.clientFieldValues;
+    // Freeze the business details the moment this goes out — that is the
+    // version the client sees and keeps a copy of.
+    //
+    // `.is("letterhead_snapshot", null)` is what makes this safe: the write only
+    // lands while the column is still empty, so re-sending can never swap the
+    // header on a document the client already holds. That guarantee lives in the
+    // database, not in a local check that could read stale state.
+    if (p.status === "sent") {
+      const { organization: liveOrg, ownerName } = letterheadSourceRef.current;
+      const { error: stampErr } = await supabase.from("proposals")
+        .update({
+          letterhead_snapshot: captureLetterhead(
+            { name: liveOrg?.name, logoUrl: liveOrg?.logoUrl, businessInfo: liveOrg?.businessInfo },
+            ownerName,
+            new Date().toISOString(),
+          ),
+        })
+        .eq("id", id)
+        .is("letterhead_snapshot", null);
+      if (stampErr) console.warn(`[letterhead] couldn't stamp proposal ${id}: ${stampErr.message}`);
+    }
+
     const { error } = await supabase.from("proposals").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     setRawData(d => ({ ...d, proposals: d.proposals.map(x => x.id === id ? { ...x, ...p, updatedAt: patch.updated_at } : x) }));
