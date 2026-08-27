@@ -14,8 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { DateField } from "@/components/DateTimeField";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { cn, parsePastedAddress } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { generateSlots, formatSlot } from "@/lib/miniSlots";
+import { composeAddress, type AddressParts } from "@/lib/address";
+import AddressFields from "@/components/AddressFields";
 import type { MiniSession, MiniUnclaimedPolicy } from "@/lib/types";
 
 const TIMES = Array.from({ length: 4 * 24 }, (_, i) => {
@@ -85,12 +87,7 @@ export default function MiniSessionForm({ open, onClose, event }: {
   // One-line version stored alongside the parts — everything downstream (the
   // sign-up page, confirmation + reminder emails, the calendar feed) reads a
   // single field, so compose it here rather than teaching each one the shape.
-  const composedLocation = [
-    locationName.trim(),
-    address.trim(),
-    [city.trim(), stateAbbr.trim()].filter(Boolean).join(", "),
-    zip.trim(),
-  ].filter(Boolean).join(" · ");
+  const composedLocation = composeAddress({ locationName, address, city, state: stateAbbr, zip });
 
   const previewSlots = useMemo(
     () => generateSlots({ startTime, endTime, slotMinutes: Number(slotMinutes) || 0, breakMinutes: Number(breakMinutes) || 0 }),
@@ -175,57 +172,21 @@ export default function MiniSessionForm({ open, onClose, event }: {
             <Label className="text-xs text-muted-foreground">Event name</Label>
             <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Fall Mini Sessions" className="bg-secondary border-border" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5 min-w-0">
-              <Label className="text-xs text-muted-foreground">Date</Label>
-              <DateField value={date} onChange={setDate} className="bg-secondary border-border w-full min-w-0" />
-            </div>
-            <div className="space-y-1.5 min-w-0">
-              <Label className="text-xs text-muted-foreground">Place name</Label>
-              <Input value={locationName} onChange={e => setLocationName(e.target.value)} placeholder="Harlinsdale Farm" className="bg-secondary border-border" />
-            </div>
+          <div className="space-y-1.5 min-w-0">
+            <Label className="text-xs text-muted-foreground">Date</Label>
+            <DateField value={date} onChange={setDate} className="bg-secondary border-border w-full min-w-0" />
           </div>
 
-          {/* Street / city / state / zip in tab order, so one pass down the
-              keyboard fills the whole address. Pasting a full address into the
-              street box splits it across the fields. */}
-          <div className="space-y-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Street address</Label>
-              <Input
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                onPaste={e => {
-                  const text = e.clipboardData.getData("text");
-                  if (!text.includes(",")) return;
-                  const parsed = parsePastedAddress(text);
-                  if (parsed.city || parsed.state || parsed.zip) {
-                    e.preventDefault();
-                    setAddress(parsed.address);
-                    if (parsed.city) setCity(parsed.city);
-                    if (parsed.state) setStateAbbr(parsed.state);
-                    if (parsed.zip) setZip(parsed.zip);
-                  }
-                }}
-                placeholder="239 Franklin Rd"
-                className="bg-secondary border-border"
-              />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="space-y-1.5 min-w-0 sm:col-span-2">
-                <Label className="text-xs text-muted-foreground">City</Label>
-                <Input value={city} onChange={e => setCity(e.target.value)} placeholder="Franklin" className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-1.5 min-w-0">
-                <Label className="text-xs text-muted-foreground">State</Label>
-                <Input value={stateAbbr} onChange={e => setStateAbbr(e.target.value.toUpperCase().slice(0, 2))} placeholder="TN" maxLength={2} className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-1.5 min-w-0">
-                <Label className="text-xs text-muted-foreground">ZIP</Label>
-                <Input value={zip} onChange={e => setZip(e.target.value)} inputMode="numeric" placeholder="37064" className="bg-secondary border-border" />
-              </div>
-            </div>
-          </div>
+          <AddressFields
+            value={{ locationName, address, city, state: stateAbbr, zip }}
+            onChange={(next: AddressParts) => {
+              setLocationName(next.locationName ?? "");
+              setAddress(next.address ?? "");
+              setCity(next.city ?? "");
+              setStateAbbr(next.state ?? "");
+              setZip(next.zip ?? "");
+            }}
+          />
           <p className="text-[11px] text-muted-foreground -mt-1">
             {composedLocation
               ? <>Shows as <span className="text-foreground">{composedLocation}</span> on the sign-up page and in their emails.</>

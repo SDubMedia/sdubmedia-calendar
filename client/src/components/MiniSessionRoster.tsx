@@ -22,6 +22,8 @@ import { toUploadableImage } from "@/lib/heic";
 import { getAuthToken } from "@/lib/supabase";
 import { publicUrl, qrImageUrl } from "@/lib/publicUrl";
 import MiniSessionForm from "@/components/MiniSessionForm";
+import AddressFields from "@/components/AddressFields";
+import type { AddressParts } from "@/lib/address";
 import type { MiniSession, MiniSessionBooking } from "@/lib/types";
 
 /** Money still outstanding on a booking. */
@@ -93,7 +95,10 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const [openStart, setOpenStart] = useState(event.startTime);
   const [openEnd, setOpenEnd] = useState(event.endTime);
   const [openHours, setOpenHours] = useState("72");
-  const [openWhere, setOpenWhere] = useState(event.locationText || "");
+  const [openWhere, setOpenWhere] = useState<AddressParts>({
+    locationName: event.locationName || "", address: event.address || "",
+    city: event.city || "", state: event.state || "", zip: event.zip || "",
+  });
   const [personFor, setPersonFor] = useState<MiniSessionBooking | null>(null);
   const [pEmail, setPEmail] = useState("");
   const [resending, setResending] = useState(false);
@@ -137,7 +142,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
         body: JSON.stringify({
           miniSessionId: event.id, date: openDate,
           startTime: openStart, endTime: openEnd, hours: Number(openHours) || 72,
-          locationText: openWhere,
+          location: openWhere,
         }),
       });
       const body = await res.json();
@@ -575,13 +580,16 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 The window changed after these were booked. They still have their time — reach out if the plan really moved.
               </p>
               {stranded.map(b => (
-                <div key={b.id} className="flex items-center gap-2 rounded-md border border-border bg-secondary/30 p-2.5">
+                <div key={b.id} onClick={() => openPerson(b)} role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPerson(b); } }}
+                  aria-label={`Open ${b.name}`}
+                  className="flex items-center gap-2 rounded-md border border-border bg-secondary/30 p-2.5 cursor-pointer hover:border-primary/50">
                   <span className="text-sm font-mono text-muted-foreground w-20 shrink-0">{formatSlot(b.slotTime)}</span>
                   <div className="min-w-0 flex-1">
-                    <button onClick={() => openPerson(b)} className="text-sm text-foreground truncate hover:underline text-left w-full">{b.name}</button>
+                    <p className="text-sm text-foreground truncate">{b.name}</p>
                     <p className="text-[11px] text-muted-foreground truncate">{b.email}</p>
                   </div>
-                  <button onClick={() => setQrFor(b)} title="Show their code" className="p-1.5 rounded text-primary hover:bg-primary/10 shrink-0"><QrCode className="w-4 h-4" /></button>
+                  <button onClick={e => { e.stopPropagation(); setQrFor(b); }} title="Show their code" className="p-1.5 rounded text-primary hover:bg-primary/10 shrink-0"><QrCode className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
@@ -597,9 +605,12 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
               </p>
               <div className="space-y-1.5">
                 {placeHolders.map(b => (
-                  <div key={b.id} className="flex items-center gap-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2.5">
+                  <div key={b.id} onClick={() => openPerson(b)} role="button" tabIndex={0}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPerson(b); } }}
+                    aria-label={`Open ${b.name}`}
+                    className="flex items-center gap-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2.5 cursor-pointer hover:border-fuchsia-400">
                     <div className="min-w-0 flex-1">
-                      <button onClick={() => openPerson(b)} className="text-sm text-foreground leading-tight hover:underline text-left">{b.name}</button>
+                      <p className="text-sm text-foreground leading-tight">{b.name}</p>
                       <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
                           {payBadge(b).label}
@@ -607,7 +618,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                         {b.email && <span className="text-[11px] text-muted-foreground truncate min-w-0">{b.email}</span>}
                       </div>
                     </div>
-                    <button onClick={() => setQrFor(b)} title="Show their code" aria-label={`Show code for ${b.name}`}
+                    <button onClick={e => { e.stopPropagation(); setQrFor(b); }} title="Show their code" aria-label={`Show code for ${b.name}`}
                       className="p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center text-primary hover:bg-primary/10 shrink-0"><QrCode className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -621,7 +632,17 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 const b = bySlot.get(time);
                 const blocked = event.blockedSlots.includes(time);
                 return (
-                  <div key={time} className={cn("flex items-center gap-2 rounded-md border p-2.5",
+                  <div key={time}
+                    {...(b ? {
+                      onClick: () => openPerson(b),
+                      role: "button", tabIndex: 0,
+                      "aria-label": `Open ${b.name}`,
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPerson(b); }
+                      },
+                    } : {})}
+                    className={cn("flex items-center gap-2 rounded-md border p-2.5",
+                    b ? "cursor-pointer" : "",
                     b?.status === "no_show" ? "border-red-500/50 bg-red-500/10"
                       : b?.shotAt ? "border-emerald-500/50 bg-emerald-500/10"
                       : b ? "border-border bg-secondary/30"
@@ -635,7 +656,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                     <div className="min-w-0 flex-1">
                       {b ? (
                         <>
-                          <button onClick={() => openPerson(b)} className={cn("text-sm leading-tight hover:underline text-left", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</button>
+                          <p className={cn("text-sm leading-tight", b.status === "no_show" ? "text-red-300 line-through" : "text-foreground")}>{b.name}</p>
                           {b.status === "no_show" && <p className="text-[11px] font-semibold text-red-400">No-show</p>}
                           {/* A badge, not text tacked onto the email — appended
                               it got truncated away on a phone, which is exactly
@@ -643,7 +664,7 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                             {owedOn(b) > 0 ? (
                               <button
-                                onClick={() => setCollectFor(b)}
+                                onClick={e => { e.stopPropagation(); setCollectFor(b); }}
                                 aria-label={`Collect ${money(owedOn(b))} from ${b.name}`}
                                 className={cn("text-[10px] font-semibold px-1.5 py-1 rounded border shrink-0 hover:brightness-125", payBadge(b).className)}
                               >
@@ -664,15 +685,15 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                     {b ? (
                       <div className="flex gap-1 shrink-0">
                         <button
-                          onClick={() => updateMiniBooking(b.id, { shotAt: b.shotAt ? null : new Date().toISOString() })}
+                          onClick={e => { e.stopPropagation(); updateMiniBooking(b.id, { shotAt: b.shotAt ? null : new Date().toISOString() }); }}
                           title={b.shotAt ? "Not shot yet" : "Mark as shot"}
                           aria-label={b.shotAt ? `Undo shot for ${b.name}` : `Mark ${b.name} as shot`}
                           className={cn("p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center",
                             b.shotAt ? "text-emerald-400 bg-emerald-500/15" : "text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10")}>
                           <CheckCircle2 className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setQrFor(b)} title="Show their code" aria-label={`Show code for ${b.name}`} className="p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center text-primary hover:bg-primary/10"><QrCode className="w-4 h-4" /></button>
-                        <button onClick={() => updateMiniBooking(b.id, { status: b.status === "no_show" ? "booked" : "no_show" })}
+                        <button onClick={e => { e.stopPropagation(); setQrFor(b); }} title="Show their code" aria-label={`Show code for ${b.name}`} className="p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center text-primary hover:bg-primary/10"><QrCode className="w-4 h-4" /></button>
+                        <button onClick={e => { e.stopPropagation(); updateMiniBooking(b.id, { status: b.status === "no_show" ? "booked" : "no_show" }); }}
                           title={b.status === "no_show" ? "Undo no-show" : "Mark no-show"}
                           className={cn("p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center",
                             b.status === "no_show" ? "text-red-400 bg-red-500/15" : "text-muted-foreground hover:text-red-400 hover:bg-red-500/10")}><UserX className="w-4 h-4" /></button>
@@ -846,15 +867,13 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Where</Label>
-                <Input
-                  value={openWhere}
-                  onChange={e => setOpenWhere(e.target.value)}
-                  placeholder="Venue and address"
-                  className="bg-secondary border-border mt-1"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Goes in the email everyone is about to get. Leave it and they'll be sent whatever the event says now.
-                </p>
+                <div className="mt-1">
+                  <AddressFields
+                    value={openWhere}
+                    onChange={setOpenWhere}
+                    hint="Goes in the email everyone is about to get. Leave it and they're sent whatever the event already says."
+                  />
+                </div>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Hours they get to choose</Label>

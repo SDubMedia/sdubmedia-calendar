@@ -18,6 +18,7 @@ import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 import { brandedEmailWrapper } from "./_emailBranding.js";
 import { orgSender, buildMiniClaimEmail } from "./_miniBooking.js";
 import { generateSlots } from "./_miniSlots.js";
+import { composeAddress } from "./_address.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -47,7 +48,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = clean(req.body?.startTime, 5);
   const endTime = clean(req.body?.endTime, 5);
   const hours = Math.min(336, Math.max(1, Math.round(Number(req.body?.hours) || 72)));
-  const locationText = clean(req.body?.locationText, 200);
+  // Structured parts, never a free-text blob — see lib/address.ts. The one-line
+  // form is composed here so every downstream reader (emails, sign-up page,
+  // reminders) keeps getting the single field it already understands.
+  const loc = (req.body?.location || {}) as Record<string, unknown>;
+  const location = {
+    locationName: clean(loc.locationName, 80),
+    address: clean(loc.address, 120),
+    city: clean(loc.city, 60),
+    state: clean(loc.state, 2),
+    zip: clean(loc.zip, 10),
+  };
+  const locationText = composeAddress(location);
 
   if (!miniSessionId) return res.status(400).json({ error: "Missing session" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Pick the date" });
@@ -87,7 +99,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error: upErr } = await supabase.from("mini_sessions").update({
       date, start_time: startTime, end_time: endTime,
       date_tbd: false,
-      ...(locationText ? { location_text: locationText } : {}),
+      ...(locationText ? {
+        location_text: locationText,
+        location_name: location.locationName,
+        address: location.address,
+        city: location.city,
+        state: location.state,
+        zip: location.zip,
+      } : {}),
       booking_deadline: deadline.toISOString(),
       booking_opened_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

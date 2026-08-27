@@ -266,6 +266,7 @@ Exception: pages that should always show the real owner's info (merge fields in 
 - **Don't push to a whole org.** `sendPushToOrg` is gone; `device_tokens` holds staff, client and family devices too, so an org-wide push puts another client's payment amounts on a client's phone. Use `sendPushToOwner` / `sendPushToRoles` / `sendPushToUser` and name the audience.
 - **Don't add a column that only the capture API writes without a UI that reads it.** `pipeline_leads.description` held every website visitor's message for months with nothing in the app rendering it, so inquiries were captured but unreadable. If an endpoint persists user-authored text, something must display it.
 - **Don't build anything on Partner & Revenue Splits.** Retired permanently (Geoff, 2026-08-24). It is kept only so this year's tax figures still compute. Don't extend it, don't reference it in new features, and don't delete it either — the numbers are records. See the retirement section above.
+- **Don't add a free-text "Where"/address input.** Use `<AddressFields>` + `composeAddress()` and store the parts. A one-line address can't be mapped, re-formatted, or kept consistent between screens — and a new free-text box silently overwrites structured columns another form filled in.
 - **Don't use npm.** This project uses pnpm. Delete package-lock.json if it appears.
 - **Don't modify middleware or auth without approval.** AuthContext and AuthGate are critical paths.
 - **Don't import from `@supabase/supabase-js` in components.** Use AppContext CRUD methods. Only API endpoints and the supabase client file import Supabase directly.
@@ -461,6 +462,37 @@ helpers, never hand-roll day logic:
   purpose — translucent fills let cell borders show through as seams).
 - Event-reminder cron is deliberately first-day-only ("your event is
   tomorrow" = the start). Per-day reminders are a future task, not a bug.
+
+### Addresses are structured, never a free-text box
+
+Any surface that captures a place uses **`<AddressFields>`**
+(`client/src/components/AddressFields.tsx`) and stores the parts —
+`location_name, address, city, state, zip` — alongside the one-line form from
+**`composeAddress()`** (`client/src/lib/address.ts`, mirrored to
+`api/_address.ts`).
+
+The shape is `venue · street · city, state · zip`:
+
+    Harlinsdale Farm · 239 Franklin Rd · Franklin, TN · 37064
+
+**Never add a single "Where" input.** A free-text address can't be opened in
+Maps, can't be re-laid-out for an email, and drifts in shape between screens.
+Before this rule there were five hand-rolled renderings of the same address —
+`a, city, state zip`, `[a,city,state,zip].join(", ")`, `city, state zip`, a
+`joinAddr` closure buried in AppContext, and the `·` form in the mini-session
+form — so the same venue read differently depending on which screen you were on.
+It shipped for real: the mini-session **announce** dialog got a plain "Where"
+box in Aug 2026 and immediately overwrote the structured columns the create form
+had carefully filled in.
+
+- `composeAddress(parts)` → the stored/display one-liner.
+- `addressLines(parts)` → separate lines, for cards and emails that wrap badly.
+- `mapsQueryFor(parts)` → comma form for Maps; leads with the street, because a
+  venue name alone geocodes badly.
+- Paste-splitting is built in: pasting a whole address into the street box fills
+  city/state/zip. Don't re-implement it per form.
+
+Tests: `client/src/lib/__tests__/address.test.ts`.
 
 ### Cron pattern
 - **Auth.** Bearer `CRON_SECRET` in handler (Vercel cron sends this).
