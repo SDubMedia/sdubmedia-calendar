@@ -4,6 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking } from "@/lib/types";
+import { mapsQueryFor } from "@/lib/address";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid";
@@ -2753,9 +2754,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!locationId) return;
     const loc = rawData.locations.find(l => l.id === locationId);
     if (!loc?.address) return;
-    const joinAddr = (a?: string, city?: string, state?: string, zip?: string) =>
-      [a, city, [state, zip].filter(Boolean).join(" ")].map(s => (s || "").trim()).filter(Boolean).join(", ");
-    const destination = joinAddr(loc.address, loc.city, loc.state, loc.zip);
+    const destination = mapsQueryFor(loc);
     const done = new Set<string>();
     for (const cmId of crewMemberIds) {
       if (!cmId || done.has(cmId)) continue;
@@ -2769,7 +2768,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/calculate-distance", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ origin: joinAddr(ha.address, ha.city, ha.state, ha.zip), destination }),
+          body: JSON.stringify({ origin: mapsQueryFor(ha), destination }),
         });
         if (res.ok) { const { distanceMiles } = await res.json(); await upsertDistance(cmId, locationId, distanceMiles, "primary"); }
       } catch (e) { console.error("auto-distance failed:", e); }

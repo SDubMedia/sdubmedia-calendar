@@ -65,19 +65,32 @@ export function addressLines(parts: AddressParts): string[] {
 }
 
 /**
+ * The postal form: `239 Franklin Rd, Franklin, TN 37064`.
+ *
+ * State and ZIP are separated by a SPACE, never a comma — that is the single
+ * most common mistake in the hand-rolled versions this replaces, and it's why
+ * Slate's contracts and invoices disagreed about the same address.
+ *
+ * Venue name is deliberately excluded: the surfaces that use this show it
+ * separately, as a heading.
+ */
+export function postalAddress(parts: AddressParts): string {
+  const city = clean(parts.city);
+  const state = clean(parts.state);
+  const cityLine = [[city, state].filter(Boolean).join(", "), clean(parts.zip)]
+    .filter(Boolean).join(" ");
+  return [clean(parts.address), cityLine].filter(Boolean).join(", ");
+}
+
+/**
  * What to hand a maps app. Deliberately NOT the `·` form — map search wants
  * commas, and a venue name alone geocodes badly, so the street leads whenever
  * we have one.
  */
 export function mapsQueryFor(parts: AddressParts): string {
-  const street = clean(parts.address);
-  const city = clean(parts.city);
-  const state = clean(parts.state);
-  const zip = clean(parts.zip);
-  const name = clean(parts.locationName);
-  const tail = [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-  // Venue name only helps when there's nothing better to search on.
-  return tail || name;
+  // Same shape as the postal form — map search wants commas, not the display
+  // separator. Venue name only helps when there's nothing better to search on.
+  return postalAddress(parts) || clean(parts.locationName);
 }
 
 /** True when there's nothing worth showing. */

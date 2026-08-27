@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, ChevronUp, ChevronDown, Save, X, Image } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { postalAddress } from "@/lib/address";
 import { nanoid } from "nanoid";
 import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
@@ -693,7 +694,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                           {data.organization?.businessInfo?.phone}{data.organization?.businessInfo?.phone && data.organization?.businessInfo?.email ? " | " : ""}{data.organization?.businessInfo?.email}
                         </p>
                         {data.organization?.businessInfo?.address && (
-                          <p className="text-xs text-gray-400">{data.organization.businessInfo.address}, {data.organization.businessInfo.city}, {data.organization.businessInfo.state} {data.organization.businessInfo.zip}</p>
+                          <p className="text-xs text-gray-400">{postalAddress(data.organization.businessInfo)}</p>
                         )}
                       </div>
                       <div className="text-right">

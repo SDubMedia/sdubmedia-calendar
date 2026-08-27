@@ -16,6 +16,7 @@ import type { Location } from "@/lib/types";
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { mapsUrlFor } from "@/lib/utils";
+import { mapsQueryFor, addressLines } from "@/lib/address";
 
 interface LocationFormData {
   name: string;
@@ -99,7 +100,7 @@ export default function LocationsPage() {
 
     // One-line addresses (city/state/zip blank) still geocode fine — only the
     // street address is required.
-    const destination = [loc.address, loc.city, [loc.state, loc.zip].filter(Boolean).join(" ")].map(s => (s || "").trim()).filter(Boolean).join(", ");
+    const destination = mapsQueryFor(loc);
     for (const crew of crewWithAddress) {
       const ha = crew.homeAddress!;
       const origin = `${ha.address}, ${ha.city}, ${ha.state} ${ha.zip}`;
@@ -199,8 +200,8 @@ export default function LocationsPage() {
                 </div>
                 <div className="font-medium text-foreground text-sm mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{loc.name}</div>
                 <div className="text-xs text-muted-foreground leading-relaxed">
-                  {loc.address}<br />
-                  {loc.city}, {loc.state} {loc.zip}
+                  {addressLines({ address: loc.address, city: loc.city, state: loc.state, zip: loc.zip })
+                    .map(line => <span key={line} className="block">{line}</span>)}
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <a

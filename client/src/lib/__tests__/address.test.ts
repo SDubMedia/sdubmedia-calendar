@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { composeAddress, addressLines, mapsQueryFor, hasAddress } from "../address";
+import { composeAddress, addressLines, mapsQueryFor, postalAddress, hasAddress } from "../address";
 
 const full = {
   locationName: "Harlinsdale Farm",
@@ -52,6 +52,27 @@ describe("addressLines", () => {
     expect(addressLines({ locationName: "The Factory", city: "Franklin", state: "TN" }))
       .toEqual(["The Factory", "Franklin, TN"]);
     expect(addressLines({})).toEqual([]);
+  });
+});
+
+describe("postalAddress", () => {
+  it("puts a SPACE between state and zip, never a comma", () => {
+    // The bug in every hand-rolled version: `[a,city,state,zip].join(", ")`
+    // produced "Franklin, TN, 37064", which is why contracts and invoices
+    // printed the same address two different ways.
+    expect(postalAddress(full)).toBe("239 Franklin Rd, Franklin, TN 37064");
+    expect(postalAddress(full)).not.toContain("TN, 37064");
+  });
+
+  it("leaves out the venue name — callers show it as a heading", () => {
+    expect(postalAddress(full)).not.toContain("Harlinsdale Farm");
+  });
+
+  it("handles partial addresses without stray punctuation", () => {
+    expect(postalAddress({ city: "Franklin", state: "TN" })).toBe("Franklin, TN");
+    expect(postalAddress({ address: "239 Franklin Rd" })).toBe("239 Franklin Rd");
+    expect(postalAddress({ zip: "37064" })).toBe("37064");
+    expect(postalAddress({})).toBe("");
   });
 });
 

@@ -21,6 +21,7 @@ import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument } 
 import { isMultiDay, projectDays, dayCrewFor } from "@/lib/projectDays";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
+import { postalAddress } from "@/lib/address";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
@@ -1044,12 +1045,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
 
   // Full street address for display + maps handoff. Only the pieces that exist,
   // joined cleanly so a location with just a street still reads correctly.
-  const locationAddress = location
-    ? [location.address, [location.city, location.state].filter(Boolean).join(", "), location.zip]
-        .map((p) => (p || "").trim())
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  const locationAddress = location ? postalAddress(location) : "";
   // Apple Maps on iPhone, Google Maps elsewhere. Prefer the typed address;
   // fall back to the location name so a named place with no address still maps.
   const mapsUrl = location ? mapsUrlFor(locationAddress || location.name || "") : null;

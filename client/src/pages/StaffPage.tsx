@@ -35,6 +35,7 @@ import { UserPlus, Pencil, Trash2, DollarSign, User, Plus, X, MapPin, Car, Shiel
 import { toast } from "sonner";
 import { getAuthToken } from "@/lib/supabase";
 import { formatPhoneInput } from "@/lib/utils";
+import { postalAddress } from "@/lib/address";
 import SignaturePad from "@/components/SignaturePad";
 import SignedAgreementDialog from "@/components/SignedAgreementDialog";
 import StaffLoginStatus, { staffLoginFor } from "@/components/StaffLoginStatus";
@@ -761,7 +762,7 @@ export default function StaffPage() {
                     {member.homeAddress?.address && (
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        {member.homeAddress.city}, {member.homeAddress.state}
+                        {postalAddress({ city: member.homeAddress.city, state: member.homeAddress.state })}
                       </p>
                     )}
                   </div>

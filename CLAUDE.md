@@ -492,6 +492,18 @@ had carefully filled in.
 - Paste-splitting is built in: pasting a whole address into the street box fills
   city/state/zip. Don't re-implement it per form.
 
+- `postalAddress(parts)` → `239 Franklin Rd, Franklin, TN 37064` for documents
+  and app display. State and ZIP take a SPACE, never a comma.
+
+**Generated documents were deliberately NOT migrated** (Geoff, 2026-08-27).
+Contracts, proposals and invoices regenerate from live data, so changing how an
+address renders would restate paperwork that is already signed. They keep their
+existing hand-rolled joins. Known consequence: `ContractLetterhead` and
+`ContractPDF` render `Franklin, TN, 37064` (comma before the ZIP) while
+`InvoicePDF` renders `Franklin, TN 37064`, and the contract **preview** in
+`TemplateEditorPage` doesn't match the contract it previews. Live with it, or
+raise it as its own decision — don't "tidy" it in passing.
+
 Tests: `client/src/lib/__tests__/address.test.ts`.
 
 ### Cron pattern
