@@ -515,6 +515,34 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
             </div>
           )}
 
+          {/* Place-holders have no slot_time, so every list keyed on times
+              excluded them — the roster showed a count and no names. These are
+              people who have paid; they need to be reachable. */}
+          {!groups && placeHolders.length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                {event.dateTbd ? "Places held — no time yet" : "Still to pick a time"}
+              </p>
+              <div className="space-y-1.5">
+                {placeHolders.map(b => (
+                  <div key={b.id} className="flex items-center gap-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-foreground leading-tight">{b.name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", payBadge(b).className)}>
+                          {payBadge(b).label}
+                        </span>
+                        {b.email && <span className="text-[11px] text-muted-foreground truncate min-w-0">{b.email}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => setQrFor(b)} title="Show their code" aria-label={`Show code for ${b.name}`}
+                      className="p-1.5 rounded min-h-9 min-w-9 flex items-center justify-center text-primary hover:bg-primary/10 shrink-0"><QrCode className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!groups && (
             <div className="space-y-1.5">
               {slots.map(time => {

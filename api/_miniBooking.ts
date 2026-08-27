@@ -53,6 +53,12 @@ export function qrImgUrl(target: string, size = 320): string {
  * saved card, emails their confirmation (with the QR they'll be scanned from)
  * and nudges the owner. Idempotent: a webhook replay won't re-send.
  */
+/** "February 2027" — the only honest thing to say about a placeholder date. */
+function monthOnly(iso: string): string {
+  const d = new Date(String(iso || "") + "T00:00:00");
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 export async function confirmMiniBooking(bookingId: string, session: { amount_total?: number | null; id?: string; payment_intent?: unknown }) {
   const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!b) return;
@@ -103,16 +109,31 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
     (async () => {
       if (!isAllowedUrl(bookingUrl)) return;
       const body = `
-        <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">You're booked ✓</h2>
+        <h2 style="margin:0 0 4px;font-size:18px;color:#059669;">${isReservation ? "Your place is held ✓" : "You're booked ✓"}</h2>
         <p style="margin:0 0 16px;color:#64748b;font-size:14px;">
-          ${escapeHtml(b.name)}, your ${escapeHtml(ev?.title || "mini session")} is confirmed.
+          ${escapeHtml(b.name)}, ${isReservation
+            ? `you have one of the places for ${escapeHtml(ev?.title || "our mini sessions")}.`
+            : `your ${escapeHtml(ev?.title || "mini session")} is confirmed.`}
         </p>
         <table style="border-collapse:collapse;margin:0 0 16px;font-size:14px;">
-          <tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(ev?.date || ""))} at ${escapeHtml(formatSlot(b.slot_time))}</td></tr>
-          ${ev?.location_text ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
+          ${isReservation
+            // NEVER the stored date — it is a placeholder chosen only to file
+            // the event in the right month. Saying it would be inventing a day.
+            ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(monthOnly(ev?.date || ""))} — date to be confirmed</td></tr>`
+            : `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">When</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(humanDate(ev?.date || ""))} at ${escapeHtml(formatSlot(b.slot_time))}</td></tr>`}
+          ${ev?.location_text && !isReservation ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Where</td><td style="padding:4px 0;">${escapeHtml(ev.location_text)}</td></tr>` : ""}
           <tr><td style="padding:4px 12px 4px 0;color:#64748b;">Paid</td><td style="padding:4px 0;">${money(paid)}</td></tr>
-          ${balance > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">Balance</td><td style="padding:4px 0;">${money(balance)} — charged to your card the day before</td></tr>` : ""}
+          ${balance > 0 ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b;">${isReservation ? "Still to pay" : "Balance"}</td><td style="padding:4px 0;">${money(balance)} — ${isReservation ? "due when you choose your time" : "charged to your card the day before"}</td></tr>` : ""}
         </table>
+        ${isReservation ? `
+        <div style="margin:16px 0;padding:14px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
+          <p style="margin:0;color:#92400e;font-size:14px;">
+            This holds a place, not a time. When the date is set, everyone holding a place is emailed at the same moment and picks a time on a first-come basis.
+          </p>
+        </div>
+        <p style="margin:24px 0;text-align:center;">
+          <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">View your place</a>
+        </p>` : `
         <div style="text-align:center;margin:24px 0;padding:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
           <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1e293b;">Have this ready when you arrive</p>
           <img src="${escapeHtml(qrImgUrl(bookingUrl))}" alt="Your check-in code" width="200" height="200" style="display:block;margin:0 auto;border-radius:8px;" />
@@ -120,10 +141,12 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
         </div>
         <p style="margin:8px 0;text-align:center;">
           <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View your booking</a>
-        </p>`;
+        </p>`}`;
       await resend.emails.send({
         from, replyTo, to: b.email,
-        subject: `You're booked — ${ev?.title || "mini session"} ${formatSlot(b.slot_time)}`,
+        subject: isReservation
+          ? `Your place is held — ${ev?.title || "mini session"}`
+          : `You're booked — ${ev?.title || "mini session"} ${formatSlot(b.slot_time)}`,
         html: brandedEmailWrapper({ orgName, businessInfo: businessInfo as never }, body),
       });
     })(),

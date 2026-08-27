@@ -75,6 +75,12 @@ export default function MiniSessionForm({ open, onClose, event }: {
   const [saving, setSaving] = useState(false);
   // Live price for the deposit hint — the save handler has its own copy.
   const priceNow = Math.round(Number(price) * 100) || 0;
+  // People who have already paid to hold a place on this event.
+  const paidHolders = event
+    ? data.miniSessionBookings.filter(b =>
+        b.miniSessionId === event.id && b.status === "waitlist"
+        && (b.paymentStatus === "paid" || b.paymentStatus === "deposit_paid")).length
+    : 0;
 
   // One-line version stored alongside the parts — everything downstream (the
   // sign-up page, confirmation + reminder emails, the calendar feed) reads a
@@ -313,8 +319,19 @@ export default function MiniSessionForm({ open, onClose, event }: {
                 the cap is the thing that has to be disclosed, and putting it
                 next to the words people sign makes that hard to forget. */}
             <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2.5 mb-4">
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input type="checkbox" checked={dateTbd} onChange={e => setDateTbd(e.target.checked)} className="mt-0.5" />
+              <label className={cn("flex items-start gap-2", paidHolders > 0 && dateTbd ? "cursor-not-allowed opacity-70" : "cursor-pointer")}>
+                <input
+                  type="checkbox"
+                  checked={dateTbd}
+                  // Unticking this would skip the announcement entirely: nobody
+                  // gets emailed, no priority window opens, and the public link
+                  // starts selling times while the people who paid sit waiting
+                  // for a message that never comes. Announcing is the only way
+                  // out of pre-sale once places are sold.
+                  disabled={paidHolders > 0 && dateTbd}
+                  onChange={e => setDateTbd(e.target.checked)}
+                  className="mt-0.5"
+                />
                 <span className="min-w-0">
                   <span className="block text-sm text-foreground">Date not announced yet</span>
                   <span className="block text-[11px] text-muted-foreground">
@@ -322,6 +339,12 @@ export default function MiniSessionForm({ open, onClose, event }: {
                   </span>
                 </span>
               </label>
+              {paidHolders > 0 && dateTbd && (
+                <p className="text-[11px] text-amber-400">
+                  {paidHolders} {paidHolders === 1 ? "person has" : "people have"} paid to hold a place, so this can't be switched off here —
+                  use “Set date &amp; open booking” on the roster, which emails them all at once.
+                </p>
+              )}
               {dateTbd && (
                 <>
                   <div>
