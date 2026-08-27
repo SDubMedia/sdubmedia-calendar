@@ -151,8 +151,10 @@ export async function confirmMiniBooking(bookingId: string, session: { amount_to
       });
     })(),
     sendPushToOwner(b.org_id, {
-      title: "Mini session booked",
-      body: `${b.name} took ${formatSlot(b.slot_time)} — ${money(paid)}${balance > 0 ? ` (${money(balance)} due)` : ""}`,
+      title: isReservation ? "Place held" : "Mini session booked",
+      body: isReservation
+        ? `${b.name} holds a place — ${money(paid)}${balance > 0 ? ` (${money(balance)} on booking)` : ""}`
+        : `${b.name} took ${formatSlot(b.slot_time)} — ${money(paid)}${balance > 0 ? ` (${money(balance)} due)` : ""}`,
       data: { type: "mini_session" },
     }),
   ]);
