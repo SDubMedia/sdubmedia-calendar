@@ -471,7 +471,11 @@ async function payBalance(req: VercelRequest, res: VercelResponse) {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      ...(b.email ? { customer_email: b.email } : {}),
+      // Never both — Stripe rejects it. Customer wins because it carries the
+      // card they already gave us.
+      ...(b.stripe_customer_id
+        ? { customer: b.stripe_customer_id }
+        : b.email ? { customer_email: b.email } : {}),
       line_items: [{
         price_data: {
           currency: "usd",
@@ -562,8 +566,9 @@ async function claimSlot(req: VercelRequest, res: VercelResponse) {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      ...(b.email ? { customer_email: b.email } : {}),
-      ...(b.stripe_customer_id ? { customer: b.stripe_customer_id } : {}),
+      ...(b.stripe_customer_id
+        ? { customer: b.stripe_customer_id }
+        : b.email ? { customer_email: b.email } : {}),
       line_items: [{
         price_data: {
           currency: "usd",
