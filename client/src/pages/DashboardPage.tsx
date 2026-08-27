@@ -460,8 +460,16 @@ export default function DashboardPage() {
             </div>
             <div className="divide-y divide-border">
               {upcomingMinis.slice(0, 5).map(ev => {
-                const booked = data.miniSessionBookings.filter(b => b.miniSessionId === ev.id && b.status === "booked");
-                const total = generateSlots(ev).length;
+                // A pre-sale sells PLACES, and a place-holder has no slot_time
+                // — so counting "booked" against the slot count reported a
+                // sold-out event as "0/2 booked · only 2 left", which is the
+                // opposite of the truth. Count what the event actually sells.
+                const presale = ev.dateTbd;
+                const mine = data.miniSessionBookings.filter(b => b.miniSessionId === ev.id);
+                const booked = mine.filter(b => presale
+                  ? (b.status === "waitlist" || b.status === "booked" || b.status === "no_show")
+                  : b.status === "booked");
+                const total = presale ? (ev.reservationCap || 0) : generateSlots(ev).length;
                 const left = Math.max(0, total - booked.length);
                 // Money that didn't land: a failed card is the one thing here
                 // worth chasing before shoot day.
@@ -486,8 +494,13 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                          {/* Placeholder hours on a pre-sale would read as if
+                              the day were settled. Say what is actually known. */}
                           <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />{formatSlot(ev.startTime)} — {formatSlot(ev.endTime)}
+                            <Clock className="w-3 h-3" />
+                            {presale
+                              ? "Date to be confirmed"
+                              : `${formatSlot(ev.startTime)} — ${formatSlot(ev.endTime)}`}
                           </span>
                           {ev.locationText && (
                             <span className="flex items-center gap-1 min-w-0">
@@ -497,17 +510,23 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <p className="text-xs mt-1">
-                          <span className="text-muted-foreground">{booked.length}/{total} booked</span>
-                          {ev.status === "published" && left > 0 && left <= 3 && (
+                          <span className="text-muted-foreground">
+                            {total > 0 ? `${booked.length}/${total}` : String(booked.length)} {presale ? "places sold" : "booked"}
+                          </span>
+                          {ev.status === "published" && total > 0 && left > 0 && left <= 3 && (
                             <span className="text-amber-400"> · only {left} left</span>
                           )}
-                          {ev.status === "published" && left === 0 && (
+                          {ev.status === "published" && total > 0 && left === 0 && (
                             <span className="text-emerald-400"> · sold out</span>
                           )}
                           {owed > 0 && <span className="text-red-400"> · {owed} unpaid</span>}
                         </p>
                       </div>
-                      <span className="text-xs font-medium text-primary shrink-0">{formatDate(ev.date)}</span>
+                      <span className="text-xs font-medium text-primary shrink-0">
+                        {presale
+                          ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                          : formatDate(ev.date)}
+                      </span>
                     </div>
                   </button>
                 );
