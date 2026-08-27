@@ -348,24 +348,26 @@ async function book(req: VercelRequest, res: VercelResponse) {
     const got = Array.isArray(seat) ? seat[0] : seat;
     if (!got?.ok) return res.status(409).json({ error: "All the places have gone.", soldOut: true });
   } else {
-
-  const { error: insErr } = await supabase.from("mini_session_bookings").insert({
-    id: bookingId,
-    org_id: ev.org_id,
-    mini_session_id: ev.id,
-    slot_time: slot,
-    name: nm, email: em, phone: ph,
-    source: clean(source, 60),
-    booking_token: bookingToken,
-    signature,
-    total_cents: ev.price_cents,
-    status: "pending",
-    payment_status: "pending",
-  });
-  if (insErr) {
-    if (String(insErr.code) === "23505") return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
-    return res.status(500).json({ error: insErr.message });
-  }
+    // A real slot booking. The partial unique index is what actually prevents a
+    // double-book: two people checking out for 2:15 in the same instant means
+    // the loser's INSERT fails here, not a corrupted roster.
+    const { error: insErr } = await supabase.from("mini_session_bookings").insert({
+      id: bookingId,
+      org_id: ev.org_id,
+      mini_session_id: ev.id,
+      slot_time: slot,
+      name: nm, email: em, phone: ph,
+      source: clean(source, 60),
+      booking_token: bookingToken,
+      signature,
+      total_cents: ev.price_cents,
+      status: "pending",
+      payment_status: "pending",
+    });
+    if (insErr) {
+      if (String(insErr.code) === "23505") return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
+      return res.status(500).json({ error: insErr.message });
+    }
   }
 
   try {

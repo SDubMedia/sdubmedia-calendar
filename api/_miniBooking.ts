@@ -56,15 +56,29 @@ export function qrImgUrl(target: string, size = 320): string {
 export async function confirmMiniBooking(bookingId: string, session: { amount_total?: number | null; id?: string; payment_intent?: unknown }) {
   const { data: b } = await supabase.from("mini_session_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!b) return;
-  // Already settled (webhook replay / double delivery) — do nothing. Keyed on
-  // PAYMENT, not status: an owner-added booking is already "booked" while its
-  // pay link is still outstanding, and that payment must still register.
-  if (b.payment_status === "paid" || b.payment_status === "deposit_paid") return;
+  // Already settled (webhook replay / double delivery) — do nothing.
+  //
+  // `status === "pending"` means there is a checkout in flight that still has
+  // to be settled, so it is NOT a replay even when money has already been taken
+  // on this booking. That case is real: a pre-sale holder pays a deposit
+  // (deposit_paid), later claims a time (back to pending), and pays the
+  // balance. Guarding on payment alone made that second payment a no-op — they
+  // were charged and the booking silently stayed pending until the sweep
+  // released their slot.
+  //
+  // The other half still holds: an owner-added booking is already "booked"
+  // while its pay link is outstanding, and that payment must still register.
+  if (b.status !== "pending" && (b.payment_status === "paid" || b.payment_status === "deposit_paid")) return;
   // Only the session we created for THIS booking may confirm it.
   if (b.checkout_session_id && session.id && b.checkout_session_id !== session.id) return;
 
-  const paid = Math.round(Number(session.amount_total ?? 0));
+  const thisPayment = Math.round(Number(session.amount_total ?? 0));
   const total = Number(b.total_cents || 0);
+  // Cumulative, never replaced. A claim's checkout is for the BALANCE, so
+  // writing it straight over deposit_paid_cents erased the deposit already
+  // taken and left a fully-paid customer reading as still owing it. Adding is
+  // also correct for a first payment, where the existing figure is zero.
+  const paid = Math.round(Number(b.deposit_paid_cents || 0)) + thisPayment;
   const fullyPaid = paid >= total;
 
   // A pre-sale reservation has no slot yet — it stays on the waitlist until the
