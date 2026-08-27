@@ -166,7 +166,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // verification for a reason nothing would explain.
   const rawSig = req.headers["stripe-signature"];
   const sig = Array.isArray(rawSig) ? rawSig[0] : rawSig;
+  // TWO endpoints, two secrets, and both must be accepted here.
+  //
+  // Platform events (subscriptions, our own billing) come from one endpoint.
+  // Every CUSTOMER payment — mini sessions, gallery extras, milestones — runs
+  // on the org's CONNECTED account, and those events are a separate Stripe
+  // stream that a platform endpoint never receives. Without the Connect
+  // endpoint they were delivered nowhere at all: a rehearsal booking on
+  // 2026-08-27 paid successfully and Stripe reported pending_webhooks: 0, so
+  // the customer was charged and Slate never heard.
+  //
+  // Stripe signs each delivery with that endpoint's own secret, so verification
+  // has to try both. A signature is valid if EITHER matches.
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const connectSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
     await pingCronitor(CRONITOR_MONITOR, "fail", { message: "STRIPE_WEBHOOK_SECRET not configured" });
@@ -178,13 +191,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   let event: Stripe.Event;
-  try {
+  {
     const body = await getRawBody(req);
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-  } catch (err) {
-    console.error(`[stripe-webhook] signature verification failed: ${errorMessage(err)}`);
-    await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${errorMessage(err)}` });
-    return res.status(400).json({ error: `Webhook signature verification failed: ${errorMessage(err)}` });
+    const secrets = [webhookSecret, connectSecret].filter(Boolean) as string[];
+    let verified: Stripe.Event | null = null;
+    let lastErr = "no secret matched";
+    for (const secret of secrets) {
+      try {
+        verified = stripe.webhooks.constructEvent(body, sig, secret);
+        break;
+      } catch (err) {
+        lastErr = errorMessage(err);
+      }
+    }
+    if (!verified) {
+      console.error(`[stripe-webhook] signature verification failed against ${secrets.length} secret(s): ${lastErr}`);
+      await pingCronitor(CRONITOR_MONITOR, "fail", { message: `sig verify failed: ${lastErr}` });
+      return res.status(400).json({ error: `Webhook signature verification failed: ${lastErr}` });
+    }
+    event = verified;
   }
 
   try {
