@@ -93,9 +93,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (upErr) return res.status(500).json({ error: upErr.message });
 
     const { from, replyTo, orgName, businessInfo } = await orgSender(ev.org_id);
+    // Vercel runs as UTC, so without an explicit zone this email told a
+    // Nashville customer "Sunday 2:22 AM UTC" for a deadline that is really
+    // Saturday 9:22 PM their time — wrong day, and a timezone that means
+    // nothing to them. On a deadline that costs them money, that's the whole
+    // message. BUSINESS_TZ overrides for anyone running Slate elsewhere.
     const deadlineText = deadline.toLocaleString("en-US", {
       weekday: "long", month: "long", day: "numeric",
       hour: "numeric", minute: "2-digit", timeZoneName: "short",
+      timeZone: process.env.BUSINESS_TZ || "America/Chicago",
     });
 
     // All at once — see the note at the top of this file.

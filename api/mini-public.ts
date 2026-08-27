@@ -17,7 +17,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { nanoid } from "nanoid";
 import { errorMessage, isAllowedUrl, publicBusinessInfo } from "./_auth.js";
-import { generateSlots, openSlots, pendingExpired, formatSlot, depositDueCents, reservationsLeft } from "./_miniSlots.js";
+import { generateSlots, openSlots, pendingExpired, formatSlot, depositDueCents, reservationsLeft, PENDING_HOLD_MINUTES } from "./_miniSlots.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const supabase = createClient(
@@ -85,9 +85,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 /** Slot times held by live bookings. A pending row past its hold window is an
  *  abandoned checkout — its slot goes back on sale. */
-function heldSlots(bookings: { slot_time: string; status: string; created_at: string }[]): string[] {
+function heldSlots(bookings: { slot_time: string; status: string; created_at: string; updated_at?: string | null }[]): string[] {
   return bookings
-    .filter(b => b.status === "booked" || (b.status === "pending" && !pendingExpired(b.created_at)))
+    // updated_at, not created_at: a pre-sale holder claiming a time was created
+    // WEEKS ago, so measuring their 20-minute checkout hold from creation made
+    // it instantly "expired" and showed their slot as free to everyone else.
+    // The unique index still stopped the double-book, but the loser saw an
+    // available time turn into an error.
+    .filter(b => b.status === "booked" || (b.status === "pending" && !pendingExpired(b.updated_at || b.created_at)))
     .map(b => b.slot_time)
     .filter(Boolean);
 }
@@ -104,7 +109,7 @@ async function getEvent(publicToken: string, res: VercelResponse) {
   if (ev.status === "draft") return res.status(404).json({ error: "This event isn't open yet" });
 
   const { data: bookings } = await supabase
-    .from("mini_session_bookings").select("slot_time, status, created_at, payment_status").eq("mini_session_id", ev.id);
+    .from("mini_session_bookings").select("slot_time, status, created_at, updated_at, payment_status").eq("mini_session_id", ev.id);
 
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
   const holdersOnly = holdersOnlyNow(ev);
@@ -198,7 +203,7 @@ async function getSchedule(slug: string, res: VercelResponse) {
   const ids = (events || []).map(e => e.id);
   const { data: allBookings } = ids.length
     ? await supabase.from("mini_session_bookings")
-        .select("mini_session_id, slot_time, status, created_at").in("mini_session_id", ids)
+        .select("mini_session_id, slot_time, status, created_at, updated_at").in("mini_session_id", ids)
     : { data: [] };
 
   const items = (events || []).map(ev => {
@@ -266,7 +271,7 @@ async function book(req: VercelRequest, res: VercelResponse) {
 
   const { data: existing } = await supabase
     .from("mini_session_bookings")
-    .select("slot_time, status, created_at, payment_status").eq("mini_session_id", ev.id);
+    .select("slot_time, status, created_at, updated_at, payment_status").eq("mini_session_id", ev.id);
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
 
   // Pre-sale: they're buying a PLACE, not a time. The cap is the whole promise
@@ -313,6 +318,37 @@ async function book(req: VercelRequest, res: VercelResponse) {
   // The partial unique index on (mini_session_id, slot_time) is what actually
   // prevents a double-book: two people checking out for 2:15 in the same
   // instant means the loser's INSERT fails here, not a corrupted roster.
+  const signature = {
+    name: signed,
+    ip: Array.isArray(ip) ? ip[0] : ip,
+    timestamp: new Date().toISOString(),
+    // Pins WHICH wording they agreed to, so later edits can't rewrite history.
+    agreementHash: createHash("sha256").update(String(ev.agreement_text || "")).digest("hex").slice(0, 32),
+  };
+
+  if (isReservation) {
+    // Counting places and then inserting is a race: two people tapping together
+    // both read "1 left" and both get in, and nothing downstream catches it —
+    // the unique index only covers real slots. This does the count and the
+    // insert under a lock on the event row.
+    const { data: seat, error: seatErr } = await supabase.rpc("reserve_mini_place", {
+      p_event_id: ev.id,
+      p_booking_id: bookingId,
+      p_org_id: ev.org_id,
+      p_token: bookingToken,
+      p_name: nm,
+      p_email: em,
+      p_phone: ph,
+      p_source: clean(source, 60),
+      p_signature: signature,
+      p_total: ev.price_cents,
+      p_hold_minutes: PENDING_HOLD_MINUTES,
+    });
+    if (seatErr) return res.status(500).json({ error: seatErr.message });
+    const got = Array.isArray(seat) ? seat[0] : seat;
+    if (!got?.ok) return res.status(409).json({ error: "All the places have gone.", soldOut: true });
+  } else {
+
   const { error: insErr } = await supabase.from("mini_session_bookings").insert({
     id: bookingId,
     org_id: ev.org_id,
@@ -321,20 +357,15 @@ async function book(req: VercelRequest, res: VercelResponse) {
     name: nm, email: em, phone: ph,
     source: clean(source, 60),
     booking_token: bookingToken,
-    signature: {
-      name: signed,
-      ip: Array.isArray(ip) ? ip[0] : ip,
-      timestamp: new Date().toISOString(),
-      // Pins WHICH wording they agreed to, so later edits can't rewrite history.
-      agreementHash: createHash("sha256").update(String(ev.agreement_text || "")).digest("hex").slice(0, 32),
-    },
+    signature,
     total_cents: ev.price_cents,
-    status: isReservation ? "waitlist" : "pending",
+    status: "pending",
     payment_status: "pending",
   });
   if (insErr) {
     if (String(insErr.code) === "23505") return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
     return res.status(500).json({ error: insErr.message });
+  }
   }
 
   try {
@@ -482,7 +513,7 @@ async function claimSlot(req: VercelRequest, res: VercelResponse) {
   // The slot check below is what actually decides whether one is left.
 
   const { data: siblings } = await supabase
-    .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+    .from("mini_session_bookings").select("slot_time, status, created_at, updated_at").eq("mini_session_id", ev.id);
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
   if (!openSlots(spec, heldSlots(siblings || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : []).includes(slot)) {
     return res.status(409).json({ error: "That time was just taken — pick another.", slotTaken: true });
@@ -582,7 +613,7 @@ async function getBooking(bookingToken: string, res: VercelResponse) {
     // public", not "go away".
     claimClosed = !!ev.booking_deadline && new Date(ev.booking_deadline).getTime() < Date.now();
     const { data: siblings } = await supabase
-      .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+      .from("mini_session_bookings").select("slot_time, status, created_at, updated_at").eq("mini_session_id", ev.id);
     claimSlots = openSlots(
       { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes },
       heldSlots(siblings || []),
