@@ -45,6 +45,16 @@ function payBadge(b: MiniSessionBooking): { label: string; className: string } {
   return { label: `Unpaid · ${money(owed)}`, className: "border-red-500/50 text-red-300 bg-red-500/15" };
 }
 
+/** "2 days 14 hours" / "3 hours 12 min" / "18 min" — coarse on purpose, since
+ *  the exact second never matters and a ticking clock is noise. */
+function humanCountdown(ms: number): string {
+  const mins = Math.floor(ms / 60_000);
+  const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+  if (d > 0) return `${d} day${d === 1 ? "" : "s"} ${h} hour${h === 1 ? "" : "s"}`;
+  if (h > 0) return `${h} hour${h === 1 ? "" : "s"} ${m} min`;
+  return `${m} min`;
+}
+
 const money = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
 
 export default function MiniSessionRoster({ event, open, onClose }: { event: MiniSession; open: boolean; onClose: () => void }) {
@@ -69,6 +79,16 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
   const [charging, setCharging] = useState(false);
   // Announcing the date on a pre-sale: everyone gets their claim link at once.
   const [opening, setOpening] = useState(false);
+  // Ticks so the countdown doesn't sit frozen at whatever it said on open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open || !event.bookingDeadline) return;
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [open, event.bookingDeadline]);
+  const claimMsLeft = event.bookingDeadline
+    ? new Date(event.bookingDeadline).getTime() - now
+    : 0;
   const [openDate, setOpenDate] = useState(event.date);
   const [openStart, setOpenStart] = useState(event.startTime);
   const [openEnd, setOpenEnd] = useState(event.endTime);
@@ -470,12 +490,31 @@ export default function MiniSessionRoster({ event, open, onClose }: { event: Min
                 </Button>
               </div>
             )}
-            {!event.dateTbd && event.bookingOpenedAt && (
-              <p className="text-xs text-muted-foreground">
-                Booking opened {new Date(event.bookingOpenedAt).toLocaleString()}
-                {event.bookingDeadline ? ` · closes ${new Date(event.bookingDeadline).toLocaleString()}` : ""}
-                {" · "}{placeHolders.length} still to pick
-              </p>
+            {/* The claim window decides whether people forfeit deposits, so it
+                gets a card and a running countdown — it was a line of small grey
+                text, which is not how you show a deadline with money on it. */}
+            {!event.dateTbd && event.bookingOpenedAt && event.bookingDeadline && (
+              <div className={cn("rounded-md border p-3",
+                claimMsLeft <= 0 ? "border-border bg-secondary/40"
+                  : claimMsLeft < 12 * 3600_000 ? "border-red-500/50 bg-red-500/10"
+                  : "border-amber-500/40 bg-amber-500/10")}>
+                <p className={cn("text-sm font-semibold",
+                  claimMsLeft <= 0 ? "text-muted-foreground"
+                    : claimMsLeft < 12 * 3600_000 ? "text-red-300" : "text-amber-200")}>
+                  {claimMsLeft <= 0
+                    ? "Time window closed"
+                    : `Times close in ${humanCountdown(claimMsLeft)}`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {new Date(event.bookingDeadline).toLocaleString(undefined, {
+                    weekday: "long", month: "short", day: "numeric",
+                    hour: "numeric", minute: "2-digit",
+                  })}
+                  {placeHolders.length > 0
+                    ? ` · ${placeHolders.length} still to pick a time`
+                    : " · everyone has picked"}
+                </p>
+              </div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" className="gap-1.5" onClick={() => setShowEventQr(true)}><QrCode className="w-3.5 h-3.5" /> Event QR</Button>
