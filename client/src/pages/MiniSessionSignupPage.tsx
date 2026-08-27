@@ -23,6 +23,9 @@ interface EventPayload {
   reservationCap: number;
   placesLeft: number | null;   // null = uncapped
   unclaimedBlurb: string;
+  // While true the times belong to people who already paid a deposit.
+  holdersOnly: boolean;
+  holdersUntil: string | null;
 }
 
 const money = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2).replace(/\.00$/, "")}`;
@@ -143,7 +146,16 @@ export default function MiniSessionSignupPage() {
           </div>
         </div>
 
-        {soldOut ? (
+        {ev.holdersOnly ? (
+          <div className="bg-white rounded-xl shadow-sm border p-6 text-center">
+            <p className="font-semibold text-gray-900 mb-1">Times are being claimed</p>
+            <p className="text-sm text-gray-600">
+              People who paid a deposit are choosing their times first
+              {ev.holdersUntil ? ` until ${new Date(ev.holdersUntil).toLocaleString()}` : ""}.
+              Anything left goes on general sale after that, so check back.
+            </p>
+          </div>
+        ) : soldOut ? (
           <div className="bg-white rounded-xl shadow-sm border p-6 text-center">
             <p className="font-semibold text-gray-900 mb-1">{ev.dateTbd ? "All places have gone" : "All booked up"}</p>
             <p className="text-sm text-gray-500">

@@ -32,6 +32,18 @@ const supabase = createClient(
 const resend = new Resend(process.env.RESEND_API_KEY);
 const CRONITOR_MONITOR = "slate-mini-sessions";
 
+// Plain words for the owner alert — the stored value is a code.
+const POLICY_LABEL: Record<string, string> = {
+  forfeit: "keep the deposit",
+  half_refund: "refund half, keep half",
+  credit: "hold it as credit",
+};
+
+function hoursLabel(deadline: string | null): string {
+  if (!deadline) return "claim";
+  return `claim window that closed ${new Date(deadline).toLocaleString()}`;
+}
+
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -43,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   await pingCronitor(CRONITOR_MONITOR, "run");
   const errors: string[] = [];
-  let charged = 0, declined = 0, reminded = 0, swept = 0;
+  let charged = 0, declined = 0, reminded = 0, swept = 0, expired = 0;
 
   try {
     // ---- 1. Sweep abandoned checkouts (frees the slot) ----
@@ -80,6 +92,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .in("id", stale.map(x => x.id));
       if (error) errors.push(`sweep: ${error.message}`);
       else swept = stale.length;
+    }
+
+    // ---- 1b. Claim deadlines that have just passed ----
+    // Anyone still holding a place when the window shuts didn't pick a time.
+    // They are flagged, not charged and not refunded: "half back" and "credit"
+    // are real money, and a refund that fires off a timer is one the owner
+    // never saw coming. The roster surfaces them for a one-tap decision.
+    const { data: closedEvents } = await supabase
+      .from("mini_sessions").select("id, title, org_id, unclaimed_policy, booking_deadline")
+      .is("deleted_at", null)
+      .not("booking_deadline", "is", null)
+      .lt("booking_deadline", new Date().toISOString());
+
+    for (const ev of closedEvents || []) {
+      const { data: missed } = await supabase
+        .from("mini_session_bookings").select("id, name, email, deposit_paid_cents")
+        .eq("mini_session_id", ev.id).eq("status", "waitlist")
+        .in("payment_status", ["paid", "deposit_paid"]);
+      if (!missed || missed.length === 0) continue;
+
+      const { error } = await supabase.from("mini_session_bookings")
+        .update({ status: "no_show", updated_at: new Date().toISOString() })
+        .in("id", missed.map(m => m.id));
+      if (error) { errors.push(`deadline ${ev.id}: ${error.message}`); continue; }
+      expired += missed.length;
+
+      // Tell the owner, because nothing else will. Two empty slots on the day
+      // and two people sitting on a deposit with no word is how a card dispute
+      // starts.
+      sendOpsAlert(
+        `${missed.length} didn't pick a time — ${ev.title || "mini session"}`,
+        `The ${hoursLabel(ev.booking_deadline)} window has closed.\n\n`
+        + missed.map(m => `- ${m.name} (${m.email || "no email"}) — ${money(Number(m.deposit_paid_cents || 0))} paid`).join("\n")
+        + `\n\nYour setting for this event: ${POLICY_LABEL[ev.unclaimed_policy as string] || ev.unclaimed_policy}.`
+        + `\nOpen the roster to act on each one. Their times are back on general sale.`,
+      ).catch(() => {});
     }
 
     // ---- 2. Tomorrow's events ----
@@ -178,7 +226,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   await pingCronitor(CRONITOR_MONITOR, errors.length === 0 ? "complete" : "fail", {
-    message: `charged:${charged} declined:${declined} reminded:${reminded} swept:${swept}`,
+    message: `charged:${charged} declined:${declined} reminded:${reminded} swept:${swept} expired:${expired}`,
   });
   if (errors.length > 0) {
     sendOpsAlert(
@@ -186,5 +234,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `Charged: ${charged}\nDeclined: ${declined}\nReminded: ${reminded}\nSwept: ${swept}\n\n${errors.join("\n")}`,
     ).catch(() => {});
   }
-  return res.status(200).json({ ok: true, charged, declined, reminded, swept, errors });
+  return res.status(200).json({ ok: true, charged, declined, reminded, swept, expired, errors });
 }

@@ -35,6 +35,19 @@ const UNCLAIMED_BLURB: Record<string, string> = {
   credit: "The deposit is held as credit toward a future session if they don't claim a time.",
 };
 
+/**
+ * True while the times belong exclusively to people who paid a deposit.
+ *
+ * Between announcing the date and the deadline passing, the public sign-up
+ * link must NOT sell slots: a stranger arriving from a flyer would take a time
+ * away from someone who has already paid for the right to choose one. Once the
+ * deadline passes, whatever is left goes back on general sale.
+ */
+function holdersOnlyNow(ev: { booking_opened_at?: string | null; booking_deadline?: string | null }): boolean {
+  if (!ev.booking_opened_at || !ev.booking_deadline) return false;
+  return new Date(ev.booking_deadline).getTime() > Date.now();
+}
+
 /** Reservations that still hold a place. An unpaid one whose checkout was
  *  abandoned doesn't — otherwise a walked-away browser eats a place forever. */
 function livePlaces(rows: { status: string; payment_status: string; created_at: string }[]) {
@@ -94,7 +107,8 @@ async function getEvent(publicToken: string, res: VercelResponse) {
     .from("mini_session_bookings").select("slot_time, status, created_at, payment_status").eq("mini_session_id", ev.id);
 
   const spec = { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes };
-  const open = ev.status === "published"
+  const holdersOnly = holdersOnlyNow(ev);
+  const open = ev.status === "published" && !holdersOnly
     ? openSlots(spec, heldSlots(bookings || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [])
     : [];
 
@@ -121,6 +135,9 @@ async function getEvent(publicToken: string, res: VercelResponse) {
 
   return res.status(200).json({
     dateTbd: !!ev.date_tbd,
+    // While true the public sees no times — they belong to deposit holders.
+    holdersOnly,
+    holdersUntil: holdersOnly ? ev.booking_deadline : null,
     reservationCap: Number(ev.reservation_cap || 0),
     placesLeft,
     unclaimedPolicy: ev.unclaimed_policy || "forfeit",
@@ -190,7 +207,7 @@ async function getSchedule(slug: string, res: VercelResponse) {
     const blocked = Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [];
     // A closed event keeps its row on the page (so the season doesn't look
     // empty) but offers nothing to book.
-    const open = ev.status === "published" ? openSlots(spec, heldSlots(mine), blocked) : [];
+    const open = ev.status === "published" && !holdersOnlyNow(ev) ? openSlots(spec, heldSlots(mine), blocked) : [];
     const dueNow = ev.payment_mode === "deposit"
       ? Math.round(ev.price_cents * (Number(ev.deposit_percent) || 50) / 100)
       : ev.price_cents;
@@ -263,6 +280,14 @@ async function book(req: VercelRequest, res: VercelResponse) {
       return res.status(409).json({ error: "All the places have gone.", soldOut: true });
     }
   } else {
+    // Deposit holders get first refusal until the deadline. Enforced here, not
+    // just hidden in the UI — the endpoint is public.
+    if (holdersOnlyNow(ev)) {
+      return res.status(409).json({
+        error: "These times are held for people who already paid a deposit. Check back after the deadline.",
+        holdersOnly: true,
+      });
+    }
     // Re-derive availability server-side — never trust the browser's slot list.
     slot = clean(slotTime, 5);
     if (!openSlots(spec, heldSlots(existing || []), Array.isArray(ev.blocked_slots) ? ev.blocked_slots : []).includes(slot)) {
