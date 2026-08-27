@@ -203,7 +203,7 @@ async function getSchedule(slug: string, res: VercelResponse) {
   const ids = (events || []).map(e => e.id);
   const { data: allBookings } = ids.length
     ? await supabase.from("mini_session_bookings")
-        .select("mini_session_id, slot_time, status, created_at, updated_at").in("mini_session_id", ids)
+        .select("mini_session_id, slot_time, status, created_at, updated_at, payment_status").in("mini_session_id", ids)
     : { data: [] };
 
   const items = (events || []).map(ev => {
@@ -212,14 +212,30 @@ async function getSchedule(slug: string, res: VercelResponse) {
     const blocked = Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [];
     // A closed event keeps its row on the page (so the season doesn't look
     // empty) but offers nothing to book.
-    const open = ev.status === "published" && !holdersOnlyNow(ev) ? openSlots(spec, heldSlots(mine), blocked) : [];
-    const dueNow = ev.payment_mode === "deposit"
-      ? Math.round(ev.price_cents * (Number(ev.deposit_percent) || 50) / 100)
-      : ev.price_cents;
+    // A date-TBD event has no real times yet — its start/end are placeholders
+    // inside the expected month. Publishing them here advertised slots that
+    // don't exist, next to a date that isn't the date.
+    const isPresale = !!ev.date_tbd;
+    const open = ev.status === "published" && !isPresale && !holdersOnlyNow(ev)
+      ? openSlots(spec, heldSlots(mine), blocked) : [];
+    // Was still doing percentage maths, so a $50 flat deposit advertised as $75.
+    const dueNow = depositDueCents({
+      priceCents: ev.price_cents,
+      paymentMode: ev.payment_mode,
+      depositPercent: ev.deposit_percent,
+      depositFlatCents: ev.deposit_flat_cents,
+    });
+    const placesLeft = isPresale
+      ? reservationsLeft(ev.reservation_cap, livePlaces(mine as never))
+      : null;
     return {
       token: ev.public_token,
       title: ev.title,
       date: ev.date,
+      // The page must show the month, never this placeholder day.
+      dateTbd: isPresale,
+      placesLeft,
+      reservationCap: Number(ev.reservation_cap || 0),
       startTime: ev.start_time,
       endTime: ev.end_time,
       locationText: ev.location_text,

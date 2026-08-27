@@ -23,6 +23,11 @@ interface ScheduleEvent {
   includedPhotos: number; status: string;
   openCount: number; nextOpenSlot: string | null; totalSlots: number;
   bookUrl: string;
+  // Pre-sale: the date is a placeholder in the right month and there are no
+  // times yet — it sells places.
+  dateTbd?: boolean;
+  placesLeft?: number | null;
+  reservationCap?: number;
 }
 
 interface SchedulePayload {
@@ -52,7 +57,11 @@ function dayParts(iso: string): { month: string; day: string; weekday: string } 
 
 function EventCard({ ev }: { ev: ScheduleEvent }) {
   const { month, day, weekday } = dayParts(ev.date);
-  const bookable = ev.status === "published" && ev.openCount > 0;
+  const presale = !!ev.dateTbd;
+  const soldOutPresale = presale && ev.placesLeft !== null && ev.placesLeft !== undefined && ev.placesLeft <= 0;
+  const bookable = presale
+    ? !soldOutPresale && ev.status === "published"
+    : ev.status === "published" && ev.openCount > 0;
   const balance = ev.priceCents - ev.dueNowCents;
 
   return (
@@ -60,21 +69,29 @@ function EventCard({ ev }: { ev: ScheduleEvent }) {
       <div className="p-5 flex gap-4">
         <div className="shrink-0 w-14 rounded-lg bg-gray-900 text-white text-center py-2">
           <div className="text-[10px] font-semibold tracking-wider opacity-70">{month}</div>
-          <div className="text-2xl font-bold leading-none">{day}</div>
+          {presale
+            ? <div className="text-[10px] font-semibold leading-tight mt-0.5">date<br />TBC</div>
+            : <div className="text-2xl font-bold leading-none">{day}</div>}
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="font-bold text-gray-900 break-words">{ev.title}</h2>
           <div className="mt-1.5 space-y-1 text-sm text-gray-600">
             <p className="flex items-start gap-1.5">
               <Calendar className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span className="min-w-0">{weekday}</span>
-            </p>
-            <p className="flex items-start gap-1.5">
-              <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span className="min-w-0">
-                {formatSlot(ev.startTime)}–{formatSlot(ev.endTime)} · {ev.slotMinutes}-min sessions
+                {presale
+                  ? `${new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })} — date to be confirmed`
+                  : weekday}
               </span>
             </p>
+            {!presale && (
+              <p className="flex items-start gap-1.5">
+                <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span className="min-w-0">
+                  {formatSlot(ev.startTime)}–{formatSlot(ev.endTime)} · {ev.slotMinutes}-min sessions
+                </span>
+              </p>
+            )}
             {ev.locationText && (
               <p className="flex items-start gap-1.5">
                 <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -90,7 +107,9 @@ function EventCard({ ev }: { ev: ScheduleEvent }) {
           <span className="text-xl font-bold text-gray-900">{money(ev.priceCents)}</span>
           {ev.paymentMode === "deposit" && (
             <span className="text-xs text-gray-500">
-              {money(ev.dueNowCents)} to book, {money(balance)} the day before
+              {presale
+                ? `${money(ev.dueNowCents)} to hold a place, ${money(balance)} when you pick your time`
+                : `${money(ev.dueNowCents)} to book, ${money(balance)} the day before`}
             </span>
           )}
           {ev.includedPhotos > 0 && (
@@ -106,18 +125,24 @@ function EventCard({ ev }: { ev: ScheduleEvent }) {
               href={`/minis/${ev.token}`}
               className="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2"
             >
-              Book a time <ArrowRight className="w-4 h-4" />
+              {presale ? "Hold a place" : "Book a time"} <ArrowRight className="w-4 h-4" />
             </a>
             <p className="text-xs text-center mt-2 text-gray-500">
-              {ev.openCount <= 3
-                ? <span className="font-semibold text-amber-600">Only {ev.openCount} time{ev.openCount === 1 ? "" : "s"} left</span>
-                : `${ev.openCount} of ${ev.totalSlots} times still open`}
-              {ev.nextOpenSlot ? ` · next at ${formatSlot(ev.nextOpenSlot)}` : ""}
+              {presale ? (
+                ev.placesLeft !== null && ev.placesLeft !== undefined
+                  ? <span className={ev.placesLeft <= 3 ? "font-semibold text-amber-600" : ""}>
+                      {ev.placesLeft} of {ev.reservationCap} places left
+                    </span>
+                  : "Limited places"
+              ) : ev.openCount <= 3 ? (
+                <span className="font-semibold text-amber-600">Only {ev.openCount} time{ev.openCount === 1 ? "" : "s"} left</span>
+              ) : `${ev.openCount} of ${ev.totalSlots} times still open`}
+              {!presale && ev.nextOpenSlot ? ` · next at ${formatSlot(ev.nextOpenSlot)}` : ""}
             </p>
           </>
         ) : (
           <div className="w-full py-3 rounded-xl bg-gray-100 text-gray-500 font-semibold text-center text-sm">
-            {ev.status === "closed" ? "Booking closed" : "Fully booked"}
+            {ev.status === "closed" ? "Booking closed" : presale ? "All places gone" : "Fully booked"}
           </div>
         )}
       </div>
