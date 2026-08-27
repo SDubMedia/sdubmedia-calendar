@@ -491,6 +491,10 @@ had carefully filled in.
   venue name alone geocodes badly.
 - Paste-splitting is built in: pasting a whole address into the street box fills
   city/state/zip. Don't re-implement it per form.
+- Venue name, street and city have a one-tap **clear (×)**. State and ZIP
+  deliberately don't — an × crowds a two-character box, and they're short enough
+  to retype. Never rewire Backspace to clear a whole field: it makes fixing a
+  single typo impossible.
 
 - `postalAddress(parts)` → `239 Franklin Rd, Franklin, TN 37064` for documents
   and app display. State and ZIP take a SPACE, never a comma.
