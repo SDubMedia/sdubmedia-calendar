@@ -103,7 +103,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("mini_sessions").select("id, title, org_id, unclaimed_policy, booking_deadline")
       .is("deleted_at", null)
       .not("booking_deadline", "is", null)
-      .lt("booking_deadline", new Date().toISOString());
+      .lt("booking_deadline", new Date().toISOString())
+      .is("deadline_alerted_at", null);
 
     for (const ev of closedEvents || []) {
       const { data: missed } = await supabase
@@ -112,11 +113,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .in("payment_status", ["paid", "deposit_paid"]);
       if (!missed || missed.length === 0) continue;
 
-      const { error } = await supabase.from("mini_session_bookings")
-        .update({ status: "no_show", updated_at: new Date().toISOString() })
-        .in("id", missed.map(m => m.id));
-      if (error) { errors.push(`deadline ${ev.id}: ${error.message}`); continue; }
+      // Their status is deliberately NOT changed. They lost priority, not the
+      // session: the times are on general sale now and they can still take one,
+      // with the deposit they already paid counting toward it. Marking them
+      // no_show would block that claim and paint them red for failing to turn
+      // up to a session they were never given a time for.
       expired += missed.length;
+      await supabase.from("mini_sessions")
+        .update({ deadline_alerted_at: new Date().toISOString() }).eq("id", ev.id);
 
       // Tell the owner, because nothing else will. Two empty slots on the day
       // and two people sitting on a deposit with no word is how a card dispute
@@ -126,7 +130,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `The ${hoursLabel(ev.booking_deadline)} window has closed.\n\n`
         + missed.map(m => `- ${m.name} (${m.email || "no email"}) — ${money(Number(m.deposit_paid_cents || 0))} paid`).join("\n")
         + `\n\nYour setting for this event: ${POLICY_LABEL[ev.unclaimed_policy as string] || ev.unclaimed_policy}.`
-        + `\nOpen the roster to act on each one. Their times are back on general sale.`,
+        + `\n\nTheir times are back on general sale. They can still take a leftover one`
+        + ` themselves — their deposit counts toward it — they just no longer get first pick.`,
       ).catch(() => {});
     }
 

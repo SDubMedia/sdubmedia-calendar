@@ -476,9 +476,10 @@ async function claimSlot(req: VercelRequest, res: VercelResponse) {
   const { data: ev } = await supabase.from("mini_sessions").select("*").eq("id", b.mini_session_id).maybeSingle();
   if (!ev) return res.status(404).json({ error: "Session not found" });
   if (!ev.booking_opened_at) return res.status(400).json({ error: "Times aren't open yet." });
-  if (ev.booking_deadline && new Date(ev.booking_deadline).getTime() < Date.now()) {
-    return res.status(400).json({ error: "The window to choose has closed.", closed: true });
-  }
+  // Past the deadline they lose PRIORITY, not the session. Anything still
+  // unclaimed is on general sale and they may take one, with the deposit they
+  // already paid counting toward it — they're simply racing the public now.
+  // The slot check below is what actually decides whether one is left.
 
   const { data: siblings } = await supabase
     .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
@@ -576,16 +577,17 @@ async function getBooking(bookingToken: string, res: VercelResponse) {
   let claimSlots: string[] = [];
   let claimClosed = false;
   if (canClaim && ev) {
+    // Past the deadline they've lost first pick, not the session — so still
+    // offer whatever is left. `claimClosed` now means "you're racing the
+    // public", not "go away".
     claimClosed = !!ev.booking_deadline && new Date(ev.booking_deadline).getTime() < Date.now();
-    if (!claimClosed) {
-      const { data: siblings } = await supabase
-        .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
-      claimSlots = openSlots(
-        { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes },
-        heldSlots(siblings || []),
-        Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [],
-      );
-    }
+    const { data: siblings } = await supabase
+      .from("mini_session_bookings").select("slot_time, status, created_at").eq("mini_session_id", ev.id);
+    claimSlots = openSlots(
+      { startTime: ev.start_time, endTime: ev.end_time, slotMinutes: ev.slot_minutes, breakMinutes: ev.break_minutes },
+      heldSlots(siblings || []),
+      Array.isArray(ev.blocked_slots) ? ev.blocked_slots : [],
+    );
   }
 
   return res.status(200).json({

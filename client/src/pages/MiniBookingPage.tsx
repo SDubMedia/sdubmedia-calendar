@@ -158,15 +158,7 @@ export default function MiniBookingPage() {
 
         {b.canClaim && (
           <div className="bg-white rounded-xl shadow-sm border p-6">
-            {b.claimClosed ? (
-              <>
-                <p className="font-semibold text-gray-900 mb-1">The window has closed</p>
-                <p className="text-sm text-gray-600">
-                  Times were open until {b.claimDeadline ? new Date(b.claimDeadline).toLocaleString() : "the deadline"}.
-                  Get in touch with {b.orgName} and they'll let you know where you stand.
-                </p>
-              </>
-            ) : (b.claimSlots || []).length === 0 ? (
+            {(b.claimSlots || []).length === 0 ? (
               <>
                 <p className="font-semibold text-gray-900 mb-1">Every time has gone</p>
                 <p className="text-sm text-gray-600">Get in touch with {b.orgName} — they'll sort you out.</p>
@@ -181,6 +173,14 @@ export default function MiniBookingPage() {
                     </span>
                   )}
                 </div>
+                {b.claimClosed && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 mb-3">
+                    <p className="text-sm text-amber-900">
+                      Your priority window has passed, so these times are open to everyone now.
+                      You can still take one and your deposit still counts toward it.
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 mb-3">
                   First come, first served.
                   {b.balanceCents > 0 ? ` Your remaining ${money(b.balanceCents)} is taken when you choose.` : ""}
