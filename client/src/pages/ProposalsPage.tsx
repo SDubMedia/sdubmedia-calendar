@@ -387,6 +387,7 @@ export default function ProposalsPage() {
       clientId: propClientId,
       projectId: propProjectId || null,
       title: propTitle.trim(),
+      needsModelRelease: false,
     clientFieldValues: {},
       pages: propPages,
       packages: propPackages,

@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
 import { mapsQueryFor } from "@/lib/address";
 import { captureLetterhead, type LetterheadSnapshot } from "@/lib/letterhead";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
@@ -64,6 +64,7 @@ interface AppContextValue {
   updateMiniSession: (id: string, m: Partial<MiniSession>) => Promise<void>;
   deleteMiniSession: (id: string) => Promise<void>;
   updateMiniBooking: (id: string, b: Partial<MiniSessionBooking>) => Promise<void>;
+  getOrCreateModelReleaseLink: (projectId: string) => Promise<ModelReleaseLink>;
   addShootRequest: (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">) => Promise<ShootRequest>;
   updateShootRequest: (id: string, r: Partial<ShootRequest>) => Promise<void>;
   deleteShootRequest: (id: string) => Promise<void>;
@@ -384,7 +385,24 @@ function rowToProposal(r: any): Proposal {
     sendHistory: Array.isArray(r.send_history) ? r.send_history : [],
     inboundReplies: Array.isArray(r.inbound_replies) ? r.inbound_replies : [],
     expiresAt: r.expires_at || null,
+    needsModelRelease: !!r.needs_model_release,
     createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at || null,
+  };
+}
+
+function rowToModelReleaseLink(r: any): ModelReleaseLink {
+  return {
+    id: r.id, projectId: r.project_id || "", publicToken: r.public_token || "",
+    createdAt: r.created_at,
+  };
+}
+
+function rowToModelReleaseSignature(r: any): ModelReleaseSignature {
+  return {
+    id: r.id, releaseLinkId: r.release_link_id || "", projectId: r.project_id || "",
+    name: r.name || "", email: r.email || "", phone: r.phone || "",
+    signature: r.signature || "", contentHtml: r.content_html || "",
+    signedAt: r.signed_at, createdAt: r.created_at,
   };
 }
 
@@ -1076,7 +1094,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], modelReleaseLinks: [], modelReleaseSignatures: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1211,6 +1229,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // another family's booking (participants have no logins at all).
         miniSessions: [],
         miniSessionBookings: [],
+        modelReleaseLinks: [],
+        modelReleaseSignatures: [],
         // Hidden from partners/clients entirely — owner-only data
         contractorInvoices: [],
         crewPayments: [],
@@ -1252,6 +1272,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         shootRequests: [],
         miniSessions: [],
         miniSessionBookings: [],
+        modelReleaseLinks: [],
+        modelReleaseSignatures: [],
         // Owner-only data — never visible to non-owner without clients
         contractorInvoices: [],
         crewPayments: [],
@@ -1348,6 +1370,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: shootConfirmationsData, error: _eSC },
         { data: todosData, error: _eTodo },
         { data: projectDocumentsData, error: _eDoc },
+        { data: modelReleaseLinksData, error: _eMRL },
+        { data: modelReleaseSignaturesData, error: _eMRS },
       ] = await Promise.all([
         supabase.from("clients").select("*").order("company"),
         supabase.from("crew_members").select("*").order("name"),
@@ -1394,6 +1418,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("shoot_confirmations").select("*"),
         supabase.from("todos").select("*").order("created_at", { ascending: false }),
         supabase.from("project_documents").select("*").order("created_at", { ascending: false }),
+        supabase.from("model_release_links").select("*"),
+        supabase.from("model_release_signatures").select("*").order("signed_at", { ascending: false }),
       ]);
 
       const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e7b || e7cp || e7pr || e7sr || e7av || e7sp || e8;
@@ -1435,6 +1461,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         meetings: (meetingsData || []).map(r => { try { return rowToMeeting(r); } catch { return null; } }).filter(Boolean) as Meeting[],
         todos: (todosData || []).map(r => { try { return rowToTodo(r); } catch { return null; } }).filter(Boolean) as Todo[],
         projectDocuments: (projectDocumentsData || []).map(r => { try { return rowToProjectDocument(r); } catch { return null; } }).filter(Boolean) as ProjectDocument[],
+        modelReleaseLinks: (modelReleaseLinksData || []).map(r => { try { return rowToModelReleaseLink(r); } catch { return null; } }).filter(Boolean) as ModelReleaseLink[],
+        modelReleaseSignatures: (modelReleaseSignaturesData || []).map(r => { try { return rowToModelReleaseSignature(r); } catch { return null; } }).filter(Boolean) as ModelReleaseSignature[],
         packages: (packagesData || []).map(r => { try { return rowToPackage(r); } catch { return null; } }).filter(Boolean) as Package[],
         proposalImages: (proposalImagesData || []).map(r => { try { return rowToProposalImage(r); } catch { return null; } }).filter(Boolean) as ProposalImage[],
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
@@ -1524,6 +1552,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       shoot_requests: { key: "shootRequests", convert: rowToShootRequest },
       mini_sessions: { key: "miniSessions", convert: rowToMiniSession, softDelete: true },
       mini_session_bookings: { key: "miniSessionBookings", convert: rowToMiniSessionBooking },
+      model_release_links: { key: "modelReleaseLinks", convert: rowToModelReleaseLink },
+      model_release_signatures: { key: "modelReleaseSignatures", convert: rowToModelReleaseSignature },
       availability: { key: "availability", convert: rowToAvailability },
       crew_location_distances: { key: "crewLocationDistances", convert: rowToCrewLocationDistance },
       manual_trips: { key: "manualTrips", convert: rowToManualTrip },
@@ -1962,6 +1992,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       selected_package_id: p.selectedPackageId, payment_milestones: p.paymentMilestones || [],
       pipeline_stage: p.pipelineStage || "inquiry", lead_source: p.leadSource || "",
       contract_template_id: p.contractTemplateId ?? null,
+      needs_model_release: p.needsModelRelease ?? false,
       line_items: p.lineItems, subtotal: p.subtotal, tax_rate: p.taxRate,
       tax_amount: p.taxAmount, total: p.total,
       contract_content: p.contractContent, payment_config: p.paymentConfig,
@@ -1987,6 +2018,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (p.viewedAt !== undefined) patch.viewed_at = p.viewedAt;
     if (p.leadSource !== undefined) patch.lead_source = p.leadSource;
     if (p.contractTemplateId !== undefined) patch.contract_template_id = p.contractTemplateId;
+    if (p.needsModelRelease !== undefined) patch.needs_model_release = p.needsModelRelease;
     if (p.lineItems !== undefined) patch.line_items = p.lineItems;
     if (p.subtotal !== undefined) patch.subtotal = p.subtotal;
     if (p.taxRate !== undefined) patch.tax_rate = p.taxRate;
@@ -3621,6 +3653,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setRawData(d => ({ ...d, miniSessionBookings: d.miniSessionBookings.map(x => x.id === id ? updated : x) }));
   }, []);
 
+  // One link per project, created the first time anyone asks for it —
+  // either the owner clicking "Copy Model Release Link" in the project
+  // view, or the accept-flow email needing one to send the client. Returns
+  // the existing link if the project already has one rather than making a
+  // second (a project should only ever have one open release link).
+  const getOrCreateModelReleaseLink = useCallback(async (projectId: string): Promise<ModelReleaseLink> => {
+    // Queried fresh rather than read off local state — this needs to be
+    // correct even if `data.modelReleaseLinks` hasn't caught up yet from a
+    // link created moments ago elsewhere.
+    const { data: existingRow } = await supabase.from("model_release_links").select("*").eq("project_id", projectId).maybeSingle();
+    if (existingRow) return rowToModelReleaseLink(existingRow);
+    const id = nanoid(10);
+    const { data: row, error } = await supabase.from("model_release_links").insert({
+      id,
+      ...(orgId ? { org_id: orgId } : {}),
+      project_id: projectId,
+      // The link IS the front door, same reasoning as mini_sessions.public_token.
+      public_token: nanoid(16),
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const created = rowToModelReleaseLink(row);
+    setRawData(d => ({ ...d, modelReleaseLinks: [...d.modelReleaseLinks, created] }));
+    return created;
+  }, [orgId]);
+
   const addShootRequest = useCallback(async (r: Omit<ShootRequest, "id" | "orgId" | "createdAt" | "status" | "projectId" | "ownerResponse">): Promise<ShootRequest> => {
     const id = nanoid(10);
     const { data: row, error } = await supabase.from("shoot_requests").insert({
@@ -3858,6 +3915,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addCrewPayment, updateCrewPayment, deleteCrewPayment,
       addProduct, updateProduct, deleteProduct,
       addMiniSession, updateMiniSession, deleteMiniSession, updateMiniBooking,
+      getOrCreateModelReleaseLink,
       addShootRequest, updateShootRequest, deleteShootRequest,
       addAvailability, updateAvailability, deleteAvailability,
       upsertShooterPref,

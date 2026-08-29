@@ -1629,9 +1629,38 @@ export interface Proposal {
   // Optional expiration. When set and elapsed, the public proposal page
   // shows an "expired" state instead of the live form.
   expiresAt: string | null;
+  // Per-proposal opt-in: when true, accepting this proposal emails the
+  // client a shareable model-release link for their project (see
+  // ModelReleaseLink below). Off by default — most proposals don't need it.
+  needsModelRelease: boolean;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+}
+
+// Self-serve model releases — one link per project. Anyone the client
+// forwards it to fills in their own name/email/phone and signs, with no
+// login and no setup by the owner. Mirrors the MiniSession /
+// MiniSessionBooking shape: an owner-scoped record with a public token, and
+// one independent row per submission.
+export interface ModelReleaseLink {
+  id: string;
+  projectId: string;
+  publicToken: string;
+  createdAt: string;
+}
+
+export interface ModelReleaseSignature {
+  id: string;
+  releaseLinkId: string;
+  projectId: string;
+  name: string;
+  email: string;
+  phone: string;
+  signature: string; // typed full name
+  contentHtml: string; // snapshot of the release text at signing time
+  signedAt: string;
+  createdAt: string;
 }
 
 export interface PipelineLead {
@@ -1968,6 +1997,8 @@ export interface AppData {
   shootConfirmations: ShootConfirmation[];
   proposalTemplates: ProposalTemplate[];
   proposals: Proposal[];
+  modelReleaseLinks: ModelReleaseLink[];
+  modelReleaseSignatures: ModelReleaseSignature[];
   pipelineLeads: PipelineLead[];
   series: Series[];
   personalEvents: PersonalEvent[];

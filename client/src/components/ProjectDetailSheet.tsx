@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload, FileText
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload, FileText, Link2, UserCheck
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
@@ -25,6 +25,7 @@ import { postalAddress } from "@/lib/address";
 import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
+import { publicUrl } from "@/lib/publicUrl";
 import { toUploadableImage } from "@/lib/heic";
 import { pdf } from "@react-pdf/renderer";
 import { toast } from "sonner";
@@ -74,7 +75,7 @@ interface Props {
 }
 
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
-  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, updateProjectDocument, deleteProjectDocument } = useApp();
+  const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, updateProjectDocument, deleteProjectDocument, getOrCreateModelReleaseLink } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [talentDraft, setTalentDraft] = useState("");
@@ -411,6 +412,22 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // Which draft is expanded into the inline player, and its signed URL.
   const [playingDraftId, setPlayingDraftId] = useState<string | null>(null);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const [copyingReleaseLink, setCopyingReleaseLink] = useState(false);
+  const modelReleases = data.modelReleaseSignatures
+    .filter(s => s.projectId === project.id)
+    .sort((a, b) => b.signedAt.localeCompare(a.signedAt));
+  async function copyModelReleaseLink() {
+    setCopyingReleaseLink(true);
+    try {
+      const link = await getOrCreateModelReleaseLink(project.id);
+      await navigator.clipboard.writeText(publicUrl(`/release/${link.publicToken}`));
+      toast.success("Model release link copied");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't get the link");
+    } finally {
+      setCopyingReleaseLink(false);
+    }
+  }
   const projectFiles = data.projectDocuments.filter(d => d.projectId === project.id);
   const projectDocs = projectFiles.filter(d => d.kind !== "draft" && d.kind !== "source");
   const sourceFiles = projectFiles.filter(d => d.kind === "source");
@@ -1453,6 +1470,35 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   <Upload className="w-3.5 h-3.5" /> {docUploading ? "Uploading…" : "Upload document"}
                   <input type="file" className="hidden" disabled={docUploading} onChange={uploadDoc} accept=".pdf,.doc,.docx,.txt,.rtf,.pages,.csv,.xlsx,.key,.ppt,.pptx" />
                 </label>
+              </div>
+            )}
+
+            {/* Model releases — owner-only (see model_release_links/
+                model_release_signatures RLS). One shareable link per
+                project; every person who opens it and signs shows up here
+                on their own, with no setup needed from the owner. */}
+            {isOwner && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Model Releases</div>
+                {modelReleases.map(sig => (
+                  <div key={sig.id} className="flex items-center gap-2 bg-secondary/50 rounded-md px-3 py-2 text-xs">
+                    <UserCheck className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-foreground truncate">{sig.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{sig.email}{sig.phone ? ` · ${sig.phone}` : ""}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{new Date(sig.signedAt).toLocaleDateString()}</span>
+                  </div>
+                ))}
+                {modelReleases.length === 0 && <p className="text-xs text-muted-foreground">No releases signed yet.</p>}
+                <button
+                  type="button"
+                  onClick={copyModelReleaseLink}
+                  disabled={copyingReleaseLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/70 disabled:opacity-50"
+                >
+                  <Link2 className="w-3.5 h-3.5" /> {copyingReleaseLink ? "Getting link…" : "Copy Model Release Link"}
+                </button>
               </div>
             )}
 

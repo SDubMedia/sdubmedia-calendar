@@ -449,6 +449,8 @@ export const seedData: AppData = {
   shootRequests: [],
   miniSessions: [],
   miniSessionBookings: [],
+  modelReleaseLinks: [],
+  modelReleaseSignatures: [],
   availability: [],
   shooterPrefs: [],
   crewLocationDistances: [],

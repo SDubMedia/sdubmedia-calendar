@@ -100,6 +100,8 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
   const [packages, setPackages] = useState<ProposalPackage[]>([]);
   // Master contract that auto-generates a draft on client acceptance.
   const [contractTemplateId, setContractTemplateId] = useState<string | null>(null);
+  // When true, accepting this proposal emails the client a self-serve model release link.
+  const [needsModelRelease, setNeedsModelRelease] = useState(false);
   const [activePageId, setActivePageId] = useState<string>("");
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,6 +151,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
     setActivePageId(pgs[0].id);
     setPackages(existingProposal.packages || []);
     setContractTemplateId(existingProposal.contractTemplateId ?? null);
+    setNeedsModelRelease(!!existingProposal.needsModelRelease);
     setLegacyPayment(existingProposal.paymentConfig || { option: "none", depositPercent: 50, depositAmount: 0 });
     setPLineItems(existingProposal.lineItems || []);
     const cfv = existingProposal.clientFieldValues || {};
@@ -340,6 +343,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
           pages,
           packages,
           contractTemplateId,
+          needsModelRelease,
           lineItems: pLineItems,
           subtotal,
           total: subtotal + (existingProposal?.taxAmount || 0),
@@ -996,6 +1000,29 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                   Auto-generates a draft contract for your review when a client accepts.
                 </p>
               </div>
+
+              {/* Model Releases — when on, accepting this proposal emails the
+                  client a shareable self-serve release link for their people.
+                  Proposal-only: a template has no client/project to attach a
+                  release link to. */}
+              {proposalMode && (
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={needsModelRelease}
+                      onChange={e => setNeedsModelRelease(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-muted-foreground">
+                      This project needs model releases from the client's people
+                    </span>
+                  </label>
+                  <p className="text-[10px] text-muted-foreground">
+                    When the client accepts, they'll get a link to forward to anyone appearing on camera.
+                  </p>
+                </div>
+              )}
 
               {/* Cover Image */}
               <div className="space-y-2">

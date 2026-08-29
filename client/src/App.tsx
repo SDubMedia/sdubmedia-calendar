@@ -70,6 +70,7 @@ const ReviewContractPage = lazy(() => import("./pages/ReviewContractPage"));
 const EditContractTemplatePage = lazy(() => import("./pages/EditContractTemplatePage"));
 const ViewProposalPage = lazy(() => import("./pages/ViewProposalPage"));
 const MiniSessionSignupPage = lazy(() => import("@/pages/MiniSessionSignupPage"));
+const ModelReleaseSignupPage = lazy(() => import("@/pages/ModelReleaseSignupPage"));
 const MiniBookingPage = lazy(() => import("@/pages/MiniBookingPage"));
 const MiniSchedulePage = lazy(() => import("@/pages/MiniSchedulePage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
@@ -352,6 +353,21 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/book/:slug" component={MiniSchedulePage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // Model releases: the client's shared link (/release/:token). Public by
+  // design — models never have logins, each submission is its own row.
+  if (window.location.pathname.startsWith("/release/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Toaster />
+          <Switch>
+            <Route path="/release/:token" component={ModelReleaseSignupPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

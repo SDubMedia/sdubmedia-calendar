@@ -10,7 +10,7 @@ import { randomBytes } from "crypto";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { errorMessage, escapeHtml, publicBusinessInfo } from "./_auth.js";
+import { errorMessage, escapeHtml, isAllowedUrl, publicBusinessInfo } from "./_auth.js";
 import { sendPushToOwner } from "./_apns.js";
 import { generateContractContent } from "./_contractGenerator.js";
 import { extractPaymentScheduleMilestones, type PartialMilestone } from "./_paymentSchedule.js";
@@ -310,14 +310,28 @@ async function acceptProposal(req: VercelRequest, res: VercelResponse) {
 
   // Calendar: one tentative project per confirmed coverage day, flipped to
   // upcoming + paid when the payment verifies. Never fails the acceptance.
+  let resolvedProjectId: string | null = proposal.project_id || null;
   try {
     const mergedFields = {
       ...(proposal.client_field_values && typeof proposal.client_field_values === "object" ? proposal.client_field_values : {}),
       ...((updatePayload.client_field_values as Record<string, string>) || {}),
     } as Record<string, string>;
-    await createProjectsForProposal(proposal, mergedFields, proposalTotal);
+    resolvedProjectId = await createProjectsForProposal(proposal, mergedFields, proposalTotal);
   } catch (err) {
     console.warn(`[proposal-accept] calendar projects failed: ${errorMessage(err, "unknown")}`);
+  }
+
+  // Model releases: opt-in per proposal (most don't need this). Only fires
+  // when there's actually a project to attach the link to — a proposal
+  // accepted with no coverage-date fields never gets one from
+  // createProjectsForProposal above, and there's nowhere for a release to
+  // attach in that case.
+  if (proposal.needs_model_release && resolvedProjectId) {
+    try {
+      await emailClientModelReleaseLink(proposal, resolvedProjectId, signature.name || proposal.client_email);
+    } catch (err) {
+      console.warn(`[proposal-accept] model release email failed: ${errorMessage(err, "unknown")}`);
+    }
   }
 
   // ---------- Phase A: auto-generate draft contract ----------
@@ -806,8 +820,13 @@ async function createProjectsForProposal(
   proposal: { id: string; org_id: string; client_id: string; title: string; total: number; project_id?: string | null },
   cfv: Record<string, string>,
   acceptedTotal: number,
-) {
-  if (proposal.project_id) return; // already created
+): Promise<string | null> {
+  // Returns the project this proposal ends up tied to (existing, newly
+  // created, or null if neither) — callers that need it right after
+  // acceptance (e.g. the model-release email) can't just re-read
+  // `proposal.project_id`: this function updates the DB row but the caller's
+  // in-memory `proposal` object is never mutated back.
+  if (proposal.project_id) return proposal.project_id; // already created
 
   const isoRe = /^\d{4}-\d{2}-\d{2}$/;
   const rows = Object.entries(cfv)
@@ -817,7 +836,7 @@ async function createProjectsForProposal(
   const days = rows.length > 0
     ? rows.map(r => ({ date: r.date, start: parseTimeText(cfv[`event_start_time_${r.n}`]), end: parseTimeText(cfv[`event_end_time_${r.n}`]) }))
     : (isoRe.test(cfv.event_date || "") ? [{ date: cfv.event_date, start: parseTimeText(cfv.event_start_time), end: parseTimeText(cfv.event_end_time) }] : []);
-  if (days.length === 0) return;
+  if (days.length === 0) return null;
 
   // A project type is mandatory: prefer an event-ish one, else the org's
   // first, else create a plain "Event" type.
@@ -860,6 +879,69 @@ async function createProjectsForProposal(
   });
   if (error) throw new Error(error.message);
   await supabase.from("proposals").update({ project_id: projId, updated_at: now }).eq("id", proposal.id);
+  return projId;
+}
+
+/**
+ * One link per project — reused if the project already has one rather than
+ * minting a second. Mirrors client/src/contexts/AppContext.tsx's
+ * getOrCreateModelReleaseLink (same query-first-then-insert shape), since
+ * this server-side path and the owner's "Copy Model Release Link" button in
+ * the project view both need to land on the same row.
+ */
+async function getOrCreateModelReleaseLinkServer(orgId: string, projectId: string): Promise<string> {
+  const { data: existing } = await supabase.from("model_release_links").select("public_token").eq("project_id", projectId).maybeSingle();
+  if (existing?.public_token) return existing.public_token;
+  const publicToken = nanoid(16);
+  const { error } = await supabase.from("model_release_links").insert({
+    id: nanoid(10),
+    org_id: orgId,
+    project_id: projectId,
+    public_token: publicToken,
+  });
+  if (error) throw new Error(error.message);
+  return publicToken;
+}
+
+/**
+ * Emails the client one shareable link (not a per-model invite — the client
+ * forwards it themselves to whoever appears on camera). Each recipient fills
+ * in their own name/email/phone and signs on the public page; nothing here
+ * needs to know who they are ahead of time.
+ */
+async function emailClientModelReleaseLink(
+  proposal: { id: string; org_id: string; title: string; client_email: string },
+  projectId: string,
+  clientName: string,
+) {
+  if (!proposal.client_email) return;
+  const publicToken = await getOrCreateModelReleaseLinkServer(proposal.org_id, projectId);
+  const appBase = process.env.PUBLIC_APP_URL || "https://slate.sdubmedia.com";
+  const releaseUrl = `${appBase}/release/${publicToken}`;
+  if (!isAllowedUrl(releaseUrl)) return;
+
+  const { data: profiles } = await supabase.from("user_profiles").select("email").eq("org_id", proposal.org_id).eq("role", "owner");
+  const orgName = (await supabase.from("organizations").select("name").eq("id", proposal.org_id).single()).data?.name || "";
+
+  const subject = `Model release link for ${proposal.title}`;
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+    <h2 style="margin:0 0 4px;font-size:18px;">Thanks, ${escapeHtml(clientName || "there")}!</h2>
+    <p style="margin:0 0 16px;font-size:14px;color:#64748b;">Anyone appearing on camera for <strong>${escapeHtml(proposal.title)}</strong> besides you will need to sign a quick model release. Share this one link with each of them — they'll fill in their own name and sign it themselves, no account needed.</p>
+    <p style="margin:24px 0;"><a href="${escapeHtml(releaseUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Model release link</a></p>
+    <p style="margin:0;font-size:12px;color:#94a3b8;word-break:break-all;">${escapeHtml(releaseUrl)}</p>
+  </body></html>`;
+  await resend.emails.send({ from: FROM_EMAIL, to: proposal.client_email, subject, html });
+
+  // Best-effort — the client email above is the part that actually matters.
+  const ownerEmail = profiles?.[0]?.email;
+  if (ownerEmail) {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ownerEmail,
+      subject: `Model release link sent to ${clientName || proposal.client_email}`,
+      html: `<p style="font-family:sans-serif;font-size:14px;">${escapeHtml(clientName || proposal.client_email)} was emailed the model release link for <strong>${escapeHtml(proposal.title)}</strong>${orgName ? ` (${escapeHtml(orgName)})` : ""}. Submissions will show up on the project as they come in.</p>`,
+    }).catch(() => { /* owner heads-up only, never block on it */ });
+  }
 }
 
 /**
