@@ -546,6 +546,11 @@ export default function ViewProposalPage() {
     { field: "partner_email", label: "Email" },
     { field: "partner_phone", label: "Phone" },
   ];
+  // When the owner has already pinned day one of the schedule, the whole
+  // shoot calendar is fixed — the client confirms times only, never the
+  // days. Without this a client could quietly retype a session onto a date
+  // nobody agreed to, or add/remove days that don't match what was booked.
+  const scheduleLocked = !!(proposal?.clientFieldValues || {}).event_date_1;
   // Schedule validation: row 1 must be complete; any partially-filled extra
   // row must be completed too (a date without times is not a schedule).
   const missingSchedule: { field: string; label: string }[] = [];
@@ -617,7 +622,8 @@ export default function ViewProposalPage() {
                   type="date"
                   value={clientFields[`event_date_${i}`] || ""}
                   onChange={(e) => setClientFields(v => ({ ...v, [`event_date_${i}`]: e.target.value }))}
-                  className={`w-full min-w-0 max-w-full rounded border border-gray-300 px-3 py-2 text-sm ${clientFields[`event_date_${i}`] ? "text-gray-900" : "text-gray-400"}`}
+                  disabled={scheduleLocked}
+                  className={`w-full min-w-0 max-w-full rounded border px-3 py-2 text-sm ${scheduleLocked ? "border-gray-200 bg-gray-100 text-gray-700 cursor-not-allowed" : `border-gray-300 ${clientFields[`event_date_${i}`] ? "text-gray-900" : "text-gray-400"}`}`}
                 />
               </div>
               <div className="min-w-0">
@@ -641,36 +647,46 @@ export default function ViewProposalPage() {
             </div>
           ))}
         </div>
-        <div className="mt-2 flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setScheduleRows(n => n + 1)}
-            className="text-sm text-blue-600 hover:text-blue-700"
-          >+ Add date</button>
-          {scheduleRows > 1 && (
+        {scheduleLocked ? (
+          <p className="mt-2 text-xs text-gray-500">
+            Coverage days are set for this project. Contact us if any of these dates need to change.
+          </p>
+        ) : (
+          <div className="mt-2 flex items-center gap-4">
             <button
               type="button"
-              onClick={() => {
-                setClientFields(v => {
-                  const next = { ...v };
-                  delete next[`event_date_${scheduleRows}`];
-                  delete next[`event_start_time_${scheduleRows}`];
-                  delete next[`event_end_time_${scheduleRows}`];
-                  return next;
-                });
-                setScheduleRows(n => Math.max(1, n - 1));
-              }}
-              className="text-xs text-gray-500 hover:text-gray-700"
-            >Remove last date</button>
-          )}
-        </div>
+              onClick={() => setScheduleRows(n => n + 1)}
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >+ Add date</button>
+            {scheduleRows > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setClientFields(v => {
+                    const next = { ...v };
+                    delete next[`event_date_${scheduleRows}`];
+                    delete next[`event_start_time_${scheduleRows}`];
+                    delete next[`event_end_time_${scheduleRows}`];
+                    return next;
+                  });
+                  setScheduleRows(n => Math.max(1, n - 1));
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >Remove last date</button>
+            )}
+          </div>
+        )}
       </div>
       {/* Weddings usually have two people on the agreement, and it isn't
           always a couple — sometimes a parent is paying. Only offered when
           there IS an agreement to co-sign: a proposal without a contract
           (corporate bookings) has nothing for a second person to sign, and
-          the partner/fiance wording read wrong there (Geoff, 2026-08-22). */}
-      {!!(proposal?.agreementPreview || (proposal?.contractContent || "").trim()) && (
+          the partner/fiance wording read wrong there (Geoff, 2026-08-22).
+          A single-signer B2B deal (one company contact) can suppress the
+          option entirely via clientFieldValues.disable_second_signer. */}
+      {!!(proposal?.agreementPreview || (proposal?.contractContent || "").trim())
+        && (proposal?.clientFieldValues || {}).disable_second_signer !== "true"
+        && (
       <div className="mt-4 pt-4 border-t border-gray-200">
         {!showPartner ? (
           <button
