@@ -769,7 +769,7 @@ export default function ProposalsPage() {
                         </div>
                         <div className="flex items-center gap-1">
                           <button onClick={() => setViewProposal(p)} className="p-1.5 text-muted-foreground hover:text-foreground"><Eye className="w-4 h-4" /></button>
-                          {(p.status === "sent" || p.status === "accepted") && (
+                          {p.status !== "void" && (
                             <button onClick={() => copyLink(p)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Copy link"><Link2 className="w-4 h-4" /></button>
                           )}
                           {p.status === "draft" && (
@@ -1125,7 +1125,7 @@ export default function ProposalsPage() {
                     <PenTool className="w-4 h-4" /> Countersign
                   </Button>
                 )}
-                {(viewProposal.status === "sent" || viewProposal.status === "accepted") && (
+                {viewProposal.status !== "void" && (
                   <Button variant="outline" onClick={() => copyLink(viewProposal)} className="gap-2">
                     <Link2 className="w-4 h-4" /> Copy Link
                   </Button>
