@@ -297,11 +297,31 @@ export async function chargeMiniBalance(
   if (amount <= 0) return null;
   if (!booking.stripe_customer_id) return "No saved card on this booking";
 
+  // Atomically claim the charge before calling Stripe. The overnight cron and
+  // an owner's manual "charge card on file" click can both reach here for the
+  // same booking; without this, both would read the same unpaid balance and
+  // both charge the card. Only the request that flips balance_charged_at from
+  // null wins — the loser bails out before Stripe is ever called.
+  const claimedAt = new Date().toISOString();
+  const { data: claimed, error: claimErr } = await supabase
+    .from("mini_session_bookings")
+    .update({ balance_charged_at: claimedAt, updated_at: claimedAt })
+    .eq("id", booking.id)
+    .is("balance_charged_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimErr) return errorMessage(claimErr, "Couldn't start the charge");
+  if (!claimed) return "Balance already charged";
+
   const pms = await stripe.paymentMethods.list(
     { customer: booking.stripe_customer_id, type: "card", limit: 10 },
     { stripeAccount },
   );
-  if (pms.data.length === 0) return "No saved card on this booking";
+  if (pms.data.length === 0) {
+    // Not actually charged — release the claim so it can be retried once a card exists.
+    await supabase.from("mini_session_bookings").update({ balance_charged_at: null }).eq("id", booking.id);
+    return "No saved card on this booking";
+  }
 
   let lastErr = "Card was declined";
   for (const pm of pms.data) {
@@ -314,7 +334,7 @@ export async function chargeMiniBalance(
         off_session: true,
         confirm: true,
         metadata: { kind: "mini_session_balance", bookingId: booking.id },
-      }, { stripeAccount });
+      }, { stripeAccount, idempotencyKey: `mini-balance-${booking.id}` });
       await supabase.from("mini_session_bookings").update({
         payment_status: "paid",
         deposit_paid_cents: Number(booking.total_cents || 0),
@@ -331,9 +351,11 @@ export async function chargeMiniBalance(
     }
   }
 
+  // Every card failed — not actually charged, so release the claim to allow a retry.
   await supabase.from("mini_session_bookings").update({
     payment_status: "balance_failed",
     balance_error: lastErr.slice(0, 300),
+    balance_charged_at: null,
     updated_at: new Date().toISOString(),
   }).eq("id", booking.id);
   return lastErr;
