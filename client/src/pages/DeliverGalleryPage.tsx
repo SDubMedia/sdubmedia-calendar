@@ -871,7 +871,8 @@ export default function DeliverGalleryPage() {
     // Same split as download-all: videos stream straight to disk, photos get
     // zipped. But zipping happens in memory, so a big selection of
     // full-quality originals would blow up a phone — past this size each file
-    // streams individually instead.
+    // streams individually instead. iOS always takes the individual-file path
+    // regardless of size — see isIOS()'s comment above streamToDisk.
     const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
     const photos = chosen.filter((f) => f.mediaType !== "video");
     const videos = chosen.filter((f) => f.mediaType === "video");
@@ -882,7 +883,7 @@ export default function DeliverGalleryPage() {
         streamToDisk(v.downloadUrl || v.url);
         await new Promise((r) => setTimeout(r, 800));
       }
-      if (photos.length > 0 && photoBytes > ZIP_BUDGET_BYTES) {
+      if (photos.length > 0 && (isIOS() || photoBytes > ZIP_BUDGET_BYTES)) {
         for (const f of photos) {
           streamToDisk(f.downloadUrl || f.url);
           await new Promise((r) => setTimeout(r, 600));
@@ -916,7 +917,12 @@ export default function DeliverGalleryPage() {
         if (videos.length > 1) await new Promise((r) => setTimeout(r, 800));
       }
 
-      if (photos.length > 0) {
+      if (photos.length > 0 && isIOS()) {
+        for (const f of photos) {
+          streamToDisk(f.downloadUrl || f.url);
+          await new Promise((r) => setTimeout(r, 600));
+        }
+      } else if (photos.length > 0) {
         await zipPhotos(photos, `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}.zip`);
       }
     } catch (err) {
@@ -951,6 +957,21 @@ export default function DeliverGalleryPage() {
     }).catch(() => { /* never bother the client with a metric */ });
   }
 
+  // iOS Safari (in a normal tab AND in the installed home-screen app) does
+  // not reliably save a blob: URL through a[download] — clicking it does
+  // nothing visible for a .zip, and in the installed app (which has no
+  // Downloads surface at all) the click can throw instead. Real attachment
+  // URLs (streamToDisk, used for videos) are unaffected: those are a normal
+  // navigation with a Content-Disposition header, which iOS handles fine.
+  // So on iOS we skip the client-side ZIP for photos entirely and stream
+  // each file individually the same way videos already do (Geoff,
+  // 2026-08-29 — "download all" on iPhone only ever produced the video).
+  // iPadOS reports as "MacIntel" with touch support, so that's checked too.
+  function isIOS(): boolean {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
   function streamToDisk(url: string) {
     const a = document.createElement("a");
     a.href = url;
@@ -968,9 +989,16 @@ export default function DeliverGalleryPage() {
     trackDownload(1, f.id);
     // Videos stream straight to disk via their attachment link — pulling a
     // multi-hundred-MB video into a blob first would run mobile Safari out of
-    // memory. Photos keep the blob path (forces a save even cross-origin).
+    // memory. Photos normally keep the blob path (forces a save even
+    // cross-origin, since f.url has no Content-Disposition header of its
+    // own). iOS is the exception: it won't reliably save a blob through
+    // a[download], so it uses the same attachment-link path as videos.
     if (f.mediaType === "video" && f.downloadUrl) {
       streamToDisk(f.downloadUrl);
+      return;
+    }
+    if (isIOS()) {
+      streamToDisk(f.downloadUrl || f.url);
       return;
     }
     try {
