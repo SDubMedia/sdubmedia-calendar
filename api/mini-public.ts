@@ -193,11 +193,14 @@ async function getSchedule(slug: string, res: VercelResponse) {
   // local time.
   const floor = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
+  // A pre-sale event's date is only a placeholder until it's announced, so the
+  // floor must not apply to it — otherwise an event that's still actively
+  // selling drops off this page the moment real time passes its placeholder.
   const { data: events } = await supabase
     .from("mini_sessions").select("*")
     .eq("org_id", org.id).is("deleted_at", null)
     .in("status", ["published", "closed"])
-    .gte("date", floor)
+    .or(`date_tbd.eq.true,date.gte.${floor}`)
     .order("date", { ascending: true });
 
   const ids = (events || []).map(e => e.id);
