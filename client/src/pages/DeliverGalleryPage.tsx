@@ -1430,11 +1430,17 @@ export default function DeliverGalleryPage() {
                   className="w-full h-full object-cover"
                 />
               )}
-              {/* Hover gradient for icon legibility */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity pointer-events-none" />
+              {/* Hover gradient for icon legibility. Hidden by default —
+                  only a hover-capable pointer (desktop) reveals it on
+                  :hover. Touch devices have no hover, so this used to fall
+                  back to always-on, cluttering every tile with a permanent
+                  white-circle cluster (Geoff, 2026-08-29). The lightbox
+                  (opened by tapping the tile) has its own download/share
+                  controls, so nothing is lost by hiding these on mobile. */}
+              <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-transparent to-black/40 opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity pointer-events-none" />
 
-              {/* Hover icons — bottom-right cluster */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+              {/* Hover icons — bottom-right cluster. Same hover-only rule. */}
+              <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
                 {delivery.printsEnabled && !isVideo && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setPrintFor(f); }}
