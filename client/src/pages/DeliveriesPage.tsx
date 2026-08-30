@@ -1135,6 +1135,7 @@ function DeliveryDetail({ id }: { id: string }) {
   // ProofingPanel's "charge for every photo" toggle). Galleries that have
   // never touched pricing stay off, exactly as before.
   const proofingEnabled = delivery.selectionLimit > 0 || delivery.perExtraPhotoCents > 0 || delivery.buyAllFlatCents > 0;
+  const chargeEveryPhoto = delivery.selectionLimit === 0 && (delivery.perExtraPhotoCents > 0 || delivery.buyAllFlatCents > 0);
 
   /** Where this gallery is in the job. Derived, not stored — a second source
    *  of truth for something already implied by the limit, the submission and
@@ -1315,7 +1316,9 @@ function DeliveryDetail({ id }: { id: string }) {
       subject: `Your proofs are ready to view — {{gallery_title}}`,
       body:
         `Hi {{first_name}},\n\n` +
-        `Your proofs from {{gallery_title}} are ready. Have a look through and heart the ${delivery.selectionLimit} you'd like edited, then press Submit.\n\n` +
+        (chargeEveryPhoto
+          ? `Your proofs from {{gallery_title}} are ready. Have a look through and heart any you'd like edited — each one is ${money(delivery.perExtraPhotoCents)}${delivery.buyAllFlatCents > 0 ? `, or ${money(delivery.buyAllFlatCents)} for all of them` : ""}. Press Submit when you're happy with your picks.\n\n`
+          : `Your proofs from {{gallery_title}} are ready. Have a look through and heart the ${delivery.selectionLimit} you'd like edited, then press Submit.\n\n`) +
         `They're previews for choosing from, so they aren't downloadable — the finished files come after.\n\n` +
         `Thank you!`,
       proofs: true,
