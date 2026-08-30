@@ -180,6 +180,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (e) { console.error("Gallery-ready email failed:", e); }
     }
 
+    // A typed-in address that just worked becomes her email on file too, so
+    // the owner isn't retyping it on every future send. Only when the client
+    // record was actually blank — never overwrite an email already saved.
+    const typedEmail = (typeof toOverride === "string" ? toOverride : "").trim();
+    if (emailed && typedEmail && !(target.email || "").trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)) {
+      try { await supabase.from("clients").update({ email: typedEmail }).eq("id", target.id); }
+      catch (e) { console.error("Gallery-ready: couldn't save client email:", e); }
+    }
+
     let pushed = 0;
     if (targetUserId) {
       try {
