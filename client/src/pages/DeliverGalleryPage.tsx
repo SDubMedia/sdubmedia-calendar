@@ -64,6 +64,7 @@ interface FileItem {
 function Lightbox({
   file, index, total, prevUrl, nextUrl, slideshowPlaying, canPick, isPicked,
   onPick, onToggleSlideshow, onDownload, canDownload, onPrev, onNext, onClose,
+  watermarkText, watermarkUseLogo, orgLogoUrl,
 }: {
   file: FileItem;
   index: number;
@@ -80,6 +81,9 @@ function Lightbox({
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
+  watermarkText: string | null;
+  watermarkUseLogo?: boolean;
+  orgLogoUrl?: string | null;
 }) {
   const isVideo = file.mediaType === "video";
   const [zoom, setZoom] = useState(1);
@@ -190,6 +194,34 @@ function Lightbox({
               }}
             />
           </>
+        )}
+        {/* Watermark — same tiled overlay as the thumbnail grid. The grid
+            protects the preview; without this, clicking into a photo handed
+            over a clean, full-resolution image with no watermark at all. */}
+        {!isVideo && watermarkUseLogo && orgLogoUrl && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none"
+            style={{
+              backgroundImage: `url("${orgLogoUrl}")`,
+              backgroundRepeat: "repeat",
+              backgroundSize: "180px",
+              opacity: 0.18,
+            }}
+          />
+        )}
+        {!isVideo && watermarkText && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><text x='50%' y='50%' fill='rgba(255,255,255,0.18)' font-family='Helvetica' font-size='22' text-anchor='middle' transform='rotate(-30 200 200)'>${watermarkText}</text></svg>`
+              )}")`,
+              backgroundRepeat: "repeat",
+              mixBlendMode: "difference",
+            }}
+          />
         )}
       </div>
 
@@ -1663,6 +1695,9 @@ export default function DeliverGalleryPage() {
             onPrev={() => setLightboxIdx(i => (i === null ? null : Math.max(0, i - 1)))}
             onNext={() => setLightboxIdx(i => (i === null ? null : Math.min(visibleFiles.length - 1, i + 1)))}
             onClose={() => { setLightboxIdx(null); setSlideshowPlaying(false); }}
+            watermarkText={delivery.watermarkText}
+            watermarkUseLogo={delivery.watermarkUseLogo}
+            orgLogoUrl={org?.logoUrl}
           />
         )}
 
