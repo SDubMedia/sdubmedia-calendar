@@ -153,7 +153,7 @@ interface AppContextValue {
   reopenPicking: (id: string) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
-  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName">>) => Promise<void>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage">>) => Promise<void>;
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
@@ -2560,7 +2560,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return file;
   }, [orgId, rawData.deliveryFiles]);
 
-  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName">>) => {
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage">>) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
     if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
@@ -2568,6 +2568,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // it drives what the client sees and the filename they download, while
     // renaming the object itself would mean copy-then-delete of the bytes.
     if (patch.originalName !== undefined) dbPatch.original_name = patch.originalName;
+    if (patch.stage !== undefined) dbPatch.stage = patch.stage;
     if (Object.keys(dbPatch).length === 0) return;
     const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);
     if (error) throw new Error(error.message);

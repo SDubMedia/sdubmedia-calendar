@@ -1160,21 +1160,25 @@ function DeliveryDetail({ id }: { id: string }) {
 
   // Default the drop target to whatever this phase is for. Before the client
   // has picked, you're adding proofs; after, you're adding finished files.
-  const uploadStage: DeliveryFileStage = readOnly
-    ? "final"
-    : uploadStageOverride ?? (!proofingEnabled ? "final" : phase === "editing" || phase === "done" ? "final" : "proof");
+  // Both roles compute this the same way now — the editor can choose either
+  // stage on upload (2026-08-30), not just finals.
+  const uploadStage: DeliveryFileStage =
+    uploadStageOverride ?? (!proofingEnabled ? "final" : phase === "editing" || phase === "done" ? "final" : "proof");
 
   /** What the grid shows.
    *
    *  An editor opening a 198-frame proofing gallery needs the fifteen she's
    *  working on, not all 198 — "download only those raws" is the entire ask.
    *  So for staff the proofs narrow to what the client actually chose, while
-   *  finals stay whole (that's her own output).
+   *  finals stay whole (that's her own output). But that narrowing only makes
+   *  sense once the client HAS picked something — before submission there are
+   *  no selection rows yet, so narrowing then would hide a proof she just
+   *  uploaded herself the instant she uploads it (2026-08-30).
    *
    *  The owner sees everything, split into two tabs, because he needs to know
    *  what he loaded as well as what came back. */
   const pickedFileIds = new Set(selections.map(s2 => s2.fileId));
-  const visibleProofs = readOnly ? proofs.filter(f => pickedFileIds.has(f.id)) : proofs;
+  const visibleProofs = readOnly && delivery.submittedAt ? proofs.filter(f => pickedFileIds.has(f.id)) : proofs;
 
   /** Hand the editor (or owner) the client's picks at full quality — the raw
    *  original when the gallery kept one. Photos zip in the browser like the
@@ -1786,10 +1790,9 @@ function DeliveryDetail({ id }: { id: string }) {
       )}
 
       {/* Upload zone — drag-drop OR click to browse.
-          The editor gets it too, but only ever adding finals: the database
-          policy pins her inserts to stage='final', so proofs stay the owner's.
-          Hiding the switch matches what she's actually allowed to do. */}
-      {(!readOnly || phase === "editing") && (
+          Both roles get the full Proof/Final choice, always: the editor is no
+          longer pinned to finals-only (2026-08-30) — she can load proofs too,
+          regardless of proofingEnabled or what phase the gallery is in. */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1812,30 +1815,27 @@ function DeliveryDetail({ id }: { id: string }) {
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        {proofingEnabled && !readOnly && (
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">Adding</span>
-            {(["proof", "final"] as const).map(st => (
-              <button
-                key={st}
-                onClick={(e) => { e.stopPropagation(); setUploadStageOverride(st); }}
-                disabled={!!uploading}
-                className={`text-xs px-3 py-1.5 rounded-lg border font-semibold disabled:opacity-40 ${
-                  uploadStage === st
-                    ? "bg-[#0088ff] border-[#0088ff] text-white"
-                    : "border-white/15 text-slate-300 hover:bg-white/[0.06]"
-                }`}
-              >
-                {st === "proof" ? "Proofs — she picks from these" : "Finals — she receives these"}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-slate-500">Adding</span>
+          {(["proof", "final"] as const).map(st => (
+            <button
+              key={st}
+              onClick={(e) => { e.stopPropagation(); setUploadStageOverride(st); }}
+              disabled={!!uploading}
+              className={`text-xs px-3 py-1.5 rounded-lg border font-semibold disabled:opacity-40 ${
+                uploadStage === st
+                  ? "bg-[#0088ff] border-[#0088ff] text-white"
+                  : "border-white/15 text-slate-300 hover:bg-white/[0.06]"
+              }`}
+            >
+              {st === "proof" ? "Proofs — she picks from these" : "Finals — she receives these"}
+            </button>
+          ))}
+        </div>
         <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
         <p className="text-sm text-slate-300 mb-3">
           {dragOver
-            ? (proofingEnabled ? `Drop to add ${uploadStage === "proof" ? "proofs" : "finals"}` : "Drop to upload")
-            : readOnly ? "Drag the finished files here, or click to browse"
+            ? `Drop to add ${uploadStage === "proof" ? "proofs" : "finals"}`
             : "Drag photos or videos here, or click to browse"}
         </p>
         <p className="text-[11px] text-slate-500 mb-3">
@@ -1849,7 +1849,7 @@ function DeliveryDetail({ id }: { id: string }) {
         >
           {uploading
             ? `Uploading ${uploading.done} / ${uploading.total}…`
-            : proofingEnabled ? `Choose ${uploadStage === "proof" ? "proofs" : "finals"}` : "Choose files"}
+            : `Choose ${uploadStage === "proof" ? "proofs" : "finals"}`}
         </button>
         {uploading && (
           <div className="mt-3 max-w-md mx-auto text-left">
@@ -1879,7 +1879,6 @@ function DeliveryDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
-      )}
 
       {/* File grid. The Proofs/Finals toggle also shows through the whole
           editing phase even before any final exists — that's when the owner
@@ -1942,6 +1941,22 @@ function DeliveryDetail({ id }: { id: string }) {
               >
                 Clear
               </button>
+              {proofingEnabled && (
+                <>
+                  <button
+                    onClick={() => { pickedIds.forEach(fid => updateDeliveryFile(fid, { stage: "proof" })); setPicked(new Set()); setPickAnchor(null); }}
+                    className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+                  >
+                    Move {pickedIds.length} to Proofs
+                  </button>
+                  <button
+                    onClick={() => { pickedIds.forEach(fid => updateDeliveryFile(fid, { stage: "final" })); setPicked(new Set()); setPickAnchor(null); }}
+                    className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+                  >
+                    Move {pickedIds.length} to Finals
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleDeletePicked}
                 disabled={bulkDeleting}
@@ -2043,8 +2058,23 @@ function DeliveryDetail({ id }: { id: string }) {
                         <Pencil className="w-2.5 h-2.5 text-white/70 shrink-0 opacity-0 group-hover/name:opacity-100 [@media(hover:none)]:opacity-70" />
                       </button>
                     )}
-                    {isVideo && f.durationSeconds != null && renamingFileId !== f.id && (
-                      <span className="text-[10px] text-white/80 font-mono shrink-0">{formatDuration(f.durationSeconds)}</span>
+                    {renamingFileId !== f.id && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isVideo && f.durationSeconds != null && (
+                          <span className="text-[10px] text-white/80 font-mono">{formatDuration(f.durationSeconds)}</span>
+                        )}
+                        {!readOnly && proofingEnabled && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); updateDeliveryFile(f.id, { stage: f.stage === "proof" ? "final" : "proof" }); }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="pointer-events-auto text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-white/25 text-white/80 hover:bg-white/15 hover:text-white"
+                            title={f.stage === "proof" ? "Move to Finals" : "Move to Proofs"}
+                          >
+                            {f.stage === "proof" ? "Proof" : "Final"}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
