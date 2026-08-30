@@ -653,7 +653,13 @@ export default function DeliverGalleryPage() {
     delivery?.status === "working" || delivery?.status === "delivered"
     || (delivery?.status === "submitted" && roomLeft === 0);
   const isWorking = delivery?.status === "working" || delivery?.status === "delivered";
-  const proofingEnabled = !delivery?.downloadOnly && (delivery?.selectionLimit ?? 0) > 0;
+  // On either because there's a free allowance, or because the owner priced
+  // every pick with no free allowance at all (limit 0 + a price set).
+  const proofingEnabled = !delivery?.downloadOnly && (
+    (delivery?.selectionLimit ?? 0) > 0
+    || (delivery?.perExtraPhotoCents ?? 0) > 0
+    || (delivery?.buyAllFlatCents ?? 0) > 0
+  );
 
   /** Proofs are for choosing from, not for keeping. When the gallery is
    *  showing them, every download route goes away — the single button, the
@@ -668,6 +674,10 @@ export default function DeliverGalleryPage() {
   const flatCents = delivery?.buyAllFlatCents ?? 0;
   const hasPerPhoto = perExtraCents > 0;
   const hasFlat = flatCents > 0;
+  // No free allowance at all — every pick is a paid one, not an "extra"
+  // beyond some free count. Drives copy that would otherwise say things like
+  // "choose the 0 you'd like edited".
+  const allPaid = limit === 0 && (hasPerPhoto || hasFlat);
   const overagePerPhotoTotal = overage * perExtraCents;
   const recommendFlat = hasFlat && hasPerPhoto && flatCents < overagePerPhotoTotal && overage > 0;
 
@@ -1322,9 +1332,21 @@ export default function DeliverGalleryPage() {
           )}
           {proofingEnabled && !isLocked && (
             <p className="text-amber-900 text-xs sm:text-sm">
-              <strong>Choose the {delivery.selectionLimit} you'd like edited</strong>, then send them back with the button at the bottom.
-              {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
-              {hasFlat && <> Or <strong>{money(flatCents)}</strong> to unlock all picks.</>}
+              {allPaid ? (
+                <>
+                  <strong>Pick as many as you'd like</strong>, then send them back with the button at the bottom.
+                  {hasPerPhoto && <> Each one is <strong>{money(perExtraCents)}</strong>.</>}
+                  {hasPerPhoto && hasFlat && " Or "}
+                  {!hasPerPhoto && hasFlat && <> </>}
+                  {hasFlat && <><strong>{money(flatCents)}</strong> for all of them.</>}
+                </>
+              ) : (
+                <>
+                  <strong>Choose the {delivery.selectionLimit} you'd like edited</strong>, then send them back with the button at the bottom.
+                  {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
+                  {hasFlat && <> Or <strong>{money(flatCents)}</strong> to unlock all picks.</>}
+                </>
+              )}
             </p>
           )}
           {delivery.status === "submitted" && !isWorking && (
@@ -1589,11 +1611,15 @@ export default function DeliverGalleryPage() {
                   </span>
                 ) : picked.size === 0 ? (
                   <span className="text-slate-700">
-                    Tap the <span className="text-rose-500">♥</span> on the {delivery.selectionLimit} photo{delivery.selectionLimit === 1 ? "" : "s"} you'd like edited
+                    {allPaid
+                      ? <>Tap the <span className="text-rose-500">♥</span> on any photos you'd like edited</>
+                      : <>Tap the <span className="text-rose-500">♥</span> on the {delivery.selectionLimit} photo{delivery.selectionLimit === 1 ? "" : "s"} you'd like edited</>}
                   </span>
                 ) : (
                   <>
-                    <strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked
+                    {allPaid
+                      ? <strong>{picked.size} picked</strong>
+                      : <><strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked</>}
                     {submittedIds.size > 0 && <span className="text-slate-500"> · {submittedIds.size} already sent</span>}
                     {shortBy > 0 && (
                       <span className="text-slate-500"> · {shortBy} to go</span>
@@ -1627,7 +1653,7 @@ export default function DeliverGalleryPage() {
                   className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {newPicks.length === 0
-                    ? (submittedIds.size > 0 ? `Choose up to ${roomLeft} more` : `Choose ${delivery.selectionLimit}`)
+                    ? (submittedIds.size > 0 ? `Choose up to ${roomLeft} more` : allPaid ? "Pick your favorites" : `Choose ${delivery.selectionLimit}`)
                     : shortBy > 0 && !allowShort
                       ? `${shortBy} more to go`
                       : submittedIds.size > 0
@@ -1648,7 +1674,9 @@ export default function DeliverGalleryPage() {
           const steps = proofingEnabled
             ? [
                 { title: "Welcome", body: `Have a look through ${delivery.title}. Tap any photo to see it full-size.` },
-                { title: `Choose your ${delivery.selectionLimit}`, body: `Tap the ♥ on the ${delivery.selectionLimit} you'd like edited. Tap again to change your mind — nothing is final until you send them.` },
+                allPaid
+                  ? { title: "Choose your favorites", body: `Tap the ♥ on any photos you'd like edited — each one is ${money(perExtraCents)}. Tap again to change your mind — nothing is final until you send them.` }
+                  : { title: `Choose your ${delivery.selectionLimit}`, body: `Tap the ♥ on the ${delivery.selectionLimit} you'd like edited. Tap again to change your mind — nothing is final until you send them.` },
                 { title: "Send them back", body: `When you're happy, press the button at the bottom to send your picks. We'll edit those and send the finished photos over.` },
               ]
             : [
@@ -1738,7 +1766,9 @@ export default function DeliverGalleryPage() {
                 <>
                   <h2 className="text-xl font-bold mb-2">You picked {picked.size}</h2>
                   <p className="text-sm text-slate-500 mb-4">
-                    {delivery.selectionLimit} are included free. Cover the {overage} extra{overage === 1 ? "" : "s"}:
+                    {allPaid
+                      ? "Every photo you pick is a paid extra:"
+                      : <>{delivery.selectionLimit} are included free. Cover the {overage} extra{overage === 1 ? "" : "s"}:</>}
                   </p>
                   <div className="space-y-2 mb-4">
                     {checkoutOptions.perPhoto && (

@@ -1129,7 +1129,12 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   }
 
-  const proofingEnabled = delivery.selectionLimit > 0;
+  // A gallery is "picking" either because there's a free allowance to pick
+  // from, or because the owner has deliberately priced every pick with no
+  // free allowance at all (selectionLimit 0 + a price set — see
+  // ProofingPanel's "charge for every photo" toggle). Galleries that have
+  // never touched pricing stay off, exactly as before.
+  const proofingEnabled = delivery.selectionLimit > 0 || delivery.perExtraPhotoCents > 0 || delivery.buyAllFlatCents > 0;
 
   /** Where this gallery is in the job. Derived, not stored — a second source
    *  of truth for something already implied by the limit, the submission and
@@ -3047,8 +3052,11 @@ function ProofingPanel({
   useEffect(() => { setPerExtra(perExtraPhotoCents ? String(perExtraPhotoCents / 100) : ""); }, [perExtraPhotoCents]);
   useEffect(() => { setFlat(buyAllFlatCents ? String(buyAllFlatCents / 100) : ""); }, [buyAllFlatCents]);
 
-  const on = selectionLimit > 0 && !downloadOnly;
   const paidExtras = perExtraPhotoCents > 0 || buyAllFlatCents > 0;
+  // Zero free picks, but deliberately priced — every photo she picks costs,
+  // instead of a free allowance with paid overage beyond it.
+  const chargeEveryPhoto = selectionLimit === 0 && paidExtras;
+  const on = (selectionLimit > 0 || chargeEveryPhoto) && !downloadOnly;
 
   const commit = async (patch: Parameters<typeof onUpdate>[0], label: string) => {
     try { await onUpdate(patch); toast.success(label); }
@@ -3073,6 +3081,24 @@ function ProofingPanel({
         Let the client heart the shots they want edited. Leave blank or 0 to turn it off and just deliver everything.
       </p>
 
+      <label className="flex items-center gap-2 text-xs text-slate-300 mb-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={chargeEveryPhoto}
+          onChange={(e) => {
+            if (e.target.checked) {
+              commit(
+                { selectionLimit: 0, perExtraPhotoCents: perExtraPhotoCents || 1500, downloadOnly: false },
+                "Every pick now costs — no free allowance",
+              );
+            } else {
+              commit({ selectionLimit: photoCount || 15 }, "Free picks restored");
+            }
+          }}
+        />
+        Client pays for every photo they pick (no free picks)
+      </label>
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0">
           <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">How many they can pick</label>
@@ -3087,7 +3113,7 @@ function ProofingPanel({
             className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
           />
         </div>
-        {on && (
+        {selectionLimit > 0 && (
           <div className="min-w-0">
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Fewest they can send</label>
             <input
@@ -3114,7 +3140,12 @@ function ProofingPanel({
           </p>
         )}
       </div>
-      {on && (
+      {chargeEveryPhoto && (
+        <p className="text-[11px] text-slate-500 mt-2">
+          Every pick costs — there's no free allowance.
+        </p>
+      )}
+      {selectionLimit > 0 && (
         <p className="text-[11px] text-slate-500 mt-2">
           {selectionMinimum > 0 && selectionMinimum < selectionLimit
             ? <>They can send once they've chosen <strong className="text-slate-300">{selectionMinimum}</strong>, then come back for the remaining {selectionLimit - selectionMinimum} whenever they like — until you start editing.</>
@@ -3125,11 +3156,15 @@ function ProofingPanel({
       {on && (
         <div className="mt-4 pt-4 border-t border-white/10">
           <p className="text-xs text-slate-400 mb-2">
-            {paidExtras
-              ? "They can go over and pay for the extras."
-              : `A hard stop at ${selectionLimit} — they can't submit more.`}
+            {chargeEveryPhoto
+              ? "Every photo they pick is charged at the price below."
+              : paidExtras
+                ? "They can go over and pay for the extras."
+                : `A hard stop at ${selectionLimit} — they can't submit more.`}
           </p>
-          <p className="text-[10px] text-slate-500 mb-3">Set a price to let them buy extras instead. Leave both blank for a hard cap.</p>
+          {!chargeEveryPhoto && (
+            <p className="text-[10px] text-slate-500 mb-3">Set a price to let them buy extras instead. Leave both blank for a hard cap.</p>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Per extra photo ($)</label>
