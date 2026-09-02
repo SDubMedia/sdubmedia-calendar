@@ -362,6 +362,11 @@ export default function ViewProposalPage() {
               ? "Thank you! Your payment has been received."
               : "Thank you for accepting. We'll be in touch shortly."}
           </p>
+          {!paymentVerified && proposal?.paymentConfig?.option === "none" && proposal?.notes && (
+            <p className="mt-4 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 whitespace-pre-wrap text-left">
+              {proposal.notes}
+            </p>
+          )}
           <div className="mt-5 flex flex-col gap-2">
             {paymentVerified && invoiceToken && (
               <a
