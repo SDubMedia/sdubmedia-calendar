@@ -746,7 +746,9 @@ async function ensureBalanceInvoice(
     const venueLine = (cleanV(cfv.event_location) || [
       cleanV(cfv.event_venue_name),
       cleanV(cfv.event_address),
-      [cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
+      // event_city_state is a fallback for proposals from before city/state
+      // were split into separate fields.
+      [[cleanV(cfv.event_city), cleanV(cfv.event_state)].filter(Boolean).join(", ") || cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
     ].filter(Boolean).join(", ")).slice(0, 300);
     const clientInfo: Record<string, string> = {
       company: client?.company || "", contactName: client?.contact_name || "",
@@ -847,7 +849,8 @@ async function createProjectsForProposal(
     await supabase.from("project_types").insert({ id: typeId, org_id: proposal.org_id, name: "Event" });
   }
 
-  const venue = [cfv.event_venue_name, cfv.event_address, [cfv.event_city_state, cfv.event_zip].filter(Boolean).join(" ")]
+  const venueCityState = [cfv.event_city, cfv.event_state].map(x => String(x || "").trim()).filter(Boolean).join(", ") || String(cfv.event_city_state || "").trim();
+  const venue = [cfv.event_venue_name, cfv.event_address, [venueCityState, cfv.event_zip].filter(Boolean).join(" ")]
     .map(x => String(x || "").trim()).filter(Boolean).join(", ");
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const now = new Date().toISOString();
@@ -1078,7 +1081,9 @@ async function ensurePaidInvoice(
     const venueLine = (cleanV(cfv.event_location) || [
       cleanV(cfv.event_venue_name),
       cleanV(cfv.event_address),
-      [cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
+      // event_city_state is a fallback for proposals from before city/state
+      // were split into separate fields.
+      [[cleanV(cfv.event_city), cleanV(cfv.event_state)].filter(Boolean).join(", ") || cleanV(cfv.event_city_state), cleanV(cfv.event_zip)].filter(Boolean).join(" "),
     ].filter(Boolean).join(", ")).slice(0, 300);
 
     const notes = [

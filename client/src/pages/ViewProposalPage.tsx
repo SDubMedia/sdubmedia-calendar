@@ -523,7 +523,8 @@ export default function ViewProposalPage() {
   const ALWAYS: { field: string; label: string }[] = [
     { field: "event_venue_name", label: "Event Name" },
     { field: "event_address", label: "Event Address" },
-    { field: "event_city_state", label: "Event City and State" },
+    { field: "event_city", label: "Event City" },
+    { field: "event_state", label: "Event State" },
     { field: "event_zip", label: "Event Zip Code" },
   ];
   const legacyLocationKnown = !!String((proposal?.clientFieldValues || {}).event_location || "").trim();
@@ -537,7 +538,7 @@ export default function ViewProposalPage() {
   // editable so the client VERIFIES them (Geoff, 2026-08-22: "I want them to
   // confirm the event address and the dates/times"). Only a legacy combined
   // event_location value suppresses the structured venue fields.
-  const VENUE_FIELDS = ["event_venue_name", "event_address", "event_city_state", "event_zip"];
+  const VENUE_FIELDS = ["event_venue_name", "event_address", "event_city", "event_state", "event_zip"];
   const requiredClientFields = [
     ...fromContract.filter(f => !f.field.startsWith("partner_")),
     ...ALWAYS.filter(a => !fromContract.some(f => f.field === a.field)),
@@ -1060,10 +1061,13 @@ export default function ViewProposalPage() {
             .map(n => ({ date: val(`event_date_${n}`), start: val(`event_start_time_${n}`), end: val(`event_end_time_${n}`) }))
             .filter(d => d.date);
           if (days.length === 0 && val("event_date")) days.push({ date: val("event_date"), start: val("event_start_time"), end: val("event_end_time") });
+          // Legacy fallback: proposals from before city/state were split
+          // fields still only have the old combined value.
+          const cityState = [val("event_city"), val("event_state")].filter(Boolean).join(", ") || val("event_city_state");
           const venueLines = [
             val("event_venue_name"),
             val("event_address"),
-            [val("event_city_state"), val("event_zip")].filter(Boolean).join(" "),
+            [cityState, val("event_zip")].filter(Boolean).join(" "),
           ].filter(Boolean);
           const legacyLoc = val("event_location");
           const po = val("po_number");

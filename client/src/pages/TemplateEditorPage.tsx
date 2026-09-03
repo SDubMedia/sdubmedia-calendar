@@ -121,7 +121,8 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
   const [bookingEnd, setBookingEnd] = useState("");
   const [bookingVenueName, setBookingVenueName] = useState("");
   const [bookingAddress, setBookingAddress] = useState("");
-  const [bookingCityState, setBookingCityState] = useState("");
+  const [bookingCity, setBookingCity] = useState("");
+  const [bookingState, setBookingState] = useState("");
   const [bookingZip, setBookingZip] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [bookingDateText, setBookingDateText] = useState("");
@@ -159,7 +160,21 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
     setBookingEnd(cfv.event_end_date || "");
     setBookingVenueName(cfv.event_venue_name || "");
     setBookingAddress(cfv.event_address || "");
-    setBookingCityState(cfv.event_city_state || "");
+    // event_city/event_state replaced the combined event_city_state (Geoff,
+    // 2026-09-03: wants separate boxes). Older proposals only have the
+    // combined value — split it once on load so they still show pre-filled
+    // instead of suddenly looking blank.
+    if (cfv.event_city || cfv.event_state) {
+      setBookingCity(cfv.event_city || "");
+      setBookingState(cfv.event_state || "");
+    } else if (cfv.event_city_state) {
+      const parts = cfv.event_city_state.split(",");
+      setBookingCity((parts[0] || "").trim());
+      setBookingState((parts.slice(1).join(",") || "").trim());
+    } else {
+      setBookingCity("");
+      setBookingState("");
+    }
     setBookingZip(cfv.event_zip || "");
     setPoNumber(cfv.po_number || "");
     setBookingDateText(cfv.event_date || "");
@@ -335,7 +350,11 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
         setOrClear("event_end_date", bookingEnd);
         setOrClear("event_venue_name", bookingVenueName);
         setOrClear("event_address", bookingAddress);
-        setOrClear("event_city_state", bookingCityState);
+        setOrClear("event_city", bookingCity);
+        setOrClear("event_state", bookingState);
+        // Clear the old combined field once split boxes are in use, so the
+        // two representations never disagree.
+        delete cfv.event_city_state;
         setOrClear("event_zip", bookingZip);
         setOrClear("po_number", poNumber);
         setOrClear("event_date", bookingDateText);
@@ -960,10 +979,14 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                       <p className="text-[10px] text-muted-foreground mb-0.5">Event address</p>
                       <input value={bookingAddress} onChange={e => setBookingAddress(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Street address" />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <p className="text-[10px] text-muted-foreground mb-0.5">City and state</p>
-                        <input value={bookingCityState} onChange={e => setBookingCityState(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Nashville, TN" />
+                        <p className="text-[10px] text-muted-foreground mb-0.5">City</p>
+                        <input value={bookingCity} onChange={e => setBookingCity(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="Nashville" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-0.5">State</p>
+                        <input value={bookingState} onChange={e => setBookingState(e.target.value)} className="w-full px-2 py-1.5 text-xs rounded border border-border bg-background" placeholder="TN" />
                       </div>
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">Zip</p>
