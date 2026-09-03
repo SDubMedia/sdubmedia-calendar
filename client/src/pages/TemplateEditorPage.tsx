@@ -9,7 +9,7 @@ import { useApp } from "@/contexts/AppContext";
 import type { ProposalPage, ProposalPackage, ProposalLineItem, PaymentMilestone, ProposalPaymentConfig } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, ChevronUp, ChevronDown, Save, X, Image } from "lucide-react";
+import { Plus, ArrowLeft, FileText, Receipt, CreditCard, File, ChevronUp, ChevronDown, Save, X, Image, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { postalAddress } from "@/lib/address";
@@ -87,7 +87,7 @@ function emptyPackage(): ProposalPackage {
 export default function TemplateEditorPage({ proposalMode = false }: { proposalMode?: boolean }) {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
-  const { data, addProposalTemplate, updateProposalTemplate, updateProposal } = useApp();
+  const { data, addProposalTemplate, updateProposalTemplate, updateProposal, addProposal, addClient } = useApp();
 
   const isNew = !proposalMode && params.id === "new";
   const existing = isNew || proposalMode ? null : data.proposalTemplates.find(t => t.id === params.id);
@@ -387,6 +387,84 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
     }
   }
 
+  // Preview a template the same way a proposal previews: build a disposable
+  // draft proposal from the template's current (unsaved) content and open
+  // its real client-facing view. Templates have no client, no view token and
+  // no public route of their own — reusing the proposal preview machinery is
+  // far less risky than inventing a second, template-only renderer that has
+  // to stay in sync with every future ViewProposalPage change. Left as a
+  // visible "PREVIEW — <name>" draft so it's obvious and easy to delete;
+  // never sent, never mistaken for a real client's proposal.
+  const [previewing, setPreviewing] = useState(false);
+  async function previewTemplate() {
+    if (proposalMode) return;
+    setPreviewing(true);
+    try {
+      let previewClient = data.clients.find(c => c.company === "Template Previews — internal");
+      if (!previewClient) {
+        previewClient = await addClient({
+          company: "Template Previews — internal",
+          contactName: "Preview",
+          phone: "",
+          email: "",
+          address: "", city: "", state: "", zip: "",
+          billingModel: "hourly",
+          billingRatePerHour: 0,
+          perProjectRate: 0,
+          projectTypeRates: [],
+          allowedProjectTypeIds: [],
+          defaultProjectTypeId: "",
+          roleBillingMultipliers: [],
+          clientType: "standard",
+        });
+      }
+      const subtotal = pLineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+      const created = await addProposal({
+        clientId: previewClient.id,
+        projectId: null,
+        title: `PREVIEW — ${name.trim() || "Untitled template"}`,
+        needsModelRelease: false,
+        clientFieldValues: {},
+        pages,
+        packages,
+        selectedPackageId: packages.length === 1 ? packages[0].id : null,
+        selectedPackageIds: [],
+        paymentMilestones: [],
+        sendHistory: [],
+        inboundReplies: [],
+        expiresAt: null,
+        pipelineStage: "inquiry",
+        viewedAt: null,
+        leadSource: "",
+        contractTemplateId,
+        lineItems: pLineItems,
+        subtotal,
+        taxRate: 0,
+        taxAmount: 0,
+        total: subtotal,
+        contractContent: "",
+        paymentConfig: legacyPayment,
+        status: "draft",
+        sentAt: null,
+        acceptedAt: null,
+        completedAt: null,
+        clientSignature: null,
+        ownerSignature: null,
+        invoiceId: null,
+        stripeSessionId: null,
+        paidAt: null,
+        clientEmail: "",
+        viewToken: nanoid(32),
+        notes: "",
+      });
+      window.open(`/proposal/${created.viewToken}?preview=1`, "_blank");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't build a preview");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
@@ -428,6 +506,12 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
             <span className="hidden sm:inline">{showProperties ? "Hide library" : "Show library"}</span>
             <span className="sm:hidden">{showProperties ? "Hide" : "Library"}</span>
           </Button>
+          {!proposalMode && (
+            <Button variant="outline" size="sm" onClick={previewTemplate} disabled={previewing} className="gap-1.5 px-2 sm:px-3" title="Open the client-facing view">
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{previewing ? "Opening…" : "Preview"}</span>
+            </Button>
+          )}
           <Button size="sm" onClick={save} disabled={saving} className="gap-1.5 px-2 sm:px-3">
             <Save className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{saving ? "Saving..." : "Save"}</span>
