@@ -17,6 +17,8 @@ import { nanoid } from "nanoid";
 import { BlockEditor } from "@/components/proposal-editor/BlockEditor";
 import { ProposalBlockRenderer } from "@/components/proposal/ProposalBlockRenderer";
 import { LibraryPanel, type LibraryDragData } from "@/components/proposal-editor/LibraryPanel";
+import { ContractMergeFieldPanel } from "@/components/proposal-editor/ContractMergeFieldPanel";
+import { insertIntoActiveProse } from "@/components/proposal-editor/proseFocusRegistry";
 import type { ProposalBlock } from "@/lib/types";
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 
@@ -275,6 +277,20 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
 
   function updatePageBlocks(id: string, blocks: ProposalBlock[]) {
     setPages(pages.map(p => p.id === id ? { ...p, blocks } : p));
+  }
+
+  // Click-to-insert merge fields, mirroring EditContractTemplatePage.tsx's
+  // addMergeField — same panel, same insertIntoActiveProse() cursor-tracking
+  // registry. Proposals never had this at all; typing {{total}} by hand
+  // worked but nobody was going to discover that on their own.
+  function addMergeField(fieldKey: string, label: string) {
+    if (!activePageId) return;
+    const isBlockField = fieldKey.endsWith("_block");
+    if (!isBlockField && insertIntoActiveProse(fieldKey, label)) return;
+    const page = pages.find(p => p.id === activePageId);
+    if (!page) return;
+    const next = [...effectiveBlocks(page), { id: nanoid(6), type: "merge_field" as const, field: fieldKey }];
+    updatePageBlocks(activePageId, next);
   }
 
   // ---- dnd-kit: library → canvas drop ----
@@ -1091,6 +1107,13 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                   updatePageBlocks(activePageId, next);
                 }}
               />
+
+              {/* Merge fields — click (or click into a Text block first, then
+                  click) to insert {{total}} etc. so pricing text never goes
+                  stale again. Same panel as the contract template editor. */}
+              <div className="pt-2 border-t border-border">
+                <ContractMergeFieldPanel onAddField={addMergeField} />
+              </div>
 
               {/* Linked Contract — when the client accepts a proposal built
                   from this template, this is the master contract that auto-

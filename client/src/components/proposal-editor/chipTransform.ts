@@ -29,6 +29,9 @@ const FIELD_LABELS: Record<string, string> = {
   deposit_due_date: "Deposit Due Date",
   balance_due_date: "Balance Due Date",
   project_title: "Project Title",
+  total: "Total",
+  deposit_amount: "Deposit Amount",
+  balance_amount: "Balance Amount",
 };
 
 /**

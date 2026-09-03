@@ -51,6 +51,24 @@ export function resolveVendorField(field: string, org?: Organization | null): st
   }
 }
 
+/** Resolve {{total}}/{{deposit_amount}}/{{balance_amount}} against a
+ *  proposal's own pricing — live from its lineItems/paymentConfig while a
+ *  draft, or the frozen pricingSnapshot once sent. See PricingSnapshot in
+ *  lib/types.ts and the freeze in AppContext.updateProposal. */
+export function resolvePricingField(
+  field: string,
+  pricing?: { total: number; depositAmount: number; balanceAmount: number } | null,
+): string | null {
+  if (!pricing) return null;
+  const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  switch (field) {
+    case "total": return money(pricing.total);
+    case "deposit_amount": return money(pricing.depositAmount);
+    case "balance_amount": return money(pricing.balanceAmount);
+    default: return null;
+  }
+}
+
 const FIELD_LABELS: Record<string, string> = {
   client_name: "Client Name",
   client_email: "Client Email",
@@ -74,6 +92,9 @@ const FIELD_LABELS: Record<string, string> = {
   deposit_due_date: "Deposit Due Date",
   vendor_signer_name: "Vendor Signer Name",
   project_title: "Project Title",
+  total: "Total",
+  deposit_amount: "Deposit Amount",
+  balance_amount: "Balance Amount",
   parties_block: "Parties Header",
   packages_block: "Selected Packages",
   payment_schedule_block: "Payment Schedule",
@@ -134,6 +155,11 @@ export function renderTemplatePreviewHtml(
    *  typo in the venue is fixed by clicking the word rather than scrolling
    *  back to a form. Only the client-facing view turns this on. */
   editable?: boolean,
+  /** The proposal's own total/deposit/balance — live while a draft, frozen
+   *  (PricingSnapshot) once sent. Absent entirely outside a proposal context
+   *  (e.g. a plain contract template preview), so {{total}} etc. correctly
+   *  fall through to an unresolved-token pill there instead of showing $0. */
+  pricing?: { total: number; depositAmount: number; balanceAmount: number } | null,
 ): string {
   return rawHtml.replace(/\{\{([a-z_]+)\}\}/g, (match, field: string) => {
     const typed = filled?.[field]?.trim();
@@ -149,7 +175,7 @@ export function renderTemplatePreviewHtml(
     // shouldn't carry blank "Second Person" placeholders through to signing.
     if (field.startsWith("partner_")) return "";
 
-    const resolved = resolveVendorField(field, org);
+    const resolved = resolveVendorField(field, org) ?? resolvePricingField(field, pricing);
     if (resolved) {
       return `<span class="merge-chip merge-chip-resolved">${escapeHtml(resolved)}</span>`;
     }

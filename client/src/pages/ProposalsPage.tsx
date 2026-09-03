@@ -252,6 +252,7 @@ export default function ProposalsPage() {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddName, setQuickAddName] = useState("");
   const [quickAddEmail, setQuickAddEmail] = useState("");
+  const [quickAddPhone, setQuickAddPhone] = useState("");
 
   async function quickAddClient() {
     if (!quickAddName.trim() || !quickAddEmail.trim()) { toast.error("Name and email required"); return; }
@@ -260,7 +261,7 @@ export default function ProposalsPage() {
         company: quickAddName.trim(),
         contactName: quickAddName.trim(),
         email: quickAddEmail.trim(),
-        phone: "",
+        phone: quickAddPhone.trim(),
         address: "", city: "", state: "", zip: "",
         billingModel: "per_project" as any,
         billingRatePerHour: 0,
@@ -275,6 +276,7 @@ export default function ProposalsPage() {
       setQuickAddOpen(false);
       setQuickAddName("");
       setQuickAddEmail("");
+      setQuickAddPhone("");
       toast.success(`Client "${client.company}" created`);
     } catch (e: any) {
       toast.error(e.message || "Failed to create client");
@@ -895,6 +897,7 @@ export default function ProposalsPage() {
                   <div className="space-y-2 p-2 bg-secondary/50 rounded-lg border border-border">
                     <Input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Client name" />
                     <Input value={quickAddEmail} onChange={e => setQuickAddEmail(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Email" />
+                    <Input value={quickAddPhone} onChange={e => setQuickAddPhone(e.target.value)} className="bg-secondary border-border text-sm" placeholder="Phone (optional)" />
                     <Button size="sm" onClick={quickAddClient} className="w-full text-xs">Create & Select</Button>
                   </div>
                 ) : (

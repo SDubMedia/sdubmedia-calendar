@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PricingSnapshot, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
 import { mapsQueryFor } from "@/lib/address";
 import { captureLetterhead, type LetterheadSnapshot } from "@/lib/letterhead";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
@@ -356,8 +356,10 @@ function rowToProposalTemplate(r: any): ProposalTemplate {
 function rowToProposal(r: any): Proposal {
   // Frozen at send; null on drafts and anything predating the freeze.
   const letterheadSnapshot = (r.letterhead_snapshot as LetterheadSnapshot | null) || null;
+  const pricingSnapshot = (r.pricing_snapshot as PricingSnapshot | null) || null;
   return {
     letterheadSnapshot,
+    pricingSnapshot,
     id: r.id, clientId: r.client_id || "", projectId: r.project_id || null,
     title: r.title || "",
     pages: Array.isArray(r.pages) ? r.pages : [],
@@ -2058,6 +2060,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .eq("id", id)
         .is("letterhead_snapshot", null);
       if (stampErr) console.warn(`[letterhead] couldn't stamp proposal ${id}: ${stampErr.message}`);
+
+      // Same freeze, for {{total}}/{{deposit_amount}}/{{balance_amount}} in the
+      // agreement text: a client who already read "$450 deposit" must never
+      // watch that number change because a line item was edited afterward.
+      // Reads the row's own current pricing rather than trusting a ref or the
+      // patch — pricing lives on this same table, so the DB is simplest and
+      // always correct regardless of what triggered the send.
+      const { data: priceRow } = await supabase.from("proposals")
+        .select("line_items, payment_config, total").eq("id", id).single();
+      if (priceRow) {
+        const total = Number(priceRow.total ?? 0);
+        const pc = priceRow.payment_config || { option: "none", depositPercent: 0 };
+        const depositAmount = pc.option === "deposit" ? Math.round(total * ((pc.depositPercent || 0) / 100) * 100) / 100
+          : pc.option === "full" ? total : 0;
+        const { error: priceStampErr } = await supabase.from("proposals")
+          .update({
+            pricing_snapshot: {
+              total, depositAmount, balanceAmount: Math.round((total - depositAmount) * 100) / 100,
+              depositPercent: pc.option === "deposit" ? (pc.depositPercent || 0) : 0,
+              stampedAt: new Date().toISOString(),
+            },
+          })
+          .eq("id", id)
+          .is("pricing_snapshot", null);
+        if (priceStampErr) console.warn(`[pricing] couldn't stamp proposal ${id}: ${priceStampErr.message}`);
+      }
     }
 
     const { error } = await supabase.from("proposals").update(patch).eq("id", id);

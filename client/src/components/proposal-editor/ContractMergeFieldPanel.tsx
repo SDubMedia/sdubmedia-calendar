@@ -9,7 +9,7 @@
 // ============================================================
 
 import { Link } from "wouter";
-import { User, Building2, CalendarRange, Sparkles } from "lucide-react";
+import { User, Building2, CalendarRange, Sparkles, DollarSign } from "lucide-react";
 
 interface ContractMergeFieldPanelProps {
   onAddField: (fieldKey: string, label: string) => void;
@@ -49,6 +49,15 @@ const GROUPS: FieldGroup[] = [
       { key: "vendor_email", label: "Vendor Email" },
       { key: "vendor_address", label: "Vendor Address" },
       { key: "vendor_phone", label: "Vendor Phone" },
+    ],
+  },
+  {
+    label: "Pricing",
+    icon: DollarSign,
+    fields: [
+      { key: "total", label: "Total", description: "Always the live total — never goes stale" },
+      { key: "deposit_amount", label: "Deposit Amount" },
+      { key: "balance_amount", label: "Balance Amount" },
     ],
   },
   {

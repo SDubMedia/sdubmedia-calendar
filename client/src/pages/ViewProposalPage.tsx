@@ -449,6 +449,18 @@ export default function ViewProposalPage() {
     : paymentConfig.option === "deposit" ? Math.round(total * (paymentConfig.depositPercent / 100) * 100) / 100
     : 0;
 
+  // Feeds {{total}}/{{deposit_amount}}/{{balance_amount}} in the agreement
+  // text. Frozen (proposal.pricingSnapshot) once sent — a client who already
+  // read "$450 deposit" must never watch that number change because a line
+  // item was edited afterward; live from the numbers above until then.
+  const pricing = proposal?.pricingSnapshot
+    ? {
+        total: proposal.pricingSnapshot.total,
+        depositAmount: proposal.pricingSnapshot.depositAmount,
+        balanceAmount: proposal.pricingSnapshot.balanceAmount,
+      }
+    : { total, depositAmount: paymentAmount, balanceAmount: Math.round((total - paymentAmount) * 100) / 100 };
+
   /** The vendor's own details, so the agreement prints "S-Dub Media" and a
    *  real address instead of boxes labelled "Vendor Name". The public payload
    *  carries a whitelisted copy of Settings → Business Info; there's no
@@ -485,6 +497,7 @@ export default function ViewProposalPage() {
     resolveMerge: true,
     org: publicOrg,
     total,
+    pricing,
     selectedPackageIds,
     filledFields: clientFields,
     onFieldEdit: (field: string, value: string) =>

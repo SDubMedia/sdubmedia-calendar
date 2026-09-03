@@ -1572,10 +1572,24 @@ export interface ProposalTemplate {
   deletedAt?: string | null;
 }
 
+/** total/deposit/balance frozen at send time, so {{total}}/{{deposit_amount}}/
+ *  {{balance_amount}} in the agreement text stop tracking live edits the
+ *  moment a client has actually seen them. Same shape/lifecycle as
+ *  LetterheadSnapshot — stamped once, never re-stamped, null renders live. */
+export interface PricingSnapshot {
+  total: number;
+  depositAmount: number;
+  balanceAmount: number;
+  depositPercent: number;
+  stampedAt: string;
+}
+
 export interface Proposal {
   /** Business details frozen at send time. Null = render live (drafts, and
    *  anything sent before the freeze existed). See lib/letterhead.ts. */
   letterheadSnapshot?: LetterheadSnapshot | null;
+  /** total/deposit/balance frozen at send time. Null = render live. */
+  pricingSnapshot?: PricingSnapshot | null;
   id: string;
   clientId: string;
   projectId: string | null;

@@ -66,6 +66,10 @@ interface ProposalBlockRendererProps {
    *  dollars instead of bare percentages. Absent in the builder, where
    *  nothing has been sold yet. */
   total?: number;
+  /** Feeds {{total}}/{{deposit_amount}}/{{balance_amount}} in prose blocks —
+   *  live while a draft, frozen (PricingSnapshot) once sent. See BlockView's
+   *  `pricing` prop for why this is separate from `total` above. */
+  pricing?: { total: number; depositAmount: number; balanceAmount: number } | null;
 }
 
 export function ProposalBlockRenderer({
@@ -79,6 +83,7 @@ export function ProposalBlockRenderer({
   onFieldEdit,
   resolveMerge = false,
   total,
+  pricing,
 }: ProposalBlockRendererProps) {
   const hasBlocks = Array.isArray(page.blocks) && page.blocks.length > 0;
 
@@ -132,6 +137,7 @@ export function ProposalBlockRenderer({
                   editable={!!onFieldEdit}
                   resolveMerge={resolveMerge}
                   total={total}
+                  pricing={pricing}
                 />
               ));
               if (!run.tight) return views[0];
@@ -144,7 +150,7 @@ export function ProposalBlockRenderer({
               );
             })
         ) : (
-          <LegacyContent content={page.content} org={org} filledFields={filledFields} editable={!!onFieldEdit} resolveMerge={resolveMerge} />
+          <LegacyContent content={page.content} org={org} filledFields={filledFields} editable={!!onFieldEdit} resolveMerge={resolveMerge} pricing={pricing} />
         )}
       </div>
     </div>
@@ -155,7 +161,7 @@ export function ProposalBlockRenderer({
 // Old templates contain raw HTML (the original reported bug was these tags
 // showing as text). With sanitization + dangerouslySetInnerHTML they render
 // as intended without anyone touching them.
-function LegacyContent({ content, org, filledFields, editable, resolveMerge }: { content: string; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean }) {
+function LegacyContent({ content, org, filledFields, editable, resolveMerge, pricing }: { content: string; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean; pricing?: { total: number; depositAmount: number; balanceAmount: number } | null }) {
   if (!content || !content.trim()) {
     return <p className="text-gray-400 italic text-sm">No content yet.</p>;
   }
@@ -163,7 +169,7 @@ function LegacyContent({ content, org, filledFields, editable, resolveMerge }: {
     <div
       className="contract-html-light text-sm leading-relaxed font-serif"
       style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(content, org, filledFields, editable) : content, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(content, org, filledFields, editable, pricing) : content, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
     />
   );
 }
@@ -202,6 +208,7 @@ function BlockView({
   editable,
   resolveMerge,
   total,
+  pricing,
 }: {
   block: ProposalBlock;
   libraryPackages: Package[];
@@ -212,6 +219,11 @@ function BlockView({
   editable?: boolean;
   resolveMerge?: boolean;
   total?: number;
+  /** Feeds {{total}}/{{deposit_amount}}/{{balance_amount}} in prose blocks.
+   *  Separate from `total` above, which only feeds the milestone-based
+   *  payment_schedule block type — most proposals (this app's simple
+   *  paymentConfig, not PaymentMilestone[]) use this instead. */
+  pricing?: { total: number; depositAmount: number; balanceAmount: number } | null;
 }) {
   switch (block.type) {
     case "hero":
@@ -223,7 +235,7 @@ function BlockView({
     case "section_divider":
       return <SectionDividerBlock block={block} />;
     case "prose":
-      return <ProseBlock block={block} org={org} filledFields={filledFields} editable={editable} resolveMerge={resolveMerge} />;
+      return <ProseBlock block={block} org={org} filledFields={filledFields} editable={editable} resolveMerge={resolveMerge} pricing={pricing} />;
     case "package_row":
       return <PackageRowBlock block={block} libraryPackages={libraryPackages} />;
     case "package_group":
@@ -470,7 +482,7 @@ function SectionDividerBlock({
   );
 }
 
-function ProseBlock({ block, org, filledFields, editable, resolveMerge }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean }) {
+function ProseBlock({ block, org, filledFields, editable, resolveMerge, pricing }: { block: Extract<ProposalBlock, { type: "prose" }>; org?: Organization | null; filledFields?: Record<string, string>; editable?: boolean; resolveMerge?: boolean; pricing?: { total: number; depositAmount: number; balanceAmount: number } | null }) {
   // Merge fields become readable text rather than raw braces. A client reading
   // an agreement should see "S-Dub Media" and "Event Date *", never
   // {{vendor_name}} — braces are code leaking into a legal document, and a new
@@ -478,7 +490,7 @@ function ProseBlock({ block, org, filledFields, editable, resolveMerge }: { bloc
   return (
     <div
       className="contract-html-light prose prose-sm max-w-none text-gray-700 leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(block.html, org, filledFields, editable) : block.html, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(resolveMerge ? renderTemplatePreviewHtml(block.html, org, filledFields, editable, pricing) : block.html, { ADD_ATTR: ["contenteditable", "spellcheck"] }) }}
     />
   );
 }
