@@ -174,6 +174,9 @@ async function getProposal(token: string, res: VercelResponse) {
     clientSignature: proposal.client_signature,
     acceptedAt: proposal.accepted_at || null,
     ownerSignature: proposal.owner_signature,
+    // Frozen total/deposit/balance for {{total}} etc. in the agreement text —
+    // null on a draft (render live from lineItems/paymentConfig above).
+    pricingSnapshot: proposal.pricing_snapshot || null,
     paidAt: proposal.paid_at,
     orgName,
     orgLogo,
