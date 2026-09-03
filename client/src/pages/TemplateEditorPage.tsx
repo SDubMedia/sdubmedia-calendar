@@ -200,6 +200,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
         setPackages([pkg]);
       }
       setLegacyPayment(existing.paymentConfig || { option: "none", depositPercent: 50, depositAmount: 0 });
+      setPLineItems(existing.lineItems || []);
     } else if (isNew) {
       // Four pages, in the order a client reads them: your own opening page,
       // then the agreement, the invoice and payment.
@@ -365,8 +366,7 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
         pages,
         packages,
         contractTemplateId,
-        // Legacy fields — derive from first agreement page + first package
-        lineItems: packages[0]?.lineItems || [],
+        lineItems: pLineItems,
         contractContent: pages.find(p => p.type === "agreement")?.content || "",
         paymentConfig: legacyPayment,
         notes: "",
@@ -849,7 +849,8 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                 <>
                 {/* Booking details: what the client form treats as known.
                     Filled = shown, never asked. Blank = asked before signing.
-                    The PO prints on the generated invoice. */}
+                    The PO prints on the generated invoice. Proposal-only — a
+                    template has no real client or event date yet. */}
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Booking Details</Label>
                   <div className="space-y-2">
@@ -892,10 +893,15 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                   </div>
                   <p className="text-[10px] text-muted-foreground">Filled fields show as confirmed details; blank ones are asked before signing.</p>
                 </div>
+                </>
+              )}
 
-                {/* Direct pricing for proposals that bill by line items. */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Pricing</Label>
+              {/* Direct pricing for proposals (and templates) that bill by
+                  line items. Shown for both modes — a template's own price
+                  needs to be visible and editable right here, not just
+                  inherited silently when a proposal is built from it. */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Pricing</Label>
                   {pLineItems.map((li, i) => (
                     <div key={li.id} className="rounded border border-border p-2 space-y-1.5">
                       <input
@@ -957,8 +963,6 @@ export default function TemplateEditorPage({ proposalMode = false }: { proposalM
                     </div>
                   )}
                 </div>
-                </>
-              )}
 
               {/* Library — drag a Package or Image from here onto any
                   agreement/custom page to drop it as a new block. */}
