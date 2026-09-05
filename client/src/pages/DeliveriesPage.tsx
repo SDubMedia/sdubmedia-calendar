@@ -1327,8 +1327,8 @@ function DeliveryDetail({ id }: { id: string }) {
 
   const deliverToAgent = () => {
     const contents = {
-      photoCount: files.filter(f => f.mediaType !== "video").length,
-      videoCount: files.filter(f => f.mediaType === "video").length,
+      photoCount: finalsToDeliver.filter(f => f.mediaType !== "video").length,
+      videoCount: finalsToDeliver.filter(f => f.mediaType === "video").length,
     };
     const org = data.organization;
     setComposer({

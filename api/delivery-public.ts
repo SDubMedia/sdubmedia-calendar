@@ -204,14 +204,17 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // next to the 15 she's paying for, which is the thing the stage column
   // exists to prevent.
   //
-  // Delivered with finals present → the finals, and only those. Otherwise the
-  // proofs, so a returning client still sees what she chose. A gallery with no
-  // proofs at all — every real-estate delivery, and everything uploaded before
-  // this existed — falls through unchanged.
+  // Finals present → the finals, and only those, regardless of delivered
+  // status. This is the same link the owner uses to preview before clicking
+  // "Deliver" — gating on status meant the preview showed the whole proof
+  // pile instead of the curated finals an editor had just uploaded. Otherwise
+  // the proofs, so a client mid-pick still sees what she's choosing from. A
+  // gallery with no proofs at all — every real-estate delivery, and
+  // everything uploaded before this existed — falls through unchanged.
   const proofRows = allRows.filter(f => (f as unknown as { stage?: string }).stage === "proof");
   const finalRows = allRows.filter(f => (f as unknown as { stage?: string }).stage !== "proof");
   const fileRows: FileRow[] =
-    delivery.status === "delivered" && finalRows.length > 0 ? finalRows
+    finalRows.length > 0 ? finalRows
       : proofRows.length > 0 ? proofRows
         : allRows;
 
