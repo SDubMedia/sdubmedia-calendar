@@ -153,7 +153,7 @@ interface AppContextValue {
   reopenPicking: (id: string) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
-  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage">>) => Promise<void>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt">>) => Promise<void>;
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
@@ -1050,6 +1050,8 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     // Anything not explicitly a proof is a deliverable, which is every row
     // that predates the column.
     stage: r.stage === "proof" ? "proof" : "final",
+    assignedCrewMemberId: r.assigned_crew_member_id || null,
+    assignedAt: r.assigned_at || null,
   };
 }
 
@@ -2588,7 +2590,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return file;
   }, [orgId, rawData.deliveryFiles]);
 
-  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage">>) => {
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt">>) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
     if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
@@ -2597,6 +2599,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // renaming the object itself would mean copy-then-delete of the bytes.
     if (patch.originalName !== undefined) dbPatch.original_name = patch.originalName;
     if (patch.stage !== undefined) dbPatch.stage = patch.stage;
+    if (patch.assignedCrewMemberId !== undefined) dbPatch.assigned_crew_member_id = patch.assignedCrewMemberId;
+    if (patch.assignedAt !== undefined) dbPatch.assigned_at = patch.assignedAt;
     if (Object.keys(dbPatch).length === 0) return;
     const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);
     if (error) throw new Error(error.message);

@@ -65,6 +65,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // the proof it replaced. Real incident: Felicia Long gallery, 13
         // finals silently stuck as proofs (2026-09-05).
         stage: "final",
+        // If this proof was hand-assigned to an editor (send-to-editor
+        // feature), her uploading the finished replacement fulfills that
+        // assignment — clear it so "assigned to you" reflects pending work
+        // only, not everything ever sent.
+        assigned_crew_member_id: null,
+        assigned_at: null,
       }).eq("id", existing.id);
       if (updErr) throw new Error(updErr.message);
       // Drop the superseded bytes, but only after the row points at the new

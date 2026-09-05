@@ -1895,6 +1895,15 @@ export interface DeliveryFile {
    *  proofing IS a deliverable — a real-estate gallery has no proofing phase
    *  and must keep behaving exactly as it did. */
   stage: DeliveryFileStage;
+  /** Owner-driven assignment, independent of client selections — "send this
+   *  proof to an editor." Null/absent means unassigned. Cleared automatically
+   *  when the assigned editor re-uploads a final under the same filename (see
+   *  crew-register-file.ts), so the count reflects pending work only.
+   *  Optional (like originalStoragePath above) so registerDeliveryFile's
+   *  existing callers — none of which assign on upload — don't need to touch
+   *  this field. */
+  assignedCrewMemberId?: string | null;
+  assignedAt?: string | null;
 }
 
 export type DeliveryFileStage = "proof" | "final";

@@ -22,7 +22,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import type { Client, DeliveryFile, DeliveryFileStage, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
+import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -584,6 +584,11 @@ function DeliveryDetail({ id }: { id: string }) {
   const [uploadStageOverride, setUploadStageOverride] = useState<DeliveryFileStage | null>(null);
   const [fileViewOverride, setFileViewOverride] = useState<"proofs" | "finals" | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
+  const [sendToEditorOpen, setSendToEditorOpen] = useState(false);
+  const [sendingToEditor, setSendingToEditor] = useState(false);
+  // Staff default to their assigned subset when one exists — the whole point
+  // is not making her hunt through everything else to find her batch.
+  const [assignedOnly, setAssignedOnly] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
   // Parallel map of thumbnail URLs (videos only). Keyed by file id.
@@ -1070,6 +1075,40 @@ function DeliveryDetail({ id }: { id: string }) {
     else toast.warning("Partly deleted", { description: `${gone} removed, ${failed} failed.` });
   }
 
+  // Owner hand-picks specific proofs for a specific editor — independent of
+  // client selections, so it also works on a gallery with no proofing at
+  // all. Marks the files first (so the assignment persists even if the
+  // notification fails), then notifies.
+  async function sendPickedToEditor(crewMemberId: string) {
+    const ids = pickedIds;
+    if (ids.length === 0) return;
+    setSendingToEditor(true);
+    try {
+      const assignedAt = new Date().toISOString();
+      await Promise.all(ids.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: crewMemberId, assignedAt })));
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-gallery-assignment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deliveryId: id, crewMemberId }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Couldn't notify");
+      toast.success(`Sent ${ids.length} to ${data.crewMembers.find(c => c.id === crewMemberId)?.name || "editor"}`, {
+        description: d.emailed ? undefined : "No email on file — she'll still see it in the gallery.",
+      });
+      setPicked(new Set());
+      setPickAnchor(null);
+      setSendToEditorOpen(false);
+    } catch (err) {
+      // The files are already marked assigned even if the notify call
+      // failed — she'll still see them next time she opens the gallery.
+      toast.error("Marked assigned, but couldn't notify", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setSendingToEditor(false);
+    }
+  }
+
   async function handleDeleteFile(fileId: string) {
     if (!(await confirm({ title: "Delete this photo?", description: "This also removes it from the client gallery.", destructive: true, confirmLabel: "Delete" }))) return;
     try {
@@ -1184,15 +1223,25 @@ function DeliveryDetail({ id }: { id: string }) {
    *  The owner sees everything, split into two tabs, because he needs to know
    *  what he loaded as well as what came back. */
   const pickedFileIds = new Set(selections.map(s2 => s2.fileId));
-  const visibleProofs = readOnly && delivery.submittedAt ? proofs.filter(f => pickedFileIds.has(f.id)) : proofs;
+  // Owner-driven assignment ("send to editor") — independent of, and takes
+  // priority over, client selections: it's a more deliberate "this is your
+  // batch" than "she happened to pick these." Falls back to client picks,
+  // then everything, exactly like before this feature existed.
+  const myAssignedProofs = proofs.filter(f => f.assignedCrewMemberId === effectiveProfile?.crewMemberId);
+  const hasAssigned = readOnly && myAssignedProofs.length > 0;
+  const visibleProofs = readOnly
+    ? (assignedOnly && hasAssigned ? myAssignedProofs
+        : delivery.submittedAt ? proofs.filter(f => pickedFileIds.has(f.id))
+        : proofs)
+    : proofs;
 
-  /** Hand the editor (or owner) the client's picks at full quality — the raw
+  /** Hand the editor (or owner) a specific batch at full quality — the raw
    *  original when the gallery kept one. Photos zip in the browser like the
    *  public gallery's download-all; past the memory budget (or for videos)
    *  each file streams straight to disk instead. Fresh URLs are signed per
-   *  click so nothing here expires mid-batch. */
-  async function downloadPicks() {
-    const pickFiles = files.filter(f => pickedFileIds.has(f.id));
+   *  click so nothing here expires mid-batch. Shared by "download her picks"
+   *  and "download what's assigned to you" — same mechanics, different set. */
+  async function downloadFileSet(pickFiles: DeliveryFile[], zipSuffix: string) {
     if (pickFiles.length === 0) return;
     setDownloadingPicks(true);
     try {
@@ -1230,7 +1279,7 @@ function DeliveryDetail({ id }: { id: string }) {
       } else if (photos.length > 0) {
         await zipToDisk(
           photos.map(x => ({ name: x.f.originalName, url: x.dl })),
-          `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}-picks.zip`,
+          `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}-${zipSuffix}.zip`,
         );
       }
     } catch (err) {
@@ -1239,6 +1288,8 @@ function DeliveryDetail({ id }: { id: string }) {
       setDownloadingPicks(false);
     }
   }
+  const downloadPicks = () => downloadFileSet(files.filter(f => pickedFileIds.has(f.id)), "picks");
+  const downloadAssigned = () => downloadFileSet(myAssignedProofs, "assigned");
   const hasBothStages = proofs.length > 0 && finals.length > 0;
   const gridFiles = !proofingEnabled ? files
     : fileView === "proofs" ? visibleProofs
@@ -1905,7 +1956,17 @@ function DeliveryDetail({ id }: { id: string }) {
           >
             Finals ({finals.length})
           </button>
-          {fileView === "proofs" && selections.length > 0 && (
+          {fileView === "proofs" && hasAssigned && assignedOnly ? (
+            <button
+              onClick={downloadAssigned}
+              disabled={downloadingPicks}
+              className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="Full-quality files — a raw shoot hands back the raw"
+            >
+              <Download className="w-3 h-3" />
+              {downloadingPicks ? "Preparing…" : `Download your ${myAssignedProofs.length} assigned`}
+            </button>
+          ) : fileView === "proofs" && selections.length > 0 && (
             <button
               onClick={downloadPicks}
               disabled={downloadingPicks}
@@ -1919,6 +1980,26 @@ function DeliveryDetail({ id }: { id: string }) {
           {readOnly && fileView === "proofs" && (
             <span className="text-[11px] text-slate-500">Download these, edit, then add them back as finals.</span>
           )}
+        </div>
+      )}
+
+      {/* A batch the owner hand-picked for you, separate from whatever the
+          client chose (or didn't). Defaults on so you land on your work, not
+          the other 241 proofs — flip it if you need to see everything. */}
+      {readOnly && fileView === "proofs" && hasAssigned && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 -mt-2">
+          <button
+            onClick={() => setAssignedOnly(true)}
+            className={`text-xs px-3 py-1.5 rounded-lg border ${assignedOnly ? "bg-[#0088ff]/15 border-[#0088ff]/40 text-white font-semibold" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}
+          >
+            Assigned to you ({myAssignedProofs.length})
+          </button>
+          <button
+            onClick={() => setAssignedOnly(false)}
+            className={`text-xs px-3 py-1.5 rounded-lg border ${!assignedOnly ? "bg-white/10 border-white/25 text-white font-semibold" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}
+          >
+            All proofs ({proofs.length})
+          </button>
         </div>
       )}
 
@@ -1964,6 +2045,14 @@ function DeliveryDetail({ id }: { id: string }) {
                     Move {pickedIds.length} to Finals
                   </button>
                 </>
+              )}
+              {!readOnly && fileView === "proofs" && !!project?.crew.length && (
+                <button
+                  onClick={() => setSendToEditorOpen(true)}
+                  className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+                >
+                  Send {pickedIds.length} to editor
+                </button>
               )}
               <button
                 onClick={handleDeletePicked}
@@ -2070,6 +2159,14 @@ function DeliveryDetail({ id }: { id: string }) {
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isVideo && f.durationSeconds != null && (
                           <span className="text-[10px] text-white/80 font-mono">{formatDuration(f.durationSeconds)}</span>
+                        )}
+                        {!readOnly && f.stage === "proof" && f.assignedCrewMemberId && (
+                          <span
+                            className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/10 text-white/70"
+                            title="Sent to this editor — clears once she delivers the final"
+                          >
+                            → {data.crewMembers.find(c => c.id === f.assignedCrewMemberId)?.name?.split(" ")[0] || "editor"}
+                          </span>
                         )}
                         {!readOnly && proofingEnabled && (
                           <button
@@ -2182,6 +2279,15 @@ function DeliveryDetail({ id }: { id: string }) {
       )}
 
       {pwOpen && <PasswordDialog hasPassword={delivery.hasPassword} onClose={() => setPwOpen(false)} onSave={async (pw) => { await setPassword(pw); setPwOpen(false); }} />}
+      {sendToEditorOpen && project && (
+        <SendToEditorDialog
+          count={pickedIds.length}
+          crew={project.crew.map(pc => data.crewMembers.find(c => c.id === pc.crewMemberId)).filter((c): c is CrewMember => !!c)}
+          sending={sendingToEditor}
+          onClose={() => setSendToEditorOpen(false)}
+          onSend={sendPickedToEditor}
+        />
+      )}
     </div>
   );
 }
@@ -3666,6 +3772,41 @@ function PasswordDialog({ hasPassword, onClose, onSave }: { hasPassword: boolean
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
           <button onClick={() => onSave(pw)} className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm">{hasPassword && !pw ? "Remove" : "Save"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
+  count: number; crew: CrewMember[]; sending: boolean; onClose: () => void; onSend: (crewMemberId: string) => void;
+}) {
+  const [crewMemberId, setCrewMemberId] = useState(crew[0]?.id || "");
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-1">Send {count} to an editor</h2>
+        <p className="text-xs text-slate-500 mb-4">She'll see these in her own gallery view and get an email + push.</p>
+        {crew.length === 0 ? (
+          <p className="text-sm text-slate-400 mb-4">No one is assigned to this project's crew yet.</p>
+        ) : (
+          <select
+            value={crewMemberId}
+            onChange={(e) => setCrewMemberId(e.target.value)}
+            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
+          >
+            {crew.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
+          <button
+            onClick={() => crewMemberId && onSend(crewMemberId)}
+            disabled={sending || !crewMemberId}
+            className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
         </div>
       </div>
     </div>
