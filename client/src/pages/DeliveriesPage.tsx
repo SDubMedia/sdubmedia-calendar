@@ -1317,6 +1317,16 @@ function DeliveryDetail({ id }: { id: string }) {
     : fileView === "proofs" ? visibleProofs
     : finals;
   const project = data.projects.find(p => p.id === delivery.projectId);
+  // Who can be sent a "send to editor" assignment: on-site crew AND post-
+  // production (editors are usually assigned there, not the shooting crew —
+  // e.g. a "Photo Editor" role with flat pay, no hours on set). Deduped by
+  // crew member id in case someone's listed on both.
+  const editorCandidateIds = project
+    ? Array.from(new Set([...project.crew, ...project.postProduction].map(e => e.crewMemberId)))
+    : [];
+  const editorCandidates = editorCandidateIds
+    .map(cid => data.crewMembers.find(c => c.id === cid))
+    .filter((c): c is CrewMember => !!c);
   const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
   // "Agent" is real-estate language and reads as a mistake on a portrait,
   // school or business shoot. Use the client's own name where we have it, and
@@ -2068,7 +2078,7 @@ function DeliveryDetail({ id }: { id: string }) {
                   </button>
                 </>
               )}
-              {!readOnly && fileView === "proofs" && !!project?.crew.length && (
+              {!readOnly && fileView === "proofs" && editorCandidates.length > 0 && (
                 <button
                   onClick={() => setSendToEditorOpen(true)}
                   className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
@@ -2320,7 +2330,7 @@ function DeliveryDetail({ id }: { id: string }) {
       {sendToEditorOpen && project && (
         <SendToEditorDialog
           count={pickedIds.length}
-          crew={project.crew.map(pc => data.crewMembers.find(c => c.id === pc.crewMemberId)).filter((c): c is CrewMember => !!c)}
+          crew={editorCandidates}
           sending={sendingToEditor}
           onClose={() => setSendToEditorOpen(false)}
           onSend={sendPickedToEditor}
