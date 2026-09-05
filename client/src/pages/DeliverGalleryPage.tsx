@@ -17,6 +17,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { toast } from "sonner";
+import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySections";
 
 interface FileItem {
   id: string;
@@ -302,21 +303,6 @@ function GallerySectionHead({ label, fontFamily }: { label: string; fontFamily?:
   );
 }
 
-/** Unfoldered files first (a legacy gallery with no folders is entirely
- *  "unfoldered", so this looks identical to before folders existed), then
- *  named folders in the order they were created. Films first within each
- *  group, each group keeping the order the owner arranged. A stable sort by
- *  one key does exactly that — the relative order of two photos never
- *  changes, so drag-to-reorder still means something. */
-function sortFilmsFirst(files: FileItem[], folders: FolderItem[]): FileItem[] {
-  const folderPos = new Map(folders.map(f => [f.id, f.position]));
-  const groupRank = (f: FileItem) => (f.folderId && folderPos.has(f.folderId) ? folderPos.get(f.folderId)! + 1 : 0);
-  return [...files].sort((a, b) => {
-    const g = groupRank(a) - groupRank(b);
-    return g !== 0 ? g : rank(a) - rank(b);
-  });
-}
-const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 
 /** Row height and gap of the masonry grid, in px. gridAutoRows and gap-px in
  *  the grid below must match these — the tile heights are computed from them. */
@@ -597,7 +583,7 @@ export default function DeliverGalleryPage() {
       // that isn't the next tile on screen.
       const loadedFolders: FolderItem[] = data.folders || [];
       setFolders(loadedFolders);
-      setFiles(sortFilmsFirst(data.files || [], loadedFolders));
+      setFiles(sortGalleryFiles(data.files || [], loadedFolders));
       loadedAtRef.current = Date.now();
       setServerSelections(data.selections || []);
       setOrg(data.org);
@@ -919,28 +905,7 @@ export default function DeliverGalleryPage() {
   // the old behavior when no folders exist at all, since the unfoldered
   // run then IS the whole gallery. Scans visibleFiles (what's actually
   // rendered), not the unfiltered files.length used before.
-  const sectionBoundaries = useMemo(() => {
-    const boundaries: { index: number; label: string }[] = [];
-    let i = 0;
-    while (i < visibleFiles.length) {
-      const fid = visibleFiles[i].folderId || null;
-      let j = i;
-      while (j < visibleFiles.length && (visibleFiles[j].folderId || null) === fid) j++;
-      const runVideoCount = visibleFiles.slice(i, j).filter(f => f.mediaType === "video").length;
-      const runLength = j - i;
-      const mixed = runVideoCount > 0 && runVideoCount < runLength;
-      if (fid) {
-        const folder = folders.find(fo => fo.id === fid);
-        boundaries.push({ index: i, label: folder?.name || "Untitled folder" });
-        if (mixed) boundaries.push({ index: i + runVideoCount, label: "Photos" });
-      } else if (mixed) {
-        boundaries.push({ index: i, label: runVideoCount === 1 ? "Film" : "Films" });
-        boundaries.push({ index: i + runVideoCount, label: "Photos" });
-      }
-      i = j;
-    }
-    return boundaries;
-  }, [visibleFiles, folders]);
+  const sectionBoundaries = useMemo(() => gallerySectionBoundaries(visibleFiles, folders), [visibleFiles, folders]);
   const sectionHeadByIndex = useMemo(() => new Map(sectionBoundaries.map(b => [b.index, b.label])), [sectionBoundaries]);
 
   const [selecting, setSelecting] = useState(false);
