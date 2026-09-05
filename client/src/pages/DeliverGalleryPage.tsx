@@ -1801,7 +1801,9 @@ export default function DeliverGalleryPage() {
                   <p className="text-sm text-slate-500 mb-4">
                     {allPaid
                       ? "Every photo you pick is a paid extra:"
-                      : <>{delivery.selectionLimit} are included free. Cover the {overage} extra{overage === 1 ? "" : "s"}:</>}
+                      : alreadyCount > 0
+                        ? <>{alreadyCount} of your {delivery.selectionLimit} included are already {editedCount > 0 ? "finished" : "sent"}. Cover the {overage} extra{overage === 1 ? "" : "s"}:</>
+                        : <>{delivery.selectionLimit} are included free. Cover the {overage} extra{overage === 1 ? "" : "s"}:</>}
                   </p>
                   <div className="space-y-2 mb-4">
                     {checkoutOptions.perPhoto && (
