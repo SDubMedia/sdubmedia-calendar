@@ -4626,12 +4626,17 @@ async function zipToDisk(items: { name: string; url: string }[], filename: strin
     }));
   }
   const blob = await zip.generateAsync({ type: "blob" });
+  // Attached to the document, revoked later: Safari starts the save
+  // asynchronously and an immediate revoke can truncate the zip.
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function uploadAndAttachThumbnail(

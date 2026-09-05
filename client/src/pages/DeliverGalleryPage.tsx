@@ -839,6 +839,23 @@ export default function DeliverGalleryPage() {
     return Math.max(1, Math.round((targetPx + GAP) / (ROW + GAP)));
   }
 
+  /** Hand a Blob to the browser as a download. The anchor is attached to the
+   *  document and the object URL is revoked LATER, not on the next line:
+   *  Safari starts the download asynchronously, and revoking immediately can
+   *  cut it short — a zip that saves at 0 bytes or truncated and then
+   *  "can't be opened". A minute is generous; the blob is freed either way. */
+  function saveBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   async function zipPhotos(photos: FileItem[], filename: string) {
     // Lazy-load JSZip from CDN — no bundle bloat for clients who never download.
     if (!window.JSZip) {
@@ -865,12 +882,7 @@ export default function DeliverGalleryPage() {
       }));
     }
     const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    saveBlob(blob, filename);
   }
 
   // Multi-select download. Separate from `picked`, which is proofing — that's
@@ -991,7 +1003,12 @@ export default function DeliverGalleryPage() {
         if (videos.length > 1) await new Promise((r) => setTimeout(r, 800));
       }
 
-      if (photos.length > 0 && isIOS()) {
+      // Same memory budget as download-selected: the zip is built in RAM,
+      // so past ~300MB of photos each file streams to disk on its own
+      // instead of one blob the browser may fail to write.
+      const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
+      const photoBytes = photos.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
+      if (photos.length > 0 && (isIOS() || photoBytes > ZIP_BUDGET_BYTES)) {
         for (const f of photos) {
           streamToDisk(f.downloadUrl || f.url);
           await new Promise((r) => setTimeout(r, 600));

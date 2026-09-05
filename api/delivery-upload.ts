@@ -12,7 +12,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
-import { r2BuildKey, r2Configured, r2DeleteObject, r2PresignedUrl } from "./_r2.js";
+import { r2BuildKey, r2Configured, r2DeleteObject, r2PresignedUrl, isCameraRaw } from "./_r2.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -35,7 +35,6 @@ const MAX_ORIGINAL_SIZE_BYTES = 150 * 1024 * 1024;
 
 // A camera reports no usable MIME type through a browser — Chrome gives "" for
 // a .NEF — so an original is validated on its extension instead.
-const RAW_FILE_EXT = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
 // 5GB is S3's hard ceiling for one object via a single PUT, and the practical
 // ceiling for a finished film. Anything over MULTIPART_THRESHOLD on the client
 // never reaches this endpoint — it goes to /api/delivery-multipart instead.
@@ -126,7 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The file exactly as it came off the card, stored beside the compressed
     // copy the gallery browses. Raws land here: they can't be validated as
     // images because the browser doesn't know what they are.
-    if (!isImage && !RAW_FILE_EXT.test(fileName)) {
+    if (!isImage && !isCameraRaw(fileName)) {
       return res.status(400).json({ error: "An original must be an image or a camera raw" });
     }
     if (sizeBytes > MAX_ORIGINAL_SIZE_BYTES) {

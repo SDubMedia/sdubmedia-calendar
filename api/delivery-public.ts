@@ -16,7 +16,7 @@ import { errorMessage, escapeHtml, publicBusinessInfo, verifyAuth, getUserOrgId 
 import { verifyPassword } from "./_password.js";
 import { sendPushToOwner, sendPushToUser } from "./_apns.js";
 import { randomUUID } from "crypto";
-import { r2Configured, r2PresignedUrl } from "./_r2.js";
+import { r2Configured, r2PresignedUrl, isCameraRaw } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
 import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
 
@@ -266,11 +266,19 @@ async function getDelivery(token: string, password: string | undefined, email: s
       //
       // Withheld here, on the server, rather than by hiding a button: the URL
       // is in the JSON either way, and anyone can open the network tab.
+      //
+      // A FINAL THAT REPLACED A PROOF STILL CARRIES THE PROOF'S RAW as its
+      // original_storage_path (crew-register-file's replace path swaps the
+      // bytes and the stage, not the negative). "Prefer the original" then
+      // handed the client 14 Sony .ARW files named .jpg — half a gigabyte
+      // zipped in Safari's memory, which is what "unable to open" was
+      // (Felicia Long, 2026-09-05). A camera raw is never a deliverable;
+      // the original is only used when it's a real full-quality copy.
       downloadUrl: isProof || (delivery as unknown as { view_only?: boolean }).view_only === true || !r2Configured()
         ? ""
         : r2PresignedUrl({
             method: "GET",
-            key: f.original_storage_path || f.storage_path,
+            key: f.original_storage_path && !isCameraRaw(f.original_storage_path) ? f.original_storage_path : f.storage_path,
             expiresIn: 3600,
             responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
           }),

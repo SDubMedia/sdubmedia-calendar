@@ -65,6 +65,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // the proof it replaced. Real incident: Felicia Long gallery, 13
         // finals silently stuck as proofs (2026-09-05).
         stage: "final",
+        // original_storage_path is deliberately LEFT AS THE PROOF'S RAW: it's
+        // still the editor's negative (staff "download her picks" hands it
+        // over), and nulling it would orphan the bytes in R2. The public
+        // route refuses to serve a camera raw as a download, so the client
+        // gets this finished JPEG, not the .ARW — see delivery-public.ts.
         // If this proof was hand-assigned to an editor (send-to-editor
         // feature), her uploading the finished replacement fulfills that
         // assignment — clear it so "assigned to you" reflects pending work

@@ -203,3 +203,10 @@ export function r2BuildKey(orgId: string, deliveryId: string, originalName: stri
   const random = Math.random().toString(36).slice(2, 10);
   return `${orgId}/${deliveryId}/${random}-${safeName}`;
 }
+
+/** Camera raw by extension (.ARW, .NEF, .CR3, .DNG …). Raws are kept beside
+ *  a proof as the editor's negative — they are never a client deliverable. */
+const RAW_FILE_EXT = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef|ptx|srw|x3f|3fr|fff|iiq|mos|mrw|erf|kdc|dcr|rwl)$/i;
+export function isCameraRaw(nameOrKey: string): boolean {
+  return RAW_FILE_EXT.test(nameOrKey);
+}
