@@ -65,6 +65,7 @@ interface FileRow {
   thumbnail_storage_path?: string | null;
   original_storage_path?: string | null;
   duration_seconds?: number | null;
+  folder_id?: string | null;
 }
 
 interface OrgRow {
@@ -224,6 +225,15 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .select("file_id, is_paid")
     .eq("delivery_id", delivery.id);
 
+  // Named folders (e.g. "Final Videos" / "B Roll") — labeled sections in the
+  // gallery, distinct from proof/final stage. Empty for every delivery that
+  // has never used one, which is every delivery before this existed.
+  const { data: folderRows } = await supabase
+    .from("delivery_folders")
+    .select("id, name, position")
+    .eq("delivery_id", delivery.id)
+    .order("position");
+
   // Org branding (logo, name, business info) — same letterhead pattern as contracts
   const { data: org } = await supabase
     .from("organizations")
@@ -249,6 +259,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       position: f.position,
       mediaType: isVideo ? "video" : "image",
       durationSeconds: f.duration_seconds ?? null,
+      folderId: f.folder_id || null,
       // So the page can stop offering downloads rather than offering one that
       // 404s. The server is what enforces it; this is just honesty in the UI.
       isProof,
@@ -319,6 +330,11 @@ async function getDelivery(token: string, password: string | undefined, email: s
     selections: (selections || []).map((s: { file_id: string; is_paid: boolean }) => ({
       fileId: s.file_id,
       isPaid: s.is_paid,
+    })),
+    folders: (folderRows || []).map((f: { id: string; name: string; position: number }) => ({
+      id: f.id,
+      name: f.name,
+      position: f.position,
     })),
     org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: publicBusinessInfo(org.business_info) } : null,
   });

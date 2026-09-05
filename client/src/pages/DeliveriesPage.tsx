@@ -22,7 +22,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
+import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
@@ -512,7 +512,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 // Detail view
 // ---------------------------------------------------------------
 function DeliveryDetail({ id }: { id: string }) {
-  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, reopenPicking, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection, addInvoice, refresh } = useApp();
+  const { data, updateDelivery, deleteDelivery, setDeliveryStatus, reopenPicking, registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection, addInvoice, refresh, addDeliveryFolder, deleteDeliveryFolder } = useApp();
   const { effectiveProfile, allProfiles } = useAuth();
   /** An editor opens this to see which frames were picked and download them —
    *  not to rename the gallery, change the password, reorder it or delete a
@@ -586,6 +586,8 @@ function DeliveryDetail({ id }: { id: string }) {
   const [pwOpen, setPwOpen] = useState(false);
   const [sendToEditorOpen, setSendToEditorOpen] = useState(false);
   const [sendingToEditor, setSendingToEditor] = useState(false);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [savingToFolder, setSavingToFolder] = useState(false);
   // Staff default to their assigned subset when one exists — the whole point
   // is not making her hunt through everything else to find her batch.
   const [assignedOnly, setAssignedOnly] = useState(true);
@@ -1106,6 +1108,26 @@ function DeliveryDetail({ id }: { id: string }) {
       toast.error("Marked assigned, but couldn't notify", { description: err instanceof Error ? err.message : "Try again" });
     } finally {
       setSendingToEditor(false);
+    }
+  }
+
+  // Group hand-picked files into a named folder (e.g. "Final Videos" vs
+  // "B Roll") — a general organization tool, independent of proof/final
+  // stage, so Megan sees labeled sections instead of one flat grid.
+  async function addPickedToFolder(folderId: string) {
+    const ids = pickedIds;
+    if (ids.length === 0) return;
+    setSavingToFolder(true);
+    try {
+      await Promise.all(ids.map(fid => updateDeliveryFile(fid, { folderId })));
+      toast.success(`Added ${ids.length} to ${data.deliveryFolders.find(f => f.id === folderId)?.name || "folder"}`);
+      setPicked(new Set());
+      setPickAnchor(null);
+      setFolderPickerOpen(false);
+    } catch (err) {
+      toast.error("Couldn't add to folder", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setSavingToFolder(false);
     }
   }
 
@@ -2054,6 +2076,14 @@ function DeliveryDetail({ id }: { id: string }) {
                   Send {pickedIds.length} to editor
                 </button>
               )}
+              {!readOnly && (
+                <button
+                  onClick={() => setFolderPickerOpen(true)}
+                  className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+                >
+                  Add {pickedIds.length} to folder
+                </button>
+              )}
               <button
                 onClick={handleDeletePicked}
                 disabled={bulkDeleting}
@@ -2166,6 +2196,14 @@ function DeliveryDetail({ id }: { id: string }) {
                             title="Sent to this editor — clears once she delivers the final"
                           >
                             → {data.crewMembers.find(c => c.id === f.assignedCrewMemberId)?.name?.split(" ")[0] || "editor"}
+                          </span>
+                        )}
+                        {!readOnly && f.folderId && (
+                          <span
+                            className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/10 text-white/70"
+                            title="Folder shown to the client as a labeled section"
+                          >
+                            {data.deliveryFolders.find(fo => fo.id === f.folderId)?.name || "folder"}
                           </span>
                         )}
                         {!readOnly && proofingEnabled && (
@@ -2286,6 +2324,17 @@ function DeliveryDetail({ id }: { id: string }) {
           sending={sendingToEditor}
           onClose={() => setSendToEditorOpen(false)}
           onSend={sendPickedToEditor}
+        />
+      )}
+      {folderPickerOpen && (
+        <FolderPickerDialog
+          count={pickedIds.length}
+          folders={data.deliveryFolders.filter(f => f.deliveryId === id).sort((a, b) => a.position - b.position)}
+          saving={savingToFolder}
+          onClose={() => setFolderPickerOpen(false)}
+          onCreate={(name) => addDeliveryFolder({ deliveryId: id, name })}
+          onDelete={(folderId) => deleteDeliveryFolder(folderId).catch(() => toast.error("Couldn't delete folder"))}
+          onSend={addPickedToFolder}
         />
       )}
     </div>
@@ -3806,6 +3855,71 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
             className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
           >
             {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FolderPickerDialog({ count, folders, saving, onClose, onCreate, onDelete, onSend }: {
+  count: number; folders: DeliveryFolder[]; saving: boolean; onClose: () => void;
+  onCreate: (name: string) => Promise<DeliveryFolder>; onDelete: (folderId: string) => void; onSend: (folderId: string) => void;
+}) {
+  const [folderId, setFolderId] = useState(folders[0]?.id || "");
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const createAndSelect = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      const folder = await onCreate(name);
+      setFolderId(folder.id);
+      setNewName("");
+    } catch (err) {
+      toast.error("Couldn't create folder", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-1">Add {count} to a folder</h2>
+        <p className="text-xs text-slate-500 mb-4">Organizes what she sees into labeled sections, like "Final Videos" or "B Roll".</p>
+        {folders.length > 0 && (
+          <div className="space-y-1 mb-3">
+            {folders.map(f => (
+              <div key={f.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm border ${folderId === f.id ? "bg-[#0088ff]/10 border-[#0088ff]/40" : "border-white/10 hover:bg-white/[0.04]"}`}>
+                <button type="button" onClick={() => setFolderId(f.id)} className="flex-1 min-w-0 text-left truncate">{f.name}</button>
+                <button type="button" onClick={() => onDelete(f.id)} className="text-slate-500 hover:text-red-400 shrink-0" aria-label="Delete folder"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 mb-4">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) createAndSelect(); }}
+            placeholder="New folder name…"
+            className="flex-1 min-w-0 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+          />
+          <button onClick={createAndSelect} disabled={creating || !newName.trim()} className="shrink-0 px-3 py-2 border border-white/15 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-white/[0.06]">
+            {creating ? "…" : "Create"}
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
+          <button
+            onClick={() => folderId && onSend(folderId)}
+            disabled={saving || !folderId}
+            className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
+          >
+            {saving ? "Adding…" : "Add"}
           </button>
         </div>
       </div>

@@ -38,6 +38,15 @@ interface FileItem {
   mediaType?: "image" | "video";
   durationSeconds?: number | null;
   thumbnailUrl?: string;
+  // Which named folder (e.g. "Final Videos" vs "B Roll") this file is grouped
+  // under, if any. null/absent = unfoldered — every file before this existed.
+  folderId?: string | null;
+}
+
+interface FolderItem {
+  id: string;
+  name: string;
+  position: number;
 }
 
 /** A full-width divider inside the masonry grid.
@@ -293,11 +302,19 @@ function GallerySectionHead({ label, fontFamily }: { label: string; fontFamily?:
   );
 }
 
-/** Films first, then photos, each group keeping the order the owner arranged.
- *  A stable sort by one key does exactly that — the relative order of two
- *  photos never changes, so drag-to-reorder still means something. */
-function sortFilmsFirst(files: FileItem[]): FileItem[] {
-  return [...files].sort((a, b) => rank(a) - rank(b));
+/** Unfoldered files first (a legacy gallery with no folders is entirely
+ *  "unfoldered", so this looks identical to before folders existed), then
+ *  named folders in the order they were created. Films first within each
+ *  group, each group keeping the order the owner arranged. A stable sort by
+ *  one key does exactly that — the relative order of two photos never
+ *  changes, so drag-to-reorder still means something. */
+function sortFilmsFirst(files: FileItem[], folders: FolderItem[]): FileItem[] {
+  const folderPos = new Map(folders.map(f => [f.id, f.position]));
+  const groupRank = (f: FileItem) => (f.folderId && folderPos.has(f.folderId) ? folderPos.get(f.folderId)! + 1 : 0);
+  return [...files].sort((a, b) => {
+    const g = groupRank(a) - groupRank(b);
+    return g !== 0 ? g : rank(a) - rank(b);
+  });
 }
 const rank = (f: FileItem) => (f.mediaType === "video" ? 0 : 1);
 
@@ -394,6 +411,7 @@ export default function DeliverGalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
   const [serverSelections, setServerSelections] = useState<SelectionRecord[]>([]);
   const [org, setOrg] = useState<OrgInfo | null>(null);
 
@@ -577,7 +595,9 @@ export default function DeliverGalleryPage() {
       // arrow keys and the slideshow all address files by position, and
       // splitting them at render time alone would make "next" jump somewhere
       // that isn't the next tile on screen.
-      setFiles(sortFilmsFirst(data.files || []));
+      const loadedFolders: FolderItem[] = data.folders || [];
+      setFolders(loadedFolders);
+      setFiles(sortFilmsFirst(data.files || [], loadedFolders));
       loadedAtRef.current = Date.now();
       setServerSelections(data.selections || []);
       setOrg(data.org);
@@ -892,10 +912,36 @@ export default function DeliverGalleryPage() {
   // at and approved. The cap holds it there on a large monitor.
   const filmWidth = Math.round(gridWidth < 640 ? gridWidth : Math.min(gridWidth * FILM_WIDTH, FILM_MAX_PX));
 
-  // Films and photos get their own headed sections, but only when the gallery
-  // holds both — a photo-only gallery should look exactly as it always has.
-  const videoCount = useMemo(() => files.filter(f => f.mediaType === "video").length, [files]);
-  const showSectionHeads = videoCount > 0 && videoCount < files.length;
+  // Section headers, generalized from a single hardcoded video/photo split
+  // into a boundary list: a named-folder run always gets its name; within
+  // any run (a folder, or the leading unfoldered group) that mixes videos
+  // and photos, a secondary "Films"/"Photos" split appears too — exactly
+  // the old behavior when no folders exist at all, since the unfoldered
+  // run then IS the whole gallery. Scans visibleFiles (what's actually
+  // rendered), not the unfiltered files.length used before.
+  const sectionBoundaries = useMemo(() => {
+    const boundaries: { index: number; label: string }[] = [];
+    let i = 0;
+    while (i < visibleFiles.length) {
+      const fid = visibleFiles[i].folderId || null;
+      let j = i;
+      while (j < visibleFiles.length && (visibleFiles[j].folderId || null) === fid) j++;
+      const runVideoCount = visibleFiles.slice(i, j).filter(f => f.mediaType === "video").length;
+      const runLength = j - i;
+      const mixed = runVideoCount > 0 && runVideoCount < runLength;
+      if (fid) {
+        const folder = folders.find(fo => fo.id === fid);
+        boundaries.push({ index: i, label: folder?.name || "Untitled folder" });
+        if (mixed) boundaries.push({ index: i + runVideoCount, label: "Photos" });
+      } else if (mixed) {
+        boundaries.push({ index: i, label: runVideoCount === 1 ? "Film" : "Films" });
+        boundaries.push({ index: i + runVideoCount, label: "Photos" });
+      }
+      i = j;
+    }
+    return boundaries;
+  }, [visibleFiles, folders]);
+  const sectionHeadByIndex = useMemo(() => new Map(sectionBoundaries.map(b => [b.index, b.label])), [sectionBoundaries]);
 
   const [selecting, setSelecting] = useState(false);
   const [dlPicked, setDlPicked] = useState<Set<string>>(new Set());
@@ -1420,13 +1466,7 @@ export default function DeliverGalleryPage() {
           const isPicked = picked.has(f.id);
           const isPaid = serverSelections.find((s) => s.fileId === f.id)?.isPaid;
           const isVideo = f.mediaType === "video";
-          // files is sorted films-first, so the first video is index 0 and the
-          // first photo is index videoCount. Headings only appear when the
-          // gallery actually holds both — a photo-only gallery is unchanged.
-          const head = !showSectionHeads ? null
-            : i === 0 ? (videoCount === 1 ? "Film" : "Films")
-            : i === videoCount ? "Photos"
-            : null;
+          const head = sectionHeadByIndex.get(i) ?? null;
           return (
             <Fragment key={f.id}>
             {head && <GallerySectionHead label={head} fontFamily={getCoverHeroFontFamily(delivery.coverFont || "")} />}

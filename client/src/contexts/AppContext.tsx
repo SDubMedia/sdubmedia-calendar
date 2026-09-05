@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PricingSnapshot, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PricingSnapshot, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryFolder, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
 import { mapsQueryFor } from "@/lib/address";
 import { captureLetterhead, type LetterheadSnapshot } from "@/lib/letterhead";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
@@ -153,11 +153,14 @@ interface AppContextValue {
   reopenPicking: (id: string) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
-  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt">>) => Promise<void>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "folderId">>) => Promise<void>;
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
   removeDeliverySelection: (selectionId: string) => Promise<void>;
+  // Delivery folders — named grouping of files within one delivery
+  addDeliveryFolder: (f: { deliveryId: string; name: string }) => Promise<DeliveryFolder>;
+  deleteDeliveryFolder: (id: string) => Promise<void>;
   // Delivery collections
   addDeliveryCollection: (c: { name: string; slug: string | null; coverSubtitle: string | null }) => Promise<DeliveryCollection>;
   updateDeliveryCollection: (id: string, c: Partial<Pick<DeliveryCollection, "name" | "slug" | "coverSubtitle">>) => Promise<void>;
@@ -1052,6 +1055,17 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     stage: r.stage === "proof" ? "proof" : "final",
     assignedCrewMemberId: r.assigned_crew_member_id || null,
     assignedAt: r.assigned_at || null,
+    folderId: r.folder_id || null,
+  };
+}
+
+function rowToDeliveryFolder(r: any): DeliveryFolder {
+  return {
+    id: r.id,
+    deliveryId: r.delivery_id,
+    name: r.name || "",
+    position: Number(r.position ?? 0),
+    createdAt: r.created_at,
   };
 }
 
@@ -1098,7 +1112,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], modelReleaseLinks: [], modelReleaseSignatures: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], modelReleaseLinks: [], modelReleaseSignatures: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryFolders: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1224,6 +1238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveries: allowedDeliveries,
         deliveryFiles: rawData.deliveryFiles.filter(f => allowedDeliveryIds.has(f.deliveryId)),
         deliverySelections: rawData.deliverySelections.filter(s => allowedDeliveryIds.has(s.deliveryId)),
+        deliveryFolders: rawData.deliveryFolders.filter(f => allowedDeliveryIds.has(f.deliveryId)),
         deliveryCollections: targetRole === "client" ? rawData.deliveryCollections : [],
         meetings: allowedMeetings,
         // Agents (client role) keep their own shoot requests; partners see
@@ -1271,6 +1286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveries: [],
         deliveryFiles: [],
         deliverySelections: [],
+        deliveryFolders: [],
         deliveryCollections: [],
         timeEntries: [],
         shootRequests: [],
@@ -1360,6 +1376,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: deliveriesData, error: _e8c },
         { data: deliveryFilesData, error: _e8d },
         { data: deliverySelectionsData, error: _e8e },
+        { data: deliveryFoldersData, error: _e8eb },
         { data: deliveryCollectionsData, error: _e8f },
         { data: serviceCategoriesData, error: _e8g },
         { data: servicesData, error: _e8h },
@@ -1408,6 +1425,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("deliveries").select("*").order("created_at", { ascending: false }),
         supabase.from("delivery_files").select("*").order("position"),
         supabase.from("delivery_selections").select("*").order("created_at"),
+        supabase.from("delivery_folders").select("*").order("position"),
         supabase.from("delivery_collections").select("*").order("created_at", { ascending: false }),
         supabase.from("service_categories").select("*").is("deleted_at", null).order("position"),
         supabase.from(isClient ? "services_client" : "services").select("*").is("deleted_at", null).order("position"),
@@ -1472,6 +1490,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deliveries: (deliveriesData || []).map(r => { try { return rowToDelivery(r); } catch { return null; } }).filter(Boolean) as Delivery[],
         deliveryFiles: (deliveryFilesData || []).map(r => { try { return rowToDeliveryFile(r); } catch { return null; } }).filter(Boolean) as DeliveryFile[],
         deliverySelections: (deliverySelectionsData || []).map(r => { try { return rowToDeliverySelection(r); } catch { return null; } }).filter(Boolean) as DeliverySelection[],
+        deliveryFolders: (deliveryFoldersData || []).map(r => { try { return rowToDeliveryFolder(r); } catch { return null; } }).filter(Boolean) as DeliveryFolder[],
         deliveryCollections: (deliveryCollectionsData || []).map(r => { try { return rowToDeliveryCollection(r); } catch { return null; } }).filter(Boolean) as DeliveryCollection[],
         serviceCategories: (serviceCategoriesData || []).map(r => { try { return rowToServiceCategory(r); } catch { return null; } }).filter(Boolean) as ServiceCategory[],
         services: (servicesData || []).map(r => { try { return rowToService(r); } catch { return null; } }).filter(Boolean) as Service[],
@@ -2499,7 +2518,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteDelivery = useCallback(async (id: string) => {
-    // Hard delete (cascades to delivery_files + delivery_selections via FK).
+    // Hard delete (cascades to delivery_files + delivery_selections + delivery_folders via FK).
     // Storage-side cleanup happens via the API endpoint, which can also unlink R2 objects.
     const { error } = await supabase.from("deliveries").delete().eq("id", id);
     if (error) throw new Error(error.message);
@@ -2508,6 +2527,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deliveries: s.deliveries.filter(x => x.id !== id),
       deliveryFiles: s.deliveryFiles.filter(f => f.deliveryId !== id),
       deliverySelections: s.deliverySelections.filter(sel => sel.deliveryId !== id),
+      deliveryFolders: s.deliveryFolders.filter(f => f.deliveryId !== id),
     }));
   }, []);
 
@@ -2590,7 +2610,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return file;
   }, [orgId, rawData.deliveryFiles]);
 
-  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt">>) => {
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "folderId">>) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
     if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
@@ -2601,6 +2621,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (patch.stage !== undefined) dbPatch.stage = patch.stage;
     if (patch.assignedCrewMemberId !== undefined) dbPatch.assigned_crew_member_id = patch.assignedCrewMemberId;
     if (patch.assignedAt !== undefined) dbPatch.assigned_at = patch.assignedAt;
+    if (patch.folderId !== undefined) dbPatch.folder_id = patch.folderId;
     if (Object.keys(dbPatch).length === 0) return;
     const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);
     if (error) throw new Error(error.message);
@@ -2636,6 +2657,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
     const failed = results.find(r => r.error);
     if (failed?.error) throw new Error(failed.error.message);
+  }, []);
+
+  // ---- Delivery Folders — named grouping of files WITHIN one delivery
+  // (e.g. "Final Videos" / "B Roll"), distinct from Delivery Collections
+  // below, which bundle multiple whole deliveries under one shared page. ----
+  const addDeliveryFolder = useCallback(async (f: { deliveryId: string; name: string }): Promise<DeliveryFolder> => {
+    const id = nanoid(10);
+    const existing = rawData.deliveryFolders.filter(x => x.deliveryId === f.deliveryId);
+    const position = existing.length > 0 ? Math.max(...existing.map(x => x.position)) + 1 : 0;
+    const { data: row, error } = await supabase.from("delivery_folders").insert({
+      id, delivery_id: f.deliveryId, ...(orgId ? { org_id: orgId } : {}),
+      name: f.name, position,
+    }).select().single();
+    if (error) throw new Error(error.message);
+    const folder = rowToDeliveryFolder(row);
+    setRawData(s => ({ ...s, deliveryFolders: [...s.deliveryFolders, folder] }));
+    return folder;
+  }, [orgId, rawData.deliveryFolders]);
+
+  const deleteDeliveryFolder = useCallback(async (id: string) => {
+    // ON DELETE SET NULL un-groups its files — never deletes them.
+    const { error } = await supabase.from("delivery_folders").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRawData(s => ({
+      ...s,
+      deliveryFolders: s.deliveryFolders.filter(x => x.id !== id),
+      deliveryFiles: s.deliveryFiles.map(f => f.folderId === id ? { ...f, folderId: null } : f),
+    }));
   }, []);
 
   // ---- Delivery Collections ----
@@ -3974,6 +4023,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addProposalImage, updateProposalImage, deleteProposalImage,
       addDelivery, createReShootGallery, updateDelivery, deleteDelivery, setDeliveryStatus, reopenPicking,
       registerDeliveryFile, updateDeliveryFile, deleteDeliveryFile, reorderDeliveryFiles, markSelectionEdited, removeDeliverySelection,
+      addDeliveryFolder, deleteDeliveryFolder,
       addDeliveryCollection, updateDeliveryCollection, deleteDeliveryCollection,
       addServiceCategory, updateServiceCategory, deleteServiceCategory,
       addService, updateService, deleteService,

@@ -1906,9 +1906,24 @@ export interface DeliveryFile {
    *  this field. */
   assignedCrewMemberId?: string | null;
   assignedAt?: string | null;
+  /** Which named folder this file is grouped under within its delivery
+   *  (e.g. "Final Videos" vs "B Roll") — null/absent means unfoldered.
+   *  Optional for the same reason as assignedCrewMemberId above. */
+  folderId?: string | null;
 }
 
 export type DeliveryFileStage = "proof" | "final";
+
+/** A named grouping of files within a single delivery — distinct from
+ *  DeliveryCollection, which bundles multiple whole deliveries under one
+ *  shared landing page. Display order is creation order (position). */
+export interface DeliveryFolder {
+  id: string;
+  deliveryId: string;
+  name: string;
+  position: number;
+  createdAt: string;
+}
 
 export interface DeliverySelection {
   id: string;
@@ -2037,6 +2052,7 @@ export interface AppData {
   deliveries: Delivery[];
   deliveryFiles: DeliveryFile[];
   deliverySelections: DeliverySelection[];
+  deliveryFolders: DeliveryFolder[];
   deliveryCollections: DeliveryCollection[];
   serviceCategories: ServiceCategory[];
   services: Service[];

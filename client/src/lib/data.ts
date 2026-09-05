@@ -477,6 +477,7 @@ export const seedData: AppData = {
   deliveries: [],
   deliveryFiles: [],
   deliverySelections: [],
+  deliveryFolders: [],
   deliveryCollections: [],
   serviceCategories: [],
   services: [],
