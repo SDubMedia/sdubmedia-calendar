@@ -23,6 +23,7 @@ import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
+import { chipFieldToText } from "@/lib/chipFieldText";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -3517,24 +3518,30 @@ function ChipField({
     el.innerHTML = toChips(initial.current);
   }, []);
 
-  /** Read the text back with chips turned into their tokens. */
-  const readOut = (): string => {
+  /** Read the text back with chips turned into their tokens — one "\n" per
+   *  line break however the browser chose to build the DOM (chipFieldText.ts). */
+  const readOut = (): string => (ref.current ? chipFieldToText(ref.current) : "");
+
+  /** Enter inserts a <br>, never a <div>. That keeps the DOM in the flat
+   *  text-plus-<br> shape toChips seeds, so one Enter is exactly one "\n" in
+   *  the email — a double Enter used to read as three breaks in Chrome and
+   *  a blank line at the end vanished in Safari. WebKit won't draw a lone
+   *  trailing <br>, so when the caret lands at the very end a second,
+   *  sentinel <br> is kept behind it; chipFieldToText drops that one. */
+  const insertLineBreak = () => {
     const el = ref.current;
-    if (!el) return "";
-    const walk = (node: Node): string => {
-      if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
-      const e = node as HTMLElement;
-      if (e.dataset?.token) return e.dataset.token;
-      if (e.tagName === "BR") return "\n";
-      let out = "";
-      e.childNodes.forEach(c => { out += walk(c); });
-      // A div is a line in a contenteditable.
-      if (e.tagName === "DIV" && e !== el) out = "\n" + out;
-      return out;
-    };
-    let out = "";
-    el.childNodes.forEach(c => { out += walk(c); });
-    return out.replace(/\u00a0/g, " ");
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const br = document.createElement("br");
+    range.insertNode(br);
+    const trailingText = br.nextSibling && br.nextSibling.nodeType === Node.TEXT_NODE && !br.nextSibling.textContent && !br.nextSibling.nextSibling;
+    if (!br.nextSibling || trailingText) el.appendChild(document.createElement("br"));
+    range.setStartAfter(br);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
   };
 
   useEffect(() => {
@@ -3569,6 +3576,14 @@ function ChipField({
       data-placeholder={placeholder}
       onInput={() => onChange(readOut())}
       onBlur={() => onChange(readOut())}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        // Subject line: Enter does nothing rather than smuggling a newline in.
+        if (!multiline) return;
+        insertLineBreak();
+        onChange(readOut());
+      }}
       // Chips are atomic — a token half-deleted is a token that silently
       // stops substituting, which you'd only find out about in the client's
       // inbox. Paste lands as plain text for the same reason.
