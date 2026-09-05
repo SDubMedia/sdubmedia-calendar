@@ -156,7 +156,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
     if (dErr || !delivery) return res.status(404).json({ error: "Delivery not found" });
     if (delivery.org_id !== orgId) return res.status(403).json({ error: "Not your delivery" });
-    if (delivery.status === "delivered") return res.status(400).json({ error: "Delivery already finalized" });
+    // A delivered gallery stops taking new DELIVERABLES. Presentation-only
+    // uploads stay open: a video's thumbnail frame or the cover image can
+    // be changed at any time (Geoff, 2026-09-05 — Webb School videos), since
+    // neither adds a file the client receives.
+    if (delivery.status === "delivered" && kind !== "thumbnail" && kind !== "cover") {
+      return res.status(400).json({ error: "Delivery already finalized" });
+    }
 
     // 2. Check Pro tier (unless this is org_sdubmedia — Geoff bypasses)
     const isOwnerOrg = orgId === "org_sdubmedia";
