@@ -20,10 +20,10 @@ import { getAuthToken } from "@/lib/supabase";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/multipart";
 import { baseNameOf, renameFile } from "@/lib/fileName";
-import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, contentsNoun as contentsNounFor, contentsVerb as contentsVerbFor, type GalleryContents } from "@/lib/deliveryEmail";
+import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Eye, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -1085,9 +1085,16 @@ function DeliveryDetail({ id }: { id: string }) {
     const ids = pickedIds;
     if (ids.length === 0) return;
     setSendingToEditor(true);
+    const assignedAt = new Date().toISOString();
     try {
-      const assignedAt = new Date().toISOString();
       await Promise.all(ids.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: crewMemberId, assignedAt })));
+    } catch (err) {
+      // Nothing (or not everything) was marked — don't tell the owner it was.
+      toast.error("Couldn't assign these photos", { description: err instanceof Error ? err.message : "Try again" });
+      setSendingToEditor(false);
+      return;
+    }
+    try {
       const token = await getAuthToken();
       const res = await fetch("/api/notify-gallery-assignment", {
         method: "POST",
@@ -1852,7 +1859,7 @@ function DeliveryDetail({ id }: { id: string }) {
               ["picking", "2. Client picks"],
               ["editing", "3. Edit + upload finals"],
               ["done", "4. Delivered"],
-            ] as const).map(([key, label], i) => {
+            ] as const).map(([key, label]) => {
               const order = ["collecting", "picking", "editing", "done"];
               const at = order.indexOf(phase);
               const isNow = key === phase;
@@ -2113,9 +2120,6 @@ function DeliveryDetail({ id }: { id: string }) {
             const thumb = thumbUrls.get(f.id);
             const photo = signedUrls.get(f.id);
             const isPicked = picked.has(f.id);
-            // The editor's version of "which ones": an outline on the frames
-            // the client chose, so the grid itself answers the question.
-            const clientPicked = !!sel;
             return (
               <SortablePhoto key={f.id} id={f.id} dimmed={picked.size > 0 && !isPicked}>
                 {/* Top-left: the other three corners already hold Mark edited,

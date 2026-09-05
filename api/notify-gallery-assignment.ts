@@ -58,23 +58,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const plural = pending === 1 ? "photo" : "photos";
     const pushBody = `${pending} ${plural} assigned to you — ${delivery.title}`;
 
-    await sendPushToUser(staffProfile.id, { title: "Photos ready to edit", body: pushBody, data: { url: `/deliveries/${deliveryId}` } });
-
+    // Both notifications are best-effort side effects. Awaited (Vercel
+    // freezes the invocation the moment we respond, so a dangling promise
+    // delivers only sometimes) and settled independently, so a push hiccup
+    // never costs her the email or vice versa. The assignment itself is
+    // already saved on the files by the time this route is called.
     const email = (member.email || "").trim();
+    const sideEffects: [string, Promise<unknown>][] = [
+      ["push", sendPushToUser(staffProfile.id, { title: "Photos ready to edit", body: pushBody, data: { url: `/deliveries/${deliveryId}` } })],
+    ];
     if (email) {
-      try {
-        await resend.emails.send({
-          from: `Slate <${FROM_EMAIL}>`, to: email, subject: `${pending} ${plural} ready to edit — ${delivery.title}`,
-          html: `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1e293b;">
-            <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml((member.name || "there").split(" ")[0])},</p>
-            <p style="font-size:15px;line-height:1.6;">${pending} ${plural} from <strong>${escapeHtml(delivery.title)}</strong> ${pending === 1 ? "is" : "are"} ready for you to edit.</p>
-            <p style="margin:20px 0;"><a href="${APP_URL}/deliveries/${deliveryId}" style="background:#0088ff;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Open in Slate</a></p>
-          </div>`,
-        });
-      } catch (e) { console.error("notify-gallery-assignment email failed:", e); }
+      sideEffects.push(["email", resend.emails.send({
+        from: `Slate <${FROM_EMAIL}>`, to: email, subject: `${pending} ${plural} ready to edit — ${delivery.title}`,
+        html: `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1e293b;">
+          <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml((member.name || "there").split(" ")[0])},</p>
+          <p style="font-size:15px;line-height:1.6;">${pending} ${plural} from <strong>${escapeHtml(delivery.title)}</strong> ${pending === 1 ? "is" : "are"} ready for you to edit.</p>
+          <p style="margin:20px 0;"><a href="${APP_URL}/deliveries/${deliveryId}" style="background:#0088ff;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Open in Slate</a></p>
+        </div>`,
+      }).then(r => { if (r.error) throw new Error(r.error.message); return r; })]);
     }
+    const settled = await Promise.allSettled(sideEffects.map(([, p]) => p));
+    settled.forEach((r, i) => {
+      if (r.status === "rejected") console.warn(`[notify-gallery-assignment] ${sideEffects[i][0]} failed: ${errorMessage(r.reason)}`);
+    });
+    // Report what actually happened — the UI tells the owner "no email on
+    // file" vs. sent, and a failed send must not read as sent.
+    const emailIdx = sideEffects.findIndex(([k]) => k === "email");
+    const emailed = emailIdx >= 0 && settled[emailIdx].status === "fulfilled";
 
-    return res.status(200).json({ ok: true, pending, emailed: !!email });
+    return res.status(200).json({ ok: true, pending, emailed });
   } catch (err) {
     console.error("notify-gallery-assignment error:", err);
     return res.status(500).json({ error: errorMessage(err, "Couldn't send the notification") });
