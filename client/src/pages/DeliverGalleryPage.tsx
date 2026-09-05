@@ -354,6 +354,8 @@ interface DeliveryInfo {
   watermarkUseLogo?: boolean;
   printsEnabled: boolean;
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
+  // Server-set: a team member is seeing finals the client can't yet.
+  previewingFinals?: boolean;
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
@@ -1319,6 +1321,11 @@ export default function DeliverGalleryPage() {
       )}
 
       {/* Status / state banners */}
+      {delivery.previewingFinals && (
+        <div className="mx-auto max-w-2xl mb-4 px-4 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 text-amber-100 text-xs text-center">
+          You're previewing the finished files as the team. The client's link still shows the proofs until you press Deliver.
+        </div>
+      )}
       {(isWorking || delivery.status === "submitted" || delivery.status === "delivered" || (proofingEnabled && delivery.status === "sent")) && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 py-4">
           {/* `isWorking` counts "delivered" as in-progress, which is fine for

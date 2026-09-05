@@ -17,6 +17,7 @@ import { verifyPassword } from "./_password.js";
 import { sendPushToOwner, sendPushToUser } from "./_apns.js";
 import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
+import { visibleGalleryRows } from "./_deliveryVisibility.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -66,6 +67,7 @@ interface FileRow {
   original_storage_path?: string | null;
   duration_seconds?: number | null;
   folder_id?: string | null;
+  stage?: string | null;
 }
 
 interface OrgRow {
@@ -167,7 +169,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // Geoff. If the browser had a Slate session it comes through as a bearer
   // token; anyone in the gallery's own org is checking their own work, not
   // viewing it. A client with a login still counts — they're a real visitor.
-  let countThisView = true;
+  // The same check decides whether they may see finals before "Deliver":
+  // the team previews the finished files; a client sees proofs until then.
+  let viewerIsTeam = false;
   const authHeader = req?.headers?.authorization;
   if (authHeader) {
     try {
@@ -178,14 +182,14 @@ async function getDelivery(token: string, password: string | undefined, email: s
           const { data: prof } = await supabase.from("user_profiles").select("role").eq("id", viewer.userId).maybeSingle();
           // Only the people who MAKE the work are excluded. A client or family
           // login opening the gallery they were sent is a genuine view.
-          if (prof && ["owner", "partner", "staff"].includes(prof.role)) countThisView = false;
+          if (prof && ["owner", "partner", "staff"].includes(prof.role)) viewerIsTeam = true;
         }
       }
     } catch {
       // A bad or expired token just means we treat them as anonymous.
     }
   }
-  if (countThisView) {
+  if (!viewerIsTeam) {
     // Fire-and-forget; a failed counter must not fail the gallery.
     supabase.from("deliveries").update({ view_count: delivery.view_count + 1 }).eq("id", delivery.id).then(() => {});
   }
@@ -198,26 +202,11 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .order("position");
   const allRows = (files || []) as FileRow[];
 
-  // A client sees ONE half of the job, never both.
-  //
-  // Proofing splits a gallery in two: the shots she picks from, and the
-  // finished files she receives. Serving the whole table would put 198 rejects
-  // next to the 15 she's paying for, which is the thing the stage column
-  // exists to prevent.
-  //
-  // Finals present → the finals, and only those, regardless of delivered
-  // status. This is the same link the owner uses to preview before clicking
-  // "Deliver" — gating on status meant the preview showed the whole proof
-  // pile instead of the curated finals an editor had just uploaded. Otherwise
-  // the proofs, so a client mid-pick still sees what she's choosing from. A
-  // gallery with no proofs at all — every real-estate delivery, and
-  // everything uploaded before this existed — falls through unchanged.
-  const proofRows = allRows.filter(f => (f as unknown as { stage?: string }).stage === "proof");
-  const finalRows = allRows.filter(f => (f as unknown as { stage?: string }).stage !== "proof");
-  const fileRows: FileRow[] =
-    finalRows.length > 0 ? finalRows
-      : proofRows.length > 0 ? proofRows
-        : allRows;
+  // A client sees ONE half of the job, never both — and never the finals
+  // until the owner presses Deliver. The owner's Preview is this same link,
+  // so the team (verified above) gets the finals early; see
+  // _deliveryVisibility.ts for the full table.
+  const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam);
 
   // Load existing selections (so client sees their picks if they're returning)
   const { data: selections } = await supabase
@@ -316,6 +305,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       watermarkUseLogo: (delivery as unknown as { watermark_use_logo?: boolean }).watermark_use_logo === true,
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
+      previewingFinals,
       selectionLimit: delivery.selection_limit,
       selectionMinimum: (delivery as unknown as { selection_minimum?: number }).selection_minimum ?? 0,
       downloadOnly: (delivery as unknown as { download_only?: boolean }).download_only === true,
