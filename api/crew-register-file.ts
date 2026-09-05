@@ -56,6 +56,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         media_type: b.mediaType === "video" ? "video" : "image",
         thumbnail_storage_path: typeof b.thumbnailStoragePath === "string" ? b.thumbnailStoragePath : "",
         duration_seconds: b.durationSeconds ?? null,
+        // This route is staff re-uploading a finished file — the only stage
+        // it ever means (see the INSERT branch below, which relies on the
+        // same thing via the column default). An editor exporting her edit
+        // under the same filename as the original proof matches here by
+        // original_name and must flip to 'final', or the finished photo
+        // stays invisible in the Finals tab and preview forever, tagged as
+        // the proof it replaced. Real incident: Felicia Long gallery, 13
+        // finals silently stuck as proofs (2026-09-05).
+        stage: "final",
       }).eq("id", existing.id);
       if (updErr) throw new Error(updErr.message);
       // Drop the superseded bytes, but only after the row points at the new
