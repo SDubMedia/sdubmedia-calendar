@@ -67,7 +67,7 @@ export default function TodosWidget() {
     try {
       await addTodo({
         title: trimmed,
-        notes: "",
+        notes: [],
         assignedCrewMemberId: isOwner ? null : myCrewId,
         projectId: null,
         dueDate: "",

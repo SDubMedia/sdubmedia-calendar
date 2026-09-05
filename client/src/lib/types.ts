@@ -1792,7 +1792,9 @@ export interface Meeting {
 export interface Todo {
   id: string;
   title: string;
-  notes: string;
+  // A dated, growing thread — same shape as Project.clientNotes — not a
+  // single field you overwrite. Newest first by convention.
+  notes: ClientNote[];
   // Crew member responsible. null = a general/owner to-do not tied to a staffer.
   assignedCrewMemberId: string | null;
   // user_profiles.id of whoever created it — lets the owner tell an assigned

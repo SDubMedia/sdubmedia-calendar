@@ -17,7 +17,8 @@ import {
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument } from "@/lib/types";
+import type { Project, ProjectStatus, EpisodeStatus, Invoice, ProjectDocument, Todo } from "@/lib/types";
+import TodoNotesThread from "@/components/TodoNotesThread";
 import { isMultiDay, projectDays, dayCrewFor } from "@/lib/projectDays";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
@@ -77,6 +78,10 @@ interface Props {
 export default function ProjectDetailSheet({ project: projectProp, onClose }: Props) {
   const { data, updateProject, deleteProject, updateEpisode, fetchEpisodes, addInvoice, updateInvoice, createReShootGallery, refresh, addTodo, updateTodo, deleteTodo, addProjectDocument, updateProjectDocument, deleteProjectDocument, getOrCreateModelReleaseLink } = useApp();
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  // Click-to-edit a to-do, instead of delete-and-recreate. Expanded row
+  // shows a title input + Save/Cancel and the notes thread below it.
+  const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
+  const [editTodoTitle, setEditTodoTitle] = useState("");
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [talentDraft, setTalentDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -1383,27 +1388,65 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
             {/* Project to-dos — a checklist tied to this shoot */}
             <div className="space-y-1.5">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">To-Dos</div>
-              {data.todos.filter(t => t.projectId === project.id).map(t => (
-                <div key={t.id} className="flex items-center gap-2 bg-secondary/50 rounded-md px-3 py-2 text-xs">
-                  <button
-                    onClick={() => updateTodo(t.id, { done: !t.done }).catch(() => toast.error("Couldn't update"))}
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${t.done ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"}`}
-                    aria-label={t.done ? "Mark not done" : "Mark done"}
-                  >
-                    {t.done && <CheckCircle2 className="w-3 h-3" />}
-                  </button>
-                  <span className={`flex-1 min-w-0 ${t.done ? "line-through text-muted-foreground" : "text-foreground"}`}>{t.title}</span>
-                  {t.assignedCrewMemberId && <span className="text-[10px] text-muted-foreground shrink-0">{data.crewMembers.find(c => c.id === t.assignedCrewMemberId)?.name}</span>}
-                  <button onClick={() => deleteTodo(t.id).catch(() => toast.error("Couldn't delete"))} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+              {data.todos.filter(t => t.projectId === project.id).map((t: Todo) => {
+                const todoExpanded = expandedTodoId === t.id;
+                return (
+                <div key={t.id} className="bg-secondary/50 rounded-md text-xs overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <button
+                      onClick={() => updateTodo(t.id, { done: !t.done }).catch(() => toast.error("Couldn't update"))}
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${t.done ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"}`}
+                      aria-label={t.done ? "Mark not done" : "Mark done"}
+                    >
+                      {t.done && <CheckCircle2 className="w-3 h-3" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (todoExpanded) { setExpandedTodoId(null); }
+                        else { setExpandedTodoId(t.id); setEditTodoTitle(t.title); }
+                      }}
+                      className={`flex-1 min-w-0 text-left hover:underline ${t.done ? "line-through text-muted-foreground" : "text-foreground"}`}
+                    >
+                      {t.title}
+                    </button>
+                    {t.assignedCrewMemberId && <span className="text-[10px] text-muted-foreground shrink-0">{data.crewMembers.find(c => c.id === t.assignedCrewMemberId)?.name}</span>}
+                    {t.notes.length > 0 && <span className="text-[10px] text-muted-foreground shrink-0">{t.notes.length} note{t.notes.length === 1 ? "" : "s"}</span>}
+                    <button onClick={() => deleteTodo(t.id).catch(() => toast.error("Couldn't delete"))} className="text-muted-foreground hover:text-destructive shrink-0" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {todoExpanded && (
+                    <div className="px-3 pb-3 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          value={editTodoTitle}
+                          onChange={e => setEditTodoTitle(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && editTodoTitle.trim()) {
+                              updateTodo(t.id, { title: editTodoTitle.trim() }).then(() => setExpandedTodoId(null)).catch(() => toast.error("Couldn't save"));
+                            }
+                          }}
+                          className="flex-1 min-w-0 bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { if (editTodoTitle.trim()) updateTodo(t.id, { title: editTodoTitle.trim() }).then(() => setExpandedTodoId(null)).catch(() => toast.error("Couldn't save")); }}
+                          disabled={!editTodoTitle.trim()}
+                          className="shrink-0 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50"
+                        >Save</button>
+                      </div>
+                      <TodoNotesThread notes={t.notes} onChange={(next) => updateTodo(t.id, { notes: next })} />
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               <div className="flex gap-2">
                 <input
                   value={newTaskTitle}
                   onChange={e => setNewTaskTitle(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === "Enter" && newTaskTitle.trim()) {
-                      addTodo({ title: newTaskTitle.trim(), notes: "", assignedCrewMemberId: null, projectId: project.id, dueDate: "" })
+                      addTodo({ title: newTaskTitle.trim(), notes: [], assignedCrewMemberId: null, projectId: project.id, dueDate: "" })
                         .then(() => setNewTaskTitle("")).catch(() => toast.error("Couldn't add"));
                     }
                   }}
@@ -1411,7 +1454,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   className="flex-1 min-w-0 bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground"
                 />
                 <button
-                  onClick={() => { if (newTaskTitle.trim()) addTodo({ title: newTaskTitle.trim(), notes: "", assignedCrewMemberId: null, projectId: project.id, dueDate: "" }).then(() => setNewTaskTitle("")).catch(() => toast.error("Couldn't add")); }}
+                  onClick={() => { if (newTaskTitle.trim()) addTodo({ title: newTaskTitle.trim(), notes: [], assignedCrewMemberId: null, projectId: project.id, dueDate: "" }).then(() => setNewTaskTitle("")).catch(() => toast.error("Couldn't add")); }}
                   disabled={!newTaskTitle.trim()}
                   className="shrink-0 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-semibold disabled:opacity-50"
                 >Add</button>

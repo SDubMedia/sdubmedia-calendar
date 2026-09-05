@@ -900,7 +900,7 @@ function rowToTodo(r: any): Todo {
   return {
     id: r.id,
     title: r.title || "",
-    notes: r.notes || "",
+    notes: Array.isArray(r.notes) ? r.notes : [],
     assignedCrewMemberId: r.assigned_crew_member_id || null,
     createdByUserId: r.created_by_user_id || "",
     projectId: r.project_id || null,
@@ -2264,7 +2264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id,
       ...(orgId ? { org_id: orgId } : {}),
       title: t.title,
-      notes: t.notes || "",
+      notes: t.notes || [],
       assigned_crew_member_id: t.assignedCrewMemberId || null,
       created_by_user_id: profile.id,
       project_id: t.projectId || null,
@@ -3270,7 +3270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             .eq("project_id", id).eq("title", title).eq("done", false)
             .limit(1).maybeSingle();
           if (!existing) {
-            await addTodo({ title, notes: "", assignedCrewMemberId: null, projectId: id, dueDate: "" });
+            await addTodo({ title, notes: [], assignedCrewMemberId: null, projectId: id, dueDate: "" });
           }
         } catch (todoErr) {
           console.warn("Couldn't create the hand-off to-do", todoErr);
