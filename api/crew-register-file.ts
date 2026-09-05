@@ -73,6 +73,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         assigned_at: null,
       }).eq("id", existing.id);
       if (updErr) throw new Error(updErr.message);
+      // The finished file replacing a picked proof IS the edit — tick the
+      // pick as edited so the selections panel's "N of 13 edited" tracks
+      // what has actually come back, instead of waiting for a manual click.
+      // Only fills a blank; an owner who already ticked it keeps their stamp.
+      const { error: selErr } = await supabaseService
+        .from("delivery_selections")
+        .update({ edited_at: new Date().toISOString() })
+        .eq("file_id", existing.id)
+        .is("edited_at", null);
+      if (selErr) console.warn("[crew-register-file] couldn't mark pick edited:", selErr.message);
       // Drop the superseded bytes, but only after the row points at the new
       // ones — losing the file would be worse than leaving it orphaned.
       if (existing.storage_path && existing.storage_path !== storagePath) {
