@@ -22,6 +22,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
+import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -137,12 +138,8 @@ function DeliveriesList() {
   // that reason. Same test the dashboard uses: the client is an agent, or the
   // shoot is billed to a brokerage.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
-  const isRealEstate = (d: typeof galleries[number]) => {
-    const project = d.projectId ? data.projects.find(p => p.id === d.projectId) : null;
-    if (!project) return false;
-    if (clientsById[project.clientId]?.clientType === "agent") return true;
-    return clientsById[getProjectPayerId(project, clientsById)]?.clientType === "broker";
-  };
+  const isRealEstate = (d: typeof galleries[number]) =>
+    isRealEstateProject(d.projectId ? data.projects.find(p => p.id === d.projectId) : null, clientsById);
   // Mini sessions produce one gallery per family — a dozen cards for a single
   // Saturday. They're collected under the event, so show the event once and
   // let it expand, rather than burying everything else.
@@ -630,6 +627,14 @@ function DeliveryDetail({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState<"photos" | "general" | "cover" | "privacy" | "selections">("photos");
 
   const delivery = data.deliveries.find(d => d.id === id);
+  // Full quality unless this is a real estate shoot (agent client, or billed
+  // to a brokerage) — those are re-saved small for the MLS. Everything else
+  // keeps the untouched file beside the browsable copy, for every upload by
+  // anyone: the shoot's raws for the editor, and the editor's exact export
+  // for the client. Geoff, 2026-09-05. See client/src/lib/galleryQuality.ts.
+  const galleryProject = delivery?.projectId ? (data.projects.find(p => p.id === delivery.projectId) ?? null) : null;
+  const galleryIsRealEstate = isRealEstateProject(galleryProject, clientsById);
+  const fullQuality = !!delivery && keepsFullQuality(delivery, galleryProject, clientsById);
   const files = useMemo(
     () => data.deliveryFiles.filter(f => f.deliveryId === id).sort((a, b) => a.position - b.position),
     [data.deliveryFiles, id]
@@ -864,11 +869,11 @@ function DeliveryDetail({ id }: { id: string }) {
         let originalStoragePath = "";
         let originalSizeBytes = 0;
         // A raw is kept unconditionally: it IS the deliverable for the editor,
-        // and the browsable copy is only a stand-in. Everything else follows
-        // the gallery's keep-originals switch. Not for staff: an editor hands
-        // back finished files (the shoot's raws are already here), and the
-        // crew registration route has nowhere to record an original anyway.
-        if (!readOnly && (isRaw || delivery?.keepOriginals) && !isVideo && rawFile !== file) {
+        // and the browsable copy is only a stand-in. Every other still keeps
+        // its untouched file too unless this is a real estate shoot (see
+        // fullQuality) — staff included: the editor's exact export is what
+        // the client downloads, so crew-register-file records it alongside.
+        if ((isRaw || fullQuality) && !isVideo && rawFile !== file) {
           try {
             const origRes = await fetch("/api/delivery-upload", {
               method: "POST",
@@ -932,6 +937,8 @@ function DeliveryDetail({ id }: { id: string }) {
                 mediaType: isVideo ? "video" : "image",
                 thumbnailStoragePath,
                 durationSeconds,
+                originalStoragePath,
+                originalSizeBytes,
               }),
             });
             const regBody = await regRes.json().catch(() => ({ error: "Failed" }));
@@ -1797,6 +1804,7 @@ function DeliveryDetail({ id }: { id: string }) {
           />
           <QualityPanel
             keepOriginals={delivery.keepOriginals ?? false}
+            alwaysOn={!galleryIsRealEstate}
             onUpdate={(v) => updateDelivery(id, { keepOriginals: v })}
           />
         </>
@@ -3774,26 +3782,38 @@ function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdat
   );
 }
 
-function QualityPanel({ keepOriginals, onUpdate }: { keepOriginals: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+/** The switch only means something on a real estate shoot. Every other
+ *  gallery keeps full quality regardless (galleryQuality.ts), so there it
+ *  reads as a statement of fact rather than a choice. */
+function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: boolean; alwaysOn: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Photo quality</h3>
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={keepOriginals}
-          onChange={(e) => onUpdate(e.target.checked)}
-          className="mt-1 w-4 h-4 accent-[#0088ff]"
-        />
-        <span>
-          <span className="text-sm text-white font-medium block">Keep full-quality originals</span>
-          <span className="text-xs text-slate-500">
-            Photos are normally re-saved at 80% quality so galleries load fast — right for listings, not for portrait work.
-            Turn this on and the untouched file is kept too: the client browses the light version and downloads the original,
-            with its EXIF and colour profile intact. Uses about twice the storage. Applies to photos added from now on.
+      {alwaysOn ? (
+        <p className="text-xs text-slate-400">
+          <span className="text-sm text-white font-medium block mb-1">Full quality — always on for this shoot</span>
+          Every photo keeps its untouched file beside the light copy the gallery browses. Raws stay as the editor's
+          negatives, and what the editor uploads is exactly what the client downloads, EXIF and colour profile intact.
+          Only real estate shoots (an agent client, or billed to a brokerage) are re-saved small for the MLS.
+        </p>
+      ) : (
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={keepOriginals}
+            onChange={(e) => onUpdate(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-[#0088ff]"
+          />
+          <span>
+            <span className="text-sm text-white font-medium block">Keep full-quality originals</span>
+            <span className="text-xs text-slate-500">
+              This is a real estate shoot, so photos are re-saved at 80% quality for the MLS and fast galleries.
+              Turn this on and the untouched file is kept too: the client browses the light version and downloads the original,
+              with its EXIF and colour profile intact. Uses about twice the storage. Applies to photos added from now on.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      )}
     </div>
   );
 }

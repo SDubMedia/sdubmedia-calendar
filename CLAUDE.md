@@ -380,6 +380,7 @@ Things baked into the codebase. Re-using these saves re-discovering them.
 - **Cover fonts:** Cormorant (default) / Playfair / Marcellus / Inter / Sans / Serif Timeless / Serif Modern. Stored in `cover_font` column. Two parallel arrays keep admin + public in sync (`COVER_FONTS` in DeliveriesPage, `COVER_HERO_FONTS` in DeliverGalleryPage). Update both.
 - **Watermark:** logo (org `logo_url`) tiles at 18% opacity when `watermark_use_logo=true`. Text watermark still works alongside.
 - **Eager cover signed URL.** Cover thumbnails fetch the cover photo's signed URL in a separate fast call before the bulk fetch. Don't regress this — galleries with 200+ photos noticeably degrade.
+- **Full quality by default; only real estate is re-saved small (Geoff, 2026-09-05).** `keepsFullQuality()` in `client/src/lib/galleryQuality.ts` decides: every shoot keeps the untouched file beside the 80% browse copy — owner AND staff uploads, raws AND JPEG exports — unless the project is real estate (agent client, or billed to a brokerage), where the `keepOriginals` switch is the opt-in. The public route serves the original for downloads unless it's a camera raw (`isCameraRaw` in `api/_r2.ts`), so a final that replaced a proof downloads as the editor's export, never the .ARW. Don't add a new upload path that re-encodes without checking this.
 - **Files over 100MB use multipart** (`api/delivery-multipart.ts`, 32MB parts, 5GB ceiling). Below that, the single presigned PUT in `delivery-upload.ts`.
 
 #### R2 CORS does NOT expose ETag — never read it in the browser (Aug 2026)

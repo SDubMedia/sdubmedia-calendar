@@ -21,6 +21,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const deliveryId = typeof b.deliveryId === "string" ? b.deliveryId : "";
   const storagePath = typeof b.storagePath === "string" ? b.storagePath : "";
   const originalName = typeof b.originalName === "string" ? b.originalName : "";
+  // The untouched export, when the gallery keeps full quality (every shoot
+  // but real estate). Empty on real-estate galleries and for videos.
+  const originalStoragePath = typeof b.originalStoragePath === "string" ? b.originalStoragePath : "";
+  const originalSizeBytes = Number(b.originalSizeBytes ?? 0);
   if (!deliveryId || !storagePath || !originalName) {
     return res.status(400).json({ error: "Missing deliveryId, storagePath, or originalName" });
   }
@@ -41,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // client sees the new one, not both.
     const { data: existing } = await supabaseService
       .from("delivery_files")
-      .select("id, storage_path")
+      .select("id, storage_path, original_storage_path")
       .eq("delivery_id", deliveryId)
       .eq("original_name", originalName)
       .maybeSingle();
@@ -65,11 +69,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // the proof it replaced. Real incident: Felicia Long gallery, 13
         // finals silently stuck as proofs (2026-09-05).
         stage: "final",
-        // original_storage_path is deliberately LEFT AS THE PROOF'S RAW: it's
-        // still the editor's negative (staff "download her picks" hands it
-        // over), and nulling it would orphan the bytes in R2. The public
-        // route refuses to serve a camera raw as a download, so the client
-        // gets this finished JPEG, not the .ARW — see delivery-public.ts.
+        // The editor's untouched export becomes the original the client
+        // downloads (full-quality galleries send one). Without one — a
+        // real-estate gallery — the proof's raw stays as the original; the
+        // public route refuses to serve a camera raw, so the client still
+        // gets the finished JPEG. See delivery-public.ts + galleryQuality.ts.
+        ...(originalStoragePath ? { original_storage_path: originalStoragePath, original_size_bytes: originalSizeBytes } : {}),
         // If this proof was hand-assigned to an editor (send-to-editor
         // feature), her uploading the finished replacement fulfills that
         // assignment — clear it so "assigned to you" reflects pending work
@@ -94,6 +99,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         try { await r2DeleteObject(existing.storage_path); }
         catch (delErr) { console.warn("[crew-register-file] old file left in storage:", errorMessage(delErr)); }
       }
+      // The proof's raw is NOT deleted when the export replaces it as the
+      // original — it's the negative, and deleting it is irreversible. It is
+      // now unreferenced by any row, so say so in the logs for later cleanup.
+      if (originalStoragePath && existing.original_storage_path && existing.original_storage_path !== originalStoragePath) {
+        console.warn(`[crew-register-file] raw superseded by editor export, left in storage unreferenced: ${existing.original_storage_path}`);
+      }
       return res.status(200).json({ ok: true, id: existing.id, replaced: true });
     }
 
@@ -110,6 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       media_type: b.mediaType === "video" ? "video" : "image",
       thumbnail_storage_path: typeof b.thumbnailStoragePath === "string" ? b.thumbnailStoragePath : "",
       duration_seconds: b.durationSeconds ?? null,
+      original_storage_path: originalStoragePath,
+      original_size_bytes: originalStoragePath ? originalSizeBytes : 0,
     }).select("id").single();
     if (error) throw new Error(error.message);
 
