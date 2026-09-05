@@ -1228,6 +1228,12 @@ function DeliveryDetail({ id }: { id: string }) {
    *  the files would only drift. */
   const proofs = files.filter(f => f.stage === "proof");
   const finals = files.filter(f => f.stage !== "proof");
+  // Her allowance, the way the public page and the submit route count it
+  // (api/_pickAllowance.ts): finished photos (videos excluded) and picks
+  // still waiting both spend it. Reopening offers only what's left.
+  const editedPhotoCount = proofs.length > 0 ? finals.filter(f => f.mediaType !== "video").length : 0;
+  const pendingPickCount = proofs.length > 0 ? selections.filter(s => proofs.some(p => p.id === s.fileId)).length : selections.length;
+  const picksLeft = Math.max(0, delivery.selectionLimit - editedPhotoCount - pendingPickCount);
   const phase: "collecting" | "picking" | "editing" | "done" =
     !proofingEnabled ? "done"
     : delivery.status === "delivered" ? "done"
@@ -1807,6 +1813,11 @@ function DeliveryDetail({ id }: { id: string }) {
                   <span className="text-slate-500"> · submitted {new Date(delivery.submittedAt).toLocaleDateString()}</span>
                 </p>
                 <p className="text-xs text-slate-400 mt-1">{selections.length} pick{selections.length === 1 ? "" : "s"} {selections.some(s => s.isPaid) && "· includes paid extras"}</p>
+                {delivery.selectionLimit > 0 && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {editedPhotoCount} edited · {pendingPickCount} waiting · <strong className="text-slate-300">{picksLeft} more</strong> she can pick of {delivery.selectionLimit}
+                  </p>
+                )}
                 {!readOnly && delivery.status === "submitted" && (
                   <button
                     onClick={async () => {
@@ -1816,7 +1827,7 @@ function DeliveryDetail({ id }: { id: string }) {
                       }
                       if (!(await confirm({
                         title: "Reopen picking?",
-                        description: `Her ${selections.length} picks stay hearted, but everything unlocks — she can swap any of them and must press Send again. Do this before the editor starts.`,
+                        description: `Her ${editedPhotoCount} edited photo${editedPhotoCount === 1 ? "" : "s"} stay locked and still count toward her ${delivery.selectionLimit}, so she can choose ${picksLeft} more. Any picks not yet edited come back as hearts she can swap. She must press Send again.`,
                         confirmLabel: "Reopen picking",
                       }))) return;
                       try {

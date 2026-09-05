@@ -11,6 +11,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { errorMessage, isAllowedUrl } from "./_auth.js";
+import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
 import { verifyPassword } from "./_password.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
@@ -45,12 +46,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Accept either a token or a vanity slug as the public identifier.
     const byToken = await supabase.from("deliveries")
-      .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id")
+      .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id, submitted_at")
       .eq("token", token).maybeSingle();
     const lookup = byToken.data
       ? byToken
       : await supabase.from("deliveries")
-          .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id")
+          .select("id, org_id, title, status, password_hash, selection_limit, per_extra_photo_cents, buy_all_flat_cents, project_id, submitted_at")
           .eq("slug", token).maybeSingle();
     const delivery = lookup.data;
     const error = lookup.error;
@@ -70,7 +71,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       productName = `${delivery.title} — unlock all picks`;
     } else {
       if (delivery.per_extra_photo_cents <= 0) return res.status(400).json({ error: "Per-photo option not available on this gallery" });
-      const overage = Math.max(0, fileIds.length - delivery.selection_limit);
+      // Same allowance math as the submit route: finished photos already in
+      // the gallery (videos excluded) and picks still pending both spend the
+      // free limit. Charging fileIds − limit here would undercount extras on
+      // a reopened round. See _pickAllowance.ts.
+      const { data: allFilesRaw } = await supabase
+        .from("delivery_files").select("id, stage, media_type").eq("delivery_id", delivery.id);
+      const allFiles = (allFilesRaw || []) as AllowanceFile[];
+      const { data: already } = await supabase
+        .from("delivery_selections").select("file_id").eq("delivery_id", delivery.id);
+      const alreadyPending = delivery.submitted_at
+        ? pendingPickIds((already || []).map((r: { file_id: string }) => r.file_id), allFiles)
+        : [];
+      const overage = pickOverage(delivery.selection_limit, countEditedPhotos(allFiles), alreadyPending, fileIds);
       if (overage <= 0) return res.status(400).json({ error: "No overage to pay for — submit selections directly" });
       unitAmount = overage * delivery.per_extra_photo_cents;
       productName = `${delivery.title} — ${overage} extra photo${overage === 1 ? "" : "s"}`;

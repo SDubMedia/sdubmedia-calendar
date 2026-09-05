@@ -18,6 +18,7 @@ import { sendPushToOwner, sendPushToUser } from "./_apns.js";
 import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
+import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -306,6 +307,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       previewingFinals,
+      // Finished photos already here (videos excluded) — spent allowance,
+      // so a reopened round offers limit minus these. See _pickAllowance.ts.
+      editedPhotoCount: countEditedPhotos(allRows),
       selectionLimit: delivery.selection_limit,
       selectionMinimum: (delivery as unknown as { selection_minimum?: number }).selection_minimum ?? 0,
       downloadOnly: (delivery as unknown as { download_only?: boolean }).download_only === true,
@@ -438,19 +442,13 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
   // something she was choosing FROM, not a finished file that happens to share
   // the gallery. Galleries with no proofs (every real-estate delivery) keep
   // validating against the whole set.
-  const { count: proofCount } = await supabase
+  const { data: allFilesRaw } = await supabase
     .from("delivery_files")
-    .select("id", { count: "exact", head: true })
-    .eq("delivery_id", delivery.id)
-    .eq("stage", "proof");
-  let validQuery = supabase
-    .from("delivery_files")
-    .select("id")
-    .eq("delivery_id", delivery.id)
-    .in("id", fileIds);
-  if ((proofCount ?? 0) > 0) validQuery = validQuery.eq("stage", "proof");
-  const { data: validFiles } = await validQuery;
-  const validIds = new Set((validFiles || []).map((f: { id: string }) => f.id));
+    .select("id, stage, media_type")
+    .eq("delivery_id", delivery.id);
+  const allFiles = (allFilesRaw || []) as AllowanceFile[];
+  const hasProofs = allFiles.some(f => f.stage === "proof");
+  const validIds = new Set(allFiles.filter(f => !hasProofs || f.stage === "proof").map(f => f.id));
   const filteredIds = fileIds.filter((id) => validIds.has(id));
   if (filteredIds.length !== fileIds.length) {
     return res.status(400).json({ error: "Some picked photos no longer exist" });
@@ -464,14 +462,19 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
   // seed hearts — either leftovers the owner reopened for reselection, or
   // nothing at all on a first submit — and what she sends now IS the whole
   // set. Counting the seeds would make unhearting a photo impossible.
+  //
+  // Either way, photos ALREADY EDITED (finals, videos excluded) are spent
+  // allowance: a reopened round with 14 finished photos on a 25 limit leaves
+  // 11 more, not 25. Edited picks aren't in `alreadyPending` — their rows
+  // point at finals now — so each is counted exactly once, via editedPhotos.
   const freshRound = !delivery.submitted_at;
   const { data: already } = await supabase
     .from("delivery_selections").select("file_id").eq("delivery_id", delivery.id);
-  const alreadyIds = freshRound
-    ? new Set<string>()
-    : new Set((already || []).map((r: { file_id: string }) => r.file_id));
-  const combined = new Set([...alreadyIds, ...filteredIds]);
-  const overage = Math.max(0, combined.size - delivery.selection_limit);
+  const alreadyPending = freshRound
+    ? []
+    : pendingPickIds((already || []).map((r: { file_id: string }) => r.file_id), allFiles);
+  const editedPhotos = countEditedPhotos(allFiles);
+  const overage = pickOverage(delivery.selection_limit, editedPhotos, alreadyPending, filteredIds);
 
   // If selections exceed the free limit, return checkout options instead of saving
   if (overage > 0) {
@@ -494,6 +497,7 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
     return res.status(402).json({
       needsCheckout: true,
       freeLimit: delivery.selection_limit,
+      editedPhotoCount: editedPhotos,
       pickedCount: filteredIds.length,
       options,
     });
@@ -637,13 +641,25 @@ export async function saveSelectionsAndAlert(
   // exist — they're seed hearts from a reopened round, and any she unhearted
   // must go. Paid rows are never deleted (they're a payment record; the UI
   // blocks reopening a gallery that has them, this is the backstop).
+  //
+  // Picks that have ALREADY BEEN EDITED are kept regardless. Their proof was
+  // replaced by the finished file (row now stage 'final'), so they can't be
+  // on the page to re-heart — deleting them would erase the record of what
+  // she chose and what the editor delivered. Only still-proof rows are
+  // reconciled against what she sent. A gallery with no proofs keeps the
+  // old rule: everything not re-sent goes.
   if (!delivery.submitted_at) {
-    await supabase
+    const { data: proofRows } = await supabase
+      .from("delivery_files").select("id").eq("delivery_id", delivery.id).eq("stage", "proof");
+    const proofIds = (proofRows || []).map((r: { id: string }) => r.id);
+    let stale = supabase
       .from("delivery_selections")
       .delete()
       .eq("delivery_id", delivery.id)
       .eq("is_paid", false)
       .not("file_id", "in", `(${fileIds.map(id => `"${id}"`).join(",")})`);
+    if (proofIds.length > 0) stale = stale.in("file_id", proofIds);
+    await stale;
   }
 
   // Insert selection rows. Upsert so re-submission doesn't duplicate.

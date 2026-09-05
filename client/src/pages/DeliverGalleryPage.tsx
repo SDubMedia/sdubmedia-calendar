@@ -356,6 +356,9 @@ interface DeliveryInfo {
   status: "draft" | "sent" | "submitted" | "working" | "delivered";
   // Server-set: a team member is seeing finals the client can't yet.
   previewingFinals?: boolean;
+  // Server-set: finished photos already in the gallery (videos excluded).
+  // Spent allowance — a reopened round offers limit minus these.
+  editedPhotoCount?: number;
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
@@ -599,7 +602,12 @@ export default function DeliverGalleryPage() {
       // function, and re-seeding there silently reverted every heart she'd
       // changed since — on a phone that fires every time it wakes, so she
       // came back to "picks" she never made. Her live edits outrank the seeds.
-      const submitted = (data.selections || []).map((s: SelectionRecord) => s.fileId);
+      //
+      // Only picks she can still see. A pick whose proof has since been
+      // replaced by the finished photo isn't on the page any more — it's
+      // counted as edited (editedPhotoCount), not as a heart.
+      const visibleIds = new Set(((data.files || []) as FileItem[]).map(f => f.id));
+      const submitted = (data.selections || []).map((s: SelectionRecord) => s.fileId).filter((fid: string) => visibleIds.has(fid));
       if (submitted.length > 0 && !opts?.quiet) {
         setPicked(new Set(submitted));
       }
@@ -642,15 +650,26 @@ export default function DeliverGalleryPage() {
    *  but can't take them back. On an OPEN round (no submittedAt — the owner
    *  reopened it), existing rows are just seed hearts: nothing is with the
    *  editor, everything toggles, and her next Send replaces the set. */
+  const fileIdSet = useMemo(() => new Set(files.map(f => f.id)), [files]);
+  /** Picks still waiting on an edit — the ones whose proof is still on the
+   *  page. Picks already turned into finished photos have left this set and
+   *  are counted through editedCount instead. */
   const submittedIds = useMemo(
-    () => delivery?.submittedAt ? new Set(serverSelections.map(s2 => s2.fileId)) : new Set<string>(),
-    [serverSelections, delivery?.submittedAt],
+    () => delivery?.submittedAt
+      ? new Set(serverSelections.map(s2 => s2.fileId).filter(fid => fileIdSet.has(fid)))
+      : new Set<string>(),
+    [serverSelections, delivery?.submittedAt, fileIdSet],
   );
   const limit = delivery?.selectionLimit ?? 0;
+  /** Finished photos already in the gallery (videos excluded). Spent
+   *  allowance: a reopened round with 14 edited out of 25 offers 11 more. */
+  const editedCount = delivery?.editedPhotoCount ?? 0;
+  const alreadyCount = editedCount + submittedIds.size;
+  const alreadyLabel = editedCount > 0 ? "already edited" : "already sent";
   /** The floor for one send. 0 means she must use the whole allowance, which
    *  is every gallery that predates the setting. */
   const minPerSend = (delivery?.selectionMinimum ?? 0) > 0 ? (delivery!.selectionMinimum as number) : limit;
-  const roomLeft = Math.max(0, limit - submittedIds.size);
+  const roomLeft = Math.max(0, limit - alreadyCount);
 
   /** Editing has started, or she's used the lot — either way she's done.
    *
@@ -677,7 +696,7 @@ export default function DeliverGalleryPage() {
    *  A view-only gallery (portfolio mode) kills the same routes for the same
    *  reason, permanently — it's work samples to browse, not files to keep. */
   const showingProofs = files.some(f => f.isProof) || delivery?.viewOnly === true;
-  const overage = Math.max(0, picked.size - (delivery?.selectionLimit ?? 0));
+  const overage = Math.max(0, editedCount + picked.size - limit);
   const perExtraCents = delivery?.perExtraPhotoCents ?? 0;
   const flatCents = delivery?.buyAllFlatCents ?? 0;
   const hasPerPhoto = perExtraCents > 0;
@@ -710,7 +729,7 @@ export default function DeliverGalleryPage() {
   const [allowShort, setAllowShort] = useState(false);
   /** New hearts in this round, on top of anything already sent. */
   const newPicks = useMemo(() => [...picked].filter(id => !submittedIds.has(id)), [picked, submittedIds]);
-  const target = Math.min(minPerSend, submittedIds.size + roomLeft) - submittedIds.size;
+  const target = Math.min(minPerSend, alreadyCount + roomLeft) - alreadyCount;
   const shortBy = Math.max(0, target - newPicks.length);
 
   async function startSubmit() {
@@ -723,7 +742,7 @@ export default function DeliverGalleryPage() {
     // go straight through and the other five were simply lost.
     if (shortBy > 0 && !allowShort) {
       toast.error(`You can still choose ${shortBy} more`, {
-        description: `${delivery?.selectionLimit} are included${submittedIds.size > 0 ? `, ${submittedIds.size} already sent` : ""}.`,
+        description: `${delivery?.selectionLimit} are included${alreadyCount > 0 ? `, ${alreadyCount} ${alreadyLabel}` : ""}.`,
       });
       return;
     }
@@ -1360,7 +1379,9 @@ export default function DeliverGalleryPage() {
                 </>
               ) : (
                 <>
-                  <strong>Choose the {delivery.selectionLimit} you'd like edited</strong>, then send them back with the button at the bottom.
+                  {alreadyCount > 0
+                    ? <><strong>Choose {roomLeft} more</strong> to be edited — {alreadyCount} {editedCount > 0 ? (alreadyCount === 1 ? "is already finished" : "are already finished") : (alreadyCount === 1 ? "is already sent" : "are already sent")} — then send them back with the button at the bottom.</>
+                    : <><strong>Choose the {delivery.selectionLimit} you'd like edited</strong>, then send them back with the button at the bottom.</>}
                   {hasPerPhoto && <> Need more? <strong>{money(perExtraCents)}</strong> per extra photo.</>}
                   {hasFlat && <> Or <strong>{money(flatCents)}</strong> to unlock all picks.</>}
                 </>
@@ -1617,9 +1638,9 @@ export default function DeliverGalleryPage() {
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-30">
             <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm min-w-0">
-                {submittedIds.size > 0 && newPicks.length === 0 ? (
+                {alreadyCount > 0 && newPicks.length === 0 ? (
                   <span className="text-slate-700">
-                    <strong>{submittedIds.size}</strong> sent · you can still choose <strong>{roomLeft}</strong> more
+                    <strong>{alreadyCount}</strong> {alreadyLabel} · you can still choose <strong>{roomLeft}</strong> more
                   </span>
                 ) : picked.size === 0 ? (
                   <span className="text-slate-700">
@@ -1631,8 +1652,8 @@ export default function DeliverGalleryPage() {
                   <>
                     {allPaid
                       ? <strong>{picked.size} picked</strong>
-                      : <><strong>{picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked</>}
-                    {submittedIds.size > 0 && <span className="text-slate-500"> · {submittedIds.size} already sent</span>}
+                      : <><strong>{editedCount + picked.size}</strong> of <strong>{delivery.selectionLimit}</strong> picked</>}
+                    {alreadyCount > 0 && <span className="text-slate-500"> · {alreadyCount} {alreadyLabel}</span>}
                     {shortBy > 0 && (
                       <span className="text-slate-500"> · {shortBy} to go</span>
                     )}
@@ -1665,7 +1686,7 @@ export default function DeliverGalleryPage() {
                   className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {newPicks.length === 0
-                    ? (submittedIds.size > 0 ? `Choose up to ${roomLeft} more` : allPaid ? "Pick your favorites" : `Choose ${delivery.selectionLimit}`)
+                    ? (alreadyCount > 0 ? `Choose up to ${roomLeft} more` : allPaid ? "Pick your favorites" : `Choose ${delivery.selectionLimit}`)
                     : shortBy > 0 && !allowShort
                       ? `${shortBy} more to go`
                       : submittedIds.size > 0
@@ -1688,7 +1709,7 @@ export default function DeliverGalleryPage() {
                 { title: "Welcome", body: `Have a look through ${delivery.title}. Tap any photo to see it full-size.` },
                 allPaid
                   ? { title: "Choose your favorites", body: `Tap the ♥ on any photos you'd like edited — each one is ${money(perExtraCents)}. Tap again to change your mind — nothing is final until you send them.` }
-                  : { title: `Choose your ${delivery.selectionLimit}`, body: `Tap the ♥ on the ${delivery.selectionLimit} you'd like edited. Tap again to change your mind — nothing is final until you send them.` },
+                  : { title: `Choose your ${alreadyCount > 0 ? roomLeft : delivery.selectionLimit}`, body: `Tap the ♥ on the ${alreadyCount > 0 ? roomLeft : delivery.selectionLimit} you'd like edited. Tap again to change your mind — nothing is final until you send them.` },
                 { title: "Send them back", body: `When you're happy, press the button at the bottom to send your picks. We'll edit those and send the finished photos over.` },
               ]
             : [
