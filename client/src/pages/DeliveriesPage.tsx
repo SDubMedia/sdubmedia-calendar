@@ -170,6 +170,7 @@ function DeliveriesList() {
   const renderGalleryCard = (d: typeof galleries[number]) => {
     const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
     const pickCount = data.deliverySelections.filter(s => s.deliveryId === d.id).length;
+    const editingCount = data.deliveryFiles.filter(f => f.deliveryId === d.id && f.stage === "proof" && !!f.assignedCrewMemberId).length;
     const project = data.projects.find(p => p.id === d.projectId);
     return (
       <Link key={d.id} href={`/deliveries/${d.id}`}>
@@ -195,6 +196,7 @@ function DeliveriesList() {
           <div className="flex items-center gap-4 text-xs text-slate-400">
             <span>{fileCount} photo{fileCount === 1 ? "" : "s"}</span>
             {d.selectionLimit > 0 && <span>{pickCount} pick{pickCount === 1 ? "" : "s"} of {d.selectionLimit}</span>}
+            {editingCount > 0 && <span className="text-amber-300">{editingCount} in editing</span>}
             {d.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Locked</span>}
           </div>
           {d.clientName && <p className="text-xs text-slate-500 mt-2">Submitted by {d.clientName}</p>}
@@ -587,6 +589,7 @@ function DeliveryDetail({ id }: { id: string }) {
   const [sendToEditorOpen, setSendToEditorOpen] = useState(false);
   const [sendingToEditor, setSendingToEditor] = useState(false);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(true);
   const [savingToFolder, setSavingToFolder] = useState(false);
   // Staff default to their assigned subset when one exists — the whole point
   // is not making her hunt through everything else to find her batch.
@@ -1138,6 +1141,21 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   }
 
+  // Take photos back out of an editor's queue. Clears the assignment only —
+  // the files, their stage and any client picks are untouched. No
+  // notification: the editor's "Assigned to you" view simply shrinks.
+  async function unsendFromEditor(fileIds: string[]) {
+    if (fileIds.length === 0) return;
+    try {
+      await Promise.all(fileIds.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: null, assignedAt: null })));
+      toast.success(`Took ${fileIds.length} back from the editing queue`);
+      setPicked(new Set());
+      setPickAnchor(null);
+    } catch (err) {
+      toast.error("Couldn't unsend", { description: err instanceof Error ? err.message : "Try again" });
+    }
+  }
+
   async function handleDeleteFile(fileId: string) {
     if (!(await confirm({ title: "Delete this photo?", description: "This also removes it from the client gallery.", destructive: true, confirmLabel: "Delete" }))) return;
     try {
@@ -1334,6 +1352,23 @@ function DeliveryDetail({ id }: { id: string }) {
   const editorCandidates = editorCandidateIds
     .map(cid => data.crewMembers.find(c => c.id === cid))
     .filter((c): c is CrewMember => !!c);
+  // The editing queue: proofs currently sent to someone, grouped by editor.
+  // Finals never sit here — the assignment clears when the finished file
+  // lands (crew-register-file.ts), so this IS the outstanding work.
+  const pickedAssignedIds = pickedIds.filter(fid => !!files.find(f => f.id === fid)?.assignedCrewMemberId);
+  const queueByEditor: EditingQueueGroup[] = Array.from(
+    files
+      .filter(f => f.stage === "proof" && !!f.assignedCrewMemberId)
+      .reduce((m, f) => {
+        const k = f.assignedCrewMemberId as string;
+        m.set(k, [...(m.get(k) || []), f]);
+        return m;
+      }, new Map<string, DeliveryFile[]>()),
+  ).map(([crewMemberId, items]) => ({
+    crewMemberId,
+    name: data.crewMembers.find(c => c.id === crewMemberId)?.name || "Editor",
+    files: items,
+  }));
   const agentClient = project ? data.clients.find(c => c.id === project.clientId) : null;
   // "Agent" is real-estate language and reads as a mistake on a portrait,
   // school or business shoot. Use the client's own name where we have it, and
@@ -2042,6 +2077,16 @@ function DeliveryDetail({ id }: { id: string }) {
         </div>
       )}
 
+      {!readOnly && queueByEditor.length > 0 && (
+        <EditingQueueSection
+          groups={queueByEditor}
+          thumbFor={(f) => thumbUrls.get(f.id) || signedUrls.get(f.id) || ""}
+          open={queueOpen}
+          onToggle={() => setQueueOpen(v => !v)}
+          onUnsend={unsendFromEditor}
+        />
+      )}
+
       {gridFiles.length === 0 ? (
         <p className="text-center text-sm text-slate-500 py-8">
           {!proofingEnabled ? "No photos or videos yet."
@@ -2091,6 +2136,14 @@ function DeliveryDetail({ id }: { id: string }) {
                   className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
                 >
                   Send {pickedIds.length} to editor
+                </button>
+              )}
+              {!readOnly && pickedAssignedIds.length > 0 && (
+                <button
+                  onClick={() => unsendFromEditor(pickedAssignedIds)}
+                  className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06]"
+                >
+                  Unsend {pickedAssignedIds.length} from editor
                 </button>
               )}
               {!readOnly && (
@@ -2205,12 +2258,16 @@ function DeliveryDetail({ id }: { id: string }) {
                           <span className="text-[10px] text-white/80 font-mono">{formatDuration(f.durationSeconds)}</span>
                         )}
                         {!readOnly && f.stage === "proof" && f.assignedCrewMemberId && (
-                          <span
-                            className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/10 text-white/70"
-                            title="Sent to this editor — clears once she delivers the final"
+                          <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); unsendFromEditor([f.id]); }}
+                            className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-100 inline-flex items-center gap-1"
+                            title="Sent to this editor — clears when she delivers the final. Click to take it back."
                           >
                             → {data.crewMembers.find(c => c.id === f.assignedCrewMemberId)?.name?.split(" ")[0] || "editor"}
-                          </span>
+                            <X className="w-2.5 h-2.5" />
+                          </button>
                         )}
                         {!readOnly && f.folderId && (
                           <span
@@ -3872,6 +3929,82 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface EditingQueueGroup {
+  crewMemberId: string;
+  name: string;
+  files: DeliveryFile[];
+}
+
+/** Owner's view of what's out with editors right now, grouped by editor.
+ *  Every thumbnail and every group can be taken back from here. */
+function EditingQueueSection({ groups, thumbFor, open, onToggle, onUnsend }: {
+  groups: EditingQueueGroup[];
+  thumbFor: (f: DeliveryFile) => string;
+  open: boolean;
+  onToggle: () => void;
+  onUnsend: (fileIds: string[]) => void;
+}) {
+  const total = groups.reduce((n, g) => n + g.files.length, 0);
+  const sentLabel = (g: EditingQueueGroup) => {
+    const stamps = g.files.map(f => f.assignedAt).filter((x): x is string => !!x).sort();
+    if (stamps.length === 0) return "";
+    const d = new Date(stamps[0]);
+    return isNaN(d.getTime()) ? "" : ` · sent ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  };
+  return (
+    <div className="mb-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] overflow-hidden shrink-0">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left">
+        <span className="text-sm font-semibold text-white min-w-0">
+          Editing queue{" "}
+          <span className="text-slate-400 font-normal">· {total} photo{total === 1 ? "" : "s"} with {groups.length} editor{groups.length === 1 ? "" : "s"}</span>
+        </span>
+        <span className="text-xs text-slate-500 shrink-0">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          {groups.map(g => (
+            <div key={g.crewMemberId}>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span className="text-xs text-slate-300 min-w-0">
+                  <strong className="text-white">{g.name}</strong> · {g.files.length} waiting{sentLabel(g)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onUnsend(g.files.map(f => f.id))}
+                  className="text-[11px] px-2 py-1 rounded border border-white/15 hover:bg-white/[0.06] shrink-0"
+                >
+                  Unsend all {g.files.length}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {g.files.map(f => {
+                  const thumb = thumbFor(f);
+                  return (
+                    <div key={f.id} className="relative w-14 h-14 rounded overflow-hidden bg-white/5" title={f.originalName}>
+                      {thumb
+                        ? <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        : <div className="w-full h-full flex items-center justify-center text-slate-600"><ImageIcon className="w-4 h-4" /></div>}
+                      <button
+                        type="button"
+                        onClick={() => onUnsend([f.id])}
+                        aria-label={`Unsend ${f.originalName}`}
+                        title="Take this one back"
+                        className="absolute top-0.5 right-0.5 p-0.5 rounded bg-black/60 text-white/80 hover:bg-red-500/80"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
