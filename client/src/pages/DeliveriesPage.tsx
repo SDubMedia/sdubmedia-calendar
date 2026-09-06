@@ -2620,6 +2620,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
   const pickedCoverUrl = coverFile ? signedUrls.get(coverFile.id) : undefined;
   const [ownCoverUrl, setOwnCoverUrl] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverDragOver, setCoverDragOver] = useState(false);
   // An uploaded cover takes precedence, matching what the client sees.
   const shownCoverUrl = ownCoverUrl || pickedCoverUrl;
 
@@ -2776,19 +2777,41 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
       {delivery.coverLayout !== "minimal" && (
         <div className="mb-4">
           <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Cover photo</label>
-          <button
-            onClick={() => setPickerOpen(true)}
-            disabled={files.length === 0 && !ownCoverUrl}
-            className="w-full aspect-[3/1] bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
+          {/* Drop target as well as a button. The whole gallery page is also a
+              drop zone for photos, so every drag event here stops propagating —
+              otherwise a cover dropped on this box would ALSO land in the
+              gallery as a photo, and the page's drop overlay would flash. */}
+          <div
+            className={`relative rounded-lg ${coverDragOver ? "ring-2 ring-[#0088ff]" : ""}`}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setCoverDragOver(true); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!coverDragOver) setCoverDragOver(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCoverDragOver(false); }}
+            onDrop={(e) => {
+              e.preventDefault(); e.stopPropagation(); setCoverDragOver(false);
+              const f = Array.from(e.dataTransfer.files).find(x => x.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif|tiff?)$/i.test(x.name));
+              if (!f) { toast.error("Drop an image to use as the cover"); return; }
+              if (!uploadingCover) uploadCover(f);
+            }}
           >
-            {shownCoverUrl ? (
-              <img src={shownCoverUrl} alt="" className="w-full h-full object-cover" />
-            ) : files.length === 0 ? (
-              "Upload a cover, or add photos first"
-            ) : (
-              `Pick a cover (defaults to first photo)`
+            <button
+              onClick={() => setPickerOpen(true)}
+              disabled={files.length === 0 && !ownCoverUrl}
+              className="w-full aspect-[3/1] bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
+            >
+              {shownCoverUrl ? (
+                <img src={shownCoverUrl} alt="" className="w-full h-full object-cover" />
+              ) : files.length === 0 ? (
+                "Drop a cover photo here, or add photos first"
+              ) : (
+                `Pick a cover, or drop a photo here`
+              )}
+            </button>
+            {(coverDragOver || uploadingCover) && (
+              <div className="pointer-events-none absolute inset-0 rounded-lg bg-black/60 flex items-center justify-center text-sm font-semibold text-white">
+                {uploadingCover ? "Uploading cover…" : "Drop to use as the cover"}
+              </div>
             )}
-          </button>
+          </div>
           {/* Uploading the cover separately is the only way to have one that
               is full quality AND survives deleting the photo it came from:
               gallery photos are re-encoded to 80% on upload, and a cover
