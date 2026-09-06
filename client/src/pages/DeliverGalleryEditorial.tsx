@@ -208,8 +208,23 @@ export function EditorialIntro({ eyebrow, headline, children, signature, action 
 // ---------------------------------------------------------------
 function FilmPoster({ f, vertical, onDownload }: { f: EdFile; vertical: boolean; onDownload?: (f: EdFile) => void }) {
   const [playing, setPlaying] = useState(false);
+  // The <video> gets its src only when she presses play. With it set up
+  // front, Safari starts pulling bytes of every film on the page the moment
+  // it loads — preload="none" or not — which made a films-only gallery
+  // (The Webb School: three films, no photos) crawl before anything showed.
+  const [armed, setArmed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const play = () => { const v = videoRef.current; if (!v) return; setPlaying(true); v.controls = true; v.play().catch(() => setPlaying(false)); };
+  const play = () => {
+    setPlaying(true);
+    setArmed(true);
+    // src lands on the next render; play once the element has it.
+    requestAnimationFrame(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      v.controls = true;
+      v.play().catch(() => setPlaying(false));
+    });
+  };
   const label = (f.width ?? 0) >= 3840 ? "4K" : (f.height ?? 0) >= 1080 || (f.width ?? 0) >= 1080 ? "HD" : "";
   return (
     <div className="relative rounded-[18px] overflow-hidden" style={{ background: "#111", boxShadow: "0 40px 120px rgba(0,0,0,.5)", width: vertical ? "min(100%, calc(72vh * 9 / 16))" : "100%" }}>
@@ -218,7 +233,7 @@ function FilmPoster({ f, vertical, onDownload }: { f: EdFile; vertical: boolean;
         preload="none"
         playsInline
         poster={f.thumbnailUrl || undefined}
-        src={f.url}
+        src={armed ? f.url : undefined}
         className="block w-full h-auto object-cover"
         style={{ aspectRatio: vertical ? "9 / 16" : "16 / 9" }}
         onPause={() => { const v = videoRef.current; if (v && (v.currentTime === 0 || v.ended)) setPlaying(false); }}

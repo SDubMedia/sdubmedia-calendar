@@ -1317,7 +1317,7 @@ export default function DeliverGalleryPage() {
           <EditorialStyles />
           <EditorialHero
             heroRef={heroRef}
-            imageUrl={coverUrl || allPhotos[0]?.url || ""}
+            imageUrl={coverUrl || allPhotos[0]?.url || allFilms.find(f => f.thumbnailUrl)?.thumbnailUrl || ""}
             presenter={org?.name ? `${org.name} presents` : ""}
             title={delivery.title}
             subtitle={[delivery.coverSubtitle, delivery.coverDate].filter(Boolean).join(" · ")}
