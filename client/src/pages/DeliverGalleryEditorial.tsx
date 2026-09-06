@@ -435,19 +435,19 @@ export function EditorialPhotos({ photos, indexOf, folders, heading, count, wate
 // ---------------------------------------------------------------
 // Yours to keep
 // ---------------------------------------------------------------
-export function EditorialKeep({ headline, photoCount, filmCount, maxW, maxH, totalBytes, zipping, selecting, onDownloadAll, onToggleSelect }: {
-  headline: string; photoCount: number; filmCount: number; maxW: number; maxH: number; totalBytes: number;
+export function EditorialKeep({ headline, business, photoCount, filmCount, maxW, maxH, totalBytes, zipping, selecting, onDownloadAll, onToggleSelect }: {
+  headline: string; business?: boolean; photoCount: number; filmCount: number; maxW: number; maxH: number; totalBytes: number;
   zipping: boolean; selecting: boolean; onDownloadAll: () => void; onToggleSelect: () => void;
 }) {
   const total = photoCount + filmCount;
   return (
     <section id="keep" className="text-center" style={{ background: "#f5f5f7", padding: `${SECTION_PAD} 0` }}>
       <div className="mx-auto" style={WRAP}>
-        <Eyebrow>Yours to keep</Eyebrow>
+        <Eyebrow>{business ? "Ready to use" : "Yours to keep"}</Eyebrow>
         <Reveal delay={0.1} className="mt-4"><p className="m-0 font-semibold" style={{ fontSize: "clamp(88px, 14vw, 160px)", lineHeight: 1, letterSpacing: "-.04em", color: INK }}>{total}</p></Reveal>
         <Headline className="mt-4">{headline}</Headline>
         <Reveal delay={0.2} className="mx-auto mt-4" style={{ fontSize: "clamp(19px, 2vw, 24px)", lineHeight: 1.4, letterSpacing: "-.01em", maxWidth: "34em", color: INK }}>
-          Download everything at once, or pick out a few.
+          {business ? "Download the full set, or just what you need. Every file is final and full quality." : "Download everything at once, or pick out a few."}
         </Reveal>
         <Reveal delay={0.3} className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Quiet onClick={onDownloadAll} disabled={zipping || selecting}>{zipping ? "Preparing…" : "Download everything"} <DownloadIcon /></Quiet>

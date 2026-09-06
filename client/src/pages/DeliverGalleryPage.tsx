@@ -1407,6 +1407,7 @@ export default function DeliverGalleryPage() {
           {!showingProofs && files.length > 0 && (
             <EditorialKeep
               headline={keepHeadline(allPhotos.length, allFilms.length)}
+              business={business}
               photoCount={allPhotos.length}
               filmCount={allFilms.length}
               maxW={Math.max(0, ...allPhotos.map(f => f.width ?? 0))}
