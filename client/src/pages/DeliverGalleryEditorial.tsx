@@ -383,9 +383,11 @@ export function EditorialPhotos({ photos, indexOf, folders, heading, count, wate
     <section style={{ padding: `0 0 ${SECTION_PAD}` }}>
       <div className="mx-auto" style={WRAP}>
         <div style={{ height: SECTION_PAD }} />
-        <Reveal className="flex items-baseline justify-between gap-6 mb-8">
-          <h2 className="font-semibold m-0" style={{ fontFamily: "inherit",  fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: INK }}>{heading}</h2>
-          <span className="text-[12px] font-medium uppercase shrink-0" style={{ letterSpacing: ".14em", color: MUTE }}>{count}</span>
+        {/* Wraps: a long count ("138 photographs across one gallery") with
+            shrink-0 pushed the whole page wider than a phone (CBSR hub). */}
+        <Reveal className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 mb-8">
+          <h2 className="font-semibold m-0 min-w-0" style={{ fontFamily: "inherit", fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: INK }}>{heading}</h2>
+          <span className="text-[12px] font-medium uppercase" style={{ letterSpacing: ".14em", color: MUTE }}>{count}</span>
         </Reveal>
         <div
           className="relative"
