@@ -155,13 +155,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .single();
     if (dErr || !delivery) return res.status(404).json({ error: "Delivery not found" });
     if (delivery.org_id !== orgId) return res.status(403).json({ error: "Not your delivery" });
-    // A delivered gallery stops taking new DELIVERABLES. Presentation-only
-    // uploads stay open: a video's thumbnail frame or the cover image can
-    // be changed at any time (Geoff, 2026-09-05 — Webb School videos), since
-    // neither adds a file the client receives.
-    if (delivery.status === "delivered" && kind !== "thumbnail" && kind !== "cover") {
-      return res.status(400).json({ error: "Delivery already finalized" });
-    }
+    // No "already delivered" lock. A delivered gallery keeps taking files:
+    // CBSR's weekly edits land in one gallery for months, and files over
+    // 100MB (the multipart route) were never locked anyway. Uploading to
+    // the CBSR Nashville gallery failed with "all files failed" (2026-09-06)
+    // because the small-file route still refused delivered galleries.
 
     // 2. Check Pro tier (unless this is org_sdubmedia — Geoff bypasses)
     const isOwnerOrg = orgId === "org_sdubmedia";
