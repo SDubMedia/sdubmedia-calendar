@@ -18,7 +18,7 @@ const BROWSE_QUALITY = 0.8;
 /** Returns null when the image is already no larger than the cap (nothing
  *  to gain) or when the browser can't decode it — callers fall back to the
  *  full file, which is exactly what happened before this existed. */
-export async function makeBrowseCopy(file: Blob, maxEdge = BROWSE_MAX_EDGE): Promise<Blob | null> {
+export async function makeBrowseCopy(file: Blob, maxEdge = BROWSE_MAX_EDGE, quality = BROWSE_QUALITY): Promise<Blob | null> {
   try {
     const bitmap = await createImageBitmap(file);
     const { width, height } = bitmap;
@@ -32,7 +32,7 @@ export async function makeBrowseCopy(file: Blob, maxEdge = BROWSE_MAX_EDGE): Pro
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close?.();
-    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", BROWSE_QUALITY));
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
   } catch (err) {
     console.warn("Browse copy skipped — full file will be browsed instead:", err);
     return null;

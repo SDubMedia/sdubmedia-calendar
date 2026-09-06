@@ -2646,26 +2646,30 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
     return () => { cancelled = true; };
   }, [delivery.coverStoragePath, delivery.id]);
 
-  // NOTE: deliberately does NOT run the file through toUploadableImage. Every
-  // gallery photo is re-encoded to JPEG at 80% so galleries stay light, which
-  // is the right trade for a grid of thumbnails and the wrong one for a
-  // full-screen hero — that re-encode is exactly why the cover looked soft.
+  // The cover is a full-screen hero, so it gets a generous 2880px edge at
+  // 85% rather than the grid's 2048/80 — sharp on a retina laptop, but not
+  // the 6903px, 6MB frame CBSR Nashville's cover was (2026-09-06), which
+  // every visitor downloaded before the page could show anything.
   async function uploadCover(file: File) {
     setUploadingCover(true);
     try {
       const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
+      const resized = await makeBrowseCopy(file, 2880, 0.85);
+      const fileName = resized ? file.name.replace(/\.[^.]+$/, "") + ".jpg" : file.name;
+      const contentType = resized ? "image/jpeg" : (file.type || "image/jpeg");
+      const upload: File = resized ? new File([resized], fileName, { type: "image/jpeg" }) : file;
       const token = await getAuthToken();
       const res = await fetch("/api/delivery-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          deliveryId: delivery.id, fileName: file.name,
-          contentType: file.type || "image/jpeg", sizeBytes: file.size, kind: "cover",
+          deliveryId: delivery.id, fileName,
+          contentType, sizeBytes: upload.size, kind: "cover",
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      await putFileWithProgress(data.uploadUrl, file, () => {});
+      await putFileWithProgress(data.uploadUrl, upload, () => {});
       await onUpdate({
         coverStoragePath: data.storagePath,
         coverWidth: dims.width ?? 0,
