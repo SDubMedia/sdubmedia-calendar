@@ -76,7 +76,7 @@ interface FolderItem {
 function Lightbox({
   file, index, total, prevUrl, nextUrl, slideshowPlaying, canPick, isPicked,
   onPick, onToggleSlideshow, onDownload, canDownload, onPrev, onNext, onClose,
-  watermarkText, watermarkUseLogo, orgLogoUrl,
+  watermarkText, watermarkUseLogo, orgLogoUrl, editorial,
 }: {
   file: FileItem;
   index: number;
@@ -96,6 +96,9 @@ function Lightbox({
   watermarkText: string | null;
   watermarkUseLogo?: boolean;
   orgLogoUrl?: string | null;
+  /** Editorial galleries: quieter chrome, crossfade between photos, an ink
+   *  pick button instead of a red one. Behaviour is identical. */
+  editorial?: boolean;
 }) {
   const isVideo = file.mediaType === "video";
   const [zoom, setZoom] = useState(1);
@@ -169,7 +172,7 @@ function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 bg-black/95 z-40 flex items-center justify-center select-none"
+      className={`fixed inset-0 ${editorial ? "bg-black" : "bg-black/95"} z-40 flex items-center justify-center select-none`}
       onClick={onClose}
       style={{ touchAction: "none" }}
     >
@@ -200,7 +203,7 @@ function Lightbox({
               className="max-w-[100vw] max-h-[100vh] object-contain"
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transition: gesturing ? "none" : "transform 160ms ease-out",
+                transition: gesturing ? "none" : editorial ? "transform 160ms ease-out, opacity 350ms ease" : "transform 160ms ease-out",
                 cursor: zoom > 1 ? "grab" : "zoom-in",
                 opacity: loaded ? 1 : 0,
               }}
@@ -238,16 +241,16 @@ function Lightbox({
       </div>
 
       {/* Top bar */}
-      <div className="absolute top-0 inset-x-0 flex items-center justify-between p-4 text-white/80" onClick={(e) => e.stopPropagation()}>
+      <div className={`absolute top-0 inset-x-0 flex items-center justify-between p-4 ${editorial ? "text-white/60" : "text-white/80"}`} onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onToggleSlideshow}
-          className="text-xs uppercase tracking-widest hover:text-white px-2 py-2"
+          className={`${editorial ? "text-[12px] tracking-[.14em]" : "text-xs tracking-widest"} uppercase hover:text-white px-2 py-2`}
           aria-label={slideshowPlaying ? "Pause slideshow" : "Play slideshow"}
-        >{slideshowPlaying ? "❚❚ Pause" : "▶ Slideshow"}</button>
+        >{slideshowPlaying ? (editorial ? "Pause" : "❚❚ Pause") : (editorial ? "Slideshow" : "▶ Slideshow")}</button>
 
         <div className="text-center min-w-0 px-2">
-          <p className="text-[11px] tracking-wider">{index + 1} of {total}</p>
-          <p className="text-[11px] text-white/50 truncate max-w-[50vw]">{file.originalName.replace(/\.[^.]+$/, "")}</p>
+          <p className={`text-[11px] ${editorial ? "tracking-[.14em] text-white/50" : "tracking-wider"}`}>{editorial ? `${index + 1} / ${total}` : `${index + 1} of ${total}`}</p>
+          {!editorial && <p className="text-[11px] text-white/50 truncate max-w-[50vw]">{file.originalName.replace(/\.[^.]+$/, "")}</p>}
         </div>
 
         <div className="flex items-center gap-1">
@@ -264,23 +267,27 @@ function Lightbox({
       {index > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onPrev(); }}
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl px-4 py-6"
+          className={`absolute left-2 top-1/2 -translate-y-1/2 hover:text-white px-4 py-6 ${editorial ? "text-white/45" : "text-white/60 text-4xl"}`}
           aria-label="Previous"
-        >‹</button>
+        >{editorial ? <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg> : "‹"}</button>
       )}
       {index < total - 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNext(); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-4xl px-4 py-6"
+          className={`absolute right-2 top-1/2 -translate-y-1/2 hover:text-white px-4 py-6 ${editorial ? "text-white/45" : "text-white/60 text-4xl"}`}
           aria-label="Next"
-        >›</button>
+        >{editorial ? <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg> : "›"}</button>
       )}
 
       {canPick && (
         <button
           onClick={(e) => { e.stopPropagation(); onPick(); }}
-          className={`absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-semibold ${isPicked ? "bg-red-500 text-white" : "bg-white text-black"}`}
-        >{isPicked ? "♥ Picked" : "♡ Pick this one"}</button>
+          className={`absolute bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-semibold ${
+            editorial
+              ? (isPicked ? "bg-[#1d1d1f] text-white border border-white/30" : "bg-white text-[#1d1d1f]")
+              : (isPicked ? "bg-red-500 text-white" : "bg-white text-black")
+          }`}
+        >{isPicked ? (editorial ? "♥ Picked" : "♥ Picked") : (editorial ? "♡ Pick" : "♡ Pick this one")}</button>
       )}
     </div>
   );
@@ -1924,6 +1931,7 @@ export default function DeliverGalleryPage() {
             watermarkText={delivery.watermarkText}
             watermarkUseLogo={delivery.watermarkUseLogo}
             orgLogoUrl={org?.logoUrl}
+            editorial={editorial}
           />
         )}
 
