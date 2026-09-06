@@ -42,7 +42,9 @@ const supabase = createClient(
 );
 
 // 5GB is S3's ceiling for a single PUT and a sane ceiling for a finished film.
-const MAX_MULTIPART_BYTES = 5 * 1024 * 1024 * 1024;
+// 50GB. A long 4K master runs past 5GB (CBSR Nashville weekly edit, 2026-09-06,
+// rejected with 413). R2 takes up to 5TB per object; 10,000 × 32MB parts is 320GB.
+const MAX_MULTIPART_BYTES = 50 * 1024 * 1024 * 1024;
 // S3 requires every part except the last to be >= 5MB, and allows at most
 // 10,000 parts. 32MB keeps a 5GB file to ~160 parts: few enough that the
 // per-part overhead is negligible, small enough that a failed part is cheap
