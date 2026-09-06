@@ -19,7 +19,7 @@ import { useRoute } from "wouter";
 import { toast } from "sonner";
 import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySections";
 import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, ED_FONT } from "./DeliverGalleryEditorial";
-import { countWord } from "@/lib/galleryCopy";
+import { countWord, applyGalleryNote, defaultGalleryNote } from "@/lib/galleryCopy";
 
 interface FileItem {
   id: string;
@@ -366,6 +366,8 @@ interface DeliveryInfo {
   // old cached response can't flip a real-estate gallery.
   presentation?: "editorial" | "listing";
   recipientFirstName?: string;
+  // The studio's note, raw with merge fields; empty = the default.
+  note?: string;
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
@@ -1299,8 +1301,8 @@ export default function DeliverGalleryPage() {
               </p>
             )}
             {!showingProofs && (
-              <p className="m-0">
-                Thank you for having us. Everything here is yours to keep{allFilms.length > 0 ? " — the film first, then the photographs" : ""}, in the order we made them.
+              <p className="m-0" style={{ whiteSpace: "pre-line" }}>
+                {applyGalleryNote(delivery.note?.trim() || defaultGalleryNote(allFilms.length > 0), { firstName: delivery.recipientFirstName, studio: org?.name })}
               </p>
             )}
           </EditorialIntro>

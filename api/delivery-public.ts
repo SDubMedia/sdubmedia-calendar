@@ -338,6 +338,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
       previewingFinals,
       presentation,
       recipientFirstName,
+      // Raw, with merge fields — the page resolves them so the same note
+      // reads correctly whether or not we know her first name.
+      note: typeof (delivery as unknown as { note?: string }).note === "string" ? (delivery as unknown as { note?: string }).note : "",
       // Finished photos already here (videos excluded) — spent allowance,
       // so a reopened round offers limit minus these. See _pickAllowance.ts.
       editedPhotoCount: countEditedPhotos(allRows),

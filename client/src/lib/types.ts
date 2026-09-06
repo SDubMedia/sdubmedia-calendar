@@ -1991,6 +1991,10 @@ export interface Delivery {
   // to JPEG at 80% to keep galleries fast, which is right for real estate and
   // wrong for portrait work where the file itself is the product.
   keepOriginals?: boolean;
+  /** A personal note shown in the editorial gallery's statement section.
+   *  Merge fields {{first_name}} and {{studio}}. Empty = the default in
+   *  client/src/lib/galleryCopy.ts. Optional so older fixtures still type. */
+  note?: string;
   perExtraPhotoCents: number;    // 0 = no per-photo upsell
   buyAllFlatCents: number;       // 0 = no flat unlock-all option
 

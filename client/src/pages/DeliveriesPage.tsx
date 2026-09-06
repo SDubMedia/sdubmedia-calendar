@@ -24,6 +24,7 @@ import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryCont
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
 import { chipFieldToText } from "@/lib/chipFieldText";
+import { defaultGalleryNote } from "@/lib/galleryCopy";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -1808,6 +1809,13 @@ function DeliveryDetail({ id }: { id: string }) {
             alwaysOn={!galleryIsRealEstate}
             onUpdate={(v) => updateDelivery(id, { keepOriginals: v })}
           />
+          {!galleryIsRealEstate && (
+            <NotePanel
+              note={delivery.note ?? ""}
+              hasFilms={files.some(f => f.mediaType === "video")}
+              onSave={(v) => updateDelivery(id, { note: v })}
+            />
+          )}
         </>
       )}
 
@@ -3829,6 +3837,48 @@ function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: bo
           </span>
         </label>
       )}
+    </div>
+  );
+}
+
+/** The studio's note under the editorial gallery's headline. Empty means
+ *  the default, which is shown as the placeholder so the owner reads exactly
+ *  what the client will. Saves on blur; never resets from props mid-edit. */
+function NotePanel({ note, hasFilms, onSave }: { note: string; hasFilms: boolean; onSave: (v: string) => Promise<void> }) {
+  const [draft, setDraft] = useState(note);
+  const [saving, setSaving] = useState(false);
+  const save = async (value: string) => {
+    if (value === note) return;
+    setSaving(true);
+    try {
+      await onSave(value);
+      toast.success(value ? "Note saved" : "Back to the default note");
+    } catch (err) {
+      toast.error("Couldn't save the note", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Note to the client</h3>
+      <p className="text-xs text-slate-500 mb-3">
+        Shown under the headline on the gallery, signed by the studio. <span className="font-mono">{"{{first_name}}"}</span> and <span className="font-mono">{"{{studio}}"}</span> fill in automatically. Leave it empty to use the default.
+      </p>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => save(draft.trim())}
+        rows={4}
+        placeholder={defaultGalleryNote(hasFilms)}
+        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+        <span className="text-[11px] text-slate-500">{saving ? "Saving…" : draft.trim() ? "Custom note" : "Using the default"}</span>
+        {draft.trim() && (
+          <button type="button" onClick={() => { setDraft(""); save(""); }} className="text-[11px] text-[#0088ff] hover:underline">Use the default</button>
+        )}
+      </div>
     </div>
   );
 }
