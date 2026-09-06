@@ -94,7 +94,7 @@ const Eyebrow = ({ children, dark }: { children: ReactNode; dark?: boolean }) =>
 );
 const Headline = ({ children, dark, className = "" }: { children: ReactNode; dark?: boolean; className?: string }) => (
   <Reveal delay={0.1} className={className}>
-    <h2 className="font-semibold m-0" style={{ fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: dark ? "#fff" : INK }}>{children}</h2>
+    <h2 className="font-semibold m-0" style={{ fontFamily: "inherit",  fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: dark ? "#fff" : INK }}>{children}</h2>
   </Reveal>
 );
 const Quiet = ({ children, onClick, href, dark, disabled }: { children: ReactNode; onClick?: () => void; href?: string; dark?: boolean; disabled?: boolean }) => {
@@ -122,7 +122,7 @@ export function EditorialHero({ heroRef, imageUrl, presenter, title, subtitle, p
       <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,.15) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 100%)" }} />
       <div className="absolute left-0 right-0 text-center text-white px-6" style={{ bottom: "clamp(56px, 10vh, 120px)" }}>
         {presenter && <div className="ed-fade text-[12px] font-medium uppercase mb-[18px]" style={{ letterSpacing: ".14em", color: "rgba(255,255,255,.72)" }}>{presenter}</div>}
-        <h1 className="ed-fade ed-fade-2 m-0 font-semibold" style={{ fontSize: "clamp(40px, 7vw, 80px)", lineHeight: 1.05, letterSpacing: "-.02em", textShadow: "0 2px 30px rgba(0,0,0,.25)" }}>{title}</h1>
+        <h1 className="ed-fade ed-fade-2 m-0 font-semibold" style={{ fontFamily: "inherit",  fontSize: "clamp(40px, 7vw, 80px)", lineHeight: 1.05, letterSpacing: "-.02em", textShadow: "0 2px 30px rgba(0,0,0,.25)" }}>{title}</h1>
         {subtitle && <div className="ed-fade ed-fade-3 mt-[18px] text-[17px]" style={{ color: "rgba(255,255,255,.8)", letterSpacing: "-.01em" }}>{subtitle}</div>}
       </div>
       <div className="ed-cue absolute left-1/2 bottom-[22px]" style={{ color: "rgba(255,255,255,.7)" }}>
@@ -384,7 +384,7 @@ export function EditorialPhotos({ photos, indexOf, folders, heading, count, wate
       <div className="mx-auto" style={WRAP}>
         <div style={{ height: SECTION_PAD }} />
         <Reveal className="flex items-baseline justify-between gap-6 mb-8">
-          <h2 className="font-semibold m-0" style={{ fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: INK }}>{heading}</h2>
+          <h2 className="font-semibold m-0" style={{ fontFamily: "inherit",  fontSize: "clamp(32px, 4.5vw, 56px)", lineHeight: 1.08, letterSpacing: "-.02em", color: INK }}>{heading}</h2>
           <span className="text-[12px] font-medium uppercase shrink-0" style={{ letterSpacing: ".14em", color: MUTE }}>{count}</span>
         </Reveal>
         <div
@@ -406,7 +406,7 @@ export function EditorialPhotos({ photos, indexOf, folders, heading, count, wate
                 {ch.name && (
                   <Reveal style={{ paddingTop: ci === 0 ? 0 : "clamp(48px, 7vh, 96px)" }}>
                     <div className="text-[12px] font-medium uppercase mb-2" style={{ letterSpacing: ".14em", color: MUTE }}>Chapter</div>
-                    <h3 className="m-0 font-semibold" style={{ fontSize: "clamp(24px, 3vw, 36px)", letterSpacing: "-.02em", lineHeight: 1.1, color: INK }}>{ch.name}</h3>
+                    <h3 className="m-0 font-semibold" style={{ fontFamily: "inherit",  fontSize: "clamp(24px, 3vw, 36px)", letterSpacing: "-.02em", lineHeight: 1.1, color: INK }}>{ch.name}</h3>
                   </Reveal>
                 )}
                 {ch.rows.map((row, ri) => (
@@ -502,7 +502,7 @@ export function InvitationGate({ presenter, title, kind, value, onChange, onSubm
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#f5f5f7", color: INK, fontFamily: ED_FONT }}>
       <div className="w-full max-w-sm text-center">
         {presenter && <div className="ed-fade text-[12px] font-medium uppercase mb-5" style={{ letterSpacing: ".14em", color: MUTE }}>{presenter} presents</div>}
-        <h1 className="ed-fade ed-fade-2 m-0 font-semibold" style={{ fontSize: "clamp(32px, 6vw, 48px)", lineHeight: 1.08, letterSpacing: "-.02em" }}>{title}</h1>
+        <h1 className="ed-fade ed-fade-2 m-0 font-semibold" style={{ fontFamily: "inherit",  fontSize: "clamp(32px, 6vw, 48px)", lineHeight: 1.08, letterSpacing: "-.02em" }}>{title}</h1>
         <div className="ed-fade ed-fade-2 mx-auto my-7" style={{ width: 40, height: 1, background: "rgba(0,0,0,.2)" }} />
         <p className="ed-fade ed-fade-3 m-0 text-[17px]" style={{ color: MUTE }}>
           {kind === "password" ? "This gallery is private." : "Enter your email to open it."}

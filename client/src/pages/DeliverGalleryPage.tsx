@@ -1321,7 +1321,16 @@ export default function DeliverGalleryPage() {
           <EditorialStyles />
           <EditorialHero
             heroRef={heroRef}
-            imageUrl={coverUrl || allPhotos[0]?.url || allFilms.find(f => f.thumbnailUrl)?.thumbnailUrl || ""}
+            // Never a video: `coverUrl` falls back to the first FILE, and on a
+            // films-only gallery that was the 781MB .m4v — a broken image in
+            // Chrome and, in Safari, a full download before anything showed.
+            imageUrl={
+              delivery.coverUrl
+              || (coverFile && coverFile.mediaType !== "video" ? coverFile.url : "")
+              || allPhotos[0]?.url
+              || allFilms.find(f => f.thumbnailUrl)?.thumbnailUrl
+              || ""
+            }
             presenter={org?.name ? `${org.name} presents` : ""}
             title={delivery.title}
             subtitle={[delivery.coverSubtitle, delivery.coverDate].filter(Boolean).join(" · ")}
