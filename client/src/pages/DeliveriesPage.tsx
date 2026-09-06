@@ -1721,6 +1721,19 @@ function DeliveryDetail({ id }: { id: string }) {
             clients={data.clients}
             onUpdate={(patch) => updateDelivery(id, patch)}
           />
+          {/* The words the client reads under the headline — General, not
+              Privacy: it's the first thing an owner looks for. */}
+          {!galleryIsRealEstate && (
+            <NotePanel
+              note={delivery.note ?? ""}
+              tone={delivery.tone ?? ""}
+              autoTone={defaultToneFor(galleryProject ? clientsById[galleryProject.clientId]?.company : "", galleryProject ? clientsById[galleryProject.clientId]?.contactName : "")}
+              photoCount={files.filter(f => f.mediaType !== "video").length}
+              filmCount={files.filter(f => f.mediaType === "video").length}
+              onSave={(v) => updateDelivery(id, { note: v })}
+              onTone={(v) => updateDelivery(id, { tone: v })}
+            />
+          )}
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Status</h3>
             <div className="flex flex-wrap gap-2 text-xs">
@@ -1816,17 +1829,6 @@ function DeliveryDetail({ id }: { id: string }) {
             alwaysOn={!galleryIsRealEstate}
             onUpdate={(v) => updateDelivery(id, { keepOriginals: v })}
           />
-          {!galleryIsRealEstate && (
-            <NotePanel
-              note={delivery.note ?? ""}
-              tone={delivery.tone ?? ""}
-              autoTone={defaultToneFor(galleryProject ? clientsById[galleryProject.clientId]?.company : "", galleryProject ? clientsById[galleryProject.clientId]?.contactName : "")}
-              photoCount={files.filter(f => f.mediaType !== "video").length}
-              filmCount={files.filter(f => f.mediaType === "video").length}
-              onSave={(v) => updateDelivery(id, { note: v })}
-              onTone={(v) => updateDelivery(id, { tone: v })}
-            />
-          )}
         </>
       )}
 
