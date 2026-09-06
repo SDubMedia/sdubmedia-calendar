@@ -57,9 +57,7 @@ export function defaultGalleryNote(o: { photos: number; films: number; tone: Gal
     const order = o.photos > 0 && o.films > 0 ? ` — ${film} first, then the photographs` : "";
     return `{{first_name}}, thank you for working with us. Everything here is finished and ready to use${order}.`;
   }
-  const order = o.photos > 0 && o.films > 0
-    ? ` — ${film} first, then the photographs, in the order we made them`
-    : o.photos > 0 ? ", in the order we made them" : "";
+  const order = o.photos > 0 && o.films > 0 ? ` — ${film} first, then the photographs` : "";
   return `{{first_name}}, thank you for having us. Everything here is yours to keep${order}.`;
 }
 

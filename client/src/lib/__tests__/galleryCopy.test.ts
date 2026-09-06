@@ -47,9 +47,9 @@ describe("galleryHeadline / keepHeadline — never a zero", () => {
 describe("defaultGalleryNote", () => {
   it("writes to a person about what is actually there", () => {
     expect(applyGalleryNote(defaultGalleryNote({ photos: 15, films: 1, tone: "personal" }), { firstName: "Felicia" }))
-      .toBe("Felicia, thank you for having us. Everything here is yours to keep — the film first, then the photographs, in the order we made them.");
+      .toBe("Felicia, thank you for having us. Everything here is yours to keep — the film first, then the photographs.");
     expect(applyGalleryNote(defaultGalleryNote({ photos: 15, films: 0, tone: "personal" }), {}))
-      .toBe("Thank you for having us. Everything here is yours to keep, in the order we made them.");
+      .toBe("Thank you for having us. Everything here is yours to keep.");
     expect(applyGalleryNote(defaultGalleryNote({ photos: 0, films: 2, tone: "personal" }), { firstName: "Ann" }))
       .toBe("Ann, thank you for having us. Everything here is yours to keep.");
   });
