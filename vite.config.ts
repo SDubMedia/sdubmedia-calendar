@@ -57,6 +57,7 @@ export default defineConfig({
           /^\/g\//,          // gallery (slug)
           /^\/proposal\//,   // proposal viewing
           /^\/c\//,          // collection
+          /^\/hub\//,        // client hub (every delivered gallery for one client)
           /^\/invoice\//,    // public invoice
           /^\/review\/series\//, // series review
           /^\/minis\//,      // mini session sign-up (scanned off a flyer)

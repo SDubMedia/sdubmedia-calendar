@@ -76,6 +76,7 @@ const MiniSchedulePage = lazy(() => import("@/pages/MiniSchedulePage"));
 const DeliverGalleryPage = lazy(() => import("./pages/DeliverGalleryPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const CollectionPage = lazy(() => import("./pages/CollectionPage"));
+const ClientHubPage = lazy(() => import("./pages/ClientHubPage"));
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));
 const TrashPage = lazy(() => import("./pages/TrashPage"));
 const CalendarSyncPage = lazy(() => import("./pages/CalendarSyncPage"));
@@ -426,7 +427,7 @@ function App() {
     );
   }
 
-  if (window.location.pathname.startsWith("/deliver/") || window.location.pathname.startsWith("/g/") || window.location.pathname.startsWith("/c/")) {
+  if (window.location.pathname.startsWith("/deliver/") || window.location.pathname.startsWith("/g/") || window.location.pathname.startsWith("/c/") || window.location.pathname.startsWith("/hub/")) {
     return (
       <ErrorBoundary>
         <Suspense fallback={<LoadingScreen />}>
@@ -435,6 +436,7 @@ function App() {
             <Route path="/deliver/:token" component={DeliverGalleryPage} />
             <Route path="/g/:token" component={DeliverGalleryPage} />
             <Route path="/c/:slug" component={CollectionPage} />
+            <Route path="/hub/:token" component={ClientHubPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

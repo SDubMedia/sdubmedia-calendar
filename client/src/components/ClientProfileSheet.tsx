@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
-import { Plus, Trash2, Film, Sparkles } from "lucide-react";
+import { Plus, Trash2, Film, Sparkles, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -211,6 +211,34 @@ export default function ClientProfileSheet({ client, open, onOpenChange, initial
           </SheetTitle>
         </SheetHeader>
         <div className="space-y-5 px-4 sm:px-6 py-2">
+          {/* The client's hub: one permanent link with every delivered
+              gallery. Not for agents/brokers — they have the portal. */}
+          {client && form.clientType !== "broker" && form.clientType !== "agent" && (
+            <div className="rounded-md border border-border bg-secondary/40 px-3 py-3 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium text-foreground">Gallery hub</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const token = await getAuthToken();
+                      const res = await fetch("/api/client-hub", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ clientId: client.id }) });
+                      const body = await res.json();
+                      if (!res.ok) throw new Error(body.error || "Couldn't get the link");
+                      await navigator.clipboard.writeText(body.data.url);
+                      toast.success("Hub link copied", { description: body.data.url });
+                    } catch (err) {
+                      toast.error("Couldn't copy the hub link", { description: err instanceof Error ? err.message : "Try again" });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border hover:bg-white/5"
+                >
+                  <Link2 className="w-3.5 h-3.5" /> Copy hub link
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">One permanent page with every delivered gallery for this client, newest first, plus all their films and photographs in one place. Proofing rounds don't appear until delivered. The link never changes.</p>
+            </div>
+          )}
           {/* Client type — only for non-real-estate clients (brokers/agents are
               created/managed from the Brokers area). Lets you tag a photography
               client, including after they're already created. */}
