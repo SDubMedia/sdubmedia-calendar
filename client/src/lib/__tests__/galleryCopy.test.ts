@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyGalleryNote, defaultGalleryNote, countWord, formatRuntime, formatBytes } from "../galleryCopy";
+import { applyGalleryNote, defaultGalleryNote, countWord, formatRuntime, formatBytes, galleryHeadline, keepHeadline, defaultToneFor } from "../galleryCopy";
 
 describe("applyGalleryNote", () => {
   it("fills in the first name and studio", () => {
@@ -28,14 +28,44 @@ describe("applyGalleryNote", () => {
   });
 });
 
-describe("defaultGalleryNote", () => {
-  it("mentions the film only when there is one", () => {
-    expect(defaultGalleryNote(true)).toContain("the film first");
-    expect(defaultGalleryNote(false)).not.toContain("film");
+describe("galleryHeadline / keepHeadline — never a zero", () => {
+  it("names only what the gallery holds", () => {
+    expect(galleryHeadline(15, 2)).toBe("Fifteen photographs. Two films.");
+    expect(galleryHeadline(0, 2)).toBe("Two films.");
+    expect(galleryHeadline(1, 0)).toBe("One photograph.");
+    expect(galleryHeadline(3, 1)).toBe("Three photographs. One film.");
+    expect(galleryHeadline(0, 0)).toBe("Your gallery.");
   });
-  it("resolves to a complete sentence with or without a name", () => {
-    expect(applyGalleryNote(defaultGalleryNote(false), { firstName: "Felicia" })).toBe("Felicia, thank you for having us. Everything here is yours to keep, in the order we made them.");
-    expect(applyGalleryNote(defaultGalleryNote(false), {})).toBe("Thank you for having us. Everything here is yours to keep, in the order we made them.");
+  it("does the same for the keep section", () => {
+    expect(keepHeadline(15, 2)).toBe("Every photograph. Every film.");
+    expect(keepHeadline(0, 2)).toBe("Every film.");
+    expect(keepHeadline(0, 1)).toBe("The film.");
+    expect(keepHeadline(9, 0)).toBe("Every photograph.");
+  });
+});
+
+describe("defaultGalleryNote", () => {
+  it("writes to a person about what is actually there", () => {
+    expect(applyGalleryNote(defaultGalleryNote({ photos: 15, films: 1, tone: "personal" }), { firstName: "Felicia" }))
+      .toBe("Felicia, thank you for having us. Everything here is yours to keep — the film first, then the photographs, in the order we made them.");
+    expect(applyGalleryNote(defaultGalleryNote({ photos: 15, films: 0, tone: "personal" }), {}))
+      .toBe("Thank you for having us. Everything here is yours to keep, in the order we made them.");
+    expect(applyGalleryNote(defaultGalleryNote({ photos: 0, films: 2, tone: "personal" }), { firstName: "Ann" }))
+      .toBe("Ann, thank you for having us. Everything here is yours to keep.");
+  });
+  it("writes to a business without the family warmth", () => {
+    expect(applyGalleryNote(defaultGalleryNote({ photos: 0, films: 2, tone: "business" }), { firstName: "Megan" }))
+      .toBe("Megan, thank you for working with us. Everything here is finished and ready to use.");
+    expect(applyGalleryNote(defaultGalleryNote({ photos: 4, films: 1, tone: "business" }), {}))
+      .toBe("Thank you for working with us. Everything here is finished and ready to use — the film first, then the photographs.");
+  });
+});
+
+describe("defaultToneFor", () => {
+  it("matches the server rule", () => {
+    expect(defaultToneFor("The Webb School", "Megan Winnicker")).toBe("business");
+    expect(defaultToneFor("Felicia Long", "Felicia Long")).toBe("personal");
+    expect(defaultToneFor("Estefania", "")).toBe("personal");
   });
 });
 

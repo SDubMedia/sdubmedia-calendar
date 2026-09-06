@@ -19,7 +19,7 @@ import { useRoute } from "wouter";
 import { toast } from "sonner";
 import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySections";
 import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, InvitationGate, ED_FONT } from "./DeliverGalleryEditorial";
-import { countWord, applyGalleryNote, defaultGalleryNote } from "@/lib/galleryCopy";
+import { applyGalleryNote, defaultGalleryNote, galleryHeadline, keepHeadline } from "@/lib/galleryCopy";
 
 interface FileItem {
   id: string;
@@ -375,6 +375,9 @@ interface DeliveryInfo {
   recipientFirstName?: string;
   // The studio's note, raw with merge fields; empty = the default.
   note?: string;
+  // Who the copy is written for — resolved server-side from the owner's
+  // choice or the client record.
+  tone?: "personal" | "business";
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
@@ -1298,7 +1301,8 @@ export default function DeliverGalleryPage() {
   // A view-only gallery is a portfolio, not a delivery: no picks, no note
   // of thanks, no "yours to keep" — just the work and a way to get in touch.
   const portfolio = delivery.viewOnly === true;
-  const edCounts = `${countWord(allPhotos.length)} photograph${allPhotos.length === 1 ? "" : "s"}.${allFilms.length ? ` ${countWord(allFilms.length)} film${allFilms.length === 1 ? "" : "s"}.` : ""}`;
+  const business = delivery.tone === "business";
+  const edCounts = galleryHeadline(allPhotos.length, allFilms.length);
   const edHeadline = portfolio
     ? edCounts
     : showingProofs
@@ -1359,7 +1363,7 @@ export default function DeliverGalleryPage() {
             )}
             {!portfolio && !showingProofs && (
               <p className="m-0" style={{ whiteSpace: "pre-line" }}>
-                {applyGalleryNote(delivery.note?.trim() || defaultGalleryNote(allFilms.length > 0), { firstName: delivery.recipientFirstName, studio: org?.name })}
+                {applyGalleryNote(delivery.note?.trim() || defaultGalleryNote({ photos: allPhotos.length, films: allFilms.length, tone: business ? "business" : "personal" }), { firstName: delivery.recipientFirstName, studio: org?.name })}
               </p>
             )}
           </EditorialIntro>
@@ -1386,6 +1390,7 @@ export default function DeliverGalleryPage() {
           />
           {!showingProofs && files.length > 0 && (
             <EditorialKeep
+              headline={keepHeadline(allPhotos.length, allFilms.length)}
               photoCount={allPhotos.length}
               filmCount={allFilms.length}
               maxW={Math.max(0, ...allPhotos.map(f => f.width ?? 0))}
@@ -1397,7 +1402,7 @@ export default function DeliverGalleryPage() {
               onToggleSelect={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
             />
           )}
-          <EditorialClosing firstName={delivery.recipientFirstName} orgName={org?.name || "Slate"} website={edWebsite} portfolio={portfolio} />
+          <EditorialClosing firstName={delivery.recipientFirstName} orgName={org?.name || "Slate"} website={edWebsite} portfolio={portfolio} business={business} />
         </>
       ) : (
         <>

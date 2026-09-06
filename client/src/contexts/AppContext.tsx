@@ -1017,6 +1017,7 @@ function rowToDelivery(r: any): Delivery {
     viewOnly: r.view_only === true,
     keepOriginals: r.keep_originals === true,
     note: typeof r.note === "string" ? r.note : "",
+    tone: r.tone === "personal" || r.tone === "business" ? r.tone : "",
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
     buyAllFlatCents: Number(r.buy_all_flat_cents ?? 0),
     status: (r.status || "draft") as DeliveryStatus,
@@ -2511,6 +2512,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.viewOnly !== undefined) patch.view_only = d.viewOnly;
     if (d.keepOriginals !== undefined) patch.keep_originals = d.keepOriginals;
     if (d.note !== undefined) patch.note = d.note;
+    if (d.tone !== undefined) patch.tone = d.tone;
     if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;
     if (d.buyAllFlatCents !== undefined) patch.buy_all_flat_cents = d.buyAllFlatCents;
     if (d.status !== undefined) patch.status = d.status;

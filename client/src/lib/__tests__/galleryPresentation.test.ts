@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { galleryPresentation, isRealEstateShoot, payerIdFor } from "../../../../api/_galleryPresentation";
+import { galleryPresentation, isRealEstateShoot, payerIdFor, defaultTone, resolveTone } from "../../../../api/_galleryPresentation";
 
 const agent = { id: "agent1", client_type: "agent", broker_id: "cbsr" };
 const broker = { id: "cbsr", client_type: "broker" };
@@ -43,5 +43,26 @@ describe("galleryPresentation", () => {
   });
   it("gives a gallery with no project the editorial look", () => {
     expect(galleryPresentation(null, null, null)).toBe("editorial");
+  });
+});
+
+describe("defaultTone / resolveTone", () => {
+  it("is business when the company is a different thing from the contact", () => {
+    expect(defaultTone({ company: "The Webb School", contact_name: "Megan Winnicker" })).toBe("business");
+    expect(defaultTone({ company: "Church At Nolensville", contact_name: "Jackson Derose" })).toBe("business");
+  });
+  it("is personal when they match, ignoring case and spacing", () => {
+    expect(defaultTone({ company: "Felicia Long", contact_name: "felicia long " })).toBe("personal");
+  });
+  it("is personal with no contact, no company, or no client", () => {
+    expect(defaultTone({ company: "Estefania", contact_name: "" })).toBe("personal");
+    expect(defaultTone({ company: "", contact_name: "Ann" })).toBe("personal");
+    expect(defaultTone(null)).toBe("personal");
+  });
+  it("lets a stored override win", () => {
+    expect(resolveTone("personal", { company: "The Webb School", contact_name: "Megan" })).toBe("personal");
+    expect(resolveTone("business", { company: "Felicia Long", contact_name: "Felicia Long" })).toBe("business");
+    expect(resolveTone("", { company: "The Webb School", contact_name: "Megan" })).toBe("business");
+    expect(resolveTone(undefined, null)).toBe("personal");
   });
 });

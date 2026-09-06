@@ -1995,6 +1995,9 @@ export interface Delivery {
    *  Merge fields {{first_name}} and {{studio}}. Empty = the default in
    *  client/src/lib/galleryCopy.ts. Optional so older fixtures still type. */
   note?: string;
+  /** Who the editorial copy is written for. "" = automatic from the client
+   *  record (company ≠ contact person = business). */
+  tone?: "" | "personal" | "business";
   perExtraPhotoCents: number;    // 0 = no per-photo upsell
   buyAllFlatCents: number;       // 0 = no flat unlock-all option
 

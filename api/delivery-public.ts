@@ -19,7 +19,7 @@ import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl, isCameraRaw } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
 import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
-import { galleryPresentation, payerIdFor, type GalleryPresentation } from "./_galleryPresentation.js";
+import { galleryPresentation, payerIdFor, resolveTone, type GalleryPresentation, type GalleryTone } from "./_galleryPresentation.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -131,12 +131,17 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // every other client gets the editorial one. See _galleryPresentation.ts.
   let presentation: GalleryPresentation = "editorial";
   let recipientFirstName = "";
+  // Personal or business copy: the owner's per-gallery choice, else derived
+  // from the client record. A gallery with no project reads as personal.
+  const storedTone = (delivery as unknown as { tone?: string }).tone;
+  let tone: GalleryTone = resolveTone(storedTone, null);
   if (delivery.project_id) {
     const { data: project } = await supabase
       .from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle();
     if (project) {
       const { data: client } = await supabase
-        .from("clients").select("id, client_type, broker_id, contact_name").eq("id", project.client_id).maybeSingle();
+        .from("clients").select("id, client_type, broker_id, contact_name, company").eq("id", project.client_id).maybeSingle();
+      tone = resolveTone(storedTone, client);
       const payerId = payerIdFor(project, client);
       const payer = client && payerId === client.id
         ? client
@@ -345,6 +350,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
       previewingFinals,
       presentation,
       recipientFirstName,
+      tone,
       // Raw, with merge fields — the page resolves them so the same note
       // reads correctly whether or not we know her first name.
       note: typeof (delivery as unknown as { note?: string }).note === "string" ? (delivery as unknown as { note?: string }).note : "",

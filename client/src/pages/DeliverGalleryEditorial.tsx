@@ -430,8 +430,8 @@ export function EditorialPhotos({ photos, indexOf, folders, heading, count, wate
 // ---------------------------------------------------------------
 // Yours to keep
 // ---------------------------------------------------------------
-export function EditorialKeep({ photoCount, filmCount, maxW, maxH, totalBytes, zipping, selecting, onDownloadAll, onToggleSelect }: {
-  photoCount: number; filmCount: number; maxW: number; maxH: number; totalBytes: number;
+export function EditorialKeep({ headline, photoCount, filmCount, maxW, maxH, totalBytes, zipping, selecting, onDownloadAll, onToggleSelect }: {
+  headline: string; photoCount: number; filmCount: number; maxW: number; maxH: number; totalBytes: number;
   zipping: boolean; selecting: boolean; onDownloadAll: () => void; onToggleSelect: () => void;
 }) {
   const total = photoCount + filmCount;
@@ -440,7 +440,7 @@ export function EditorialKeep({ photoCount, filmCount, maxW, maxH, totalBytes, z
       <div className="mx-auto" style={WRAP}>
         <Eyebrow>Yours to keep</Eyebrow>
         <Reveal delay={0.1} className="mt-4"><p className="m-0 font-semibold" style={{ fontSize: "clamp(88px, 14vw, 160px)", lineHeight: 1, letterSpacing: "-.04em", color: INK }}>{total}</p></Reveal>
-        <Headline className="mt-4">{filmCount > 0 ? "Every photograph. Every film." : "Every photograph."}</Headline>
+        <Headline className="mt-4">{headline}</Headline>
         <Reveal delay={0.2} className="mx-auto mt-4" style={{ fontSize: "clamp(19px, 2vw, 24px)", lineHeight: 1.4, letterSpacing: "-.01em", maxWidth: "34em", color: INK }}>
           Download everything at once, or pick out a few.
         </Reveal>
@@ -449,7 +449,7 @@ export function EditorialKeep({ photoCount, filmCount, maxW, maxH, totalBytes, z
           <Quiet onClick={onToggleSelect} disabled={zipping}>{selecting ? "Cancel" : "Select photos"}</Quiet>
         </Reveal>
         <Reveal delay={0.3} className="flex flex-wrap justify-center gap-x-9 gap-y-3 mt-7 text-[15px]" style={{ color: MUTE }}>
-          <span><b className="font-semibold" style={{ color: INK }}>{photoCount}</b> photograph{photoCount === 1 ? "" : "s"}</span>
+          {photoCount > 0 && <span><b className="font-semibold" style={{ color: INK }}>{photoCount}</b> photograph{photoCount === 1 ? "" : "s"}</span>}
           {filmCount > 0 && <span><b className="font-semibold" style={{ color: INK }}>{filmCount}</b> film{filmCount === 1 ? "" : "s"}</span>}
           {maxW > 0 && maxH > 0 && <span>Up to <b className="font-semibold" style={{ color: INK }}>{maxW} × {maxH}</b></span>}
           {totalBytes > 0 && <span><b className="font-semibold" style={{ color: INK }}>{formatBytes(totalBytes)}</b> in total</span>}
@@ -462,7 +462,7 @@ export function EditorialKeep({ photoCount, filmCount, maxW, maxH, totalBytes, z
 // ---------------------------------------------------------------
 // Closing
 // ---------------------------------------------------------------
-export function EditorialClosing({ firstName, orgName, website, portfolio }: { firstName?: string; orgName: string; website?: string; portfolio?: boolean }) {
+export function EditorialClosing({ firstName, orgName, website, portfolio, business }: { firstName?: string; orgName: string; website?: string; portfolio?: boolean; business?: boolean }) {
   const initials = orgName.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   const link = website && /^https?:\/\//i.test(website) ? website : website ? `https://${website}` : "";
   return (
@@ -471,9 +471,13 @@ export function EditorialClosing({ firstName, orgName, website, portfolio }: { f
         <Reveal className="mx-auto mb-7 w-10"><div className="w-10 h-10 rounded-full grid place-items-center text-[11px]" style={{ border: "1.5px solid rgba(255,255,255,.5)", letterSpacing: ".1em" }}>{initials}</div></Reveal>
         <Headline dark>{portfolio ? "Let's make something." : `Thank you${firstName ? `, ${firstName}` : ""}.`}</Headline>
         <Reveal delay={0.2} className="mx-auto mt-3 text-[19px] max-w-[30em]" style={{ color: "#a1a1a6", lineHeight: 1.45 }}>
-          {portfolio ? "When you're ready, we'd love to hear about it." : "It was a pleasure. When you're ready for the next one, we'd love to do it again."}
+          {portfolio
+            ? "When you're ready, we'd love to hear about it."
+            : business
+              ? "It was a pleasure working with you. When the next project comes around, we'd love to be part of it."
+              : "It was a pleasure. When you're ready for the next one, we'd love to do it again."}
         </Reveal>
-        {link && <Reveal delay={0.3} className="mt-8"><Quiet dark href={link}>{portfolio ? "Get in touch" : "Book another session"}</Quiet></Reveal>}
+        {link && <Reveal delay={0.3} className="mt-8"><Quiet dark href={link}>{portfolio ? "Get in touch" : business ? "Start the next project" : "Book another session"}</Quiet></Reveal>}
         <p className="mt-14 mb-0 text-[12px]" style={{ color: MUTE }}>{orgName} · Powered by Slate</p>
       </div>
     </section>

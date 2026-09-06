@@ -24,7 +24,7 @@ import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryCont
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
 import { chipFieldToText } from "@/lib/chipFieldText";
-import { defaultGalleryNote } from "@/lib/galleryCopy";
+import { defaultGalleryNote, defaultToneFor, type GalleryTone } from "@/lib/galleryCopy";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -1812,8 +1812,12 @@ function DeliveryDetail({ id }: { id: string }) {
           {!galleryIsRealEstate && (
             <NotePanel
               note={delivery.note ?? ""}
-              hasFilms={files.some(f => f.mediaType === "video")}
+              tone={delivery.tone ?? ""}
+              autoTone={defaultToneFor(galleryProject ? clientsById[galleryProject.clientId]?.company : "", galleryProject ? clientsById[galleryProject.clientId]?.contactName : "")}
+              photoCount={files.filter(f => f.mediaType !== "video").length}
+              filmCount={files.filter(f => f.mediaType === "video").length}
               onSave={(v) => updateDelivery(id, { note: v })}
+              onTone={(v) => updateDelivery(id, { tone: v })}
             />
           )}
         </>
@@ -3844,9 +3848,18 @@ function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: bo
 /** The studio's note under the editorial gallery's headline. Empty means
  *  the default, which is shown as the placeholder so the owner reads exactly
  *  what the client will. Saves on blur; never resets from props mid-edit. */
-function NotePanel({ note, hasFilms, onSave }: { note: string; hasFilms: boolean; onSave: (v: string) => Promise<void> }) {
+function NotePanel({ note, tone, autoTone, photoCount, filmCount, onSave, onTone }: {
+  note: string;
+  tone: "" | GalleryTone;
+  autoTone: GalleryTone;
+  photoCount: number;
+  filmCount: number;
+  onSave: (v: string) => Promise<void>;
+  onTone: (v: "" | GalleryTone) => Promise<void>;
+}) {
   const [draft, setDraft] = useState(note);
   const [saving, setSaving] = useState(false);
+  const effectiveTone: GalleryTone = tone || autoTone;
   const save = async (value: string) => {
     if (value === note) return;
     setSaving(true);
@@ -3862,6 +3875,18 @@ function NotePanel({ note, hasFilms, onSave }: { note: string; hasFilms: boolean
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Note to the client</h3>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-xs text-slate-400">Written for</span>
+        <select
+          value={tone}
+          onChange={(e) => onTone(e.target.value as "" | GalleryTone).catch((err) => toast.error("Couldn't save", { description: err instanceof Error ? err.message : "Try again" }))}
+          className="bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[#0088ff]"
+        >
+          <option value="">Automatic — {autoTone === "business" ? "a business" : "a person"}</option>
+          <option value="personal">A person or family</option>
+          <option value="business">A business or organisation</option>
+        </select>
+      </div>
       <p className="text-xs text-slate-500 mb-3">
         Shown under the headline on the gallery, signed by the studio. <span className="font-mono">{"{{first_name}}"}</span> and <span className="font-mono">{"{{studio}}"}</span> fill in automatically. Leave it empty to use the default.
       </p>
@@ -3870,7 +3895,7 @@ function NotePanel({ note, hasFilms, onSave }: { note: string; hasFilms: boolean
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => save(draft.trim())}
         rows={4}
-        placeholder={defaultGalleryNote(hasFilms)}
+        placeholder={defaultGalleryNote({ photos: photoCount, films: filmCount, tone: effectiveTone })}
         className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
       />
       <div className="flex flex-wrap items-center justify-between gap-2 mt-2">

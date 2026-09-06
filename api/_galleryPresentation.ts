@@ -45,3 +45,20 @@ export function galleryPresentation(
   if (!project) return "editorial";
   return isRealEstateShoot(client, payer) ? "listing" : "editorial";
 }
+
+export type GalleryTone = "personal" | "business";
+
+/** Who the copy is written for. A client record whose company name is a
+ *  different thing from its contact person ("The Webb School" / "Megan")
+ *  is a business; a record where they match, or with no contact at all
+ *  ("Felicia Long" / "Felicia Long", "Estefania" / ""), is a person.
+ *  Mirrored in client/src/lib/galleryCopy.ts for the owner's settings. */
+export function defaultTone(client: { company?: string | null; contact_name?: string | null } | null): GalleryTone {
+  const company = (client?.company || "").trim().toLowerCase();
+  const contact = (client?.contact_name || "").trim().toLowerCase();
+  return company && contact && company !== contact ? "business" : "personal";
+}
+
+export function resolveTone(stored: string | null | undefined, client: { company?: string | null; contact_name?: string | null } | null): GalleryTone {
+  return stored === "business" || stored === "personal" ? stored : defaultTone(client);
+}
