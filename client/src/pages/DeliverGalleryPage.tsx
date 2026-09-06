@@ -1055,7 +1055,9 @@ export default function DeliverGalleryPage() {
   // A cover uploaded for this gallery wins over one picked from the photos.
   // It is full quality (never re-encoded), isn't listed among the files, and
   // survives deleting the photo it was made from — the whole point of it.
-  const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files[0] || null;
+  // The fallback cover is the first PHOTO, never a film — files[0] on a
+  // films-only gallery handed the hero a multi-hundred-MB video.
+  const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files.find((f) => f.mediaType !== "video") || null;
   const coverUrl = delivery?.coverUrl || coverFile?.url || "";
 
   // Kick off a direct, attachment-forced download that the browser streams to
