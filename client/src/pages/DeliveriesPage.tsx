@@ -27,7 +27,7 @@ import { chipFieldToText } from "@/lib/chipFieldText";
 import { defaultGalleryNote, defaultToneFor, type GalleryTone } from "@/lib/galleryCopy";
 import { makeBrowseCopy } from "@/lib/browseCopy";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil, Link2 } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -1211,6 +1211,27 @@ function DeliveryDetail({ id }: { id: string }) {
     toast.success("Link copied");
   }
 
+  /** The client's hub — every delivered gallery on one permanent page.
+   *  Same link the client sheet hands out; here because this is where the
+   *  owner already is when sending a gallery. */
+  async function copyHubLink() {
+    if (!galleryProject) return;
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/client-hub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ clientId: galleryProject.clientId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Couldn't get the hub link");
+      await navigator.clipboard.writeText(body.data.url);
+      toast.success("Hub link copied", { description: "Every delivered gallery for this client, on one page." });
+    } catch (err) {
+      toast.error("Couldn't copy the hub link", { description: err instanceof Error ? err.message : "Try again" });
+    }
+  }
+
   async function setPassword(pw: string) {
     try {
       const sess = await supabase.auth.getSession();
@@ -1613,6 +1634,9 @@ function DeliveryDetail({ id }: { id: string }) {
         {!readOnly && (
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={copyLink} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><Copy className="w-3 h-3" /> Copy link</button>
+          {galleryProject && !galleryIsRealEstate && (
+            <button onClick={copyHubLink} title="One page with every delivered gallery for this client" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><Link2 className="w-3 h-3" /> Copy hub link</button>
+          )}
           <a href={publicUrl} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><ExternalLink className="w-3 h-3" /> Preview</a>
           <button onClick={() => setPwOpen(true)} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04]"><Lock className="w-3 h-3" /> {delivery.hasPassword ? "Change password" : "Set password"}</button>
         </div>
