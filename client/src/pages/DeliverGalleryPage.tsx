@@ -18,7 +18,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { toast } from "sonner";
 import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySections";
-import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, ED_FONT } from "./DeliverGalleryEditorial";
+import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, InvitationGate, ED_FONT } from "./DeliverGalleryEditorial";
 import { countWord, applyGalleryNote, defaultGalleryNote } from "@/lib/galleryCopy";
 
 interface FileItem {
@@ -463,6 +463,9 @@ export default function DeliverGalleryPage() {
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [password, setPassword] = useState("");
   const [pwError, setPwError] = useState("");
+  // What the gate screens know before the gallery itself loads: the title,
+  // the studio, and which presentation to dress the gate in.
+  const [gate, setGate] = useState<{ title: string; presentation?: "editorial" | "listing"; presenter?: string } | null>(null);
 
   // Email-registration gate (visitor must enter email before viewing)
   const [emailRequired, setEmailRequired] = useState(false);
@@ -575,6 +578,9 @@ export default function DeliverGalleryPage() {
       if (!res.ok && !data.passwordRequired && !data.emailRequired) {
         setError(data.error || "Failed to load gallery");
         return;
+      }
+      if (data.passwordRequired || data.emailRequired) {
+        setGate({ title: data.title || "", presentation: data.presentation, presenter: data.presenter || "" });
       }
       if (data.passwordRequired) {
         setPasswordRequired(true);
@@ -1156,6 +1162,22 @@ export default function DeliverGalleryPage() {
   }
 
   if (passwordRequired && !delivery) {
+    if (gate?.presentation === "editorial") {
+      return (
+        <>
+          <EditorialStyles />
+          <InvitationGate
+            presenter={gate.presenter || ""}
+            title={gate.title}
+            kind="password"
+            value={password}
+            onChange={(v) => { setPassword(v); setPwError(""); }}
+            onSubmit={() => loadGallery(password)}
+            error={pwError ? "That password isn't right." : ""}
+          />
+        </>
+      );
+    }
     return (
       <div className="min-h-screen bg-white text-black flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
@@ -1184,6 +1206,23 @@ export default function DeliverGalleryPage() {
   }
 
   if (emailRequired && !delivery) {
+    if (gate?.presentation === "editorial") {
+      return (
+        <>
+          <EditorialStyles />
+          <InvitationGate
+            presenter={gate.presenter || ""}
+            title={gate.title}
+            kind="email"
+            value={visitorEmail}
+            onChange={setVisitorEmail}
+            onSubmit={() => { void registerAndEnter(); }}
+            busy={registering}
+            canSubmit={visitorEmail.includes("@")}
+          />
+        </>
+      );
+    }
     return (
       <div className="min-h-screen bg-white text-black flex items-center justify-center p-6">
         <div className="w-full max-w-sm">

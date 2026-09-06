@@ -126,16 +126,45 @@ async function getDelivery(token: string, password: string | undefined, email: s
     return res.status(410).json({ error: "This gallery has expired", expired: true });
   }
 
+  // Which look the page renders, and who it's addressed to. Real estate
+  // (agent client, or billed to a brokerage) keeps the listing layout;
+  // every other client gets the editorial one. See _galleryPresentation.ts.
+  let presentation: GalleryPresentation = "editorial";
+  let recipientFirstName = "";
+  if (delivery.project_id) {
+    const { data: project } = await supabase
+      .from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle();
+    if (project) {
+      const { data: client } = await supabase
+        .from("clients").select("id, client_type, broker_id, contact_name").eq("id", project.client_id).maybeSingle();
+      const payerId = payerIdFor(project, client);
+      const payer = client && payerId === client.id
+        ? client
+        : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
+      presentation = galleryPresentation(project, client, payer);
+      recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
+    }
+  }
+
+  // Org branding (logo, name, business info) — same letterhead pattern as contracts
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, logo_url, business_info")
+    .eq("id", delivery.org_id)
+    .single<OrgRow>();
+
   // Password gate
   if (delivery.password_hash) {
     if (!password) {
       return res.status(200).json({
         passwordRequired: true,
         title: delivery.title,
+        presentation,
+        presenter: org?.name || "",
       });
     }
     if (!verifyPassword(password, delivery.password_hash)) {
-      return res.status(401).json({ error: "Incorrect password", passwordRequired: true });
+      return res.status(401).json({ error: "Incorrect password", passwordRequired: true, title: delivery.title, presentation, presenter: org?.name || "" });
     }
   }
 
@@ -146,6 +175,8 @@ async function getDelivery(token: string, password: string | undefined, email: s
       return res.status(200).json({
         emailRequired: true,
         title: delivery.title,
+        presentation,
+        presenter: org?.name || "",
       });
     }
     // Verify the email is registered for this delivery
@@ -159,6 +190,8 @@ async function getDelivery(token: string, password: string | undefined, email: s
       return res.status(200).json({
         emailRequired: true,
         title: delivery.title,
+        presentation,
+        presenter: org?.name || "",
       });
     }
   }
@@ -225,32 +258,6 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .eq("delivery_id", delivery.id)
     .order("position");
 
-  // Which look the page renders, and who it's addressed to. Real estate
-  // (agent client, or billed to a brokerage) keeps the listing layout;
-  // every other client gets the editorial one. See _galleryPresentation.ts.
-  let presentation: GalleryPresentation = "editorial";
-  let recipientFirstName = "";
-  if (delivery.project_id) {
-    const { data: project } = await supabase
-      .from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle();
-    if (project) {
-      const { data: client } = await supabase
-        .from("clients").select("id, client_type, broker_id, contact_name").eq("id", project.client_id).maybeSingle();
-      const payerId = payerIdFor(project, client);
-      const payer = client && payerId === client.id
-        ? client
-        : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
-      presentation = galleryPresentation(project, client, payer);
-      recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
-    }
-  }
-
-  // Org branding (logo, name, business info) — same letterhead pattern as contracts
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("name, logo_url, business_info")
-    .eq("id", delivery.org_id)
-    .single<OrgRow>();
 
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
   const filesWithUrls = fileRows.map((f) => {

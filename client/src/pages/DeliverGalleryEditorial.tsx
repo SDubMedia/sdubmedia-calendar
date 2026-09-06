@@ -464,3 +464,48 @@ export function EditorialClosing({ firstName, orgName, website }: { firstName?: 
     </section>
   );
 }
+
+// ---------------------------------------------------------------
+// Invitation — the password / email gate as a card, not a form
+// ---------------------------------------------------------------
+export function InvitationGate({ presenter, title, kind, value, onChange, onSubmit, busy, error, canSubmit = true }: {
+  presenter: string;
+  title: string;
+  kind: "password" | "email";
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  busy?: boolean;
+  error?: string;
+  canSubmit?: boolean;
+}) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#f5f5f7", color: INK, fontFamily: ED_FONT }}>
+      <div className="w-full max-w-sm text-center">
+        {presenter && <div className="ed-fade text-[12px] font-medium uppercase mb-5" style={{ letterSpacing: ".14em", color: MUTE }}>{presenter} presents</div>}
+        <h1 className="ed-fade ed-fade-2 m-0 font-semibold" style={{ fontSize: "clamp(32px, 6vw, 48px)", lineHeight: 1.08, letterSpacing: "-.02em" }}>{title}</h1>
+        <div className="ed-fade ed-fade-2 mx-auto my-7" style={{ width: 40, height: 1, background: "rgba(0,0,0,.2)" }} />
+        <p className="ed-fade ed-fade-3 m-0 text-[17px]" style={{ color: MUTE }}>
+          {kind === "password" ? "This gallery is private." : "Enter your email to open it."}
+        </p>
+        <div className="ed-fade ed-fade-3">
+          <input
+            type={kind}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && canSubmit && !busy) onSubmit(); }}
+            placeholder={kind === "password" ? "Password" : "you@example.com"}
+            autoFocus
+            autoComplete={kind === "password" ? "current-password" : "email"}
+            className="w-full bg-transparent text-center outline-none mt-8 py-3 border-b transition-colors focus:border-[#1d1d1f]"
+            style={{ fontSize: 18, borderColor: error ? INK : "rgba(0,0,0,.2)", letterSpacing: kind === "password" ? ".2em" : "normal" }}
+          />
+          {error && <p className="m-0 mt-3 text-[14px]" style={{ color: INK }}>{error}</p>}
+          <div className="mt-8">
+            <Quiet onClick={onSubmit} disabled={busy || !canSubmit}>{busy ? "Opening…" : "Enter"}</Quiet>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
