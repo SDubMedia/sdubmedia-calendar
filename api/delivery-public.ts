@@ -19,6 +19,7 @@ import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl, isCameraRaw } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
 import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
+import { galleryPresentation, payerIdFor, type GalleryPresentation } from "./_galleryPresentation.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -224,6 +225,26 @@ async function getDelivery(token: string, password: string | undefined, email: s
     .eq("delivery_id", delivery.id)
     .order("position");
 
+  // Which look the page renders, and who it's addressed to. Real estate
+  // (agent client, or billed to a brokerage) keeps the listing layout;
+  // every other client gets the editorial one. See _galleryPresentation.ts.
+  let presentation: GalleryPresentation = "editorial";
+  let recipientFirstName = "";
+  if (delivery.project_id) {
+    const { data: project } = await supabase
+      .from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle();
+    if (project) {
+      const { data: client } = await supabase
+        .from("clients").select("id, client_type, broker_id, contact_name").eq("id", project.client_id).maybeSingle();
+      const payerId = payerIdFor(project, client);
+      const payer = client && payerId === client.id
+        ? client
+        : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
+      presentation = galleryPresentation(project, client, payer);
+      recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
+    }
+  }
+
   // Org branding (logo, name, business info) — same letterhead pattern as contracts
   const { data: org } = await supabase
     .from("organizations")
@@ -315,6 +336,8 @@ async function getDelivery(token: string, password: string | undefined, email: s
       printsEnabled: (delivery as unknown as { prints_enabled?: boolean }).prints_enabled === true,
       status: delivery.status,
       previewingFinals,
+      presentation,
+      recipientFirstName,
       // Finished photos already here (videos excluded) — spent allowance,
       // so a reopened round offers limit minus these. See _pickAllowance.ts.
       editedPhotoCount: countEditedPhotos(allRows),

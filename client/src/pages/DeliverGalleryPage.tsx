@@ -18,6 +18,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { toast } from "sonner";
 import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySections";
+import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, ED_FONT } from "./DeliverGalleryEditorial";
+import { countWord } from "@/lib/galleryCopy";
 
 interface FileItem {
   id: string;
@@ -359,6 +361,11 @@ interface DeliveryInfo {
   // Server-set: finished photos already in the gallery (videos excluded).
   // Spent allowance — a reopened round offers limit minus these.
   editedPhotoCount?: number;
+  // Server-set: real estate keeps the "listing" layout; everyone else gets
+  // the editorial one (api/_galleryPresentation.ts). Absent = listing, so an
+  // old cached response can't flip a real-estate gallery.
+  presentation?: "editorial" | "listing";
+  recipientFirstName?: string;
   selectionLimit: number;
   selectionMinimum?: number;
   downloadOnly?: boolean;
@@ -894,6 +901,7 @@ export default function DeliverGalleryPage() {
   // tab returning to the foreground needs fresh ones.
   const loadedAtRef = useRef<number>(Date.now());
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
   const [colWidth, setColWidth] = useState(360);
   const [gridWidth, setGridWidth] = useState(1200);
   useEffect(() => {
@@ -1231,13 +1239,109 @@ export default function DeliverGalleryPage() {
   const layoutHasHero = cover !== "minimal" && !!coverUrl
     && (hasChosenCover || !delivery.downloadOnly);
 
+  // The editorial presentation (DeliverGalleryEditorial.tsx). Real estate
+  // stays on the layout below it; everything else renders the sections.
+  const editorial = delivery.presentation === "editorial";
+  const edPhotos = visibleFiles.filter(f => f.mediaType !== "video");
+  const edFilms = visibleFiles.filter(f => f.mediaType === "video");
+  const allPhotos = files.filter(f => f.mediaType !== "video");
+  const allFilms = files.filter(f => f.mediaType === "video");
+  const edWebsite = typeof org?.businessInfo?.website === "string" ? org.businessInfo.website : "";
+  const edHeadline = showingProofs
+    ? (isLocked ? "Your picks are in." : allPaid ? "Choose your favourites." : alreadyCount > 0 ? `Choose ${roomLeft} more.` : `Choose your ${delivery.selectionLimit}.`)
+    : `${countWord(allPhotos.length)} photograph${allPhotos.length === 1 ? "" : "s"}.${allFilms.length ? ` ${countWord(allFilms.length)} film${allFilms.length === 1 ? "" : "s"}.` : ""}`;
+
   return (
-    <div className="min-h-screen bg-white text-black">
+    <div className="min-h-screen bg-white text-black" style={editorial ? { fontFamily: ED_FONT, color: "#1d1d1f" } : undefined}>
       {/* Inline font for the hero — Cormorant for that Pixieset serif feel */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Marcellus&family=Inter:wght@300;400;500&family=Montserrat:wght@300;400;500&family=EB+Garamond:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
+      {editorial ? (
+        <>
+          <EditorialStyles />
+          <EditorialHero
+            heroRef={heroRef}
+            imageUrl={coverUrl || allPhotos[0]?.url || ""}
+            presenter={org?.name ? `${org.name} presents` : ""}
+            title={delivery.title}
+            subtitle={[delivery.coverSubtitle, delivery.coverDate].filter(Boolean).join(" · ")}
+            previewing={delivery.previewingFinals}
+          />
+          <EditorialNav
+            heroRef={heroRef}
+            title={delivery.title}
+            orgName={org?.name}
+            onSlideshow={visibleFiles.length > 0 ? () => { setLightboxIdx(0); setSlideshowPlaying(true); } : undefined}
+            onDownload={!showingProofs && files.length > 0 ? downloadAll : undefined}
+            onShare={shareGallery}
+          />
+          <EditorialIntro
+            eyebrow={showingProofs ? "Your proofs" : "Your gallery"}
+            headline={edHeadline}
+            signature={org?.name || undefined}
+            action={delivery.status === "submitted" && !isWorking
+              ? <button onClick={requestChange} className="text-[15px] hover:underline" style={{ color: "#0066cc" }}>Request a change</button>
+              : undefined}
+          >
+            {delivery.status === "working" && <p className="m-0">We're editing your picks now. You'll get an email the moment they're ready.</p>}
+            {delivery.status === "submitted" && <p className="m-0">Thank you. We've got your picks and we'll take it from here.</p>}
+            {proofingEnabled && !isLocked && (
+              <p className="m-0" style={{ marginTop: delivery.status === "submitted" ? 16 : 0 }}>
+                {allPaid ? (
+                  <>Tap the heart on any photo you'd like edited, then send them back with the button at the bottom.{hasPerPhoto && <> Each one is {money(perExtraCents)}.</>}{hasFlat && <> Or {money(flatCents)} for all of them.</>}</>
+                ) : alreadyCount > 0 ? (
+                  <>Tap the heart on {roomLeft} more. {alreadyCount} {editedCount > 0 ? (alreadyCount === 1 ? "is" : "are") + " already finished" : (alreadyCount === 1 ? "is" : "are") + " already sent"}. Then send them back with the button at the bottom.{hasPerPhoto && <> Need more? {money(perExtraCents)} per extra photo.</>}</>
+                ) : (
+                  <>Tap the heart on the {delivery.selectionLimit} you'd like edited, then send them back with the button at the bottom.{hasPerPhoto && <> Need more? {money(perExtraCents)} per extra photo.</>}{hasFlat && <> Or {money(flatCents)} to unlock all picks.</>}</>
+                )}
+              </p>
+            )}
+            {!showingProofs && (
+              <p className="m-0">
+                Thank you for having us. Everything here is yours to keep{allFilms.length > 0 ? " — the film first, then the photographs" : ""}, in the order we made them.
+              </p>
+            )}
+          </EditorialIntro>
+          <EditorialFilms films={edFilms} onDownload={delivery.viewOnly ? undefined : (f) => downloadOne(f as FileItem)} />
+          <EditorialPhotos
+            photos={edPhotos}
+            indexOf={(f) => visibleFiles.indexOf(f as FileItem)}
+            folders={folders}
+            heading={showingProofs ? "Choose from these." : "The photographs."}
+            count={`${edPhotos.length} photograph${edPhotos.length === 1 ? "" : "s"}`}
+            watermark={{ text: delivery.watermarkText, useLogo: delivery.watermarkUseLogo === true, logoUrl: org?.logoUrl }}
+            behaviour={{
+              onOpen: (i) => setLightboxIdx(i),
+              selecting,
+              isDlPicked: (id) => dlPicked.has(id),
+              onToggleDlPick: toggleDlPick,
+              proofing: { enabled: proofingEnabled, locked: isLocked, isPicked: (id) => picked.has(id), onPick: togglePick },
+              isPaid: (id) => !!serverSelections.find((s2) => s2.fileId === id)?.isPaid,
+              prints: { enabled: delivery.printsEnabled, onPrint: (f) => setPrintFor(f as FileItem) },
+              canDownload: (f) => !f.isProof && !delivery.viewOnly,
+              onDownload: (f) => downloadOne(f as FileItem),
+              onShare: shareGallery,
+            }}
+          />
+          {!showingProofs && files.length > 0 && (
+            <EditorialKeep
+              photoCount={allPhotos.length}
+              filmCount={allFilms.length}
+              maxW={Math.max(0, ...allPhotos.map(f => f.width ?? 0))}
+              maxH={Math.max(0, ...allPhotos.map(f => f.height ?? 0))}
+              totalBytes={files.reduce((sum, f) => sum + (f.sizeBytes || 0), 0)}
+              zipping={zipping}
+              selecting={selecting}
+              onDownloadAll={downloadAll}
+              onToggleSelect={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
+            />
+          )}
+          <EditorialClosing firstName={delivery.recipientFirstName} orgName={org?.name || "Slate"} website={edWebsite} />
+        </>
+      ) : (
+        <>
       {/* HERO */}
       {layoutHasHero ? (
         <CoverHero
@@ -1617,11 +1721,14 @@ export default function DeliverGalleryPage() {
         })}
       </div>
 
+        </>
+      )}
+
         {/* Sticky proofing footer */}
         {/* Selection bar. Fixed to the bottom so it's reachable one-handed on a
             phone, which is where most of these galleries get opened. */}
         {selecting && (
-          <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
+          <div className={`fixed bottom-0 inset-x-0 z-40 border-t px-5 py-3 flex items-center justify-between gap-3 ${editorial ? "bg-white/80 backdrop-blur-xl border-black/10" : "bg-white border-slate-200"}`}>
             <div className="text-sm text-slate-700 min-w-0">
               <strong>{dlPicked.size}</strong> selected
               {dlPicked.size > 0 && (
@@ -1652,7 +1759,7 @@ export default function DeliverGalleryPage() {
             Preview shows it too: a draft is exactly when you're checking that
             the page reads right. */}
         {proofingEnabled && !isLocked && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-lg z-30">
+          <div className={`fixed bottom-0 left-0 right-0 border-t p-4 z-30 ${editorial ? "bg-white/80 backdrop-blur-xl border-black/10" : "bg-white border-slate-200 shadow-lg"}`}>
             <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm min-w-0">
                 {alreadyCount > 0 && newPicks.length === 0 ? (
@@ -1903,9 +2010,11 @@ export default function DeliverGalleryPage() {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 py-8 text-center text-xs text-slate-400">
-        Powered by Slate · slate.sdubmedia.com
-      </footer>
+      {!editorial && (
+        <footer className="border-t border-slate-200 py-8 text-center text-xs text-slate-400">
+          Powered by Slate · slate.sdubmedia.com
+        </footer>
+      )}
     </div>
   );
 }
