@@ -25,6 +25,7 @@ import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
 import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
 import { chipFieldToText } from "@/lib/chipFieldText";
 import { defaultGalleryNote, defaultToneFor, type GalleryTone } from "@/lib/galleryCopy";
+import { makeBrowseCopy } from "@/lib/browseCopy";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
 import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -803,6 +804,9 @@ function DeliveryDetail({ id }: { id: string }) {
           file = await toUploadableImage(rawFile);
         }
         const isVideo = file.type.startsWith("video/");
+        // The browse copy the gallery draws (browseCopy.ts). Null when the
+        // photo is already small — then the grid browses the file itself.
+        const browseBlob = isVideo ? null : await makeBrowseCopy(file);
 
         // Read dimensions/duration client-side. Video also produces a
         // first-frame Blob we'll upload as the auto-thumbnail.
@@ -902,12 +906,15 @@ function DeliveryDetail({ id }: { id: string }) {
         }
 
         // 2b. For videos, upload the auto-captured first-frame thumbnail.
+        // 2b. The thumbnail slot: a video's first frame, or a photo's browse
+        // copy. Non-fatal either way — the file still uploads; a video's
+        // frame can be picked later, a photo just browses at full size.
         let thumbnailStoragePath = "";
-        if (isVideo && autoThumbBlob) {
+        const thumbSource = isVideo ? autoThumbBlob : browseBlob;
+        if (thumbSource) {
           try {
-            thumbnailStoragePath = await uploadThumbnailBlob(id, file.name, autoThumbBlob, accessToken);
+            thumbnailStoragePath = await uploadThumbnailBlob(id, file.name, thumbSource, accessToken);
           } catch (thumbErr) {
-            // Non-fatal — file still uploads, user can pick a frame later.
             console.error("Thumbnail upload failed", thumbErr);
           }
         }

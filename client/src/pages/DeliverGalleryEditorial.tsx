@@ -118,7 +118,7 @@ export function EditorialHero({ heroRef, imageUrl, presenter, title, subtitle, p
 }) {
   return (
     <section ref={heroRef} className="relative overflow-hidden bg-black" style={{ height: "100svh", minHeight: 560 }}>
-      {imageUrl && <img src={imageUrl} alt="" className="ed-hero-img absolute inset-0 w-full h-full object-cover" />}
+      {imageUrl && <img src={imageUrl} alt="" fetchPriority="high" decoding="async" className="ed-hero-img absolute inset-0 w-full h-full object-cover" />}
       <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,.15) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 100%)" }} />
       <div className="absolute left-0 right-0 text-center text-white px-6" style={{ bottom: "clamp(56px, 10vh, 120px)" }}>
         {presenter && <div className="ed-fade text-[12px] font-medium uppercase mb-[18px]" style={{ letterSpacing: ".14em", color: "rgba(255,255,255,.72)" }}>{presenter}</div>}
@@ -322,7 +322,7 @@ function Tile({ f, index, kind, b }: { f: EdFile; index: number; kind: Row<EdFil
       style={{ aspectRatio: ratio, background: "#f5f5f7", ...revealStyle(inView) }}
       onClick={() => (b.selecting ? b.onToggleDlPick(f.id) : b.onOpen(index))}
     >
-      <img ref={imgRef} src={f.url} alt={f.originalName} loading="lazy" onLoad={() => setLoaded(true)} className="w-full h-full object-cover" style={{ opacity: loaded ? 1 : 0 }} />
+      <img ref={imgRef} src={f.thumbnailUrl || f.url} alt={f.originalName} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} className="w-full h-full object-cover" style={{ opacity: loaded ? 1 : 0 }} />
       {b.selecting && (
         <div className={`absolute top-3 left-3 z-20 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${dlPicked ? "bg-black text-white border-black" : "bg-white/85 border-black/30 text-transparent"}`}>✓</div>
       )}

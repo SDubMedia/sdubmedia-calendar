@@ -135,28 +135,26 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // from the client record. A gallery with no project reads as personal.
   const storedTone = (delivery as unknown as { tone?: string }).tone;
   let tone: GalleryTone = resolveTone(storedTone, null);
-  if (delivery.project_id) {
-    const { data: project } = await supabase
-      .from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle();
-    if (project) {
-      const { data: client } = await supabase
-        .from("clients").select("id, client_type, broker_id, contact_name, company").eq("id", project.client_id).maybeSingle();
-      tone = resolveTone(storedTone, client);
-      const payerId = payerIdFor(project, client);
-      const payer = client && payerId === client.id
-        ? client
-        : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
-      presentation = galleryPresentation(project, client, payer);
-      recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
-    }
+  // Independent lookups go out together — every round trip here is on the
+  // client's first paint. Org branding (logo, name, business info) is the
+  // same letterhead pattern as contracts.
+  const [{ data: project }, { data: org }] = await Promise.all([
+    delivery.project_id
+      ? supabase.from("projects").select("client_id, bill_to_id").eq("id", delivery.project_id).maybeSingle()
+      : Promise.resolve({ data: null as { client_id: string; bill_to_id: string | null } | null }),
+    supabase.from("organizations").select("name, logo_url, business_info").eq("id", delivery.org_id).single<OrgRow>(),
+  ]);
+  if (project) {
+    const { data: client } = await supabase
+      .from("clients").select("id, client_type, broker_id, contact_name, company").eq("id", project.client_id).maybeSingle();
+    tone = resolveTone(storedTone, client);
+    const payerId = payerIdFor(project, client);
+    const payer = client && payerId === client.id
+      ? client
+      : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
+    presentation = galleryPresentation(project, client, payer);
+    recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
   }
-
-  // Org branding (logo, name, business info) — same letterhead pattern as contracts
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("name, logo_url, business_info")
-    .eq("id", delivery.org_id)
-    .single<OrgRow>();
 
   // Password gate
   if (delivery.password_hash) {
@@ -234,12 +232,13 @@ async function getDelivery(token: string, password: string | undefined, email: s
     supabase.from("deliveries").update({ view_count: delivery.view_count + 1 }).eq("id", delivery.id).then(() => {});
   }
 
-  // Load files
-  const { data: files } = await supabase
-    .from("delivery_files")
-    .select("*")
-    .eq("delivery_id", delivery.id)
-    .order("position");
+  // Files, picks and folders are independent of each other — one round
+  // trip instead of three.
+  const [{ data: files }, { data: selections }, { data: folderRows }] = await Promise.all([
+    supabase.from("delivery_files").select("*").eq("delivery_id", delivery.id).order("position"),
+    supabase.from("delivery_selections").select("file_id, is_paid").eq("delivery_id", delivery.id),
+    supabase.from("delivery_folders").select("id, name, position").eq("delivery_id", delivery.id).order("position"),
+  ]);
   const allRows = (files || []) as FileRow[];
 
   // A client sees ONE half of the job, never both — and never the finals
@@ -248,20 +247,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // _deliveryVisibility.ts for the full table.
   const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam);
 
-  // Load existing selections (so client sees their picks if they're returning)
-  const { data: selections } = await supabase
-    .from("delivery_selections")
-    .select("file_id, is_paid")
-    .eq("delivery_id", delivery.id);
-
-  // Named folders (e.g. "Final Videos" / "B Roll") — labeled sections in the
-  // gallery, distinct from proof/final stage. Empty for every delivery that
-  // has never used one, which is every delivery before this existed.
-  const { data: folderRows } = await supabase
-    .from("delivery_folders")
-    .select("id, name, position")
-    .eq("delivery_id", delivery.id)
-    .order("position");
+  // (selections: so a returning client sees her picks. folderRows: named
+  // folders like "Final Videos" / "B Roll" — empty for every gallery that
+  // never used one.)
 
 
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
@@ -315,7 +303,10 @@ async function getDelivery(token: string, password: string | undefined, email: s
             expiresIn: 3600,
             responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
           }),
-      thumbnailUrl: isVideo && f.thumbnail_storage_path && r2Configured()
+      // A video's poster frame, or a photo's browse copy (browseCopy.ts).
+      // The page draws this in the grid and hero and opens `url` in the
+      // lightbox; a photo with no browse copy yet browses the full file.
+      thumbnailUrl: f.thumbnail_storage_path && r2Configured()
         ? r2PresignedUrl({ method: "GET", key: f.thumbnail_storage_path, expiresIn: 3600 })
         : "",
     };
@@ -377,7 +368,16 @@ async function getDelivery(token: string, password: string | undefined, email: s
       name: f.name,
       position: f.position,
     })),
-    org: org ? { name: org.name, logoUrl: org.logo_url, businessInfo: publicBusinessInfo(org.business_info) } : null,
+    // The logo is a data URL that can run to 400KB+, and the page only ever
+    // draws it as a watermark. Leave it out unless that's on — it was the
+    // single largest thing in every gallery's first response.
+    org: org
+      ? {
+          name: org.name,
+          logoUrl: (delivery as unknown as { watermark_use_logo?: boolean }).watermark_use_logo === true ? org.logo_url : "",
+          businessInfo: publicBusinessInfo(org.business_info),
+        }
+      : null,
   });
 }
 

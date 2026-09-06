@@ -1058,7 +1058,8 @@ export default function DeliverGalleryPage() {
   // The fallback cover is the first PHOTO, never a film — files[0] on a
   // films-only gallery handed the hero a multi-hundred-MB video.
   const coverFile = files.find((f) => f.id === delivery?.coverFileId) || files.find((f) => f.mediaType !== "video") || null;
-  const coverUrl = delivery?.coverUrl || coverFile?.url || "";
+  // Browse copy first (browseCopy.ts): the hero doesn't need the 8MB frame.
+  const coverUrl = delivery?.coverUrl || coverFile?.thumbnailUrl || coverFile?.url || "";
 
   // Kick off a direct, attachment-forced download that the browser streams to
   // disk — no blob held in memory, so it works for files of any size.
@@ -1296,6 +1297,8 @@ export default function DeliverGalleryPage() {
   // stays on the layout below it; everything else renders the sections.
   const editorial = delivery.presentation === "editorial";
   const edPhotos = visibleFiles.filter(f => f.mediaType !== "video");
+  // Lightbox index per file id, once — not an indexOf per tile per render.
+  const visibleIndexById = new Map(visibleFiles.map((f, i) => [f.id, i] as const));
   const edFilms = visibleFiles.filter(f => f.mediaType === "video");
   const allPhotos = files.filter(f => f.mediaType !== "video");
   const allFilms = files.filter(f => f.mediaType === "video");
@@ -1313,10 +1316,12 @@ export default function DeliverGalleryPage() {
 
   return (
     <div className="min-h-screen bg-white text-black" style={editorial ? { fontFamily: ED_FONT, color: "#1d1d1f" } : undefined}>
-      {/* Inline font for the hero — Cormorant for that Pixieset serif feel */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Marcellus&family=Inter:wght@300;400;500&family=Montserrat:wght@300;400;500&family=EB+Garamond:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+      {/* Inline font for the hero — Cormorant for that Pixieset serif feel.
+          The editorial look uses the system typeface, so it skips all of
+          this: seven font families are a real cost on a phone's first load. */}
+      {!editorial && <link rel="preconnect" href="https://fonts.googleapis.com" />}
+      {!editorial && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />}
+      {!editorial && <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Playfair+Display:wght@400;600&family=Marcellus&family=Inter:wght@300;400;500&family=Montserrat:wght@300;400;500&family=EB+Garamond:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet" />}
 
       {editorial ? (
         <>
@@ -1328,8 +1333,8 @@ export default function DeliverGalleryPage() {
             // Chrome and, in Safari, a full download before anything showed.
             imageUrl={
               delivery.coverUrl
-              || (coverFile && coverFile.mediaType !== "video" ? coverFile.url : "")
-              || allPhotos[0]?.url
+              || (coverFile && coverFile.mediaType !== "video" ? (coverFile.thumbnailUrl || coverFile.url) : "")
+              || allPhotos[0]?.thumbnailUrl || allPhotos[0]?.url
               || allFilms.find(f => f.thumbnailUrl)?.thumbnailUrl
               || ""
             }
@@ -1381,7 +1386,7 @@ export default function DeliverGalleryPage() {
           <EditorialFilms films={edFilms} onDownload={delivery.viewOnly ? undefined : (f) => downloadOne(f as FileItem)} />
           <EditorialPhotos
             photos={edPhotos}
-            indexOf={(f) => visibleFiles.indexOf(f as FileItem)}
+            indexOf={(f) => visibleIndexById.get(f.id) ?? 0}
             folders={folders}
             heading={showingProofs ? "Choose from these." : "The photographs."}
             count={`${edPhotos.length} photograph${edPhotos.length === 1 ? "" : "s"}`}
@@ -1707,7 +1712,7 @@ export default function DeliverGalleryPage() {
                 </>
               ) : (
                 <img
-                  src={f.url}
+                  src={f.thumbnailUrl || f.url}
                   alt={f.originalName}
                   loading="lazy"
                   className="w-full h-full object-cover"
