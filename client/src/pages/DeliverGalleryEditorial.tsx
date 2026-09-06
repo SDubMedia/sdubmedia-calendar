@@ -270,15 +270,18 @@ export function EditorialFilms({ films, onDownload }: { films: EdFile[]; onDownl
         <Eyebrow dark>{films.length === 1 ? "The film" : "The films"}</Eyebrow>
         <Headline dark className="mt-5">Press play. Sound on.</Headline>
         <div className="flex flex-col gap-16 mt-14">
-          {ordered.map((f, i) => {
+          {ordered.map((f) => {
             const vertical = (f.height ?? 0) > (f.width ?? 0);
             return (
               <Reveal key={f.id} className={vertical ? "flex flex-col md:flex-row items-center justify-center gap-7 md:gap-16" : ""}>
                 <FilmPoster f={f} vertical={vertical} onDownload={onDownload} />
                 {vertical && (
-                  <p className="m-0 text-[19px] max-w-[22em]" style={{ color: "#a1a1a6", lineHeight: 1.45, letterSpacing: "-.01em" }}>
-                    {i === 0 ? "Made for your phone and your feed." : "The vertical cut, made for your phone and your feed."}
-                  </p>
+                  <div className="text-center md:text-left max-w-[22em]">
+                    <p className="m-0 font-semibold text-white" style={{ fontSize: "clamp(22px, 2.6vw, 30px)", lineHeight: 1.15, letterSpacing: "-.02em" }}>
+                      {f.originalName.replace(/\.[^.]+$/, "")}
+                    </p>
+                    {f.durationSeconds ? <p className="m-0 mt-2 text-[15px]" style={{ color: "#a1a1a6" }}>{formatRuntime(f.durationSeconds)}</p> : null}
+                  </div>
                 )}
               </Reveal>
             );
