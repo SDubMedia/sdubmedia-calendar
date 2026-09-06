@@ -447,18 +447,18 @@ export function EditorialKeep({ photoCount, filmCount, maxW, maxH, totalBytes, z
 // ---------------------------------------------------------------
 // Closing
 // ---------------------------------------------------------------
-export function EditorialClosing({ firstName, orgName, website }: { firstName?: string; orgName: string; website?: string }) {
+export function EditorialClosing({ firstName, orgName, website, portfolio }: { firstName?: string; orgName: string; website?: string; portfolio?: boolean }) {
   const initials = orgName.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   const link = website && /^https?:\/\//i.test(website) ? website : website ? `https://${website}` : "";
   return (
     <section className="bg-black text-center" style={{ padding: `${SECTION_PAD} 0 80px`, color: "#f5f5f7" }}>
       <div className="mx-auto" style={WRAP}>
         <Reveal className="mx-auto mb-7 w-10"><div className="w-10 h-10 rounded-full grid place-items-center text-[11px]" style={{ border: "1.5px solid rgba(255,255,255,.5)", letterSpacing: ".1em" }}>{initials}</div></Reveal>
-        <Headline dark>Thank you{firstName ? `, ${firstName}` : ""}.</Headline>
+        <Headline dark>{portfolio ? "Let's make something." : `Thank you${firstName ? `, ${firstName}` : ""}.`}</Headline>
         <Reveal delay={0.2} className="mx-auto mt-3 text-[19px] max-w-[30em]" style={{ color: "#a1a1a6", lineHeight: 1.45 }}>
-          It was a pleasure. When you're ready for the next one, we'd love to do it again.
+          {portfolio ? "When you're ready, we'd love to hear about it." : "It was a pleasure. When you're ready for the next one, we'd love to do it again."}
         </Reveal>
-        {link && <Reveal delay={0.3} className="mt-8"><Quiet dark href={link}>Book another session</Quiet></Reveal>}
+        {link && <Reveal delay={0.3} className="mt-8"><Quiet dark href={link}>{portfolio ? "Get in touch" : "Book another session"}</Quiet></Reveal>}
         <p className="mt-14 mb-0 text-[12px]" style={{ color: MUTE }}>{orgName} · Powered by Slate</p>
       </div>
     </section>

@@ -1295,9 +1295,15 @@ export default function DeliverGalleryPage() {
   const allPhotos = files.filter(f => f.mediaType !== "video");
   const allFilms = files.filter(f => f.mediaType === "video");
   const edWebsite = typeof org?.businessInfo?.website === "string" ? org.businessInfo.website : "";
-  const edHeadline = showingProofs
-    ? (isLocked ? "Your picks are in." : allPaid ? "Choose your favourites." : alreadyCount > 0 ? `Choose ${roomLeft} more.` : `Choose your ${delivery.selectionLimit}.`)
-    : `${countWord(allPhotos.length)} photograph${allPhotos.length === 1 ? "" : "s"}.${allFilms.length ? ` ${countWord(allFilms.length)} film${allFilms.length === 1 ? "" : "s"}.` : ""}`;
+  // A view-only gallery is a portfolio, not a delivery: no picks, no note
+  // of thanks, no "yours to keep" — just the work and a way to get in touch.
+  const portfolio = delivery.viewOnly === true;
+  const edCounts = `${countWord(allPhotos.length)} photograph${allPhotos.length === 1 ? "" : "s"}.${allFilms.length ? ` ${countWord(allFilms.length)} film${allFilms.length === 1 ? "" : "s"}.` : ""}`;
+  const edHeadline = portfolio
+    ? edCounts
+    : showingProofs
+      ? (isLocked ? "Your picks are in." : allPaid ? "Choose your favourites." : alreadyCount > 0 ? `Choose ${roomLeft} more.` : `Choose your ${delivery.selectionLimit}.`)
+      : edCounts;
 
   return (
     <div className="min-h-screen bg-white text-black" style={editorial ? { fontFamily: ED_FONT, color: "#1d1d1f" } : undefined}>
@@ -1326,15 +1332,15 @@ export default function DeliverGalleryPage() {
             onShare={shareGallery}
           />
           <EditorialIntro
-            eyebrow={showingProofs ? "Your proofs" : "Your gallery"}
+            eyebrow={portfolio ? "Portfolio" : showingProofs ? "Your proofs" : "Your gallery"}
             headline={edHeadline}
             signature={org?.name || undefined}
             action={delivery.status === "submitted" && !isWorking
               ? <button onClick={requestChange} className="text-[15px] hover:underline" style={{ color: "#0066cc" }}>Request a change</button>
               : undefined}
           >
-            {delivery.status === "working" && <p className="m-0">We're editing your picks now. You'll get an email the moment they're ready.</p>}
-            {delivery.status === "submitted" && <p className="m-0">Thank you. We've got your picks and we'll take it from here.</p>}
+            {!portfolio && delivery.status === "working" && <p className="m-0">We're editing your picks now. You'll get an email the moment they're ready.</p>}
+            {!portfolio && delivery.status === "submitted" && <p className="m-0">Thank you. We've got your picks and we'll take it from here.</p>}
             {proofingEnabled && !isLocked && (
               <p className="m-0" style={{ marginTop: delivery.status === "submitted" ? 16 : 0 }}>
                 {allPaid ? (
@@ -1346,7 +1352,12 @@ export default function DeliverGalleryPage() {
                 )}
               </p>
             )}
-            {!showingProofs && (
+            {portfolio && delivery.note?.trim() && (
+              <p className="m-0" style={{ whiteSpace: "pre-line" }}>
+                {applyGalleryNote(delivery.note, { studio: org?.name })}
+              </p>
+            )}
+            {!portfolio && !showingProofs && (
               <p className="m-0" style={{ whiteSpace: "pre-line" }}>
                 {applyGalleryNote(delivery.note?.trim() || defaultGalleryNote(allFilms.length > 0), { firstName: delivery.recipientFirstName, studio: org?.name })}
               </p>
@@ -1386,7 +1397,7 @@ export default function DeliverGalleryPage() {
               onToggleSelect={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
             />
           )}
-          <EditorialClosing firstName={delivery.recipientFirstName} orgName={org?.name || "Slate"} website={edWebsite} />
+          <EditorialClosing firstName={delivery.recipientFirstName} orgName={org?.name || "Slate"} website={edWebsite} portfolio={portfolio} />
         </>
       ) : (
         <>
