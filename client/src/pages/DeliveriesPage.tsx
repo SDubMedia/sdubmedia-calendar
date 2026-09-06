@@ -2646,15 +2646,16 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
     return () => { cancelled = true; };
   }, [delivery.coverStoragePath, delivery.id]);
 
-  // The cover is a full-screen hero, so it gets a generous 2880px edge at
-  // 85% rather than the grid's 2048/80 — sharp on a retina laptop, but not
-  // the 6903px, 6MB frame CBSR Nashville's cover was (2026-09-06), which
-  // every visitor downloaded before the page could show anything.
+  // The cover is a full-screen hero that the page also zooms slightly, so
+  // it keeps a 3840px edge at 90% — sharp on a Retina or 5K display — rather
+  // than the grid's 2048/80. 2560 was tried first and went soft on a large
+  // screen. Still far from the 6903px, 6MB frame CBSR Nashville's cover was
+  // (2026-09-06), which every visitor downloaded before anything showed.
   async function uploadCover(file: File) {
     setUploadingCover(true);
     try {
       const dims = await readImageDims(file).catch(() => ({ width: null, height: null }));
-      const resized = await makeBrowseCopy(file, 2880, 0.85);
+      const resized = await makeBrowseCopy(file, 3840, 0.9);
       const fileName = resized ? file.name.replace(/\.[^.]+$/, "") + ".jpg" : file.name;
       const contentType = resized ? "image/jpeg" : (file.type || "image/jpeg");
       const upload: File = resized ? new File([resized], fileName, { type: "image/jpeg" }) : file;
