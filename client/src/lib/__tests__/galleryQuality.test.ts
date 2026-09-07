@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isRealEstateProject, keepsFullQuality } from "../galleryQuality";
+import { isRealEstateGallery, isRealEstateProject, keepsFullQuality } from "../galleryQuality";
 import type { Client, Project } from "../types";
 
 const client = (id: string, clientType: Client["clientType"], extra: Partial<Client> = {}) =>
@@ -36,6 +36,23 @@ describe("isRealEstateProject", () => {
   });
 });
 
+describe("isRealEstateGallery", () => {
+  it("follows the client rule when the switch is off", () => {
+    expect(isRealEstateGallery({ realEstate: false }, project("agent1"), clientsById)).toBe(true);
+    expect(isRealEstateGallery({ realEstate: undefined }, project("school"), clientsById)).toBe(false);
+  });
+
+  it("is real estate when the gallery's own switch is on, whoever the client is", () => {
+    expect(isRealEstateGallery({ realEstate: true }, project("school"), clientsById)).toBe(true);
+    expect(isRealEstateGallery({ realEstate: true }, project("family"), clientsById)).toBe(true);
+  });
+
+  it("lets the switch win even with no project to classify", () => {
+    expect(isRealEstateGallery({ realEstate: true }, null, clientsById)).toBe(true);
+    expect(isRealEstateGallery(null, null, clientsById)).toBe(false);
+  });
+});
+
 describe("keepsFullQuality", () => {
   it("keeps full quality for every non-real-estate shoot, switch or no switch", () => {
     expect(keepsFullQuality({ keepOriginals: false }, project("family"), clientsById)).toBe(true);
@@ -53,5 +70,13 @@ describe("keepsFullQuality", () => {
 
   it("lets the owner switch full quality on for a real estate shoot", () => {
     expect(keepsFullQuality({ keepOriginals: true }, project("agent1"), clientsById)).toBe(true);
+  });
+
+  it("re-saves small when the gallery's real estate switch is on for a standard client", () => {
+    expect(keepsFullQuality({ keepOriginals: false, realEstate: true }, project("school"), clientsById)).toBe(false);
+  });
+
+  it("keeps full quality when both switches are on", () => {
+    expect(keepsFullQuality({ keepOriginals: true, realEstate: true }, project("school"), clientsById)).toBe(true);
   });
 });

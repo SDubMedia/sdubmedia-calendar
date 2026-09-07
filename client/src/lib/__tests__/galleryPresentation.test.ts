@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { galleryPresentation, isRealEstateShoot, payerIdFor, defaultTone, resolveTone } from "../../../../api/_galleryPresentation";
+import { galleryPresentation, isRealEstateGallery, isRealEstateShoot, keepsFullQuality, payerIdFor, defaultTone, resolveTone } from "../../../../api/_galleryPresentation";
 
 const agent = { id: "agent1", client_type: "agent", broker_id: "cbsr" };
 const broker = { id: "cbsr", client_type: "broker" };
@@ -43,6 +43,30 @@ describe("galleryPresentation", () => {
   });
   it("gives a gallery with no project the editorial look", () => {
     expect(galleryPresentation(null, null, null)).toBe("editorial");
+  });
+  it("gives the listing look when the gallery's own switch is on, whoever the client is", () => {
+    expect(galleryPresentation({ client_id: "school" }, school, school, { real_estate: true })).toBe("listing");
+    expect(galleryPresentation(null, null, null, { real_estate: true })).toBe("listing");
+  });
+  it("leaves the client rule alone when the switch is off", () => {
+    expect(galleryPresentation({ client_id: "family" }, family, family, { real_estate: false })).toBe("editorial");
+    expect(galleryPresentation({ client_id: "agent1" }, agent, broker, { real_estate: false })).toBe("listing");
+  });
+});
+
+describe("isRealEstateGallery / keepsFullQuality (server)", () => {
+  it("hands over originals for every non-real-estate gallery", () => {
+    expect(keepsFullQuality({ real_estate: false }, { client_id: "family" }, family, family)).toBe(true);
+    expect(keepsFullQuality(null, null, null, null)).toBe(true);
+  });
+  it("hands over the MLS-size copy for real estate, by client or by switch", () => {
+    expect(keepsFullQuality({ real_estate: false }, { client_id: "agent1" }, agent, broker)).toBe(false);
+    expect(keepsFullQuality({ real_estate: true }, { client_id: "school" }, school, school)).toBe(false);
+    expect(isRealEstateGallery({ real_estate: true }, null, null, null)).toBe(true);
+  });
+  it("hands over originals again when keep_originals is on", () => {
+    expect(keepsFullQuality({ real_estate: true, keep_originals: true }, { client_id: "school" }, school, school)).toBe(true);
+    expect(keepsFullQuality({ keep_originals: true }, { client_id: "agent1" }, agent, broker)).toBe(true);
   });
 });
 

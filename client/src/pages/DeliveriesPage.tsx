@@ -22,7 +22,7 @@ import { expectedPartSize, resumablePartNumbers, type ListedPart } from "@/lib/m
 import { baseNameOf, renameFile } from "@/lib/fileName";
 import { defaultSubject, defaultBody, applyMerge, MERGE_FIELDS, type GalleryContents } from "@/lib/deliveryEmail";
 import { getProjectInvoiceAmount, getProjectPayerId } from "@/lib/data";
-import { isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
+import { isRealEstateGallery, isRealEstateProject, keepsFullQuality } from "@/lib/galleryQuality";
 import { chipFieldToText } from "@/lib/chipFieldText";
 import { defaultGalleryNote, defaultToneFor, type GalleryTone } from "@/lib/galleryCopy";
 import { makeBrowseCopy } from "@/lib/browseCopy";
@@ -139,10 +139,11 @@ function DeliveriesList() {
   // client. A client gallery set to download-only was therefore filed under
   // Real Estate — Color War, a Live Event for a church, sat there for exactly
   // that reason. Same test the dashboard uses: the client is an agent, or the
-  // shoot is billed to a brokerage.
+  // shoot is billed to a brokerage — plus the gallery's own real estate
+  // switch, for a listing shoot under an otherwise standard client.
   const clientsById = useMemo(() => Object.fromEntries(data.clients.map(c => [c.id, c])), [data.clients]);
   const isRealEstate = (d: typeof galleries[number]) =>
-    isRealEstateProject(d.projectId ? data.projects.find(p => p.id === d.projectId) : null, clientsById);
+    isRealEstateGallery(d, d.projectId ? data.projects.find(p => p.id === d.projectId) : null, clientsById);
   // Mini sessions produce one gallery per family — a dozen cards for a single
   // Saturday. They're collected under the event, so show the event once and
   // let it expand, rather than burying everything else.
@@ -630,13 +631,15 @@ function DeliveryDetail({ id }: { id: string }) {
   const [activeTab, setActiveTab] = useState<"photos" | "general" | "cover" | "privacy" | "selections">("photos");
 
   const delivery = data.deliveries.find(d => d.id === id);
-  // Full quality unless this is a real estate shoot (agent client, or billed
-  // to a brokerage) — those are re-saved small for the MLS. Everything else
-  // keeps the untouched file beside the browsable copy, for every upload by
-  // anyone: the shoot's raws for the editor, and the editor's exact export
-  // for the client. Geoff, 2026-09-05. See client/src/lib/galleryQuality.ts.
+  // Full quality unless this is a real estate delivery (agent client, billed
+  // to a brokerage, or the gallery's own switch) — those are re-saved small
+  // for the MLS. Everything else keeps the untouched file beside the
+  // browsable copy, for every upload by anyone: the shoot's raws for the
+  // editor, and the editor's exact export for the client. Geoff, 2026-09-05.
+  // See client/src/lib/galleryQuality.ts.
   const galleryProject = delivery?.projectId ? (data.projects.find(p => p.id === delivery.projectId) ?? null) : null;
-  const galleryIsRealEstate = isRealEstateProject(galleryProject, clientsById);
+  const clientSaysRealEstate = isRealEstateProject(galleryProject, clientsById);
+  const galleryIsRealEstate = isRealEstateGallery(delivery, galleryProject, clientsById);
   const fullQuality = !!delivery && keepsFullQuality(delivery, galleryProject, clientsById);
   const files = useMemo(
     () => data.deliveryFiles.filter(f => f.deliveryId === id).sort((a, b) => a.position - b.position),
@@ -1847,6 +1850,11 @@ function DeliveryDetail({ id }: { id: string }) {
           <PrivacyPanel
             requireEmail={delivery.requireEmail}
             onUpdate={(v) => updateDelivery(id, { requireEmail: v })}
+          />
+          <RealEstatePanel
+            realEstate={delivery.realEstate ?? false}
+            byClient={clientSaysRealEstate}
+            onUpdate={(v) => updateDelivery(id, { realEstate: v })}
           />
           <QualityPanel
             keepOriginals={delivery.keepOriginals ?? false}
@@ -3873,6 +3881,41 @@ function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdat
 /** The switch only means something on a real estate shoot. Every other
  *  gallery keeps full quality regardless (galleryQuality.ts), so there it
  *  reads as a statement of fact rather than a choice. */
+/** The gallery's own real estate switch. When the client already makes it
+ *  real estate (an agent, or billed to a brokerage) there is nothing to
+ *  choose, so it reads as a statement instead of a checkbox. */
+function RealEstatePanel({ realEstate, byClient, onUpdate }: { realEstate: boolean; byClient: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Real estate</h3>
+      {byClient ? (
+        <p className="text-xs text-slate-400">
+          <span className="text-sm text-white font-medium block mb-1">Real estate delivery — always on for this client</span>
+          The client is an agent, or this shoot is billed to a brokerage, so the gallery gets the listing layout and
+          Download hands over the MLS-size copy.
+        </p>
+      ) : (
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={realEstate}
+            onChange={(e) => onUpdate(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-[#0088ff]"
+          />
+          <span>
+            <span className="text-sm text-white font-medium block">Deliver as a real estate shoot</span>
+            <span className="text-xs text-slate-500">
+              For a listing shoot under a client who is otherwise a standard client. The gallery switches to the listing
+              layout and Download hands over the MLS-size copy (full resolution, re-saved at 80%) instead of the untouched
+              original. Takes effect right away, including for photos already uploaded.
+            </span>
+          </span>
+        </label>
+      )}
+    </div>
+  );
+}
+
 function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: boolean; alwaysOn: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
@@ -3882,7 +3925,7 @@ function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: bo
           <span className="text-sm text-white font-medium block mb-1">Full quality — always on for this shoot</span>
           Every photo keeps its untouched file beside the light copy the gallery browses. Raws stay as the editor's
           negatives, and what the editor uploads is exactly what the client downloads, EXIF and colour profile intact.
-          Only real estate shoots (an agent client, or billed to a brokerage) are re-saved small for the MLS.
+          Only real estate deliveries (an agent client, billed to a brokerage, or the switch above) are re-saved small for the MLS.
         </p>
       ) : (
         <label className="flex items-start gap-3 cursor-pointer">

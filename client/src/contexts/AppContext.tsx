@@ -1016,6 +1016,7 @@ function rowToDelivery(r: any): Delivery {
     downloadOnly: r.download_only === true,
     viewOnly: r.view_only === true,
     keepOriginals: r.keep_originals === true,
+    realEstate: r.real_estate === true,
     note: typeof r.note === "string" ? r.note : "",
     tone: r.tone === "personal" || r.tone === "business" ? r.tone : "",
     perExtraPhotoCents: Number(r.per_extra_photo_cents ?? 0),
@@ -2511,6 +2512,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (d.downloadOnly !== undefined) patch.download_only = d.downloadOnly;
     if (d.viewOnly !== undefined) patch.view_only = d.viewOnly;
     if (d.keepOriginals !== undefined) patch.keep_originals = d.keepOriginals;
+    if (d.realEstate !== undefined) patch.real_estate = d.realEstate;
     if (d.note !== undefined) patch.note = d.note;
     if (d.tone !== undefined) patch.tone = d.tone;
     if (d.perExtraPhotoCents !== undefined) patch.per_extra_photo_cents = d.perExtraPhotoCents;

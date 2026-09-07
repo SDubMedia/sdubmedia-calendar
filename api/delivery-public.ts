@@ -19,7 +19,7 @@ import { randomUUID } from "crypto";
 import { r2Configured, r2PresignedUrl, isCameraRaw } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
 import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
-import { galleryPresentation, payerIdFor, resolveTone, type GalleryPresentation, type GalleryTone } from "./_galleryPresentation.js";
+import { galleryPresentation, keepsFullQuality, payerIdFor, resolveTone, type GalleryPresentation, type GalleryTone } from "./_galleryPresentation.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -52,6 +52,10 @@ interface DeliveryRow {
   download_count: number;
   created_at: string;
   updated_at: string;
+  /** Per-gallery switches, see _galleryPresentation.ts. Optional so a
+   *  deploy ahead of the migration still serves galleries. */
+  real_estate?: boolean | null;
+  keep_originals?: boolean | null;
 }
 
 interface FileRow {
@@ -127,9 +131,12 @@ async function getDelivery(token: string, password: string | undefined, email: s
   }
 
   // Which look the page renders, and who it's addressed to. Real estate
-  // (agent client, or billed to a brokerage) keeps the listing layout;
-  // every other client gets the editorial one. See _galleryPresentation.ts.
-  let presentation: GalleryPresentation = "editorial";
+  // (agent client, billed to a brokerage, or the gallery's own switch) keeps
+  // the listing layout; every other client gets the editorial one. See
+  // _galleryPresentation.ts. Decided once here, with the same inputs, is
+  // whether Download hands over originals or the MLS-size copy.
+  let presentation: GalleryPresentation = galleryPresentation(null, null, null, delivery);
+  let fullQuality = keepsFullQuality(delivery, null, null, null);
   let recipientFirstName = "";
   // Personal or business copy: the owner's per-gallery choice, else derived
   // from the client record. A gallery with no project reads as personal.
@@ -152,7 +159,8 @@ async function getDelivery(token: string, password: string | undefined, email: s
     const payer = client && payerId === client.id
       ? client
       : (await supabase.from("clients").select("id, client_type, broker_id").eq("id", payerId).maybeSingle()).data;
-    presentation = galleryPresentation(project, client, payer);
+    presentation = galleryPresentation(project, client, payer, delivery);
+    fullQuality = keepsFullQuality(delivery, project, client, payer);
     recipientFirstName = (client?.contact_name || "").trim().split(/\s+/)[0] || "";
   }
 
@@ -295,11 +303,15 @@ async function getDelivery(token: string, password: string | undefined, email: s
       // zipped in Safari's memory, which is what "unable to open" was
       // (Felicia Long, 2026-09-05). A camera raw is never a deliverable;
       // the original is only used when it's a real full-quality copy.
+      //
+      // And only when the gallery keeps full quality at all: a real estate
+      // delivery hands over the compressed MLS-size copy even if an original
+      // was stored (the switch may have been flipped after upload).
       downloadUrl: isProof || (delivery as unknown as { view_only?: boolean }).view_only === true || !r2Configured()
         ? ""
         : r2PresignedUrl({
             method: "GET",
-            key: f.original_storage_path && !isCameraRaw(f.original_storage_path) ? f.original_storage_path : f.storage_path,
+            key: fullQuality && f.original_storage_path && !isCameraRaw(f.original_storage_path) ? f.original_storage_path : f.storage_path,
             expiresIn: 3600,
             responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
           }),

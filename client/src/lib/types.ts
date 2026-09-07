@@ -1991,6 +1991,12 @@ export interface Delivery {
   // to JPEG at 80% to keep galleries fast, which is right for real estate and
   // wrong for portrait work where the file itself is the product.
   keepOriginals?: boolean;
+  /** Deliver this gallery as a real estate shoot regardless of who the client
+   *  is: the listing layout, and Download hands over the compressed MLS-size
+   *  copy instead of the untouched original. Off by default; the owner flips
+   *  it per gallery for a mixed client (a brokerage that is otherwise a
+   *  standard client). Read at serve time, so it applies to photos already up. */
+  realEstate?: boolean;
   /** A personal note shown in the editorial gallery's statement section.
    *  Merge fields {{first_name}} and {{studio}}. Empty = the default in
    *  client/src/lib/galleryCopy.ts. Optional so older fixtures still type. */
