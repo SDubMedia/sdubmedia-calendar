@@ -1246,14 +1246,28 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
               </div>
             </div>
 
-            {/* What's included — the booked service pieces (all roles). */}
-            {(project.services?.length ?? 0) > 0 && (
+            {/* What's included — the booked service pieces (all roles).
+                Travel is billed as a service too, but it isn't something the
+                client receives, so it gets its own block below rather than
+                sitting under "What's included" with an on-site duration
+                (Geoff, 2026-09-08). A service is travel when its category is
+                named Travel. */}
+            {(project.services?.length ?? 0) > 0 && (() => {
+              const travelCategoryIds = new Set(data.serviceCategories.filter(c => /travel/i.test(c.name)).map(c => c.id));
+              const isTravel = (s: { serviceId: string }) => {
+                const svc = data.services.find(x => x.id === s.serviceId);
+                return !!svc && travelCategoryIds.has(svc.categoryId);
+              };
+              const included = project.services!.filter(s => !isTravel(s));
+              const travel = project.services!.filter(isTravel);
+              return (<>
+              {included.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
                   <Camera className="w-3.5 h-3.5" /> What's included
                 </div>
                 <div className="space-y-1.5">
-                  {project.services!.map((s, i) => (
+                  {included.map((s, i) => (
                     <div key={i} className="flex items-center justify-between gap-3 bg-secondary rounded-md px-3 py-2">
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{s.label}</div>
@@ -1263,6 +1277,24 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                     </div>
                   ))}
                 </div>
+              </div>
+              )}
+              {travel.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                  <Car className="w-3.5 h-3.5" /> Travel
+                </div>
+                <div className="space-y-1.5">
+                  {travel.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 bg-secondary rounded-md px-3 py-2">
+                      <div className="text-sm font-medium truncate">{s.label.replace(/^Travel\s+[—–-]\s+/i, "")}</div>
+                      {!isStaff && <div className="text-sm font-medium tabular-nums shrink-0">${Number(s.price || 0).toFixed(0)}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              )}
+              <div className="space-y-2">
                 {/* Agent: who pays for these pieces. */}
                 {isClient && (
                   agentBroker ? (
@@ -1272,7 +1304,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                   )
                 )}
               </div>
-            )}
+              </>);
+            })()}
 
             {/* Products / software (owner only — these carry internal cost). */}
             {isOwner && (project.products?.length ?? 0) > 0 && (

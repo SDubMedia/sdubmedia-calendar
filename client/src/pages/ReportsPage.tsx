@@ -741,6 +741,13 @@ export default function ReportsPage() {
       s + getProjectBillableHours(p, pricingClientOf(p)).postBillable, 0);
     const totalHours = totalProductionHours + totalEditorHours;
     const totalInvoice = clientProjects.reduce((s, p) => s + getProjectInvoiceAmount(p, pricingClientOf(p)), 0);
+    // Picked services (travel time, drone add-on, rush) are part of every
+    // project's invoice amount — on an hourly client they sit on top of the
+    // hours — so the report has to show them, or the total won't add up to
+    // "hours × rate" and the client asks why (Geoff, 2026-09-08: a $200
+    // travel line was invisible on the Coldwell Banker report).
+    const servicesOf = (p: Project) => (p.services || []).filter(s => Number(s.price || 0) !== 0);
+    const totalServices = clientProjects.reduce((s, p) => s + servicesOf(p).reduce((t, x) => t + Number(x.price || 0), 0), 0);
 
     // Report number
     const clientPrefix = client.company.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 3);
@@ -833,6 +840,17 @@ export default function ReportsPage() {
         <ul class="deliverables-list">${deliverables}</ul>
       ` : "";
 
+      // Each picked service on its own line with its price. On a flat-rate
+      // project these ARE the price; on an hourly one they're add-ons billed
+      // on top of the hours. Same rows the client sees in their own portal.
+      const svcRows = servicesOf(p).map(s => `
+        <div class="crew-entry">
+          <div><div class="crew-role">${isPerProject ? "Service" : "Add-on"}</div><div class="crew-name">${escReport(s.label)}</div></div>
+          <div class="crew-hours">${formatCurrency(Number(s.price || 0))}</div>
+        </div>
+      `).join("");
+      const servicesHtml = svcRows ? `<div style="margin-top: 16px;">${svcRows}</div>` : "";
+
       // Travel entries are internal-only — never render them in the client
       // report's per-project crew list. (Travel is tracked separately via
       // getProjectTravelCost and shown on the internal report only.)
@@ -891,6 +909,7 @@ export default function ReportsPage() {
               ${postEntries}
             </div>
             ` : ""}
+            ${servicesHtml}
           </div>
         </div>
       `;
@@ -952,7 +971,8 @@ export default function ReportsPage() {
           <div class="hours-row"><span>Production Hours Used</span><span>${totalProductionHours.toFixed(1)} hrs</span></div>
           <div class="hours-row"><span>Editor Hours Used</span><span>${totalEditorHours.toFixed(1)} hrs</span></div>
           <div class="hours-row total"><span>Total Hours Used</span><span>${totalHours.toFixed(1)} hrs</span></div>
-          <div class="hours-row highlight"><span>Total Value of Hours Used</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
+          ${totalServices > 0 ? `<div class="hours-row"><span>Add-on Services</span><span>${formatCurrency(totalServices)}</span></div>` : ""}
+          <div class="hours-row highlight"><span>${totalServices > 0 ? "Total Billed" : "Total Value of Hours Used"}</span><span class="hours-value">${formatCurrency(totalInvoice)}</span></div>
           `}
         </div>
       </div>
@@ -967,7 +987,7 @@ export default function ReportsPage() {
           </div>
           <div class="calc">${isPerProject
             ? `${clientProjects.length} project${clientProjects.length !== 1 ? "s" : ""} — flat rate billing`
-            : `${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr`
+            : `${totalHours.toFixed(1)} hrs × $${Number(client.billingRatePerHour).toFixed(0)}/hr${totalServices > 0 ? ` + ${formatCurrency(totalServices)} add-on services` : ""}`
           }</div>
           <div class="note">Make checks payable to ${client.partnerSplit?.partnerName ? client.partnerSplit.partnerName : "SDub Media LLC"}.</div>
         </div>
