@@ -969,12 +969,19 @@ export default function DeliverGalleryPage() {
 
   const [selecting, setSelecting] = useState(false);
   const [dlPicked, setDlPicked] = useState<Set<string>>(new Set());
-  const toggleDlPick = (id: string) =>
+  const toggleDlPick = (id: string) => {
     setDlPicked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    // iOS: start pulling the file now so the share sheet opens within the
+    // tap's activation window later (see sharePhotos).
+    if (isIOS()) {
+      const f = files.find((x) => x.id === id);
+      if (f && f.mediaType !== "video" && !dlPicked.has(id)) void fetchPhotoBlob(f).catch(() => { /* retried on share */ });
+    }
+  };
 
   async function downloadSelected() {
     const chosen = files.filter((f) => dlPicked.has(f.id));
@@ -983,8 +990,8 @@ export default function DeliverGalleryPage() {
     // Same split as download-all: videos stream straight to disk, photos get
     // zipped. But zipping happens in memory, so a big selection of
     // full-quality originals would blow up a phone — past this size each file
-    // streams individually instead. iOS always takes the individual-file path
-    // regardless of size — see isIOS()'s comment above streamToDisk.
+    // streams individually instead. iOS goes through the share sheet — see
+    // sharePhotos.
     const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
     const photos = chosen.filter((f) => f.mediaType !== "video");
     const videos = chosen.filter((f) => f.mediaType === "video");
@@ -995,7 +1002,9 @@ export default function DeliverGalleryPage() {
         streamToDisk(v.downloadUrl || v.url);
         await new Promise((r) => setTimeout(r, 800));
       }
-      if (photos.length > 0 && (isIOS() || photoBytes > ZIP_BUDGET_BYTES)) {
+      if (photos.length > 0 && isIOS()) {
+        if (!(await sharePhotos(photos))) return; // dismissed: keep the selection so they can retry
+      } else if (photos.length > 0 && photoBytes > ZIP_BUDGET_BYTES) {
         for (const f of photos) {
           streamToDisk(f.downloadUrl || f.url);
           await new Promise((r) => setTimeout(r, 600));
@@ -1034,7 +1043,9 @@ export default function DeliverGalleryPage() {
       // instead of one blob the browser may fail to write.
       const ZIP_BUDGET_BYTES = 300 * 1024 * 1024;
       const photoBytes = photos.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
-      if (photos.length > 0 && (isIOS() || photoBytes > ZIP_BUDGET_BYTES)) {
+      if (photos.length > 0 && isIOS()) {
+        await sharePhotos(photos);
+      } else if (photos.length > 0 && photoBytes > ZIP_BUDGET_BYTES) {
         for (const f of photos) {
           streamToDisk(f.downloadUrl || f.url);
           await new Promise((r) => setTimeout(r, 600));
@@ -1101,6 +1112,68 @@ export default function DeliverGalleryPage() {
     a.remove();
   }
 
+  // iOS photos go through the share sheet, not a download. A download on
+  // iPad/iPhone lands in Files, never in Photos, and Safari only honours the
+  // FIRST of several programmatic downloads — so "download 12 selected" saved
+  // one file, into the wrong place (Geoff, 2026-09-08). Sharing the files
+  // instead puts "Save N Images" one tap away, straight into the Photos app,
+  // and works for a single photo the same way ("Save Image").
+  //
+  // navigator.share has to run inside the tap's activation window. Safari
+  // gives a few seconds, which the fetches can eat on a big set, so picked
+  // photos are pre-fetched as they're ticked (see toggleDlPick) and the
+  // share is attempted regardless — a NotAllowedError falls back to the old
+  // one-file-at-a-time path rather than doing nothing.
+  const photoBlobCache = useRef<Map<string, Promise<Blob>>>(new Map());
+  function fetchPhotoBlob(f: FileItem): Promise<Blob> {
+    const cached = photoBlobCache.current.get(f.id);
+    if (cached) return cached;
+    const p = fetch(f.downloadUrl || f.url).then(async (r) => {
+      if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
+      return r.blob();
+    });
+    // Drop a failed fetch so the next tap tries again with fresh URLs.
+    p.catch(() => photoBlobCache.current.delete(f.id));
+    photoBlobCache.current.set(f.id, p);
+    return p;
+  }
+  /** Returns true when the share sheet was shown (or the fallback ran),
+   *  false when the user dismissed it — the caller keeps the selection. */
+  async function sharePhotos(photos: FileItem[]): Promise<boolean> {
+    const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean };
+    const fallback = async () => {
+      for (const f of photos) {
+        streamToDisk(f.downloadUrl || f.url);
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      return true;
+    };
+    if (typeof nav.share !== "function") return fallback();
+    let files: File[];
+    try {
+      files = await Promise.all(photos.map(async (f) => {
+        const blob = await fetchPhotoBlob(f);
+        const type = blob.type && blob.type.startsWith("image/") ? blob.type : "image/jpeg";
+        const name = /\.[a-z0-9]{2,5}$/i.test(f.originalName) ? f.originalName : `${f.originalName}.jpg`;
+        return new File([blob], name, { type });
+      }));
+    } catch (err) {
+      toast.error("Couldn't load the photos", { description: err instanceof Error ? err.message : "Try again" });
+      return true;
+    }
+    if (nav.canShare && !nav.canShare({ files })) return fallback();
+    try {
+      await nav.share({ files, title: delivery?.title });
+      return true;
+    } catch (err) {
+      // Dismissed the sheet: not an error, nothing to fall back to.
+      if (err instanceof Error && err.name === "AbortError") return false;
+      // Lost the tap's activation window (or the sheet refused the set):
+      // the old path still gets them their files, one at a time.
+      return fallback();
+    }
+  }
+
   async function downloadOne(f: FileItem) {
     // Belt and braces. The server sends no downloadUrl for a proof (or for
     // any file in a view-only gallery) and the buttons are hidden, but this
@@ -1118,7 +1191,7 @@ export default function DeliverGalleryPage() {
       return;
     }
     if (isIOS()) {
-      streamToDisk(f.downloadUrl || f.url);
+      await sharePhotos([f]);
       return;
     }
     try {
@@ -1826,7 +1899,7 @@ export default function DeliverGalleryPage() {
               disabled={dlPicked.size === 0 || zipping}
               className="shrink-0 bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium disabled:opacity-40"
             >
-              {zipping ? "Preparing…" : `Download ${dlPicked.size || ""}`.trim()}
+              {zipping ? "Preparing…" : `${isIOS() ? "Save" : "Download"} ${dlPicked.size || ""}`.trim()}
             </button>
           </div>
         )}
