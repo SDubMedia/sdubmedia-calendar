@@ -2209,6 +2209,20 @@ function DeliveryDetail({ id }: { id: string }) {
         <AssignmentNoteCard notes={myAssignmentNotes} />
       )}
 
+      {/* The owner's running instructions for whoever has photos out. Same
+          field the send dialog writes — this is where you add or change the
+          note after the fact, without unsending and resending. */}
+      {!readOnly && queueByEditor.map(g => (
+        <EditorNoteBox
+          key={g.crewMemberId}
+          name={g.name}
+          initial={distinctNotes(g.files).join("\n\n")}
+          onSave={async (note) => {
+            const assignmentNote = note.trim() || null;
+            await Promise.all(g.files.map(f => updateDeliveryFile(f.id, { assignmentNote })));
+          }}
+        />
+      ))}
       {!readOnly && queueByEditor.length > 0 && (
         <EditingQueueSection
           groups={queueByEditor}
@@ -4206,6 +4220,52 @@ function AssignmentNoteCard({ notes }: { notes: string[] }) {
   );
 }
 
+/** Owner-side note for an editor's outstanding batch, saved onto every file
+ *  in it. Dirty-tracked so a stray click on Save with nothing changed does
+ *  nothing, and an edit elsewhere (another tab, the send dialog) refreshes
+ *  the box unless you're mid-typing. */
+function EditorNoteBox({ name, initial, onSave }: { name: string; initial: string; onSave: (note: string) => Promise<void> }) {
+  const [note, setNote] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { if (!dirty) setNote(initial); }, [initial, dirty]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(note);
+      setDirty(false);
+      toast.success(`Notes for ${name} saved`, { description: "She sees them on her dashboard and in the gallery." });
+    } catch (err) {
+      toast.error("Couldn't save the note", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="mb-3 rounded-xl border border-[#0088ff]/30 bg-[#0088ff]/[0.06] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span className="text-[10px] uppercase tracking-wider text-[#0088ff]">Notes for {name}</span>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !dirty}
+          className="text-[11px] px-2.5 py-1 rounded border border-[#0088ff]/50 text-white bg-[#0088ff]/30 hover:bg-[#0088ff]/50 disabled:opacity-40"
+        >
+          {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+        </button>
+      </div>
+      <textarea
+        value={note}
+        onChange={(e) => { setNote(e.target.value); setDirty(true); }}
+        rows={3}
+        maxLength={2000}
+        placeholder="What to do with these — style, skips, anything she needs to know."
+        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff] resize-y"
+      />
+    </div>
+  );
+}
+
 function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
   count: number; crew: CrewMember[]; sending: boolean; onClose: () => void; onSend: (crewMemberId: string, note: string) => void;
 }) {
@@ -4299,9 +4359,6 @@ function EditingQueueSection({ groups, thumbFor, open, onToggle, onUnsend }: {
                   Unsend all {g.files.length}
                 </button>
               </div>
-              {distinctNotes(g.files).map((n, i) => (
-                <p key={i} className="text-xs text-slate-300 mb-2 pl-2 border-l-2 border-amber-400/40 whitespace-pre-wrap break-words">{n}</p>
-              ))}
               <div className="flex flex-wrap gap-1.5">
                 {g.files.map(f => {
                   const thumb = thumbFor(f);
