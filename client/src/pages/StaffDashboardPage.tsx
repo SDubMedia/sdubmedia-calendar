@@ -123,11 +123,12 @@ export default function StaffDashboardPage() {
       sentToMe: [] as { project: Project; galleryId: string; count: number; notes: string[]; sentAt: string }[],
       picksReady: [] as { project: Project; galleryId: string; picks: number }[],
       waitingOnClient: [] as { project: Project; galleryId: string; proofs: number; limit: number }[],
+      rawsReady: [] as { project: Project; galleryId: string; proofs: number }[],
       needsFinals: [] as Project[],
       uploaded: [] as Project[],
     };
     if (!crewMemberId) return empty;
-    const out = { ...empty, sentToMe: [] as typeof empty.sentToMe, picksReady: [] as typeof empty.picksReady, waitingOnClient: [] as typeof empty.waitingOnClient, needsFinals: [] as Project[], uploaded: [] as Project[] };
+    const out = { ...empty, sentToMe: [] as typeof empty.sentToMe, picksReady: [] as typeof empty.picksReady, waitingOnClient: [] as typeof empty.waitingOnClient, rawsReady: [] as typeof empty.rawsReady, needsFinals: [] as Project[], uploaded: [] as Project[] };
 
     // Batches the owner hand-picked and sent to her (send-to-editor), with
     // whatever note came with them. These are hers regardless of her role on
@@ -182,8 +183,18 @@ export default function StaffDashboardPage() {
       if (p.status === "delivered" || gallery?.status === "delivered") continue;
 
       // Client is still choosing — she can't start, but she can see it coming.
-      if (proofs > 0 && !gallery?.submittedAt) {
+      // Only when the gallery actually has a proofing step: a headshot day
+      // with no limit and no pricing was showing as "waiting for the client"
+      // when the client was never going to pick anything.
+      const proofingOn = !!gallery && (gallery.selectionLimit > 0 || gallery.perExtraPhotoCents > 0 || gallery.buyAllFlatCents > 0);
+      if (proofs > 0 && proofingOn && !gallery?.submittedAt) {
         out.waitingOnClient.push({ project: p, galleryId: gallery!.id, proofs, limit: gallery?.selectionLimit ?? 0 });
+        continue;
+      }
+      // No proofing: the raws are in the gallery and every one of them is
+      // hers to edit. Done once the finals have caught up.
+      if (proofs > 0 && !proofingOn && finals < proofs) {
+        out.rawsReady.push({ project: p, galleryId: gallery!.id, proofs });
         continue;
       }
 
@@ -378,7 +389,7 @@ export default function StaffDashboardPage() {
         {/* Photo-editor work. Their next action isn't "post a draft for review",
             it's "upload the finished gallery" — so this leads with the jobs
             waiting on them and links straight to the project to do it. */}
-        {(photoEditJobs.sentToMe.length > 0 || photoEditJobs.picksReady.length > 0 || photoEditJobs.waitingOnClient.length > 0 || photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
+        {(photoEditJobs.sentToMe.length > 0 || photoEditJobs.picksReady.length > 0 || photoEditJobs.waitingOnClient.length > 0 || photoEditJobs.rawsReady.length > 0 || photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
           <div className="bg-card border border-border rounded-lg">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -397,9 +408,9 @@ export default function StaffDashboardPage() {
                   <div key={galleryId} className="px-4 py-3 bg-primary/5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
+                        <Link href={`/deliveries/${galleryId}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                           {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
-                        </div>
+                        </Link>
                         <p className="text-xs text-primary mt-0.5">
                           {count} photo{count === 1 ? "" : "s"} sent to you{sent && !isNaN(sent.getTime()) ? ` · ${formatDate(sent.toISOString().slice(0, 10))}` : ""}
                         </p>
@@ -437,9 +448,9 @@ export default function StaffDashboardPage() {
                   <div key={p.id} className="px-4 py-3 bg-primary/5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
+                        <Link href={`/deliveries/${galleryId}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                           {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
-                        </div>
+                        </Link>
                         <p className="text-xs text-primary mt-0.5">
                           {client?.company || "The client"} picked {picks} photo{picks === 1 ? "" : "s"} — ready to edit
                         </p>
@@ -459,18 +470,50 @@ export default function StaffDashboardPage() {
                 );
               })}
 
+              {/* The whole shoot is hers — no client picking on this gallery.
+                  Straight into the gallery, where "Download all N raws" is
+                  the first button she sees. */}
+              {photoEditJobs.rawsReady.map(({ project: p, galleryId, proofs }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                return (
+                  <div key={p.id} className="px-4 py-3 bg-primary/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link href={`/deliveries/${galleryId}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
+                          {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                        </Link>
+                        <p className="text-xs text-primary mt-0.5">
+                          {proofs} raw{proofs === 1 ? "" : "s"} in the gallery — all yours to edit
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Shot {formatDate(p.date)}</p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/40 text-primary shrink-0">
+                        Ready to edit
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Link href={`/deliveries/${galleryId}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Download className="w-3.5 h-3.5" /> Open and download all {proofs}
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+
               {/* Coming, but not hers yet. Shown so a job doesn't appear out of
                   nowhere the moment the client presses submit. */}
-              {photoEditJobs.waitingOnClient.map(({ project: p, proofs, limit }) => {
+              {photoEditJobs.waitingOnClient.map(({ project: p, galleryId, proofs, limit }) => {
                 const client = data.clients.find(c => c.id === p.clientId);
                 const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
                 return (
                   <div key={p.id} className="px-4 py-3 opacity-70">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
+                        <Link href={`/deliveries/${galleryId}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                           {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
-                        </div>
+                        </Link>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {proofs} proofs sent — waiting for {client?.company || "the client"} to choose {limit > 0 ? limit : "their favourites"}
                         </p>
@@ -493,9 +536,9 @@ export default function StaffDashboardPage() {
                   <div key={p.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
+                        <Link href={`/calendar?project=${p.id}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                           {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
-                        </div>
+                        </Link>
                         {deliverables && <p className="text-xs text-primary mt-0.5 truncate">{deliverables}</p>}
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Shot {formatDate(p.date)}{loc ? ` · ${loc.name}` : ""}
@@ -539,9 +582,9 @@ export default function StaffDashboardPage() {
                 return (
                   <div key={p.id} className="px-4 py-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
+                      <Link href={gallery ? `/deliveries/${gallery.id}` : `/calendar?project=${p.id}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                         {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
-                      </div>
+                      </Link>
                       <p className="text-xs text-muted-foreground mt-0.5">{count} photo{count === 1 ? "" : "s"} uploaded</p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">

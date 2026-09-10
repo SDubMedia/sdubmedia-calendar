@@ -1390,8 +1390,17 @@ function DeliveryDetail({ id }: { id: string }) {
   }
   const downloadPicks = () => downloadFileSet(files.filter(f => pickedFileIds.has(f.id)), "picks");
   const downloadAssigned = () => downloadFileSet(myAssignedProofs, "assigned");
+  /** Everything an editor can see on the proofs side, as one batch — the
+   *  whole shoot on a gallery with no client proofing (a headshot day she
+   *  edits end to end), or her picks once the client has chosen. The label
+   *  says "raws" only when the originals actually are. */
+  const downloadAllVisible = () => downloadFileSet(visibleProofs, "originals");
+  const visibleAreRaws = visibleProofs.some(f => isRawFile(f.originalStoragePath || f.originalName));
+  const downloadAllLabel = `Download all ${visibleProofs.length} ${visibleAreRaws ? "raws" : "originals"}`;
   const hasBothStages = proofs.length > 0 && finals.length > 0;
-  const gridFiles = !proofingEnabled ? files
+  // No proofing = one flat grid of everything — except for an editor with a
+  // batch sent to her, whose "Assigned to you" toggle must still narrow it.
+  const gridFiles = !proofingEnabled ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
     : fileView === "proofs" ? visibleProofs
     : finals;
   const project = data.projects.find(p => p.id === delivery.projectId);
@@ -2131,9 +2140,38 @@ function DeliveryDetail({ id }: { id: string }) {
               {downloadingPicks ? "Preparing…" : `Download her ${selections.length} pick${selections.length === 1 ? "" : "s"}`}
             </button>
           )}
+          {readOnly && fileView === "proofs" && selections.length === 0 && !(hasAssigned && assignedOnly) && visibleProofs.length > 0 && (
+            <button
+              onClick={downloadAllVisible}
+              disabled={downloadingPicks}
+              className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="Full-quality files — a raw shoot hands back the raw"
+            >
+              <Download className="w-3 h-3" />
+              {downloadingPicks ? "Preparing…" : downloadAllLabel}
+            </button>
+          )}
           {readOnly && fileView === "proofs" && (
             <span className="text-[11px] text-slate-500">Download these, edit, then add them back as finals.</span>
           )}
+        </div>
+      )}
+
+      {/* No client proofing on this gallery (no limit, no pricing) — the
+          Proofs/Finals bar above never renders, so an editor had no way to
+          take the whole shoot in one go. This is that button. */}
+      {readOnly && !proofingEnabled && proofs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button
+            onClick={hasAssigned && assignedOnly ? downloadAssigned : downloadAllVisible}
+            disabled={downloadingPicks}
+            className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] inline-flex items-center gap-1.5 disabled:opacity-50"
+            title="Full-quality files — a raw shoot hands back the raw"
+          >
+            <Download className="w-3 h-3" />
+            {downloadingPicks ? "Preparing…" : hasAssigned && assignedOnly ? `Download your ${myAssignedProofs.length} assigned` : downloadAllLabel}
+          </button>
+          <span className="text-[11px] text-slate-500">Download these, edit, then add them back as finals.</span>
         </div>
       )}
 
