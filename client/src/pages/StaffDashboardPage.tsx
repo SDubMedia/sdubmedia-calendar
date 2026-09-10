@@ -11,7 +11,7 @@ import { CalendarDays, Clock, DollarSign, ArrowRight, MapPin, Briefcase, Film, C
 import { cn } from "@/lib/utils";
 import { getCrewMemberProjectPay } from "@/lib/data";
 import { projectDays, dayCrewFor, projectFirstDate } from "@/lib/projectDays";
-import type { Project, ProjectDocument } from "@/lib/types";
+import type { DeliveryFile, Project, ProjectDocument } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import StaffAgreementResign from "@/components/StaffAgreementResign";
 import SignedAgreementDialog from "@/components/SignedAgreementDialog";
@@ -120,19 +120,47 @@ export default function StaffDashboardPage() {
    *  "Ready for you" = the shoot happened and nothing has been uploaded yet. */
   const photoEditJobs = useMemo(() => {
     const empty = {
+      sentToMe: [] as { project: Project; galleryId: string; count: number; notes: string[]; sentAt: string }[],
       picksReady: [] as { project: Project; galleryId: string; picks: number }[],
       waitingOnClient: [] as { project: Project; galleryId: string; proofs: number; limit: number }[],
       needsFinals: [] as Project[],
       uploaded: [] as Project[],
     };
     if (!crewMemberId) return empty;
-    const out = { ...empty, picksReady: [] as typeof empty.picksReady, waitingOnClient: [] as typeof empty.waitingOnClient, needsFinals: [] as Project[], uploaded: [] as Project[] };
+    const out = { ...empty, sentToMe: [] as typeof empty.sentToMe, picksReady: [] as typeof empty.picksReady, waitingOnClient: [] as typeof empty.waitingOnClient, needsFinals: [] as Project[], uploaded: [] as Project[] };
+
+    // Batches the owner hand-picked and sent to her (send-to-editor), with
+    // whatever note came with them. These are hers regardless of her role on
+    // the project — the owner chose her by name — and they lead the list.
+    // Pending only: the assignment clears when her final lands.
+    const byGallery = new Map<string, DeliveryFile[]>();
+    for (const f of data.deliveryFiles) {
+      if (f.stage !== "proof" || f.assignedCrewMemberId !== crewMemberId) continue;
+      byGallery.set(f.deliveryId, [...(byGallery.get(f.deliveryId) || []), f]);
+    }
+    const sentGalleryIds = new Set<string>();
+    for (const [galleryId, batch] of byGallery) {
+      const gallery = data.deliveries.find(d => d.id === galleryId);
+      const p = gallery ? data.projects.find(x => x.id === gallery.projectId) : undefined;
+      if (!gallery || !p || p.status === "cancelled") continue;
+      const notes: string[] = [];
+      for (const f of batch) {
+        const n = (f.assignmentNote || "").trim();
+        if (n && !notes.includes(n)) notes.push(n);
+      }
+      const stamps = batch.map(f => f.assignedAt || "").filter(Boolean).sort();
+      out.sentToMe.push({ project: p, galleryId, count: batch.length, notes, sentAt: stamps[stamps.length - 1] || "" });
+      sentGalleryIds.add(galleryId);
+    }
+    out.sentToMe.sort((a, b) => (b.sentAt > a.sentAt ? 1 : b.sentAt < a.sentAt ? -1 : 0));
 
     for (const p of data.projects) {
       if (p.status === "cancelled" || myEditKind(p) !== "photo") continue;
       if (p.date > todayStr) continue; // not shot yet — nothing to edit
 
       const gallery = data.deliveries.find(d => d.projectId === p.id);
+      // Already on the list as a batch sent to her — one row, not two.
+      if (gallery && sentGalleryIds.has(gallery.id)) continue;
 
       // Finals ONLY. This used to count every file in the gallery, so a
       // proofing job showed "Done" the moment 198 proofs were uploaded —
@@ -350,7 +378,7 @@ export default function StaffDashboardPage() {
         {/* Photo-editor work. Their next action isn't "post a draft for review",
             it's "upload the finished gallery" — so this leads with the jobs
             waiting on them and links straight to the project to do it. */}
-        {(photoEditJobs.picksReady.length > 0 || photoEditJobs.waitingOnClient.length > 0 || photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
+        {(photoEditJobs.sentToMe.length > 0 || photoEditJobs.picksReady.length > 0 || photoEditJobs.waitingOnClient.length > 0 || photoEditJobs.needsFinals.length > 0 || photoEditJobs.uploaded.length > 0) && (
           <div className="bg-card border border-border rounded-lg">
             <div className="px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -358,6 +386,47 @@ export default function StaffDashboardPage() {
               </h3>
             </div>
             <div className="divide-y divide-border">
+              {/* The owner picked these for her by hand and (usually) said
+                  what to do with them. The note is the whole point — it's
+                  shown here in full, and again at the top of the gallery. */}
+              {photoEditJobs.sentToMe.map(({ project: p, galleryId, count, notes, sentAt }) => {
+                const client = data.clients.find(c => c.id === p.clientId);
+                const pType = data.projectTypes.find(t => t.id === p.projectTypeId);
+                const sent = sentAt ? new Date(sentAt) : null;
+                return (
+                  <div key={galleryId} className="px-4 py-3 bg-primary/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
+                        </div>
+                        <p className="text-xs text-primary mt-0.5">
+                          {count} photo{count === 1 ? "" : "s"} sent to you{sent && !isNaN(sent.getTime()) ? ` · ${formatDate(sent.toISOString().slice(0, 10))}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Shot {formatDate(p.date)}</p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/40 text-primary shrink-0">
+                        Sent to you
+                      </span>
+                    </div>
+                    {notes.length > 0 && (
+                      <div className="mt-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-wider text-primary mb-1">Notes</div>
+                        {notes.map((n, i) => (
+                          <p key={i} className={cn("text-sm text-foreground whitespace-pre-wrap break-words", i > 0 && "mt-2 pt-2 border-t border-border")}>{n}</p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Link href={`/deliveries/${galleryId}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Download className="w-3.5 h-3.5" /> Open and download the {count}
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+
               {/* The client has chosen — this is the row that needs her, so it
                   leads and links straight into the gallery where the picks
                   are, not to the project. */}

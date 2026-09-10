@@ -81,6 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // only, not everything ever sent.
         assigned_crew_member_id: null,
         assigned_at: null,
+        assignment_note: null,
       }).eq("id", existing.id);
       if (updErr) throw new Error(updErr.message);
       // The finished file replacing a picked proof IS the edit — tick the

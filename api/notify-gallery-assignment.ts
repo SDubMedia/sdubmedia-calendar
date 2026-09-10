@@ -29,6 +29,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { deliveryId, crewMemberId } = req.body || {};
     if (!deliveryId || !crewMemberId) return res.status(400).json({ error: "deliveryId + crewMemberId required" });
+    // The owner's instructions for this batch. Already saved on the files
+    // (assignment_note) — repeated in the email so she has it in her inbox too.
+    const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
 
     const { data: callerProfile } = await supabase.from("user_profiles").select("role").eq("id", caller.userId).single();
     if (!callerProfile || callerProfile.role !== "owner") return res.status(403).json({ error: "Only owners can send this" });
@@ -73,6 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         html: `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1e293b;">
           <p style="font-size:15px;line-height:1.6;">Hi ${escapeHtml((member.name || "there").split(" ")[0])},</p>
           <p style="font-size:15px;line-height:1.6;">${pending} ${plural} from <strong>${escapeHtml(delivery.title)}</strong> ${pending === 1 ? "is" : "are"} ready for you to edit.</p>
+          ${note ? `<div style="margin:16px 0;padding:12px 14px;border-left:3px solid #0088ff;background:#f1f5f9;border-radius:6px;"><p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;">Notes</p><p style="margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(note)}</p></div>` : ""}
           <p style="margin:20px 0;"><a href="${APP_URL}/deliveries/${deliveryId}" style="background:#0088ff;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">Open in Slate</a></p>
         </div>`,
       }).then(r => { if (r.error) throw new Error(r.error.message); return r; })]);

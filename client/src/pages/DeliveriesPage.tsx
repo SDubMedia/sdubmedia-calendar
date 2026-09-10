@@ -1103,13 +1103,17 @@ function DeliveryDetail({ id }: { id: string }) {
   // client selections, so it also works on a gallery with no proofing at
   // all. Marks the files first (so the assignment persists even if the
   // notification fails), then notifies.
-  async function sendPickedToEditor(crewMemberId: string) {
+  async function sendPickedToEditor(crewMemberId: string, note: string) {
     const ids = pickedIds;
     if (ids.length === 0) return;
     setSendingToEditor(true);
     const assignedAt = new Date().toISOString();
+    // The note rides on every file in the batch (not on the gallery), so two
+    // sends with different instructions stay distinct and unsending one
+    // batch takes its note with it.
+    const assignmentNote = note.trim() || null;
     try {
-      await Promise.all(ids.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: crewMemberId, assignedAt })));
+      await Promise.all(ids.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: crewMemberId, assignedAt, assignmentNote })));
     } catch (err) {
       // Nothing (or not everything) was marked — don't tell the owner it was.
       toast.error("Couldn't assign these photos", { description: err instanceof Error ? err.message : "Try again" });
@@ -1121,7 +1125,7 @@ function DeliveryDetail({ id }: { id: string }) {
       const res = await fetch("/api/notify-gallery-assignment", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ deliveryId: id, crewMemberId }),
+        body: JSON.stringify({ deliveryId: id, crewMemberId, note: assignmentNote || "" }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't notify");
@@ -1166,7 +1170,7 @@ function DeliveryDetail({ id }: { id: string }) {
   async function unsendFromEditor(fileIds: string[]) {
     if (fileIds.length === 0) return;
     try {
-      await Promise.all(fileIds.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: null, assignedAt: null })));
+      await Promise.all(fileIds.map(fid => updateDeliveryFile(fid, { assignedCrewMemberId: null, assignedAt: null, assignmentNote: null })));
       toast.success(`Took ${fileIds.length} back from the editing queue`);
       setPicked(new Set());
       setPickAnchor(null);
@@ -1322,6 +1326,9 @@ function DeliveryDetail({ id }: { id: string }) {
   // then everything, exactly like before this feature existed.
   const myAssignedProofs = proofs.filter(f => f.assignedCrewMemberId === effectiveProfile?.crewMemberId);
   const hasAssigned = readOnly && myAssignedProofs.length > 0;
+  // What the owner said when sending. One note per batch normally; two
+  // sends with different instructions show both.
+  const myAssignmentNotes = distinctNotes(myAssignedProofs);
   const visibleProofs = readOnly
     ? (assignedOnly && hasAssigned ? myAssignedProofs
         : delivery.submittedAt ? proofs.filter(f => pickedFileIds.has(f.id))
@@ -2148,6 +2155,9 @@ function DeliveryDetail({ id }: { id: string }) {
             All proofs ({proofs.length})
           </button>
         </div>
+      )}
+      {readOnly && fileView === "proofs" && hasAssigned && myAssignmentNotes.length > 0 && (
+        <AssignmentNoteCard notes={myAssignmentNotes} />
       )}
 
       {!readOnly && queueByEditor.length > 0 && (
@@ -4123,10 +4133,35 @@ function PasswordDialog({ hasPassword, onClose, onSave }: { hasPassword: boolean
   );
 }
 
+/** The distinct, non-empty notes across a set of assigned files — in
+ *  practice one per send. Order = first appearance. */
+function distinctNotes(files: DeliveryFile[]): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const n = (f.assignmentNote || "").trim();
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/** The owner's instructions for an editor's batch — sits above the grid so
+ *  she reads it before she downloads, not after she's edited. */
+function AssignmentNoteCard({ notes }: { notes: string[] }) {
+  return (
+    <div className="mb-4 rounded-xl border border-[#0088ff]/30 bg-[#0088ff]/[0.06] px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-[#0088ff] mb-1">Notes for this batch</div>
+      {notes.map((n, i) => (
+        <p key={i} className={`text-sm text-white whitespace-pre-wrap break-words ${i > 0 ? "mt-2 pt-2 border-t border-white/10" : ""}`}>{n}</p>
+      ))}
+    </div>
+  );
+}
+
 function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
-  count: number; crew: CrewMember[]; sending: boolean; onClose: () => void; onSend: (crewMemberId: string) => void;
+  count: number; crew: CrewMember[]; sending: boolean; onClose: () => void; onSend: (crewMemberId: string, note: string) => void;
 }) {
   const [crewMemberId, setCrewMemberId] = useState(crew[0]?.id || "");
+  const [note, setNote] = useState("");
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -4143,10 +4178,20 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
             {crew.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
+        <label className="block text-xs text-slate-400 mb-1">Notes for the editor <span className="text-slate-600">(optional)</span></label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={4}
+          maxLength={2000}
+          placeholder="What to do with these — style, skips, anything she needs to know."
+          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-1 outline-none focus:border-[#0088ff] resize-y"
+        />
+        <p className="text-[11px] text-slate-500 mb-4">She'll see this on her dashboard, at the top of the gallery, and in the email.</p>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
           <button
-            onClick={() => crewMemberId && onSend(crewMemberId)}
+            onClick={() => crewMemberId && onSend(crewMemberId, note)}
             disabled={sending || !crewMemberId}
             className="flex-1 bg-[#0088ff] text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50"
           >
@@ -4205,6 +4250,9 @@ function EditingQueueSection({ groups, thumbFor, open, onToggle, onUnsend }: {
                   Unsend all {g.files.length}
                 </button>
               </div>
+              {distinctNotes(g.files).map((n, i) => (
+                <p key={i} className="text-xs text-slate-300 mb-2 pl-2 border-l-2 border-amber-400/40 whitespace-pre-wrap break-words">{n}</p>
+              ))}
               <div className="flex flex-wrap gap-1.5">
                 {g.files.map(f => {
                   const thumb = thumbFor(f);

@@ -153,7 +153,7 @@ interface AppContextValue {
   reopenPicking: (id: string) => Promise<void>;
   // Delivery files (metadata; actual upload goes through Storage SDK)
   registerDeliveryFile: (f: Omit<DeliveryFile, "id" | "createdAt" | "downloadCount">) => Promise<DeliveryFile>;
-  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "folderId">>) => Promise<void>;
+  updateDeliveryFile: (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "assignmentNote" | "folderId">>) => Promise<void>;
   deleteDeliveryFile: (id: string) => Promise<void>;
   reorderDeliveryFiles: (deliveryId: string, orderedIds: string[]) => Promise<void>;
   markSelectionEdited: (selectionId: string, edited: boolean) => Promise<void>;
@@ -1058,6 +1058,7 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     stage: r.stage === "proof" ? "proof" : "final",
     assignedCrewMemberId: r.assigned_crew_member_id || null,
     assignedAt: r.assigned_at || null,
+    assignmentNote: r.assignment_note || null,
     folderId: r.folder_id || null,
   };
 }
@@ -2616,7 +2617,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return file;
   }, [orgId, rawData.deliveryFiles]);
 
-  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "folderId">>) => {
+  const updateDeliveryFile = useCallback(async (id: string, patch: Partial<Pick<DeliveryFile, "thumbnailStoragePath" | "durationSeconds" | "originalName" | "stage" | "assignedCrewMemberId" | "assignedAt" | "assignmentNote" | "folderId">>) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.thumbnailStoragePath !== undefined) dbPatch.thumbnail_storage_path = patch.thumbnailStoragePath;
     if (patch.durationSeconds !== undefined) dbPatch.duration_seconds = patch.durationSeconds;
@@ -2627,6 +2628,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (patch.stage !== undefined) dbPatch.stage = patch.stage;
     if (patch.assignedCrewMemberId !== undefined) dbPatch.assigned_crew_member_id = patch.assignedCrewMemberId;
     if (patch.assignedAt !== undefined) dbPatch.assigned_at = patch.assignedAt;
+    if (patch.assignmentNote !== undefined) dbPatch.assignment_note = patch.assignmentNote;
     if (patch.folderId !== undefined) dbPatch.folder_id = patch.folderId;
     if (Object.keys(dbPatch).length === 0) return;
     const { error } = await supabase.from("delivery_files").update(dbPatch).eq("id", id);

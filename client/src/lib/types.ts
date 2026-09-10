@@ -1906,6 +1906,9 @@ export interface DeliveryFile {
    *  this field. */
   assignedCrewMemberId?: string | null;
   assignedAt?: string | null;
+  /** What the owner told the editor when sending this batch. Set on every
+   *  file in the batch so it travels with the assignment; cleared with it. */
+  assignmentNote?: string | null;
   /** Which named folder this file is grouped under within its delivery
    *  (e.g. "Final Videos" vs "B Roll") — null/absent means unfoldered.
    *  Optional for the same reason as assignedCrewMemberId above. */
