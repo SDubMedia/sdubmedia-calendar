@@ -21,6 +21,16 @@ import { sortGalleryFiles, gallerySectionBoundaries } from "@/lib/gallerySection
 import { EditorialStyles, EditorialHero, EditorialNav, EditorialIntro, EditorialFilms, EditorialPhotos, EditorialKeep, EditorialClosing, InvitationGate, ED_FONT } from "./DeliverGalleryEditorial";
 import { applyGalleryNote, defaultGalleryNote, galleryHeadline, keepHeadline } from "@/lib/galleryCopy";
 
+// Every fetch() of a storage URL bypasses the browser's HTTP cache. A photo
+// with no browse copy (small files skip it — see browseCopy.ts) is drawn in
+// the grid from its full URL as an <img>, a no-CORS request the browser
+// caches WITHOUT the Access-Control-Allow-Origin header (R2 sends no
+// Vary: Origin). The download's fetch() of the same URL then hits that
+// cached entry and dies with "Failed to fetch", so the two small photos in
+// a gallery couldn't be downloaded while the big ones could (Felicia Long,
+// 2026-09-10). no-store skips the cache both ways.
+const R2_FETCH: RequestInit = { cache: "no-store" };
+
 interface FileItem {
   id: string;
   originalName: string;
@@ -901,7 +911,7 @@ export default function DeliverGalleryPage() {
       await Promise.all(batch.map(async (f) => {
         // downloadUrl serves the full-quality original when the gallery kept
         // one; url is the compressed copy the grid browses.
-        const r = await fetch(f.downloadUrl || f.url);
+        const r = await fetch(f.downloadUrl || f.url, R2_FETCH);
         if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
         zip.file(f.originalName, await r.blob());
       }));
@@ -1128,7 +1138,7 @@ export default function DeliverGalleryPage() {
   function fetchPhotoBlob(f: FileItem): Promise<Blob> {
     const cached = photoBlobCache.current.get(f.id);
     if (cached) return cached;
-    const p = fetch(f.downloadUrl || f.url).then(async (r) => {
+    const p = fetch(f.downloadUrl || f.url, R2_FETCH).then(async (r) => {
       if (!r.ok) throw new Error(`Failed to fetch ${f.originalName}`);
       return r.blob();
     });
@@ -1158,8 +1168,15 @@ export default function DeliverGalleryPage() {
         return new File([blob], name, { type });
       }));
     } catch (err) {
-      toast.error("Couldn't load the photos", { description: err instanceof Error ? err.message : "Try again" });
-      return true;
+      // The fetch is the one step that needs CORS on the storage bucket, and
+      // an in-app browser (the Slate app's WebView, a mail app's viewer) may
+      // not have it. The attachment link needs no CORS at all — it's a
+      // navigation — so hand the files over that way rather than stopping
+      // at a toast. Felicia, 2026-09-10: "Couldn't load the photos" on two
+      // files she was owed.
+      console.error("Share fetch failed, falling back to attachment links", err);
+      toast.message("Saving the old way", { description: "Check your Files app or downloads." });
+      return fallback();
     }
     if (nav.canShare && !nav.canShare({ files })) return fallback();
     try {
@@ -1195,7 +1212,7 @@ export default function DeliverGalleryPage() {
       return;
     }
     try {
-      const res = await fetch(f.url);
+      const res = await fetch(f.url, R2_FETCH);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

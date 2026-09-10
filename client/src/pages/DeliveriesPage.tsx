@@ -5014,7 +5014,10 @@ async function zipToDisk(items: { name: string; url: string }[], filename: strin
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
     await Promise.all(batch.map(async (it) => {
-      const r = await fetch(it.url);
+      // no-store: a photo already drawn as an <img> from this URL leaves a
+      // no-CORS entry in the cache that a fetch() can't read (see the note
+      // in DeliverGalleryPage.tsx).
+      const r = await fetch(it.url, { cache: "no-store" });
       if (!r.ok) throw new Error(`Failed to fetch ${it.name}`);
       zip.file(it.name, await r.blob());
     }));
