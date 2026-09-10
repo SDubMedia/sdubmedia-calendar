@@ -988,6 +988,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
       billToId: billToId || null,
       products,
     };
+    const crewIds = [...crew, ...postProduction].map(c => c.crewMemberId).filter(Boolean);
     // Notify flagged crew to confirm availability (only if the org uses it).
     const notifyConfirm = async (pid: string) => {
       if (!data.crewMembers.some(c => c.requiresShootConfirmation)) return;
@@ -998,14 +999,27 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ projectId: pid }),
         });
-      } catch { /* non-fatal */ }
+      } catch (err) { console.warn("notify-shoot-confirmations failed", err); }
+    };
+    // Tell anyone newly on the project (push + email). The route remembers
+    // who's been told, so calling it on every save is fine.
+    const notifyAssigned = async (pid: string) => {
+      if (crewIds.length === 0) return;
+      try {
+        const token = await getAuthToken();
+        await fetch("/api/notify-project-assignment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId: pid }),
+        });
+      } catch (err) { console.warn("notify-project-assignment failed", err); }
     };
     try {
-      const crewIds = [...crew, ...postProduction].map(c => c.crewMemberId).filter(Boolean);
       if (isEdit && project) {
         await updateProject(project.id, payload);
         void ensureLocationDistances(finalLocationId || project.locationId, crewIds);
         void notifyConfirm(project.id);
+        void notifyAssigned(project.id);
         toast.success("Project updated");
       } else {
         const newProject = await addProject(payload);
@@ -1015,6 +1029,7 @@ export default function ProjectDialog({ open, onClose, project, defaultDate, def
           try { await createReShootGallery(newProject.id, propertyAddress.trim()); } catch { /* non-fatal */ }
         }
         void notifyConfirm(newProject.id);
+        void notifyAssigned(newProject.id);
         try { localStorage.removeItem(PROJECT_DRAFT_KEY); } catch { /* ignore */ }
         toast.success("Project created");
         if (onCreated) onCreated(newProject);
