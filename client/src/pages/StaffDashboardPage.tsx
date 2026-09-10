@@ -532,11 +532,12 @@ export default function StaffDashboardPage() {
                 const loc = data.locations.find(l => l.id === p.locationId);
                 const deliverables = (p.editTypes || []).map(id => data.editTypes.find(e => e.id === id)?.name).filter(Boolean).join(" + ");
                 const hasSource = !!p.sourceFilesUrl || data.projectDocuments.some(d => d.projectId === p.id && d.kind === "source");
+                const gallery = data.deliveries.find(d => d.projectId === p.id);
                 return (
                   <div key={p.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <Link href={`/calendar?project=${p.id}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
+                        <Link href={gallery ? `/deliveries/${gallery.id}` : `/calendar?project=${p.id}`} className="text-sm font-medium text-foreground truncate block hover:text-primary">
                           {pType?.name || "Shoot"}{client ? ` · ${client.company}` : ""}
                         </Link>
                         {deliverables && <p className="text-xs text-primary mt-0.5 truncate">{deliverables}</p>}

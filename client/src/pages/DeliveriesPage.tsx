@@ -1966,7 +1966,7 @@ function DeliveryDetail({ id }: { id: string }) {
         <p className="text-xs text-slate-400 mb-4 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
           {phase === "editing"
             ? <>The client picked <strong>{selections.length}</strong>. Download them below — a raw shoot hands back the raw file — then drag the finished versions here to add them as finals. You can't change or remove the client's photos.</>
-            : <>You're viewing this gallery for a job you're assigned to. Picked photos are outlined — open <strong>Selections</strong> for the list and filenames.</>}
+            : <>Download the raws below, edit, then drag the finished photos into the box — they land in <strong>Finals</strong> for review. Keep the same filename and the finished photo replaces its raw.</>}
         </p>
       )}
 
@@ -2037,7 +2037,9 @@ function DeliveryDetail({ id }: { id: string }) {
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+        {/* Owner-only: staff uploads are always finals (crew-register-file
+            forces the stage), so a chooser would only mislead her. */}
+        {!readOnly && <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
           <span className="text-[10px] uppercase tracking-wider text-slate-500">Adding</span>
           {(["proof", "final"] as const).map(st => (
             <button
@@ -2053,17 +2055,25 @@ function DeliveryDetail({ id }: { id: string }) {
               {st === "proof" ? "Proofs — she picks from these" : "Finals — she receives these"}
             </button>
           ))}
-        </div>
+        </div>}
         <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
         <p className="text-sm text-slate-300 mb-3">
-          {dragOver
+          {readOnly
+            ? (dragOver ? "Drop to add your finished photos" : "Drag your finished photos here, or click to browse")
+            : dragOver
             ? `Drop to add ${uploadStage === "proof" ? "proofs" : "finals"}`
             : "Drag photos or videos here, or click to browse"}
         </p>
-        <p className="text-[11px] text-slate-500 mb-3">
-          Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: JPEG, PNG, HEIC · up to 50 MB each.
-          <br />Camera raws welcome — the gallery shows the preview inside them and keeps the raw for your editor.
-        </p>
+        {readOnly ? (
+          <p className="text-[11px] text-slate-500 mb-3">
+            They go into Finals for review. JPEG, PNG, HEIC · up to 50 MB each; videos up to 5 GB.
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-500 mb-3">
+            Videos: .mp4, .mov, .m4v · up to 5 GB each. Photos: JPEG, PNG, HEIC · up to 50 MB each.
+            <br />Camera raws welcome — the gallery shows the preview inside them and keeps the raw for your editor.
+          </p>
+        )}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={!!uploading}
@@ -2071,6 +2081,7 @@ function DeliveryDetail({ id }: { id: string }) {
         >
           {uploading
             ? `Uploading ${uploading.done} / ${uploading.total}…`
+            : readOnly ? "Choose finished photos"
             : `Choose ${uploadStage === "proof" ? "proofs" : "finals"}`}
         </button>
         {uploading && (
