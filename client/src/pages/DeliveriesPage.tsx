@@ -1376,6 +1376,9 @@ function DeliveryDetail({ id }: { id: string }) {
           streamToDisk(p.dl);
           await new Promise(r => setTimeout(r, 600));
         }
+      } else if (photos.length === 1) {
+        // One file is a file, not a zip.
+        streamToDisk(photos[0].dl);
       } else if (photos.length > 0) {
         await zipToDisk(
           photos.map(x => ({ name: x.f.originalName, url: x.dl })),
@@ -1389,6 +1392,8 @@ function DeliveryDetail({ id }: { id: string }) {
     }
   }
   const downloadPicks = () => downloadFileSet(files.filter(f => pickedFileIds.has(f.id)), "picks");
+  const downloadTicked = () => downloadFileSet(files.filter(f => picked.has(f.id)), "selected");
+  const downloadOne = (f: DeliveryFile) => downloadFileSet([f], "file");
   const downloadAssigned = () => downloadFileSet(myAssignedProofs, "assigned");
   /** Everything an editor can see on the proofs side, as one batch — the
    *  whole shoot on a gallery with no client proofing (a headshot day she
@@ -2260,6 +2265,15 @@ function DeliveryDetail({ id }: { id: string }) {
               >
                 Clear
               </button>
+              <button
+                onClick={downloadTicked}
+                disabled={downloadingPicks}
+                className="text-xs px-2.5 py-1.5 rounded border border-white/15 hover:bg-white/[0.06] inline-flex items-center gap-1.5 disabled:opacity-50"
+                title="Full-quality originals — one file downloads as-is, more arrive zipped"
+              >
+                <Download className="w-3 h-3" />
+                {downloadingPicks ? "Preparing…" : `Download ${pickedIds.length}`}
+              </button>
               {proofingEnabled && (
                 <>
                   <button
@@ -2403,6 +2417,18 @@ function DeliveryDetail({ id }: { id: string }) {
                         {isVideo && f.durationSeconds != null && (
                           <span className="text-[10px] text-white/80 font-mono">{formatDuration(f.durationSeconds)}</span>
                         )}
+                        {/* Straight to disk, full quality — no preview detour. */}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); downloadOne(f); }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          disabled={downloadingPicks}
+                          className="pointer-events-auto p-1 rounded text-white/80 hover:bg-white/15 hover:text-white disabled:opacity-40"
+                          title="Download this file"
+                          aria-label={`Download ${f.originalName}`}
+                        >
+                          <Download className="w-3 h-3" />
+                        </button>
                         {!readOnly && f.stage === "proof" && f.assignedCrewMemberId && (
                           <button
                             type="button"
