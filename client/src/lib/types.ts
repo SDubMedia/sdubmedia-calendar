@@ -1262,6 +1262,16 @@ export interface ShootConfirmation {
   createdAt: string;
 }
 
+// "You've been added to this project" was sent — one row per (project, crew
+// member), written by api/notify-project-assignment.ts. Owner-visible only:
+// it drives the Notified / Not notified cue on the project sheet.
+export interface ProjectAssignmentNotice {
+  id: string;
+  projectId: string;
+  crewMemberId: string;
+  notifiedAt: string;
+}
+
 // Extra signers beyond the always-present client + owner. Each gets their
 // own sign URL via a unique signToken so the UX matches what the primary
 // client sees today. Stored inline on the contract row as JSONB.
@@ -2051,6 +2061,7 @@ export interface AppData {
   contracts: Contract[];
   staffAgreements: StaffAgreement[];
   shootConfirmations: ShootConfirmation[];
+  projectAssignmentNotices: ProjectAssignmentNotice[];
   proposalTemplates: ProposalTemplate[];
   proposals: Proposal[];
   modelReleaseLinks: ModelReleaseLink[];

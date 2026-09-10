@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload, FileText, Link2, UserCheck
+  Calendar, Clock, MapPin, User, Camera, Film, Edit3, Trash2, CheckCircle2, ExternalLink, DollarSign, Timer, Car, Send, X, Mail, Building2, Image as ImageIcon, Upload, FileText, Link2, UserCheck, Bell
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { buildProjectMailto } from "@/lib/projectMailto";
@@ -171,6 +171,8 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // full session (several GB); uploads cover the odd frame. Both stay available
   // after finals go up so a re-download is always possible. ----
   const [sourceUploading, setSourceUploading] = useState<{ done: number; total: number } | null>(null);
+  // Crew member ids with a "you've been added" notification in flight.
+  const [notifyingIds, setNotifyingIds] = useState<Set<string>>(new Set());
   const [sourceUrlDraft, setSourceUrlDraft] = useState(project.sourceFilesUrl || "");
   const [savingSourceUrl, setSavingSourceUrl] = useState(false);
   const saveSourceUrl = async () => {
@@ -359,6 +361,51 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   const uploaderName = (userId: string) => allProfiles.find(p => p.id === userId)?.name || "";
   // Shoot availability confirmation — only flagged crew must confirm.
   const requiresConfirm = (id: string) => data.crewMembers.find(c => c.id === id)?.requiresShootConfirmation ?? false;
+  const noticeFor = (id: string) => data.projectAssignmentNotices.find(n => n.projectId === project.id && n.crewMemberId === id);
+  /** Send the "you've been added" push + email to one person now. The route
+   *  records it, realtime brings the row back, and the cue flips to Notified. */
+  const notifyOne = async (crewMemberId: string) => {
+    setNotifyingIds(s => new Set(s).add(crewMemberId));
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/notify-project-assignment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ projectId: project.id, crewMemberIds: [crewMemberId] }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Couldn't notify");
+      if (d.notified === 0) toast.message("Already notified", { description: "They were told about this project earlier." });
+      else toast.success(`Notified ${getCrewName(crewMemberId)}`);
+    } catch (err) {
+      toast.error("Couldn't notify", { description: err instanceof Error ? err.message : "Try again" });
+    } finally {
+      setNotifyingIds(s => { const n = new Set(s); n.delete(crewMemberId); return n; });
+    }
+  };
+  /** Notified / Not notified cue under a crew name, with the fix-it button. */
+  const notifiedCue = (crewMemberId: string) => {
+    const n = noticeFor(crewMemberId);
+    if (n) {
+      const d = new Date(n.notifiedAt);
+      const when = isNaN(d.getTime()) ? "" : ` ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+      return <div className="text-[11px] text-green-500 flex items-center gap-1 mt-0.5"><CheckCircle2 className="w-3 h-3" /> Notified{when}</div>;
+    }
+    const busy = notifyingIds.has(crewMemberId);
+    return (
+      <div className="text-[11px] text-amber-500 flex items-center gap-2 mt-0.5">
+        Not notified
+        <button
+          type="button"
+          onClick={() => notifyOne(crewMemberId)}
+          disabled={busy}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 disabled:opacity-50"
+        >
+          <Bell className="w-3 h-3" /> {busy ? "Sending…" : "Notify"}
+        </button>
+      </div>
+    );
+  };
   const confirmationFor = (id: string) => data.shootConfirmations.find(sc => sc.projectId === project.id && sc.crewMemberId === id);
   const [confirmingShoot, setConfirmingShoot] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -1780,6 +1827,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                         <div>
                           <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
                           <div className="text-xs text-muted-foreground">{entry.role}</div>
+                          {project.status !== "cancelled" && notifiedCue(entry.crewMemberId)}
                           {requiresConfirm(entry.crewMemberId) && (
                             confirmationFor(entry.crewMemberId)?.confirmedAt
                               ? <div className="text-[11px] text-green-500 flex items-center gap-1 mt-0.5"><CheckCircle2 className="w-3 h-3" /> Confirmed available</div>
@@ -1864,6 +1912,7 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                         <div>
                           <div className="text-sm font-medium">{getCrewName(entry.crewMemberId)}</div>
                           <div className="text-xs text-muted-foreground">{entry.role}</div>
+                          {project.status !== "cancelled" && notifiedCue(entry.crewMemberId)}
                         </div>
                         <div className="text-right">
                           {isPhotoEditorWithBilling ? (

@@ -50,6 +50,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { projectId } = req.body || {};
     if (!projectId) return res.status(400).json({ error: "projectId required" });
+    // Optional: the sheet's per-person "Notify" button names exactly who.
+    const only: string[] | null = Array.isArray(req.body?.crewMemberIds)
+      ? (req.body.crewMemberIds as unknown[]).filter((x): x is string => typeof x === "string" && !!x)
+      : null;
 
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", caller.userId).single();
     if (!profile || (profile.role !== "owner" && profile.role !== "partner")) return res.status(403).json({ error: "Not allowed" });
@@ -71,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...crew.map(memberId),
       ...post.map(memberId),
       ...days.flatMap(d => d.crewMemberIds || []),
-    ].filter(Boolean)));
+    ].filter(Boolean))).filter(id => !only || only.includes(id));
     if (assignedIds.length === 0) return res.status(200).json({ ok: true, notified: 0 });
 
     const { data: told } = await supabase

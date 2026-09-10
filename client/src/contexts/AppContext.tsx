@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProposalTemplate, Proposal, PricingSnapshot, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryFolder, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
+import type { AppData, Client, CrewMember, Location, ProjectType, EditType, Project, ProjectHistoryEntry, MarketingExpense, Invoice, ContractorInvoice, CrewPayment, Product, ShootRequest, ShootRequestStatus, Availability, ShooterPref, CrewLocationDistance, ManualTrip, BusinessExpense, CategoryRule, BusinessExpenseCategory, TimeEntry, ContractTemplate, Contract, StaffAgreement, ShootConfirmation, ProjectAssignmentNotice, ProposalTemplate, Proposal, PricingSnapshot, PipelineLead, Series, SeriesEpisode, SeriesMessage, EpisodeComment, Organization, PersonalEvent, ExternalCalendar, ExternalEvent, Meeting, Todo, ProjectDocument, Package, ProposalImage, Delivery, DeliveryFile, DeliverySelection, DeliveryStatus, DeliveryFolder, DeliveryCollection, ServiceCategory, Service, ServiceVariant, MiniSession, MiniSessionBooking, ModelReleaseLink, ModelReleaseSignature } from "@/lib/types";
 import { mapsQueryFor } from "@/lib/address";
 import { captureLetterhead, type LetterheadSnapshot } from "@/lib/letterhead";
 import { DEFAULT_PIPELINE_STAGES, DEFAULT_FEATURES } from "@/lib/types";
@@ -327,6 +327,15 @@ function rowToStaffAgreement(r: any): StaffAgreement {
     ownerSignedAt: r.owner_signed_at || null,
     status: r.status || "awaiting_staff",
     createdAt: r.created_at,
+  };
+}
+
+function rowToProjectAssignmentNotice(r: any): ProjectAssignmentNotice {
+  return {
+    id: r.id,
+    projectId: r.project_id || "",
+    crewMemberId: r.crew_member_id || "",
+    notifiedAt: r.notified_at || "",
   };
 }
 
@@ -1116,7 +1125,7 @@ function rowToOrg(r: any): Organization {
 }
 
 const emptyData: AppData = {
-  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], modelReleaseLinks: [], modelReleaseSignatures: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryFolders: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
+  clients: [], crewMembers: [], locations: [], projectTypes: [], editTypes: [], projects: [], marketingExpenses: [], invoices: [], contractorInvoices: [], crewPayments: [], products: [], shootRequests: [], miniSessions: [], miniSessionBookings: [], modelReleaseLinks: [], modelReleaseSignatures: [], availability: [], shooterPrefs: [], crewLocationDistances: [], manualTrips: [], businessExpenses: [], categoryRules: [], timeEntries: [], contractTemplates: [], contracts: [], staffAgreements: [], shootConfirmations: [], projectAssignmentNotices: [], proposalTemplates: [], proposals: [], pipelineLeads: [], series: [], personalEvents: [], externalCalendars: [], externalEvents: [], meetings: [], todos: [], projectDocuments: [], packages: [], proposalImages: [], deliveries: [], deliveryFiles: [], deliverySelections: [], deliveryFolders: [], deliveryCollections: [], serviceCategories: [], services: [], serviceVariants: [], organization: null,
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -1393,6 +1402,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: shooterPrefsData, error: e7sp },
         { data: staffAgreementsData, error: _eSA },
         { data: shootConfirmationsData, error: _eSC },
+        { data: assignmentNoticesData, error: _eAN },
         { data: todosData, error: _eTodo },
         { data: projectDocumentsData, error: _eDoc },
         { data: modelReleaseLinksData, error: _eMRL },
@@ -1442,6 +1452,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from("shooter_prefs").select("*"),
         supabase.from("staff_agreements").select("*").order("created_at", { ascending: false }),
         supabase.from("shoot_confirmations").select("*"),
+        // Owner-read RLS only; staff/clients get [] and that's fine.
+        supabase.from("project_assignment_notices").select("*"),
         supabase.from("todos").select("*").order("created_at", { ascending: false }),
         supabase.from("project_documents").select("*").order("created_at", { ascending: false }),
         supabase.from("model_release_links").select("*"),
@@ -1477,6 +1489,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         contracts: (contractsData || []).map(r => { try { return rowToContract(r); } catch { return null; } }).filter(Boolean) as any[],
         staffAgreements: (staffAgreementsData || []).map(r => { try { return rowToStaffAgreement(r); } catch { return null; } }).filter(Boolean) as StaffAgreement[],
         shootConfirmations: (shootConfirmationsData || []).map(r => { try { return rowToShootConfirmation(r); } catch { return null; } }).filter(Boolean) as ShootConfirmation[],
+        projectAssignmentNotices: (assignmentNoticesData || []).map(r => { try { return rowToProjectAssignmentNotice(r); } catch { return null; } }).filter(Boolean) as ProjectAssignmentNotice[],
         proposalTemplates: (proposalTpls || []).map(r => { try { return rowToProposalTemplate(r); } catch { return null; } }).filter(Boolean) as any[],
         proposals: (proposalsData || []).map(r => { try { return rowToProposal(r); } catch { return null; } }).filter(Boolean) as any[],
         pipelineLeads: (pipelineLeadsData || []).map(r => { try { return rowToPipelineLead(r); } catch { return null; } }).filter(Boolean) as any[],
@@ -1591,6 +1604,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       contracts: { key: "contracts", convert: rowToContract, softDelete: true },
       staff_agreements: { key: "staffAgreements", convert: rowToStaffAgreement },
       shoot_confirmations: { key: "shootConfirmations", convert: rowToShootConfirmation },
+      project_assignment_notices: { key: "projectAssignmentNotices", convert: rowToProjectAssignmentNotice },
       proposal_templates: { key: "proposalTemplates", convert: rowToProposalTemplate, softDelete: true },
       proposals: { key: "proposals", convert: rowToProposal, softDelete: true },
       pipeline_leads: { key: "pipelineLeads", convert: rowToPipelineLead, softDelete: true },

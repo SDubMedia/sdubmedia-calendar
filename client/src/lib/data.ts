@@ -462,6 +462,7 @@ export const seedData: AppData = {
   contracts: [],
   staffAgreements: [],
   shootConfirmations: [],
+  projectAssignmentNotices: [],
   proposalTemplates: [],
   proposals: [],
   pipelineLeads: [],
