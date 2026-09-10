@@ -1381,7 +1381,10 @@ function DeliveryDetail({ id }: { id: string }) {
         streamToDisk(photos[0].dl);
       } else if (photos.length > 0) {
         await zipToDisk(
-          photos.map(x => ({ name: x.f.originalName, url: x.dl })),
+          // A staff download serves the untouched original (see
+          // api/deliveries.ts), so the entry is named for it: the raw's
+          // .ARW, not the browse copy's .jpg.
+          photos.map(x => ({ name: servedFileName(x.f), url: x.dl })),
           `${(delivery?.title || "gallery").replace(/[^\w-]+/g, "_")}-${zipSuffix}.zip`,
         );
       }
@@ -4998,6 +5001,14 @@ function streamToDisk(url: string) {
 /** Fetch a set of files and hand back one zip. Mirrors the public gallery's
  *  zipPhotos (JSZip lazy-loaded from CDN, batches of 4 so R2 isn't hammered);
  *  duplicated here because that one is welded to the gallery's FileItem shape. */
+/** The name a staff download carries: the original's extension when an
+ *  untouched original exists (that's what api/deliveries.ts serves). */
+function servedFileName(f: { originalName: string; originalStoragePath?: string }): string {
+  const ext = (f.originalStoragePath || "").match(/\.([A-Za-z0-9]{2,5})$/)?.[1];
+  if (!ext) return f.originalName;
+  return f.originalName.replace(/\.[A-Za-z0-9]{2,5}$/, "") + "." + ext;
+}
+
 async function zipToDisk(items: { name: string; url: string }[], filename: string) {
   if (!window.JSZip) {
     await new Promise<void>((resolve, reject) => {

@@ -11,7 +11,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { verifyAuth, getUserOrgId, errorMessage } from "./_auth.js";
 import { hashPassword } from "./_password.js";
-import { r2Configured, r2DeleteObject, r2PresignedUrl } from "./_r2.js";
+import { r2Configured, r2DeleteObject, r2PresignedUrl, downloadFileName } from "./_r2.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -148,7 +148,9 @@ async function signedUrls(body: Record<string, unknown>, orgId: string, callerUs
           method: "GET",
           key: f.original_storage_path || f.storage_path,
           expiresIn: 3600,
-          responseHeaders: { "Content-Disposition": `attachment; filename="${(f.original_name || "download").replace(/["\\\r\n]/g, "")}"` },
+          // Named for the bytes actually served: a raw original goes out as
+          // .ARW, not under the browse copy's .jpg name.
+          responseHeaders: { "Content-Disposition": `attachment; filename="${downloadFileName(f.original_name, f.original_storage_path || f.storage_path)}"` },
         })
       : "",
     // For videos, sign the thumbnail too so the admin grid can render a

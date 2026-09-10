@@ -16,7 +16,7 @@ import { errorMessage, escapeHtml, publicBusinessInfo, verifyAuth, getUserOrgId 
 import { verifyPassword } from "./_password.js";
 import { sendPushToOwner, sendPushToUser } from "./_apns.js";
 import { randomUUID } from "crypto";
-import { r2Configured, r2PresignedUrl, isCameraRaw } from "./_r2.js";
+import { r2Configured, r2PresignedUrl, isCameraRaw, downloadFileName } from "./_r2.js";
 import { visibleGalleryRows } from "./_deliveryVisibility.js";
 import { countEditedPhotos, pendingPickIds, pickOverage, type AllowanceFile } from "./_pickAllowance.js";
 import { galleryPresentation, keepsFullQuality, payerIdFor, resolveTone, type GalleryPresentation, type GalleryTone } from "./_galleryPresentation.js";
@@ -313,7 +313,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
             method: "GET",
             key: fullQuality && f.original_storage_path && !isCameraRaw(f.original_storage_path) ? f.original_storage_path : f.storage_path,
             expiresIn: 3600,
-            responseHeaders: { "Content-Disposition": `attachment; filename="${safeName}"` },
+            responseHeaders: { "Content-Disposition": `attachment; filename="${downloadFileName(safeName, fullQuality && f.original_storage_path && !isCameraRaw(f.original_storage_path) ? f.original_storage_path : f.storage_path)}"` },
           }),
       // A video's poster frame, or a photo's browse copy (browseCopy.ts).
       // The page draws this in the grid and hero and opens `url` in the

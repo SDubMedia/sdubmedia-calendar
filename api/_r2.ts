@@ -210,3 +210,17 @@ const RAW_FILE_EXT = /\.(nef|nrw|cr2|cr3|crw|arw|srf|sr2|dng|raf|orf|rw2|raw|pef
 export function isCameraRaw(nameOrKey: string): boolean {
   return RAW_FILE_EXT.test(nameOrKey);
 }
+
+/** The name a download should carry. A raw shoot stores the untouched
+ *  camera file as the original but records the browse copy's name
+ *  ("Untitled0019.jpg" beside "…/originals/x-Untitled0019.ARW"), so serving
+ *  the original under the recorded name handed an editor 102 Sony raws
+ *  called .jpg (Melissa, 2026-09-10: "they look like jpegs"). When the bytes
+ *  are the original, the name takes the original's extension. */
+export function downloadFileName(originalName: string | null | undefined, servedKey: string): string {
+  const base = (originalName || "download").replace(/["\\\r\n]/g, "");
+  const keyExt = (servedKey.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1];
+  if (!keyExt) return base;
+  const stem = base.replace(/\.[A-Za-z0-9]{2,5}$/, "");
+  return `${stem}.${keyExt}`;
+}
