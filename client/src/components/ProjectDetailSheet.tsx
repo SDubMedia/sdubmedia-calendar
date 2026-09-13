@@ -23,7 +23,7 @@ import { isMultiDay, projectDays, dayCrewFor } from "@/lib/projectDays";
 import { NEXT_STATUS, NEXT_STATUS_LABEL, canAdvanceProjectStatus } from "@/lib/projectStatusFlow";
 import { cn, mapsUrlFor } from "@/lib/utils";
 import { postalAddress } from "@/lib/address";
-import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS } from "@/lib/data";
+import { getProjectWorkedHours, getProjectInvoiceAmount, getProjectPayerId, getCrewMemberProjectPay, draftQualityLabel, draftBitrateMbps, REVIEW_QUALITY_MBPS, getProjectCrewRoundTripMiles, MILEAGE_RATE_PER_MILE } from "@/lib/data";
 import { buildInvoice, generateInvoiceNumberFromDB } from "@/lib/invoice";
 import { supabase, getAuthToken } from "@/lib/supabase";
 import { publicUrl } from "@/lib/publicUrl";
@@ -653,10 +653,17 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // Invoice amount
   const invoiceAmount = client ? getProjectInvoiceAmount(project, client) : 0;
 
-  // Mileage to location
-  const myDistance = project.locationId && myCrewMemberId
-    ? data.crewLocationDistances.find(d => d.crewMemberId === myCrewMemberId && d.locationId === project.locationId)
-    : null;
+  // Mileage to the location, per crew member, by the same rule the mileage
+  // report uses (chosen base, else closest base). Owner and partner see
+  // everyone's; staff see their own. Geoff, 2026-09-13: the old line showed
+  // only the viewer's, and grabbed whichever cached base came first — with
+  // a Tennessee and a California base that could read 2,000 miles.
+  const crewMiles = (isOwner || effectiveProfile?.role === "partner"
+    ? (project.crew || []).map(e => e.crewMemberId)
+    : [myCrewMemberId])
+    .filter((id, i, arr) => !!id && arr.indexOf(id) === i)
+    .map(id => ({ id, name: getCrewName(id), miles: getProjectCrewRoundTripMiles(project, id, data.crewMembers, data.crewLocationDistances) }))
+    .filter(x => x.miles > 0);
 
   // Detect photo editor in post-production for the billing calculator
   const photoEditorEntry = project.postProduction.find(
@@ -1288,12 +1295,18 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
                       Open in Maps <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
-                  {myDistance && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Car className="w-3 h-3" /> {myDistance.distanceMiles} mi ({(myDistance.distanceMiles * 2).toFixed(1)} mi round trip)
-                    </span>
-                  )}
                 </div>
+                {crewMiles.length > 0 && (
+                  <div className="mt-2 space-y-0.5">
+                    {crewMiles.map(x => (
+                      <div key={x.id} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Car className="w-3 h-3 shrink-0" />
+                        <span>{crewMiles.length > 1 || x.id !== myCrewMemberId ? `${x.name}: ` : ""}{x.miles} mi round trip</span>
+                        <span className="text-muted-foreground/70">(${(x.miles * MILEAGE_RATE_PER_MILE).toFixed(2)} at ${MILEAGE_RATE_PER_MILE.toFixed(2)}/mi)</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

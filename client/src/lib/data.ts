@@ -3,7 +3,7 @@
 // ============================================================
 
 import { nanoid } from "nanoid";
-import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense, MiniSession, MiniSessionBooking } from "./types";
+import type { AppData, Client, Project, ProjectCrewEntry, ProjectPostEntry, MarketingExpense, CrewPayment, Availability, ShooterPref, PartnerSplit, BusinessExpense, MiniSession, MiniSessionBooking, CrewMember, CrewLocationDistance } from "./types";
 import { projectOccursOn, dayCrewFor, projectFirstDate } from "./projectDays";
 
 /**
@@ -1103,4 +1103,40 @@ export function draftQualityLabel(sizeBytes: number, durationSeconds: number | n
   const runtime = `${mins}:${String(secs).padStart(2, "0")}`;
   const rate = draftBitrateMbps(sizeBytes, durationSeconds);
   return rate ? `${mb} · ${runtime} · ${rate.toFixed(1)} Mbps` : `${mb} · ${runtime}`;
+}
+
+/** Placeholder IRS-style rate the mileage report uses; shown next to miles
+ *  so the number means something at a glance. */
+export const MILEAGE_RATE_PER_MILE = 0.70;
+
+/**
+ * Round-trip miles one crew member drives for a project. Same rule as the
+ * mileage report (MileageReportPage.tsx), mirrored here so the project
+ * sheet can show it: a manual override on the crew entry wins; else the
+ * entry's chosen home base; else the closest of the member's bases with a
+ * cached distance to the location. 0 when nothing is known yet.
+ */
+export function getProjectCrewRoundTripMiles(
+  project: Project,
+  crewMemberId: string,
+  crewMembers: CrewMember[],
+  distances: CrewLocationDistance[],
+): number {
+  const entry = (project.crew || []).find(e => e.crewMemberId === crewMemberId);
+  if (entry?.roundTripMiles && entry.roundTripMiles > 0) return Math.round(entry.roundTripMiles * 10) / 10;
+  if (!project.locationId) return 0;
+  const mine = distances.filter(d => d.crewMemberId === crewMemberId && d.locationId === project.locationId);
+  if (mine.length === 0) return 0;
+  let oneWay: number;
+  if (entry?.homeBaseId) {
+    oneWay = mine.find(d => d.homeBaseId === entry.homeBaseId)?.distanceMiles || 0;
+  } else {
+    const member = crewMembers.find(c => c.id === crewMemberId);
+    const baseIds = (member?.homeBases || []).map(b => b.id);
+    if (baseIds.length === 0) baseIds.push("primary");
+    const candidates = mine.filter(d => baseIds.includes(d.homeBaseId)).map(d => d.distanceMiles);
+    if (candidates.length === 0) candidates.push(...mine.map(d => d.distanceMiles));
+    oneWay = Math.min(...candidates);
+  }
+  return Math.round(oneWay * 2 * 10) / 10;
 }
