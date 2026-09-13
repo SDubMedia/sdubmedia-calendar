@@ -63,7 +63,7 @@ export const DEFAULT_FEATURES: OrgFeatures = {
 export type ProductionType = "video" | "photo" | "both";
 
 // Dashboard widget configuration
-export type DashboardWidgetId = "metrics" | "todos" | "miniSessions" | "pipeline" | "activity" | "upcoming" | "currentProjects" | "realEstate" | "invoices" | "mileage" | "revenue";
+export type DashboardWidgetId = "metrics" | "todos" | "missingLocations" | "miniSessions" | "pipeline" | "activity" | "upcoming" | "currentProjects" | "realEstate" | "invoices" | "mileage" | "revenue";
 
 export interface DashboardWidgetConfig {
   id: DashboardWidgetId;
@@ -75,6 +75,9 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   // To-dos added 2026-08-21: action items sit high by default. Existing saved
   // layouts get it slotted here by mergeDashboardWidgets, not appended.
   { id: "todos", enabled: true },
+  // Projects with no location (so no mileage). Renders nothing when there
+  // are none, and this switch also governs the same box on the To-Dos page.
+  { id: "missingLocations", enabled: true },
   // Sits high because a mini session is a hard deadline with strangers' money
   // already taken, and it renders nothing at all when none are scheduled — so
   // being near the top costs nothing on a quiet week.
@@ -129,6 +132,7 @@ export function mergeDashboardWidgets(saved?: DashboardWidgetConfig[]): Dashboar
 export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
   metrics: "Status Cards (Upcoming, In Editing, Outstanding, Completed)",
   todos: "To-Dos (open tasks with quick add)",
+  missingLocations: "Missing locations (projects that can't track mileage yet; also shows on To-Dos)",
   miniSessions: "Mini Sessions (upcoming dates and how full they are)",
   pipeline: "Pipeline Summary (lead counts per stage)",
   activity: "Activity Feed (recent client interactions)",

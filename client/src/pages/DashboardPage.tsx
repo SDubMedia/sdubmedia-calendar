@@ -11,6 +11,7 @@ import { isOpenLead, pipelineValueByStage, totalPipelineValue } from "@/lib/pipe
 import type { InvoiceStatus, UserRole, Project, DashboardWidgetId } from "@/lib/types";
 import ActivityFeed from "@/components/ActivityFeed";
 import TodosWidget from "@/components/TodosWidget";
+import MissingLocationsWidget from "@/components/MissingLocationsWidget";
 import { mergeDashboardWidgets } from "@/lib/types";
 import ProjectDetailSheet from "@/components/ProjectDetailSheet";
 import GettingStartedCard from "@/components/GettingStartedCard";
@@ -703,6 +704,11 @@ export default function DashboardPage() {
             reads scoped data itself). Client/family roles never see it. */}
         {(role === "owner" || role === "staff") && isWidgetEnabled("todos") && (
           <div style={{ order: orderOf("todos") }}><TodosWidget /></div>
+        )}
+        {/* Projects with no location — the widget itself renders nothing
+            unless the owner is looking and something is actually missing. */}
+        {isWidgetEnabled("missingLocations") && (
+          <div style={{ order: orderOf("missingLocations") }}><MissingLocationsWidget /></div>
         )}
 
         {isWidgetEnabled("activity") && <div style={{ order: orderOf("activity") }}><ActivityFeed /></div>}
