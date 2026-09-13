@@ -116,7 +116,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const m of members || []) {
       if (skipSelf && m.id === ownerProfile!.crew_member_id) continue;
       const { data: staffProfiles } = await supabase
-        .from("user_profiles").select("id").eq("crew_member_id", m.id).eq("org_id", orgId).eq("role", "staff");
+        // Any login tied to this crew member, whatever its role: the owner's
+        // own row pushes to the owner's phone, not just a staff login.
+        .from("user_profiles").select("id").eq("crew_member_id", m.id).eq("org_id", orgId);
       const role = roleOf.get(m.id) || "";
       const first = escapeHtml((m.name || "there").split(" ")[0]);
       const body = `${what}${when ? ` — ${when}` : ""}${more}`;
