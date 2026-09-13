@@ -492,6 +492,9 @@ export interface ProjectType {
   // Which client type this project type shows for (reuses the bundle scopes).
   // "any" = all clients; otherwise only that client type's projects. Default "any".
   appliesTo?: ServiceCategoryScope;
+  /** False for edit-only work (Additional Photos, Additional Edit): no
+   *  address exists, so the missing-location reminder skips it. Default true. */
+  needsLocation?: boolean;
 }
 
 // A crew member assigned to a project (filming/shoot)

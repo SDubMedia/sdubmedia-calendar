@@ -217,18 +217,19 @@ function ProjectTypesTab() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectType | null>(null);
   const [name, setName] = useState("");
   const [lightweight, setLightweight] = useState(false);
+  const [needsLocation, setNeedsLocation] = useState(true);
   const [appliesTo, setAppliesTo] = useState<ProjectType["appliesTo"]>("any");
 
-  const openAdd = () => { setEditing(null); setName(""); setLightweight(false); setAppliesTo("any"); setDialogOpen(true); };
-  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setLightweight(pt.lightweight); setAppliesTo(pt.appliesTo ?? "any"); setDialogOpen(true); };
+  const openAdd = () => { setEditing(null); setName(""); setLightweight(false); setNeedsLocation(true); setAppliesTo("any"); setDialogOpen(true); };
+  const openEdit = (pt: ProjectType) => { setEditing(pt); setName(pt.name); setLightweight(pt.lightweight); setNeedsLocation(pt.needsLocation !== false); setAppliesTo(pt.appliesTo ?? "any"); setDialogOpen(true); };
 
   const handleSave = () => {
     if (!name) { toast.error("Name is required"); return; }
     if (editing) {
-      updateProjectType(editing.id, { name, lightweight, appliesTo });
+      updateProjectType(editing.id, { name, lightweight, appliesTo, needsLocation });
       toast.success("Project type updated");
     } else {
-      addProjectType({ name, lightweight, appliesTo });
+      addProjectType({ name, lightweight, appliesTo, needsLocation });
       toast.success("Project type added");
     }
     setDialogOpen(false);
@@ -250,6 +251,7 @@ function ProjectTypesTab() {
             <span className="flex-1 text-sm text-foreground">
               {pt.name}
               {pt.lightweight && <span className="ml-2 text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">Lightweight</span>}
+              {pt.needsLocation === false && <span className="ml-2 text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">No location</span>}
               {(pt.appliesTo ?? "any") !== "any" && <span className="ml-2 text-[10px] text-primary bg-primary/10 border border-primary/30 px-1.5 py-0.5 rounded">{scopeLabel(pt.appliesTo)}</span>}
             </span>
             <div className="flex items-center gap-1">
@@ -277,6 +279,10 @@ function ProjectTypesTab() {
             <div className="flex items-center gap-2">
               <Checkbox id="lightweight" checked={lightweight} onCheckedChange={(v) => setLightweight(!!v)} />
               <label htmlFor="lightweight" className="text-sm text-muted-foreground cursor-pointer">Lightweight (mileage tracking only)</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="needsLocation" checked={needsLocation} onCheckedChange={(v) => setNeedsLocation(!!v)} />
+              <label htmlFor="needsLocation" className="text-sm text-muted-foreground cursor-pointer">Needs a location (untick for edit-only work so it's never flagged for mileage)</label>
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Shown for</Label>

@@ -646,7 +646,7 @@ function rowToLocation(r: any): Location {
 }
 
 function rowToProjectType(r: any): ProjectType {
-  return { id: r.id, name: r.name, lightweight: r.lightweight || false, appliesTo: r.applies_to || "any" };
+  return { id: r.id, name: r.name, lightweight: r.lightweight || false, appliesTo: r.applies_to || "any", needsLocation: r.needs_location !== false };
 }
 
 function rowToEditType(r: any): EditType {
@@ -3125,6 +3125,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const dbFields: Record<string, any> = {};
     if (pt.name !== undefined) dbFields.name = pt.name;
     if (pt.lightweight !== undefined) dbFields.lightweight = pt.lightweight;
+    if (pt.needsLocation !== undefined) dbFields.needs_location = pt.needsLocation;
     if (pt.appliesTo !== undefined) dbFields.applies_to = pt.appliesTo;
     const { error } = await supabase.from("project_types").update(dbFields).eq("id", id);
     if (error) throw new Error(error.message);

@@ -12,8 +12,10 @@
 // the same on/off switch (Manage → Settings → Dashboard widgets →
 // "Missing locations"), so one toggle governs both places.
 //
-// Window: the last 90 days (still worth logging for the mileage report)
-// through everything upcoming.
+// Window: from 48 hours before the project date (Geoff, 2026-09-13: an
+// address booked far out isn't missing yet) back to 90 days ago (still
+// worth logging for the mileage report). Types marked "no location
+// needed" (edit-only work) are never listed.
 // ============================================================
 
 import { useMemo } from "react";
@@ -32,8 +34,11 @@ export function useMissingLocationReminders() {
     if (!isOwner) return [];
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
     const since = cutoff.toISOString().slice(0, 10);
+    const soon = new Date(); soon.setDate(soon.getDate() + 2);
+    const until = soon.toISOString().slice(0, 10);
+    const noLocationTypes = new Set(data.projectTypes.filter(t => t.needsLocation === false).map(t => t.id));
     return data.projects
-      .filter(p => p.status !== "cancelled" && !p.locationId && p.date >= since)
+      .filter(p => p.status !== "cancelled" && !p.locationId && p.date >= since && p.date <= until && !noLocationTypes.has(p.projectTypeId))
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(p => {
         const c = data.clients.find(x => x.id === p.clientId);
