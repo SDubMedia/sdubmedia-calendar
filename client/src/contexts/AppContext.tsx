@@ -2953,7 +2953,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // works with one-line addresses (no separate city/state/zip required).
   const ensureLocationDistances = useCallback(async (locationId: string | null | undefined, crewMemberIds: string[]) => {
     if (!locationId) return;
-    const loc = rawData.locations.find(l => l.id === locationId);
+    // A location created in the same save (one-time address typed into the
+    // project form) isn't in this closure's `rawData.locations` yet, so the
+    // lookup came back empty and no distance was ever cached — the project
+    // then showed no mileage (Geoff, 2026-09-13, Buzzard Creek). Fall back
+    // to reading the row directly.
+    let loc = rawData.locations.find(l => l.id === locationId);
+    if (!loc) {
+      const { data: row } = await supabase.from("locations").select("*").eq("id", locationId).maybeSingle();
+      if (row) loc = rowToLocation(row);
+    }
     if (!loc?.address) return;
     const destination = mapsQueryFor(loc);
     const done = new Set<string>();
