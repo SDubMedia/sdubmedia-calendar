@@ -375,16 +375,21 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't notify");
-      if (d.notified === 0) toast.message("Already notified", { description: "They were told about this project earlier." });
-      else toast.success(`Notified ${getCrewName(crewMemberId)}`);
+      if (d.notified > 0) toast.success(`Notified ${getCrewName(crewMemberId)}`);
+      else if (d.self) toast.message("That's you", { description: "Slate doesn't send you a notice for your own project." });
+      else if (d.already) toast.message("Already notified", { description: "They were told about this project earlier." });
+      else toast.message("Nobody to notify", { description: "They're not on this project any more." });
     } catch (err) {
       toast.error("Couldn't notify", { description: err instanceof Error ? err.message : "Try again" });
     } finally {
       setNotifyingIds(s => { const n = new Set(s); n.delete(crewMemberId); return n; });
     }
   };
-  /** Notified / Not notified cue under a crew name, with the fix-it button. */
+  /** Notified / Not notified cue under a crew name, with the fix-it button.
+   *  Nothing for the owner's own row: the route never notifies them, so it
+   *  would read "Not notified" forever. */
   const notifiedCue = (crewMemberId: string) => {
+    if (crewMemberId && crewMemberId === (effectiveProfile?.crewMemberId || "")) return null;
     const n = noticeFor(crewMemberId);
     if (n) {
       const d = new Date(n.notifiedAt);

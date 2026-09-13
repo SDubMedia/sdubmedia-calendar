@@ -27,7 +27,7 @@ import { chipFieldToText } from "@/lib/chipFieldText";
 import { defaultGalleryNote, defaultToneFor, type GalleryTone } from "@/lib/galleryCopy";
 import { makeBrowseCopy } from "@/lib/browseCopy";
 import type { Client, CrewMember, DeliveryFile, DeliveryFileStage, DeliveryFolder, DeliverySelection, DeliveryStatus, Project } from "@/lib/types";
-import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil, Link2 } from "lucide-react";
+import { ArrowLeft, Plus, Upload, Download, Copy, Trash2, Lock, ExternalLink, Check, X, Play, Image as ImageIcon, HardDrive, Pencil, Link2, Folder } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -95,6 +95,9 @@ function DeliveriesList() {
   const { data, addDelivery, deleteDelivery } = useApp();
   const [createOpen, setCreateOpen] = useState(false);
   const [openMiniGroup, setOpenMiniGroup] = useState<string | null>(null);
+  // A client with several galleries shows as one folder; tap it to see just
+  // theirs. Geoff, 2026-09-13: the client list was one flat wall of cards.
+  const [openClientFolder, setOpenClientFolder] = useState<string | null>(null);
   const confirm = useConfirm();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -167,6 +170,33 @@ function DeliveriesList() {
 
   const reGalleries = galleries.filter(d => !isMini(d) && isRealEstate(d));
   const clientGalleries = galleries.filter(d => !isMini(d) && !isRealEstate(d));
+
+  // Folder per client with 2+ galleries (by the gallery's project's client);
+  // a client with one gallery, or a gallery with no project, stays a plain
+  // card so the common case is still one tap.
+  const clientIdOf = (d: typeof galleries[number]) => data.projects.find(p => p.id === d.projectId)?.clientId || "";
+  const galleryDate = (d: typeof galleries[number]) => d.deliveredAt || d.createdAt || "";
+  const { clientFolders, clientSingles } = useMemo(() => {
+    const byClient = new Map<string, typeof galleries>();
+    for (const d of clientGalleries) {
+      const cid = clientIdOf(d);
+      if (!cid) continue;
+      byClient.set(cid, [...(byClient.get(cid) || []), d]);
+    }
+    const folders = [...byClient.entries()]
+      .filter(([, items]) => items.length >= 2)
+      .map(([cid, items]) => ({
+        id: cid,
+        name: clientsById[cid]?.company || "Client",
+        items: [...items].sort((a, b) => galleryDate(b).localeCompare(galleryDate(a))),
+      }))
+      .sort((a, b) => galleryDate(b.items[0]).localeCompare(galleryDate(a.items[0])));
+    const folderIds = new Set(folders.map(f => f.id));
+    const singles = clientGalleries.filter(d => !folderIds.has(clientIdOf(d)));
+    return { clientFolders: folders, clientSingles: singles };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientGalleries, data.projects, clientsById]);
+  const openFolder = openClientFolder ? clientFolders.find(f => f.id === openClientFolder) : null;
 
   const renderGalleryCard = (d: typeof galleries[number]) => {
     const fileCount = data.deliveryFiles.filter(f => f.deliveryId === d.id).length;
@@ -311,11 +341,54 @@ function DeliveriesList() {
               </div>
             </div>
           )}
-          {clientGalleries.length > 0 && (
+          {clientGalleries.length > 0 && openFolder && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setOpenClientFolder(null)}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white mb-3"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> All galleries
+              </button>
+              <h2 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                <Folder className="w-4 h-4 text-[#0088ff]" /> {openFolder.name}
+                <span className="text-xs font-normal text-slate-400">{openFolder.items.length} galleries</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {openFolder.items.map(renderGalleryCard)}
+              </div>
+            </div>
+          )}
+          {clientGalleries.length > 0 && !openFolder && (
             <div>
               {reGalleries.length > 0 && <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Client Galleries ({clientGalleries.length})</h2>}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {clientGalleries.map(renderGalleryCard)}
+                {clientFolders.map(f => {
+                  const photos = f.items.reduce((s, d) => s + data.deliveryFiles.filter(x => x.deliveryId === d.id).length, 0);
+                  const newest = galleryDate(f.items[0]);
+                  const when = newest ? new Date(newest).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setOpenClientFolder(f.id)}
+                      className="group text-left rounded-xl border border-[#0088ff]/30 bg-[#0088ff]/[0.06] hover:bg-[#0088ff]/[0.12] hover:border-[#0088ff]/50 transition-colors p-5"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <h3 className="text-base font-semibold text-white truncate flex items-center gap-2 min-w-0">
+                          <Folder className="w-4 h-4 text-[#0088ff] shrink-0" /> <span className="truncate">{f.name}</span>
+                        </h3>
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider border border-[#0088ff]/40 text-[#0088ff] shrink-0">Folder</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-slate-400">
+                        <span>{f.items.length} galleries</span>
+                        <span>{photos} photo{photos === 1 ? "" : "s"}</span>
+                        {when && <span>Latest {when}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+                {clientSingles.map(renderGalleryCard)}
               </div>
             </div>
           )}

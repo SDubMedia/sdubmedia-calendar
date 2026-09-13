@@ -82,10 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("project_assignment_notices").select("crew_member_id").eq("project_id", projectId).in("crew_member_id", assignedIds);
     const toldSet = new Set((told || []).map(r => r.crew_member_id));
     const toNotify = assignedIds.filter(id => !toldSet.has(id));
-    if (toNotify.length === 0) return res.status(200).json({ ok: true, notified: 0 });
+    // `already` and `self` let the button say the right thing: "Already
+    // notified" is only true when a notice row exists; the owner pressing it
+    // on their own row was told "Already notified" with nothing sent and
+    // nothing recorded (Geoff, 2026-09-13).
+    const already = assignedIds.length - toNotify.length;
+    if (toNotify.length === 0) return res.status(200).json({ ok: true, notified: 0, already, self: 0 });
 
     // The owner's own crew row gets no "you've been added" — they added themselves.
     const { data: ownerProfile } = await supabase.from("user_profiles").select("crew_member_id").eq("id", caller.userId).single();
+    const self = ownerProfile?.crew_member_id && toNotify.includes(ownerProfile.crew_member_id) ? 1 : 0;
 
     const [{ data: members }, { data: client }, { data: pType }, { data: loc }] = await Promise.all([
       supabase.from("crew_members").select("id, name, email").eq("org_id", orgId).in("id", toNotify),
@@ -142,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notified++;
     }
 
-    return res.status(200).json({ ok: true, notified });
+    return res.status(200).json({ ok: true, notified, already, self });
   } catch (err) {
     console.error("notify-project-assignment error:", err);
     return res.status(500).json({ error: errorMessage(err, "Couldn't send the notifications") });
