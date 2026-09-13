@@ -673,6 +673,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Post-checkout celebration (reads ?upgraded= param) */}
         <UpgradeSuccessDialog />
 
+        {/* A Dashboard button above every page but the dashboard, at every
+            screen size. The sidebar and the phone header both link there
+            already, but Geoff wanted one he can't miss at the top of
+            whatever he's looking at (2026-09-13). */}
+        {!isActive("/") && (
+          <div className="flex items-center px-4 sm:px-6 py-1.5 border-b border-border bg-sidebar/60 print:hidden">
+            <Link href="/">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer">
+                <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
+              </span>
+            </Link>
+          </div>
+        )}
+
         {/* Page content */}
         <main className="flex-1 overflow-auto">
           <PullToRefresh onRefresh={refresh}>
