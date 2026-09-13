@@ -94,6 +94,11 @@ const navStructure: NavEntry[] = [
   { label: "Calendar", href: "/calendar", icon: CalendarDays, roles: ["owner", "partner", "client", "staff", "family"], feature: "calendar" },
   { label: "My Schedule", href: "/my-schedule", icon: CalendarDays, roles: ["staff"], feature: "calendar" },
   { label: "To-Dos", href: "/todos", icon: ListChecks, roles: ["owner", "staff"] },
+  // Galleries and Mini Sessions are where Geoff lives day to day, so they
+  // sit at the top level (one tap, no group to open) and repeat as icon
+  // buttons in the phone header — see quickNav below (2026-09-13).
+  { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "staff"], feature: "deliveries" },
+  { label: "Mini Sessions", href: "/mini-sessions", icon: QrCode, roles: ["owner", "staff"], feature: "miniSessions" },
   { label: "My Listings", href: "/my-houses", icon: Home, roles: ["client"] },
 
   // Sales — owner and partner only
@@ -105,8 +110,6 @@ const navStructure: NavEntry[] = [
     // Templates & Inquiry Pipeline — owner-only per PRD RBAC
     { label: "Packages", href: "/packages", icon: PackageIcon, roles: ["owner"], feature: "proposals" },
     { label: "Contracts", href: "/contracts", icon: FileText, roles: ["owner", "partner"], feature: "contracts" },
-    { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "staff"], feature: "deliveries" },
-    { label: "Mini Sessions", href: "/mini-sessions", icon: QrCode, roles: ["owner", "staff"], feature: "miniSessions" },
   ]},
 
   // Production — owner, partner, client (Series), staff (Series)
@@ -266,6 +269,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
+
+  const quickNav = filteredNav.filter((e): e is NavItem => !isGroup(e) && (e.href === "/deliveries" || e.href === "/mini-sessions"));
 
   // Auto-expand group if active page is inside it
   useEffect(() => {
@@ -490,6 +495,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
           <div className="flex items-center gap-1">
+            {/* One-tap shortcuts on every page for the two places used most.
+                Same role/feature gate as the menu: they only appear when the
+                matching nav item does. */}
+            {quickNav.map(item => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.href} href={item.href!}>
+                  <span role="link" aria-label={item.label} title={item.label} className={cn("block p-2 rounded-md", isActive(item.href!) ? "text-primary" : "text-muted-foreground hover:text-foreground")}>
+                    <Icon className="w-5 h-5" />
+                  </span>
+                </Link>
+              );
+            })}
             <TimerWidget />
             <NotificationBell />
             <button
