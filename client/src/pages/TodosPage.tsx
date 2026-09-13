@@ -9,7 +9,8 @@ import { useState, useMemo } from "react";
 import { useScopedData as useApp } from "@/hooks/useScopedData";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Todo } from "@/lib/types";
-import { ListChecks, Plus, Trash2, Check, Calendar, User, Briefcase, AlertTriangle } from "lucide-react";
+import { ListChecks, Plus, Trash2, Check, Calendar, User, Briefcase, AlertTriangle, MapPin } from "lucide-react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TodoNotesThread from "@/components/TodoNotesThread";
@@ -80,6 +81,27 @@ export default function TodosPage() {
     const creator = allProfiles.find(p => p.id === t.createdByUserId);
     return !!(creator && creator.role !== "owner" && creator.crewMemberId === t.assignedCrewMemberId);
   };
+
+  // Projects with no saved location can't show mileage. Rather than a silent
+  // blank on the project sheet, they surface here as reminders (owner only,
+  // since only the owner edits projects). Derived, not stored: fixing the
+  // project makes the reminder go away on its own. Geoff, 2026-09-13.
+  // Window: the last 90 days (still worth logging for the mileage report)
+  // through everything upcoming.
+  const needsLocation = useMemo(() => {
+    if (!isOwner) return [];
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90);
+    const since = cutoff.toISOString().slice(0, 10);
+    return data.projects
+      .filter(p => p.status !== "cancelled" && !p.locationId && p.date >= since)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(p => {
+        const c = data.clients.find(x => x.id === p.clientId);
+        const t = data.projectTypes.find(x => x.id === p.projectTypeId);
+        const d = new Date(p.date + "T00:00:00");
+        return { id: p.id, label: `${t?.name || "Project"}${c ? ` · ${c.company}` : ""}`, when: isNaN(d.getTime()) ? p.date : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) };
+      });
+  }, [isOwner, data.projects, data.clients, data.projectTypes]);
 
   const { open, done } = useMemo(() => {
     const sorted = [...data.todos].sort((a, b) => {
@@ -277,6 +299,23 @@ export default function TodosPage() {
             </select>
           </div>
         </div>
+
+        {/* Projects that can't track miles yet */}
+        {needsLocation.length > 0 && (
+          <div className="bg-card border border-amber-500/30 rounded-lg overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-border text-xs font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5" /> Add a location to track miles ({needsLocation.length})
+            </div>
+            {needsLocation.map(p => (
+              <Link key={p.id} href={`/calendar?project=${p.id}`}>
+                <div className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-white/5 cursor-pointer">
+                  <div className="text-sm text-foreground">{p.label}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{p.when} · no location saved, so mileage can't be calculated. Open the project and add one.</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Open to-dos */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
