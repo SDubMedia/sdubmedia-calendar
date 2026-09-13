@@ -270,7 +270,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) =>
     href === "/" ? location === "/" : location.startsWith(href);
 
-  const quickNav = filteredNav.filter((e): e is NavItem => !isGroup(e) && (e.href === "/deliveries" || e.href === "/mini-sessions"));
+  // Dashboard first (hidden while on it), then Galleries and Mini Sessions.
+  // Geoff, 2026-09-13: on a phone nothing said "Dashboard" on other pages;
+  // the logo went there but nobody knows that.
+  const quickNav = filteredNav.filter((e): e is NavItem => !isGroup(e) && (
+    (e.href === "/" && !isActive("/")) || e.href === "/deliveries" || e.href === "/mini-sessions"
+  ));
 
   // Auto-expand group if active page is inside it
   useEffect(() => {
