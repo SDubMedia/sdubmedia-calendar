@@ -658,8 +658,11 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
   // everyone's; staff see their own. Geoff, 2026-09-13: the old line showed
   // only the viewer's, and grabbed whichever cached base came first — with
   // a Tennessee and a California base that could read 2,000 miles.
+  // The viewer's own row is always included, crew list or not: a project
+  // with nobody assigned (the owner shot it alone) still shows the owner's
+  // drive, as the old single line did.
   const crewMiles = (isOwner || effectiveProfile?.role === "partner"
-    ? (project.crew || []).map(e => e.crewMemberId)
+    ? [myCrewMemberId, ...(project.crew || []).map(e => e.crewMemberId)]
     : [myCrewMemberId])
     .filter((id, i, arr) => !!id && arr.indexOf(id) === i)
     .map(id => ({ id, name: getCrewName(id), miles: getProjectCrewRoundTripMiles(project, id, data.crewMembers, data.crewLocationDistances) }))
