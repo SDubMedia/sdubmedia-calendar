@@ -371,12 +371,12 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
       const res = await fetch("/api/notify-project-assignment", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId: project.id, crewMemberIds: [crewMemberId] }),
+        body: JSON.stringify({ projectId: project.id, crewMemberIds: [crewMemberId], manual: true }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Couldn't notify");
       if (d.notified > 0) toast.success(`Notified ${getCrewName(crewMemberId)}`);
-      else if (d.self) toast.message("That's you", { description: "Slate doesn't send you a notice for your own project." });
+      else if (d.self) toast.message("That's you", { description: "Booking yourself sends no notice; the button does." });
       else if (d.already) toast.message("Already notified", { description: "They were told about this project earlier." });
       else toast.message("Nobody to notify", { description: "They're not on this project any more." });
     } catch (err) {
@@ -386,10 +386,9 @@ export default function ProjectDetailSheet({ project: projectProp, onClose }: Pr
     }
   };
   /** Notified / Not notified cue under a crew name, with the fix-it button.
-   *  Nothing for the owner's own row: the route never notifies them, so it
-   *  would read "Not notified" forever. */
+   *  Shown for the owner's own row too: booking yourself sends nothing
+   *  automatically, but the button will (Geoff, 2026-09-13). */
   const notifiedCue = (crewMemberId: string) => {
-    if (crewMemberId && crewMemberId === (effectiveProfile?.crewMemberId || "")) return null;
     const n = noticeFor(crewMemberId);
     if (n) {
       const d = new Date(n.notifiedAt);

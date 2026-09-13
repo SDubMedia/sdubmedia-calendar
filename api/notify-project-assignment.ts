@@ -54,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const only: string[] | null = Array.isArray(req.body?.crewMemberIds)
       ? (req.body.crewMemberIds as unknown[]).filter((x): x is string => typeof x === "string" && !!x)
       : null;
+    const manual = req.body?.manual === true;
 
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", caller.userId).single();
     if (!profile || (profile.role !== "owner" && profile.role !== "partner")) return res.status(403).json({ error: "Not allowed" });
@@ -89,9 +90,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const already = assignedIds.length - toNotify.length;
     if (toNotify.length === 0) return res.status(200).json({ ok: true, notified: 0, already, self: 0 });
 
-    // The owner's own crew row gets no "you've been added" — they added themselves.
+    // The booker's own crew row gets no automatic "you've been added" — they
+    // added themselves. An assistant booking the owner onto a shoot still
+    // notifies the owner, because the assistant is the caller. Pressing the
+    // Notify button (manual) notifies everyone asked for, self included
+    // (Geoff, 2026-09-13).
     const { data: ownerProfile } = await supabase.from("user_profiles").select("crew_member_id").eq("id", caller.userId).single();
-    const self = ownerProfile?.crew_member_id && toNotify.includes(ownerProfile.crew_member_id) ? 1 : 0;
+    const skipSelf = !manual && !!ownerProfile?.crew_member_id;
+    const self = skipSelf && toNotify.includes(ownerProfile!.crew_member_id) ? 1 : 0;
 
     const [{ data: members }, { data: client }, { data: pType }, { data: loc }] = await Promise.all([
       supabase.from("crew_members").select("id, name, email").eq("org_id", orgId).in("id", toNotify),
@@ -108,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let notified = 0;
     const now = new Date().toISOString();
     for (const m of members || []) {
-      if (ownerProfile?.crew_member_id && m.id === ownerProfile.crew_member_id) continue;
+      if (skipSelf && m.id === ownerProfile!.crew_member_id) continue;
       const { data: staffProfiles } = await supabase
         .from("user_profiles").select("id").eq("crew_member_id", m.id).eq("org_id", orgId).eq("role", "staff");
       const role = roleOf.get(m.id) || "";
