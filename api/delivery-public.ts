@@ -253,7 +253,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // until the owner presses Deliver. The owner's Preview is this same link,
   // so the team (verified above) gets the finals early; see
   // _deliveryVisibility.ts for the full table.
-  const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam);
+  const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam, (delivery as unknown as { editor_handoff?: boolean }).editor_handoff === true);
 
   // (selections: so a returning client sees her picks. folderRows: named
   // folders like "Final Videos" / "B Roll" — empty for every gallery that

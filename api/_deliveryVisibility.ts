@@ -34,9 +34,19 @@ export function visibleGalleryRows<T extends StagedRow>(
   rows: T[],
   status: string,
   viewerIsTeam: boolean,
+  /** Editor hand-off gallery: the owner's originals are for the editor and
+   *  are NEVER served to a client, finished or not (Geoff, 2026-09-14). The
+   *  team still sees them until finals exist, so the owner can check what
+   *  he loaded. */
+  editorHandoff = false,
 ): GalleryVisibility<T> {
   const proofs = rows.filter(r => r.stage === "proof");
   const finals = rows.filter(r => r.stage !== "proof");
+  if (editorHandoff) {
+    if (!viewerIsTeam) return { rows: finals, previewingFinals: false };
+    if (finals.length === 0) return { rows: proofs, previewingFinals: false };
+    return { rows: finals, previewingFinals: status !== "delivered" };
+  }
   if (proofs.length === 0) return { rows, previewingFinals: false };
   if (finals.length === 0) return { rows: proofs, previewingFinals: false };
   if (status === "delivered") return { rows: finals, previewingFinals: false };

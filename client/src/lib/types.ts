@@ -2020,6 +2020,10 @@ export interface Delivery {
    *  it per gallery for a mixed client (a brokerage that is otherwise a
    *  standard client). Read at serve time, so it applies to photos already up. */
   realEstate?: boolean;
+  /** Editor hand-off gallery (2026-09-14): the owner's uploads are originals
+   *  for the editor and never reach the client; the editor's uploads are the
+   *  finals and only those are delivered. No client proofing round. */
+  editorHandoff?: boolean;
   /** A personal note shown in the editorial gallery's statement section.
    *  Merge fields {{first_name}} and {{studio}}. Empty = the default in
    *  client/src/lib/galleryCopy.ts. Optional so older fixtures still type. */

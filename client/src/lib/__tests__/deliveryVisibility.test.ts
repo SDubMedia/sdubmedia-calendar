@@ -58,4 +58,22 @@ describe("visibleGalleryRows — what the public link serves", () => {
   it("returns an empty list for an empty gallery", () => {
     expect(visibleGalleryRows([], "sent", false).rows).toEqual([]);
   });
+
+  describe("editor hand-off galleries", () => {
+    it("never serves the owner's originals to a client, delivered or not", () => {
+      const rows = [proof("o1"), proof("o2"), final("f1")];
+      for (const status of ["draft", "sent", "working", "delivered"]) {
+        expect(ids(visibleGalleryRows(rows, status, false, true).rows)).toEqual(["f1"]);
+      }
+      // No finals yet: the client sees nothing at all, not the originals.
+      expect(ids(visibleGalleryRows([proof("o1")], "delivered", false, true).rows)).toEqual([]);
+    });
+    it("shows the team the originals until finals exist, then the finals", () => {
+      expect(ids(visibleGalleryRows([proof("o1")], "draft", true, true).rows)).toEqual(["o1"]);
+      const v = visibleGalleryRows([proof("o1"), final("f1")], "draft", true, true);
+      expect(ids(v.rows)).toEqual(["f1"]);
+      expect(v.previewingFinals).toBe(true);
+      expect(visibleGalleryRows([proof("o1"), final("f1")], "delivered", true, true).previewingFinals).toBe(false);
+    });
+  });
 });

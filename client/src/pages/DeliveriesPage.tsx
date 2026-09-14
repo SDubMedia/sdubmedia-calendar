@@ -1338,6 +1338,11 @@ function DeliveryDetail({ id }: { id: string }) {
   // ProofingPanel's "charge for every photo" toggle). Galleries that have
   // never touched pricing stay off, exactly as before.
   const proofingEnabled = delivery.selectionLimit > 0 || delivery.perExtraPhotoCents > 0 || delivery.buyAllFlatCents > 0;
+  // Editor hand-off: owner uploads = originals for the editor (stage 'proof'
+  // under the hood, labelled Originals), editor uploads = finals, client
+  // sees finals only. No picking round. Geoff, 2026-09-14.
+  const handoff = delivery.editorHandoff === true && !proofingEnabled;
+  const proofsLabel = handoff ? "Originals" : "Proofs";
   const chargeEveryPhoto = delivery.selectionLimit === 0 && (delivery.perExtraPhotoCents > 0 || delivery.buyAllFlatCents > 0);
 
   /** Where this gallery is in the job. Derived, not stored — a second source
@@ -1352,7 +1357,8 @@ function DeliveryDetail({ id }: { id: string }) {
   const pendingPickCount = proofs.length > 0 ? selections.filter(s => proofs.some(p => p.id === s.fileId)).length : selections.length;
   const picksLeft = Math.max(0, delivery.selectionLimit - editedPhotoCount - pendingPickCount);
   const phase: "collecting" | "picking" | "editing" | "done" =
-    !proofingEnabled ? "done"
+    handoff ? (delivery.status === "delivered" ? "done" : finals.length > 0 ? "editing" : "collecting")
+    : !proofingEnabled ? "done"
     : delivery.status === "delivered" ? "done"
     : delivery.submittedAt ? "editing"
     : proofs.length > 0 ? "picking"
@@ -1371,14 +1377,14 @@ function DeliveryDetail({ id }: { id: string }) {
    *  "deliver the finished work" after. Two different actions that were one
    *  button labelled for the second. */
   const sendProofsPhase = proofingEnabled && !delivery.submittedAt;
-  const finalsToDeliver = proofingEnabled ? finals : files;
+  const finalsToDeliver = proofingEnabled || handoff ? finals : files;
 
   // Default the drop target to whatever this phase is for. Before the client
   // has picked, you're adding proofs; after, you're adding finished files.
   // Both roles compute this the same way now — the editor can choose either
   // stage on upload (2026-08-30), not just finals.
   const uploadStage: DeliveryFileStage =
-    uploadStageOverride ?? (!proofingEnabled ? "final" : phase === "editing" || phase === "done" ? "final" : "proof");
+    uploadStageOverride ?? (handoff ? (readOnly ? "final" : "proof") : !proofingEnabled ? "final" : phase === "editing" || phase === "done" ? "final" : "proof");
 
   /** What the grid shows.
    *
@@ -1484,7 +1490,7 @@ function DeliveryDetail({ id }: { id: string }) {
   // A gallery with no client proofing but with both sets (an editor's
   // finals beside the owner's proofs) still gets the toggle — Geoff,
   // 2026-09-14: 65 finals were invisible in a flat 105-tile grid.
-  const gridFiles = !proofingEnabled && !hasBothStages ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
+  const gridFiles = !proofingEnabled && !hasBothStages && !handoff ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
     : fileView === "proofs" ? visibleProofs
     : finals;
   const project = data.projects.find(p => p.id === delivery.projectId);
@@ -1761,7 +1767,7 @@ function DeliveryDetail({ id }: { id: string }) {
           >
             {t === "photos"
               ? (proofingEnabled
-                  ? `${fileView === "proofs" ? (readOnly ? "Her picks" : "Proofs") : "Finals"} (${gridFiles.length})`
+                  ? `${fileView === "proofs" ? (readOnly && !handoff ? "Her picks" : proofsLabel) : "Finals"} (${gridFiles.length})`
                   : `Photos (${files.length})`)
               : t === "general" ? "General"
               : t === "cover" ? "Cover"
@@ -1951,6 +1957,11 @@ function DeliveryDetail({ id }: { id: string }) {
             requireEmail={delivery.requireEmail}
             onUpdate={(v) => updateDelivery(id, { requireEmail: v })}
           />
+          <WorkflowPanel
+            editorHandoff={delivery.editorHandoff ?? false}
+            proofingEnabled={proofingEnabled}
+            onUpdate={(v) => updateDelivery(id, { editorHandoff: v })}
+          />
           <RealEstatePanel
             realEstate={delivery.realEstate ?? false}
             byClient={clientSaysRealEstate}
@@ -2087,7 +2098,8 @@ function DeliveryDetail({ id }: { id: string }) {
             })}
           </div>
           <p className="text-xs text-slate-400">
-            {phase === "collecting" && <>Load the shots she'll choose from. She can pick <strong>{delivery.selectionLimit}</strong>. Raws are fine — the gallery shows the preview inside them and keeps the raw for your editor.</>}
+            {phase === "collecting" && handoff && <>Load the originals for your editor. Raws are fine — the gallery shows the preview inside them and hands her the raw. The client never sees these; only the finals she uploads.</>}
+            {phase === "collecting" && !handoff && <>Load the shots she'll choose from. She can pick <strong>{delivery.selectionLimit}</strong>. Raws are fine — the gallery shows the preview inside them and keeps the raw for your editor.</>}
             {phase === "picking" && <><strong>{proofs.length}</strong> proof{proofs.length === 1 ? "" : "s"} loaded. Send her the link — you'll get an email and a push when she submits her {delivery.selectionLimit}.</>}
             {phase === "editing" && <>She picked <strong>{selections.length}</strong>. Your editor can open this gallery and download those raws. Upload the finished files here as <strong>Finals</strong>, then deliver.</>}
             {phase === "done" && <>Delivered. The client sees the {finals.length} final file{finals.length === 1 ? "" : "s"}.</>}
@@ -2200,13 +2212,13 @@ function DeliveryDetail({ id }: { id: string }) {
       {/* File grid. The Proofs/Finals toggle also shows through the whole
           editing phase even before any final exists — that's when the owner
           adds late proofs and downloads picks, both dead ends without it. */}
-      {(hasBothStages || (proofingEnabled && (readOnly || phase === "editing" || phase === "done"))) && (
+      {(hasBothStages || handoff || (proofingEnabled && (readOnly || phase === "editing" || phase === "done"))) && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             onClick={() => setFileViewOverride("proofs")}
             className={`text-xs px-3 py-1.5 rounded-lg border ${fileView === "proofs" ? "bg-white/10 border-white/25 text-white font-semibold" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}
           >
-            {readOnly ? `Her picks (${visibleProofs.length})` : `Proofs (${proofs.length})`}
+            {readOnly ? (handoff ? `Originals (${visibleProofs.length})` : `Her picks (${visibleProofs.length})`) : `${proofsLabel} (${proofs.length})`}
           </button>
           <button
             onClick={() => setFileViewOverride("finals")}
@@ -4062,6 +4074,35 @@ function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdat
 /** The switch only means something on a real estate shoot. Every other
  *  gallery keeps full quality regardless (galleryQuality.ts), so there it
  *  reads as a statement of fact rather than a choice. */
+/** How this gallery moves from shoot to client. Hand-off = the owner's
+ *  uploads are for the editor only and the client gets the editor's finals;
+ *  the default is either direct delivery (no proofing) or a client picking
+ *  round (a selection limit set in Proofing). */
+function WorkflowPanel({ editorHandoff, proofingEnabled, onUpdate }: { editorHandoff: boolean; proofingEnabled: boolean; onUpdate: (v: boolean) => Promise<void> }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Workflow</h3>
+      <label className={`flex items-start gap-3 ${proofingEnabled ? "opacity-50" : "cursor-pointer"}`}>
+        <input
+          type="checkbox"
+          checked={editorHandoff}
+          disabled={proofingEnabled}
+          onChange={(e) => onUpdate(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-[#0088ff]"
+        />
+        <span>
+          <span className="text-sm text-white font-medium block">Editor hand-off</span>
+          <span className="text-xs text-slate-500">
+            Your uploads are originals for the editor and never reach the client. The editor's uploads are the finals, and
+            Deliver sends only those. No client picking round.
+            {proofingEnabled ? " Turn off proofing (selection limit 0, no per-photo pricing) to use this." : ""}
+          </span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 /** The gallery's own real estate switch. When the client already makes it
  *  real estate (an agent, or billed to a brokerage) there is nothing to
  *  choose, so it reads as a statement instead of a checkbox. */
