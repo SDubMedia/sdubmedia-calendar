@@ -1065,6 +1065,7 @@ function rowToDeliveryFile(r: any): DeliveryFile {
     // Anything not explicitly a proof is a deliverable, which is every row
     // that predates the column.
     stage: r.stage === "proof" ? "proof" : "final",
+    sourceFileId: r.source_file_id || null,
     assignedCrewMemberId: r.assigned_crew_member_id || null,
     assignedAt: r.assigned_at || null,
     assignmentNote: r.assignment_note || null,

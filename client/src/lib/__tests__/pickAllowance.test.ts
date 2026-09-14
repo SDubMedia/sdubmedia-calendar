@@ -26,6 +26,15 @@ describe("countEditedPhotos", () => {
 });
 
 describe("pendingPickIds", () => {
+  it("a proof that already has a final finishing it is no longer pending", () => {
+    const files = [
+      { id: "p1", stage: "proof", media_type: "image" },
+      { id: "p2", stage: "proof", media_type: "image" },
+      { id: "f1", stage: "final", media_type: "image", source_file_id: "p1" },
+    ];
+    expect(pendingPickIds(["p1", "p2"], files)).toEqual(["p2"]);
+    expect(countEditedPhotos(files)).toBe(1);
+  });
   it("keeps only picks whose proof is still a proof", () => {
     // p1 was picked and has since been replaced by its final (row flipped to
     // 'final'); p2 is still waiting. Only p2 is pending.

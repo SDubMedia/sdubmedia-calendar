@@ -503,7 +503,7 @@ async function submitSelections(req: VercelRequest, res: VercelResponse, token: 
   // validating against the whole set.
   const { data: allFilesRaw } = await supabase
     .from("delivery_files")
-    .select("id, stage, media_type")
+    .select("id, stage, media_type, source_file_id")
     .eq("delivery_id", delivery.id);
   const allFiles = (allFilesRaw || []) as AllowanceFile[];
   const hasProofs = allFiles.some(f => f.stage === "proof");

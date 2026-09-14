@@ -38,17 +38,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!access.ok) return res.status(access.status).json({ error: access.error });
     if (delivery.org_id !== access.orgId) return res.status(403).json({ error: "Not your gallery" });
 
-    // Same filename already in this gallery? Replace it rather than adding a
-    // second copy. Melissa uploaded a session twice and the gallery doubled —
-    // 60 duplicate frames the client would have had to wade through. Replacing
-    // also does the right thing when an editor re-sends a corrected frame: the
-    // client sees the new one, not both.
-    const { data: existing } = await supabaseService
+    // Same filename already in this gallery? A finished file never overwrites
+    // a PROOF any more (Geoff, 2026-09-14: proofs and finals are two separate
+    // sets). It becomes its own 'final' row pointing at the proof it finishes
+    // (source_file_id), in the proof's slot. Re-sending the same finished file
+    // still replaces the earlier FINAL rather than adding a copy — Melissa
+    // once uploaded a session twice and the gallery doubled.
+    const { data: sameName } = await supabaseService
       .from("delivery_files")
-      .select("id, storage_path, original_storage_path")
+      .select("id, stage, position, folder_id, storage_path, original_storage_path, source_file_id")
       .eq("delivery_id", deliveryId)
       .eq("original_name", originalName)
-      .maybeSingle();
+      .order("stage", { ascending: true }); // 'final' sorts before 'proof'
+    const rows = (sameName || []) as { id: string; stage: string | null; position: number; folder_id: string | null; storage_path: string; original_storage_path: string | null; source_file_id: string | null }[];
+    const proof = rows.find(r => r.stage === "proof") || null;
+    // The final to overwrite: one already finishing this proof, else any
+    // final under this name (a gallery with no proofs at all).
+    const existing = rows.find(r => r.stage !== "proof" && (!proof || r.source_file_id === proof.id))
+      || (proof ? null : rows.find(r => r.stage !== "proof") || null);
+
+    if (proof && !existing) {
+      // First finished file for this proof: insert beside it.
+      const id = randomUUID().replace(/-/g, "").slice(0, 12);
+      const row: Record<string, unknown> = {
+        id, delivery_id: deliveryId, org_id: delivery.org_id,
+        storage_path: storagePath, original_name: originalName,
+        size_bytes: Number(b.sizeBytes ?? 0), width: Number(b.width ?? 0), height: Number(b.height ?? 0),
+        mime_type: typeof b.mimeType === "string" ? b.mimeType : "image/jpeg",
+        media_type: b.mediaType === "video" ? "video" : "image",
+        thumbnail_storage_path: typeof b.thumbnailStoragePath === "string" ? b.thumbnailStoragePath : "",
+        duration_seconds: b.durationSeconds ?? null,
+        position: proof.position, folder_id: proof.folder_id,
+        stage: "final", source_file_id: proof.id,
+        original_storage_path: originalStoragePath, original_size_bytes: originalStoragePath ? originalSizeBytes : 0,
+      };
+      let { error: insErr } = await supabaseService.from("delivery_files").insert(row);
+      if (insErr && /source_file_id/.test(insErr.message)) {
+        // Column not migrated yet: still land the final, just unlinked.
+        delete row.source_file_id;
+        ({ error: insErr } = await supabaseService.from("delivery_files").insert(row));
+      }
+      if (insErr) throw new Error(insErr.message);
+      // The finished file IS the edit of the pick — tick it, and clear the
+      // proof's editor assignment (that work is done).
+      const now = new Date().toISOString();
+      await supabaseService.from("delivery_selections").update({ edited_at: now }).eq("file_id", proof.id).is("edited_at", null);
+      await supabaseService.from("delivery_files").update({ assigned_crew_member_id: null, assigned_at: null, assignment_note: null }).eq("id", proof.id);
+      return res.status(200).json({ ok: true, id, replaced: false, sourceFileId: proof.id });
+    }
 
     if (existing) {
       const { error: updErr } = await supabaseService.from("delivery_files").update({
@@ -91,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { error: selErr } = await supabaseService
         .from("delivery_selections")
         .update({ edited_at: new Date().toISOString() })
-        .eq("file_id", existing.id)
+        .eq("file_id", existing.source_file_id || existing.id)
         .is("edited_at", null);
       if (selErr) console.warn("[crew-register-file] couldn't mark pick edited:", selErr.message);
       // Drop the superseded bytes, but only after the row points at the new

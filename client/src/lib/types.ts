@@ -1914,6 +1914,9 @@ export interface DeliveryFile {
    *  proofing IS a deliverable — a real-estate gallery has no proofing phase
    *  and must keep behaving exactly as it did. */
   stage: DeliveryFileStage;
+  /** For a final that finishes a proof: that proof's id. Finals are their
+   *  own rows (2026-09-14); the proof stays in the Proofs set untouched. */
+  sourceFileId?: string | null;
   /** Owner-driven assignment, independent of client selections — "send this
    *  proof to an editor." Null/absent means unassigned. Cleared automatically
    *  when the assigned editor re-uploads a final under the same filename (see

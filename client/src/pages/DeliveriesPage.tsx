@@ -1481,7 +1481,10 @@ function DeliveryDetail({ id }: { id: string }) {
   const hasBothStages = proofs.length > 0 && finals.length > 0;
   // No proofing = one flat grid of everything — except for an editor with a
   // batch sent to her, whose "Assigned to you" toggle must still narrow it.
-  const gridFiles = !proofingEnabled ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
+  // A gallery with no client proofing but with both sets (an editor's
+  // finals beside the owner's proofs) still gets the toggle — Geoff,
+  // 2026-09-14: 65 finals were invisible in a flat 105-tile grid.
+  const gridFiles = !proofingEnabled && !hasBothStages ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
     : fileView === "proofs" ? visibleProofs
     : finals;
   const project = data.projects.find(p => p.id === delivery.projectId);
@@ -2197,7 +2200,7 @@ function DeliveryDetail({ id }: { id: string }) {
       {/* File grid. The Proofs/Finals toggle also shows through the whole
           editing phase even before any final exists — that's when the owner
           adds late proofs and downloads picks, both dead ends without it. */}
-      {proofingEnabled && (hasBothStages || readOnly || phase === "editing" || phase === "done") && (
+      {(hasBothStages || (proofingEnabled && (readOnly || phase === "editing" || phase === "done"))) && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <button
             onClick={() => setFileViewOverride("proofs")}
@@ -2525,7 +2528,10 @@ function DeliveryDetail({ id }: { id: string }) {
                             {data.deliveryFolders.find(fo => fo.id === f.folderId)?.name || "folder"}
                           </span>
                         )}
-                        {!readOnly && proofingEnabled && (
+                        {f.stage === "proof" && files.some(x => x.sourceFileId === f.id) && (
+                          <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-500/20 border border-green-500/40 text-green-300" title="A finished version of this proof is in Finals">Edited</span>
+                        )}
+                        {!readOnly && (proofingEnabled || hasBothStages) && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); updateDeliveryFile(f.id, { stage: f.stage === "proof" ? "final" : "proof" }); }}

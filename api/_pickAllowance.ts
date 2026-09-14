@@ -19,6 +19,8 @@ export interface AllowanceFile {
   id: string;
   stage?: string | null;
   media_type?: string | null;
+  /** The proof this final finishes (finals are separate rows since 2026-09-14). */
+  source_file_id?: string | null;
 }
 
 const hasProofs = (files: AllowanceFile[]) => files.some(f => f.stage === "proof");
@@ -30,10 +32,13 @@ export function countEditedPhotos(files: AllowanceFile[]): number {
 }
 
 /** The subset of existing pick file-ids still waiting on an edit. In a
- *  gallery with no proofs every pick is "pending" in the old sense. */
+ *  gallery with no proofs every pick is "pending" in the old sense. A proof
+ *  that already has a final pointing at it is finished, not pending — its
+ *  final is counted by countEditedPhotos instead, never both. */
 export function pendingPickIds(selectionFileIds: string[], files: AllowanceFile[]): string[] {
   if (!hasProofs(files)) return selectionFileIds;
-  const proofIds = new Set(files.filter(f => f.stage === "proof").map(f => f.id));
+  const finished = new Set(files.filter(f => f.stage !== "proof" && f.source_file_id).map(f => f.source_file_id as string));
+  const proofIds = new Set(files.filter(f => f.stage === "proof" && !finished.has(f.id)).map(f => f.id));
   return selectionFileIds.filter(id => proofIds.has(id));
 }
 
