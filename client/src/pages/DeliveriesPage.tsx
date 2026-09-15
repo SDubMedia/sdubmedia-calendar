@@ -49,7 +49,7 @@ function SortablePhoto({ id, children, dimmed, outlined }: { id: string; childre
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative group aspect-square bg-white/[0.02] rounded-lg overflow-hidden cursor-grab active:cursor-grabbing ${
+      className={`relative group aspect-square bg-card rounded-lg overflow-hidden cursor-grab active:cursor-grabbing ${
         outlined ? "border-2 border-[#0088ff]" : "border border-white/10"
       }`}
       {...attributes}
@@ -205,7 +205,7 @@ function DeliveriesList() {
     const project = data.projects.find(p => p.id === d.projectId);
     return (
       <Link key={d.id} href={`/deliveries/${d.id}`}>
-        <a className="group relative block rounded-xl border border-white/10 bg-white/[0.02] hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
+        <a className="group relative block rounded-xl border border-white/10 bg-card hover:border-[#0088ff]/30 hover:bg-white/[0.04] transition-colors p-5">
           {/* Hover-reveal on desktop, but ALWAYS visible below md. A phone has
               no hover, so opacity-0 there would leave an invisible-but-clickable
               delete sitting over the top-right corner of the card. */}
@@ -272,7 +272,7 @@ function DeliveriesList() {
           row just surfaces it so users see usage building before they
           hit a rejection mid-upload. */}
       {galleries.length > 0 && (
-        <div className="mb-6 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+        <div className="mb-6 rounded-lg border border-white/10 bg-card px-4 py-3">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
             <span>Storage</span>
             <span className="tabular-nums">{usedDisplay} / {STORAGE_CAP_GB} GB</span>
@@ -292,7 +292,7 @@ function DeliveriesList() {
       )}
 
       {galleries.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-12 text-center">
+        <div className="rounded-xl border border-white/10 bg-card p-12 text-center">
           <p className="text-slate-300 mb-2">No galleries yet.</p>
           <p className="text-sm text-slate-500 mb-6">Send a gallery for client proofing or just photo delivery.</p>
           <PrereqGate
@@ -372,7 +372,7 @@ function DeliveriesList() {
                       key={f.id}
                       type="button"
                       onClick={() => setOpenClientFolder(f.id)}
-                      className="group text-left rounded-xl border border-[#0088ff]/30 bg-[#0088ff]/[0.06] hover:bg-[#0088ff]/[0.12] hover:border-[#0088ff]/50 transition-colors p-5"
+                      className="group text-left rounded-xl border border-[#0088ff]/30 bg-card hover:bg-secondary hover:border-[#0088ff]/50 transition-colors p-5"
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <h3 className="text-base font-semibold text-white truncate flex items-center gap-2 min-w-0">
@@ -476,7 +476,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-white/10 rounded-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-4" style={{ fontFamily: "'Space Grotesk', system-ui" }}>New gallery</h2>
 
         <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1">Title</label>
@@ -485,7 +485,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Smith Headshots"
-          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
+          className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
           autoFocus
         />
 
@@ -493,7 +493,7 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
         <select
           value={projectId || ""}
           onChange={(e) => setProjectId(e.target.value || null)}
-          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+          className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
         >
           <option value="">— No project —</option>
           {projectOptions.map(({ project, hasGallery }) => (
@@ -526,15 +526,15 @@ function CreateGalleryDialog({ onClose, onCreate }: { onClose: () => void; onCre
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div>
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Free picks</label>
-            <input type="text" inputMode="numeric" value={selectionLimit} onChange={(e) => setSelectionLimit(e.target.value.replace(/[^\d]/g, ""))} placeholder="0" className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
+            <input type="text" inputMode="numeric" value={selectionLimit} onChange={(e) => setSelectionLimit(e.target.value.replace(/[^\d]/g, ""))} placeholder="0" className="w-full bg-card border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Per extra ($)</label>
-            <input type="text" inputMode="decimal" value={perExtraDollars} onChange={(e) => setPerExtraDollars(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
+            <input type="text" inputMode="decimal" value={perExtraDollars} onChange={(e) => setPerExtraDollars(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className="w-full bg-card border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
           </div>
           <div>
             <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Unlock all ($)</label>
-            <input type="text" inputMode="decimal" value={flatDollars} onChange={(e) => setFlatDollars(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
+            <input type="text" inputMode="decimal" value={flatDollars} onChange={(e) => setFlatDollars(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className="w-full bg-card border border-white/10 rounded-lg px-2 py-2 text-sm outline-none focus:border-[#0088ff]" />
           </div>
         </div>
 
@@ -1823,20 +1823,20 @@ function DeliveryDetail({ id }: { id: string }) {
           )}
           {/* Stats compact strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 text-sm">
-            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <div className="rounded-lg border border-white/10 bg-card p-3">
               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Photos</div>
               <div className="text-lg font-semibold">{files.length}</div>
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <div className="rounded-lg border border-white/10 bg-card p-3">
               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Storage</div>
               <div className="text-lg font-semibold">{(totalSize / 1024 / 1024).toFixed(1)} MB</div>
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <div className="rounded-lg border border-white/10 bg-card p-3">
               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Views</div>
               <div className="text-lg font-semibold">{delivery.viewCount}</div>
             </div>
             {proofingEnabled && (
-              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="rounded-lg border border-white/10 bg-card p-3">
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Picks</div>
                 <div className="text-lg font-semibold">{selections.length}</div>
               </div>
@@ -1867,7 +1867,7 @@ function DeliveryDetail({ id }: { id: string }) {
               onTone={(v) => updateDelivery(id, { tone: v })}
             />
           )}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+          <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Status</h3>
             <div className="flex flex-wrap gap-2 text-xs">
               <StatusButton current={delivery.status} target="draft" onClick={() => setDeliveryStatus(id, "draft")} label="Draft" />
@@ -1939,7 +1939,7 @@ function DeliveryDetail({ id }: { id: string }) {
 
       {activeTab === "privacy" && (
         <>
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+          <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Password</h3>
             <button onClick={() => setPwOpen(true)} className="text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/[0.04] inline-flex items-center gap-1.5">
               <Lock className="w-3 h-3" /> {delivery.hasPassword ? "Change password" : "Set password"}
@@ -2058,7 +2058,7 @@ function DeliveryDetail({ id }: { id: string }) {
       {activeTab === "photos" && (
       <>
       {readOnly && (
-        <p className="text-xs text-slate-400 mb-4 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+        <p className="text-xs text-slate-400 mb-4 rounded-lg border border-white/10 bg-card px-4 py-3">
           {phase === "editing"
             ? <>The client picked <strong>{selections.length}</strong>. Download them below — a raw shoot hands back the raw file — then drag the finished versions here to add them as finals. You can't change or remove the client's photos.</>
             : <>Download the raws below, edit, then drag the finished photos into the box — they land in <strong>Finals</strong> for review. Keep the same filename and the finished photo replaces its raw.</>}
@@ -2071,7 +2071,7 @@ function DeliveryDetail({ id }: { id: string }) {
           files, and getting it wrong puts the client's rejects in their
           delivery. */}
       {!readOnly && proofingEnabled && (
-        <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="mb-4 rounded-xl border border-white/10 bg-card p-4">
           <div className="flex flex-wrap items-center gap-2 mb-2">
             {([
               ["collecting", "1. Load proofs"],
@@ -2122,7 +2122,7 @@ function DeliveryDetail({ id }: { id: string }) {
           if (dropped && dropped.length > 0) handleFiles(dropped);
         }}
         className={`rounded-xl border-2 border-dashed p-6 text-center mb-6 transition-colors ${
-          dragOver ? "border-[#0088ff] bg-[#0088ff]/10" : "border-white/10 bg-white/[0.02]"
+          dragOver ? "border-[#0088ff] bg-[#0088ff]/10" : "border-white/10 bg-card"
         }`}
       >
         <input
@@ -2339,7 +2339,7 @@ function DeliveryDetail({ id }: { id: string }) {
       ) : (
         <>
         {pickedIds.length > 0 && (
-          <div className="sticky top-0 z-20 -mx-1 mb-3 px-3 py-2 rounded-lg bg-[#0a0e17] border border-white/15 flex flex-wrap items-center justify-between gap-2 shadow-lg">
+          <div className="sticky top-0 z-20 -mx-1 mb-3 px-3 py-2 rounded-lg bg-card border border-white/15 flex flex-wrap items-center justify-between gap-2 shadow-lg">
             <span className="text-sm text-white min-w-0">
               <strong>{pickedIds.length}</strong> selected
             </span>
@@ -2924,7 +2924,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
   ];
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Cover & Design</h3>
 
       {/* Font picker — six hand-picked options. Loads Google Fonts inline so
@@ -3023,7 +3023,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
             <button
               onClick={() => setPickerOpen(true)}
               disabled={files.length === 0 && !ownCoverUrl}
-              className="w-full aspect-[3/1] bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
+              className="w-full aspect-[3/1] bg-card border border-white/10 rounded-lg overflow-hidden hover:border-white/20 disabled:opacity-50 flex items-center justify-center text-xs text-slate-500"
             >
               {shownCoverUrl ? (
                 <img src={shownCoverUrl} alt="" className="w-full h-full object-cover" />
@@ -3130,7 +3130,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
             onChange={(e) => setSubtitle(e.target.value)}
             onBlur={() => { if (subtitle !== (delivery.coverSubtitle || "")) onUpdate({ coverSubtitle: subtitle || null }); }}
             placeholder="e.g. Coldwell Banker · Brentwood"
-            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+            className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
           />
         </div>
         <div>
@@ -3141,7 +3141,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
             onChange={(e) => setDate(e.target.value)}
             onBlur={() => { if (date !== (delivery.coverDate || "")) onUpdate({ coverDate: date || null }); }}
             placeholder="16th March, 2026"
-            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+            className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
           />
         </div>
       </div>
@@ -3150,7 +3150,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
       <div className="mt-3">
         <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Custom URL (optional)</label>
         <div className="flex items-stretch gap-0">
-          <span className="bg-white/[0.03] border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/g/</span>
+          <span className="bg-card border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/g/</span>
           <input
             type="text"
             value={slug}
@@ -3172,7 +3172,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
               }
             }}
             placeholder="cbsr-awards-2026"
-            className="flex-1 bg-white/[0.03] border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+            className="flex-1 bg-card border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
           />
         </div>
         <p className="text-[10px] text-slate-500 mt-1">Lowercase letters, numbers, dashes. Leave blank to use the random share link only.</p>
@@ -3181,7 +3181,7 @@ function CoverDesignPanel({ delivery, files, signedUrls, onUpdate }: CoverDesign
       {/* Picker dialog */}
       {pickerOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPickerOpen(false)}>
-          <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card border border-white/10 rounded-xl max-w-3xl w-full max-h-[80vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">Choose cover photo</h2>
               <button onClick={() => setPickerOpen(false)} className="text-slate-400 hover:text-white">✕</button>
@@ -3230,7 +3230,7 @@ function BasicsPanel({ title, projectId, projects, clients, onUpdate }: {
   useEffect(() => { setP(projectId || ""); }, [projectId]);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Basics</h3>
       <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Title</label>
       <input
@@ -3239,7 +3239,7 @@ function BasicsPanel({ title, projectId, projects, clients, onUpdate }: {
         onChange={(e) => setT(e.target.value)}
         onBlur={() => { if (t.trim() && t !== title) onUpdate({ title: t.trim() }); }}
         placeholder="Gallery title"
-        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] mb-3"
+        className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] mb-3"
       />
       <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Project</label>
       <select
@@ -3249,7 +3249,7 @@ function BasicsPanel({ title, projectId, projects, clients, onUpdate }: {
           setP(e.target.value);
           onUpdate({ projectId: next });
         }}
-        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+        className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
       >
         <option value="">— No project —</option>
         {projects.map((proj) => (
@@ -3273,14 +3273,14 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
   useEffect(() => { setCollSlug(selected?.slug || ""); }, [selected?.slug]);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Collection</h3>
       <p className="text-[11px] text-slate-500 mb-3">Group several galleries under a shared landing URL <span className="text-slate-400">/c/&lt;slug&gt;</span>.</p>
       <div className="flex items-center gap-2">
         <select
           value={collectionId || ""}
           onChange={(e) => onUpdate(e.target.value || null)}
-          className="bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] flex-1"
+          className="bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] flex-1"
         >
           <option value="">— Standalone (no collection) —</option>
           {data.deliveryCollections.map(c => (
@@ -3298,7 +3298,7 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Collection name"
-            className="flex-1 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+            className="flex-1 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
             autoFocus
           />
           <button
@@ -3324,7 +3324,7 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
         <div className="mt-3">
           <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Collection URL</label>
           <div className="flex items-stretch gap-0">
-            <span className="bg-white/[0.03] border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/c/</span>
+            <span className="bg-card border border-r-0 border-white/10 rounded-l-lg px-3 py-2 text-sm text-slate-500">/c/</span>
             <input
               type="text"
               value={collSlug}
@@ -3346,7 +3346,7 @@ function CollectionPanel({ collectionId, onUpdate }: { collectionId: string | nu
                 }
               }}
               placeholder="portfolio"
-              className="flex-1 bg-white/[0.03] border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
+              className="flex-1 bg-card border border-white/10 rounded-r-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[#0088ff]"
             />
             {selected.slug && (
               <button
@@ -3374,7 +3374,7 @@ function WatermarkPanel({ watermarkText, watermarkUseLogo, orgLogoUrl, onUpdate 
   useEffect(() => { setVal(watermarkText || ""); }, [watermarkText]);
   const canUseLogo = !!orgLogoUrl;
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Watermark</h3>
 
       {/* Logo toggle — preferred when org has a logo set */}
@@ -3420,7 +3420,7 @@ function WatermarkPanel({ watermarkText, watermarkUseLogo, orgLogoUrl, onUpdate 
         onChange={(e) => setVal(e.target.value)}
         onBlur={() => { if (val !== (watermarkText || "")) onUpdate({ watermarkText: val || null }); }}
         placeholder="© Your Name 2026"
-        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+        className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
       />
       <p className="text-[11px] text-slate-500 mt-2">Tiled overlay across the public gallery. Deters casual screenshots; the underlying image isn't modified — paid clients still get clean originals via download.</p>
     </div>
@@ -3492,7 +3492,7 @@ function PicksList({
   if (rows.length === 0 && missing === 0) return null;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider min-w-0">
           Her picks — {editedCount} of {rows.length} edited
@@ -3515,7 +3515,7 @@ function PicksList({
           const url = signedUrls.get(file.id);
           return (
             <div key={sel.id} className="flex items-center gap-3 py-2 min-w-0">
-              <div className="w-12 h-12 rounded bg-white/[0.03] overflow-hidden shrink-0">
+              <div className="w-12 h-12 rounded bg-card overflow-hidden shrink-0">
                 {url && <img src={url} alt="" className="w-full h-full object-cover" />}
               </div>
               <div className="min-w-0 flex-1">
@@ -3598,7 +3598,7 @@ function ProofingPanel({
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Photo picking</h3>
       <p className="text-xs text-slate-500 mb-3">
         Let the client heart the shots they want edited. Leave blank or 0 to turn it off and just deliver everything.
@@ -3633,7 +3633,7 @@ function ProofingPanel({
             onBlur={saveLimit}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
             placeholder="15"
-            className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+            className="w-28 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
           />
         </div>
         {selectionLimit > 0 && (
@@ -3652,7 +3652,7 @@ function ProofingPanel({
               }}
               onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
               placeholder="all"
-              className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+              className="w-28 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
             />
           </div>
         )}
@@ -3701,7 +3701,7 @@ function ProofingPanel({
                   if (cents !== perExtraPhotoCents) commit({ perExtraPhotoCents: cents }, cents ? `Extras at $${(cents / 100).toFixed(2)} each` : "Per-photo price cleared");
                 }}
                 placeholder="0.00"
-                className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+                className="w-28 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
               />
             </div>
             <div>
@@ -3716,7 +3716,7 @@ function ProofingPanel({
                   if (cents !== buyAllFlatCents) commit({ buyAllFlatCents: cents }, cents ? `Buy-all at $${(cents / 100).toFixed(2)}` : "Buy-all price cleared");
                 }}
                 placeholder="0.00"
-                className="w-28 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+                className="w-28 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
               />
             </div>
           </div>
@@ -3734,7 +3734,7 @@ function ProofingPanel({
 
 function PrintsPanel({ printsEnabled, onUpdate }: { printsEnabled: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Print orders</h3>
       <label className="flex items-start gap-3 cursor-pointer">
         <input
@@ -3866,7 +3866,7 @@ function ChipField({
         const text = e.clipboardData.getData("text/plain");
         document.execCommand("insertText", false, text);
       }}
-      className={`w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] chip-field ${
+      className={`w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] chip-field ${
         multiline ? "min-h-[9rem] max-h-[18rem] overflow-y-auto whitespace-pre-wrap" : "whitespace-nowrap overflow-x-auto"
       }`}
     />
@@ -3945,7 +3945,7 @@ function DeliveryEmailComposer({
               value={to}
               onChange={(e) => setTo(e.target.value)}
               placeholder="name@example.com"
-              className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
+              className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff]"
             />
             {!recipient && (
               <p className="text-[11px] text-amber-400/90 mt-1">
@@ -4033,7 +4033,7 @@ function DeliveryEmailComposer({
 
 function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdateViewOnly }: { downloadOnly: boolean; viewOnly: boolean; hasCover: boolean; onUpdate: (v: boolean) => Promise<void>; onUpdateViewOnly: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Presentation</h3>
       <label className="flex items-start gap-3 cursor-pointer mb-4">
         <input
@@ -4080,7 +4080,7 @@ function PresentationPanel({ downloadOnly, viewOnly, hasCover, onUpdate, onUpdat
  *  round (a selection limit set in Proofing). */
 function WorkflowPanel({ editorHandoff, proofingEnabled, onUpdate }: { editorHandoff: boolean; proofingEnabled: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Workflow</h3>
       <label className={`flex items-start gap-3 ${proofingEnabled ? "opacity-50" : "cursor-pointer"}`}>
         <input
@@ -4108,7 +4108,7 @@ function WorkflowPanel({ editorHandoff, proofingEnabled, onUpdate }: { editorHan
  *  choose, so it reads as a statement instead of a checkbox. */
 function RealEstatePanel({ realEstate, byClient, onUpdate }: { realEstate: boolean; byClient: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Real estate</h3>
       {byClient ? (
         <p className="text-xs text-slate-400">
@@ -4140,7 +4140,7 @@ function RealEstatePanel({ realEstate, byClient, onUpdate }: { realEstate: boole
 
 function QualityPanel({ keepOriginals, alwaysOn, onUpdate }: { keepOriginals: boolean; alwaysOn: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Photo quality</h3>
       {alwaysOn ? (
         <p className="text-xs text-slate-400">
@@ -4199,14 +4199,14 @@ function NotePanel({ note, tone, autoTone, photoCount, filmCount, onSave, onTone
     }
   };
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Note to the client</h3>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-xs text-slate-400">Written for</span>
         <select
           value={tone}
           onChange={(e) => onTone(e.target.value as "" | GalleryTone).catch((err) => toast.error("Couldn't save", { description: err instanceof Error ? err.message : "Try again" }))}
-          className="bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[#0088ff]"
+          className="bg-card border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[#0088ff]"
         >
           <option value="">Automatic — {autoTone === "business" ? "a business" : "a person"}</option>
           <option value="personal">A person or family</option>
@@ -4222,7 +4222,7 @@ function NotePanel({ note, tone, autoTone, photoCount, filmCount, onSave, onTone
         onBlur={() => save(draft.trim())}
         rows={4}
         placeholder={defaultGalleryNote({ photos: photoCount, films: filmCount, tone: effectiveTone })}
-        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
+        className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#0088ff] resize-y"
       />
       <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
         <span className="text-[11px] text-slate-500">{saving ? "Saving…" : draft.trim() ? "Custom note" : "Using the default"}</span>
@@ -4236,7 +4236,7 @@ function NotePanel({ note, tone, autoTone, photoCount, filmCount, onSave, onTone
 
 function PrivacyPanel({ requireEmail, onUpdate }: { requireEmail: boolean; onUpdate: (v: boolean) => Promise<void> }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Privacy</h3>
       <label className="flex items-start gap-3 cursor-pointer">
         <input
@@ -4266,7 +4266,7 @@ function ExpiryPanel({ expiresAt, onUpdate }: { expiresAt: string | null; onUpda
     : null;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 mb-6">
+    <div className="rounded-xl border border-white/10 bg-card p-5 mb-6">
       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Expiry</h3>
       <div className="flex items-center gap-3">
         <DateField
@@ -4326,7 +4326,7 @@ function PasswordDialog({ hasPassword, onClose, onSave }: { hasPassword: boolean
   const [pw, setPw] = useState("");
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-4">{hasPassword ? "Change password" : "Set password"}</h2>
         <input
           type="password"
@@ -4334,7 +4334,7 @@ function PasswordDialog({ hasPassword, onClose, onSave }: { hasPassword: boolean
           value={pw}
           onChange={(e) => setPw(e.target.value)}
           placeholder={hasPassword ? "Leave empty to remove" : "New password"}
-          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
+          className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
         />
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-white/10 py-2.5 rounded-lg font-semibold text-sm">Cancel</button>
@@ -4409,7 +4409,7 @@ function EditorNoteBox({ name, initial, onSave }: { name: string; initial: strin
         rows={3}
         maxLength={2000}
         placeholder="What to do with these — style, skips, anything she needs to know."
-        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff] resize-y"
+        className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff] resize-y"
       />
     </div>
   );
@@ -4422,7 +4422,7 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
   const [note, setNote] = useState("");
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-1">Send {count} to an editor</h2>
         <p className="text-xs text-slate-500 mb-4">She'll see these in her own gallery view and get an email + push.</p>
         {crew.length === 0 ? (
@@ -4431,7 +4431,7 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
           <select
             value={crewMemberId}
             onChange={(e) => setCrewMemberId(e.target.value)}
-            className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
+            className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-[#0088ff]"
           >
             {crew.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -4443,7 +4443,7 @@ function SendToEditorDialog({ count, crew, sending, onClose, onSend }: {
           rows={4}
           maxLength={2000}
           placeholder="What to do with these — style, skips, anything she needs to know."
-          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm mb-1 outline-none focus:border-[#0088ff] resize-y"
+          className="w-full bg-card border border-white/10 rounded-lg px-3 py-2 text-sm mb-1 outline-none focus:border-[#0088ff] resize-y"
         />
         <p className="text-[11px] text-slate-500 mb-4">She'll see this on her dashboard, at the top of the gallery, and in the email.</p>
         <div className="flex gap-2">
@@ -4562,7 +4562,7 @@ function FolderPickerDialog({ count, folders, saving, onClose, onCreate, onDelet
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#0a0e17] border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-white/10 rounded-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-1">Add {count} to a folder</h2>
         <p className="text-xs text-slate-500 mb-4">Organizes what she sees into labeled sections, like "Final Videos" or "B Roll".</p>
         {folders.length > 0 && (
@@ -4581,7 +4581,7 @@ function FolderPickerDialog({ count, folders, saving, onClose, onCreate, onDelet
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) createAndSelect(); }}
             placeholder="New folder name…"
-            className="flex-1 min-w-0 bg-white/[0.03] border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
+            className="flex-1 min-w-0 bg-card border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0088ff]"
           />
           <button onClick={createAndSelect} disabled={creating || !newName.trim()} className="shrink-0 px-3 py-2 border border-white/15 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-white/[0.06]">
             {creating ? "…" : "Create"}
