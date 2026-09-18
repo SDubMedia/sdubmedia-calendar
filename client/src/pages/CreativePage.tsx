@@ -26,7 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { publicUrl } from "@/lib/publicUrl";
 import { qrPath } from "@/lib/qr";
 import { dataUrlToBlob, downloadBlob, type QrBrand } from "@/lib/qrRender";
-import { defaultFlyerContent, ensureFlyerFonts, flyerPdf, hasTaintedPhotos, loadDataImage, loadPhoto, renderFlyer, FLYER_DESIGNS, FLYER_SIZES, MAX_SMALL_PHOTOS, type FlyerAssets, type FlyerContent, type FlyerDesign, type FlyerSize, type PhotoRef } from "@/lib/flyer";
+import { defaultFlyerContent, ensureFlyerFonts, flyerPdf, hasTaintedPhotos, loadDataImage, loadPhoto, renderFlyer, FLYER_DESIGNS, FLYER_FONTS, FLYER_SIZES, MAX_SMALL_PHOTOS, type FlyerAssets, type FlyerContent, type FlyerDesign, type FlyerFont, type FlyerSize, type PhotoRef } from "@/lib/flyer";
 import PhotoPicker from "@/components/PhotoPicker";
 import { signedUrlsFor } from "@/lib/signedUrls";
 import { toast } from "sonner";
@@ -295,6 +295,26 @@ function FlyerEditor({ id }: { id: string }) {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">{FLYER_DESIGNS[content.design]?.blurb}</p>
+          </section>
+
+          <section className="space-y-2">
+            <Label>Fonts</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["headlineFont", "bodyFont"] as const).map(key => (
+                <div key={key} className="space-y-1">
+                  <span className="text-xs text-muted-foreground">{key === "headlineFont" ? "Headline" : "Body"}</span>
+                  <Select value={content[key]} onValueChange={v => update({ [key]: v as FlyerFont })}>
+                    <SelectTrigger className="w-full" style={{ fontFamily: FLYER_FONTS[content[key]]?.family }}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(FLYER_FONTS) as FlyerFont[]).map(k => (
+                        <SelectItem key={k} value={k} style={{ fontFamily: FLYER_FONTS[k].family }}>{FLYER_FONTS[k].label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Headline sets the big type and the call to action. Body sets everything else.</p>
           </section>
 
           <section className="space-y-2">

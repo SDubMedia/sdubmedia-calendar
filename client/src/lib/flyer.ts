@@ -35,6 +35,21 @@ export type FlyerDesign = keyof typeof FLYER_DESIGNS;
 
 export interface PhotoRef { fileId: string; deliveryId: string }
 
+/** Fonts the app already loads (index.html). Headline picks lean serif;
+ *  body picks lean sans, but any pairing is allowed. */
+export const FLYER_FONTS = {
+  "playfair":   { label: "Playfair Display", family: "'Playfair Display', Georgia, serif", kind: "serif" },
+  "cormorant":  { label: "Cormorant Garamond", family: "'Cormorant Garamond', Georgia, serif", kind: "serif" },
+  "dmserif":    { label: "DM Serif Display", family: "'DM Serif Display', Georgia, serif", kind: "serif" },
+  "bebas":      { label: "Bebas Neue", family: "'Bebas Neue', Impact, sans-serif", kind: "display" },
+  "syne":       { label: "Syne", family: "Syne, 'Space Grotesk', sans-serif", kind: "display" },
+  "outfit":     { label: "Outfit", family: "Outfit, 'Helvetica Neue', sans-serif", kind: "sans" },
+  "montserrat": { label: "Montserrat", family: "Montserrat, 'Helvetica Neue', sans-serif", kind: "sans" },
+  "inter":      { label: "Inter", family: "Inter, 'Helvetica Neue', Arial, sans-serif", kind: "sans" },
+  "grotesk":    { label: "Space Grotesk", family: "'Space Grotesk', 'Helvetica Neue', sans-serif", kind: "sans" },
+} as const;
+export type FlyerFont = keyof typeof FLYER_FONTS;
+
 export interface FlyerContent {
   design: FlyerDesign;
   proofLine: string;        // small trust line above the headline, e.g. "Drakewood Farm Preferred Videographer"
@@ -49,6 +64,8 @@ export interface FlyerContent {
   showContact: boolean;     // print phone / email / website from business info
   showShortLink: boolean;   // print the code's link under the QR for people who won't scan
   qrColor: "black" | "blue" | "accent";
+  headlineFont: FlyerFont;
+  bodyFont: FlyerFont;
 }
 
 export const MAX_SMALL_PHOTOS = 3;
@@ -67,6 +84,8 @@ export const defaultFlyerContent = (): FlyerContent => ({
   showContact: true,
   showShortLink: true,
   qrColor: "black",
+  headlineFont: "playfair",
+  bodyFont: "inter",
 });
 
 export interface FlyerAssets {
@@ -79,8 +98,9 @@ export interface FlyerAssets {
 }
 
 // ---------------------------------------------------------------- helpers
-const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
-const SANS = "Inter, 'Helvetica Neue', Arial, sans-serif";
+// Set per render from the flyer's font choices (see renderFlyer).
+let SERIF = FLYER_FONTS.playfair.family as string;
+let SANS = FLYER_FONTS.inter.family as string;
 
 /** Word-wrap `text` to `maxWidth` using the current ctx.font. Honors \n. */
 export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -193,9 +213,13 @@ function wordmark(ctx: CanvasRenderingContext2D, a: FlyerAssets, right: number, 
   ctx.drawImage(a.wordmark, right - w, bottom - h, w, h);
 }
 
-const FONTS = ["700 120px 'Playfair Display'", "italic 600 60px 'Playfair Display'", "400 58px Inter", "500 70px Inter", "600 56px Inter"];
 export async function ensureFlyerFonts(): Promise<void> {
-  try { await Promise.all(FONTS.map(f => document.fonts.load(f))); } catch { /* fall back to system fonts */ }
+  const specs: string[] = [];
+  for (const font of Object.values(FLYER_FONTS)) {
+    specs.push(`700 100px ${font.family}`, `400 40px ${font.family}`);
+    if (font.kind === "serif") specs.push(`italic 600 60px ${font.family}`);
+  }
+  try { await Promise.all(specs.map(s => document.fonts.load(s))); } catch { /* fall back to system fonts */ }
 }
 
 interface Frame { ctx: CanvasRenderingContext2D; W: number; H: number; u: (n: number) => number; wide: boolean; tall: boolean }
@@ -222,6 +246,8 @@ function begin(canvas: HTMLCanvasElement, a: FlyerAssets, scale: number): Frame 
 export async function renderFlyer(canvas: HTMLCanvasElement, c: FlyerContent, a: FlyerAssets, scale = 1): Promise<void> {
   const f = begin(canvas, a, scale);
   if (!f) return;
+  SERIF = (FLYER_FONTS[c.headlineFont] || FLYER_FONTS.playfair).family;
+  SANS = (FLYER_FONTS[c.bodyFont] || FLYER_FONTS.inter).family;
   if (c.design === "fullbleed") return renderFullBleed(f, c, a);
   if (c.design === "editorial") return renderWhiteFrame(f, c, a);
   return renderColorBlock(f, c, a);
@@ -448,7 +474,7 @@ async function renderWhiteFrame(f: Frame, c: FlyerContent, a: FlyerAssets) {
  */
 export async function loadPhoto(url: string): Promise<HTMLImageElement> {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(devSameOrigin(url), { cache: "no-store" });
     if (!res.ok) throw new Error(`Photo failed to load (${res.status})`);
     const blob = await res.blob();
     return await decode(URL.createObjectURL(blob));
@@ -458,6 +484,16 @@ export async function loadPhoto(url: string): Promise<HTMLImageElement> {
     img.dataset.tainted = "1";
     return img;
   }
+}
+
+/** In dev, send storage links through the dev server's /r2-dev proxy (see vite.config.ts). */
+function devSameOrigin(url: string): string {
+  if (!import.meta.env.DEV) return url;
+  try {
+    const u = new URL(url);
+    if (u.hostname.endsWith(".r2.cloudflarestorage.com")) return `/r2-dev${u.pathname}${u.search}`;
+  } catch { /* not a URL we understand; use as-is */ }
+  return url;
 }
 
 function decode(src: string): Promise<HTMLImageElement> {

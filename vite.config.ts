@@ -2,7 +2,14 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
+
+// Dev only: photo storage (R2) does not allow http://localhost as an origin, so
+// the browser cannot read gallery pixels for the flyer export. Routing the
+// signed URL through the dev server makes it same-origin; the signature still
+// verifies because the proxy forwards the real host. See loadPhoto in
+// client/src/lib/flyer.ts, which only uses this path in dev.
+const r2Account = loadEnv("development", process.cwd(), "").R2_ACCOUNT_ID || "";
 
 export default defineConfig({
   plugins: [
@@ -111,6 +118,14 @@ export default defineConfig({
     // since the browser talks to the live Supabase project either way.
     // Override the target with SLATE_API_PROXY when testing a preview deploy.
     proxy: {
+      ...(r2Account ? {
+        "/r2-dev": {
+          target: `https://${r2Account}.r2.cloudflarestorage.com`,
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p: string) => p.replace(/^\/r2-dev/, ""),
+        },
+      } : {}),
       "/api": {
         target: process.env.SLATE_API_PROXY || "https://slate.sdubmedia.com",
         changeOrigin: true,
