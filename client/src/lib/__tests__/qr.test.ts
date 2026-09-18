@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayUrl, normalizeTargetUrl, qrPath } from "../qr";
+import { countSince, displayUrl, isValidCode, normalizeCode, normalizeTargetUrl, qrPath, scansPerDay, taggedTarget } from "../qr";
 
 describe("normalizeTargetUrl", () => {
   it("adds https to a bare domain", () => {
@@ -27,5 +27,45 @@ describe("qrPath / displayUrl", () => {
     expect(displayUrl("https://sdubmedia.com/")).toBe("sdubmedia.com");
     expect(displayUrl("https://sdubmedia.com/family?x=1")).toBe("sdubmedia.com/family?x=1");
     expect(displayUrl("garbage")).toBe("garbage");
+  });
+});
+
+describe("codes", () => {
+  it("normalizes what Geoff types into a slug", () => {
+    expect(normalizeCode("Front Window!")).toBe("front-window");
+    expect(normalizeCode("  Weddings 2027 ")).toBe("weddings-2027");
+  });
+  it("validates length and characters", () => {
+    expect(isValidCode("ab")).toBe(false);
+    expect(isValidCode("front-window")).toBe(true);
+    expect(isValidCode("has space")).toBe(false);
+    expect(isValidCode("x".repeat(41))).toBe(false);
+  });
+});
+
+describe("taggedTarget", () => {
+  it("adds analytics tags named after the code", () => {
+    const t = taggedTarget("https://sdubmedia.com/weddings", "Front Window", "abc123", true);
+    const u = new URL(t);
+    expect(u.searchParams.get("utm_source")).toBe("qr");
+    expect(u.searchParams.get("utm_medium")).toBe("print");
+    expect(u.searchParams.get("utm_campaign")).toBe("front-window");
+    expect(u.searchParams.get("utm_content")).toBe("abc123");
+  });
+  it("leaves a link alone when tagging is off or it already has tags", () => {
+    expect(taggedTarget("https://a.com/", "x", "c", false)).toBe("https://a.com/");
+    expect(taggedTarget("https://a.com/?utm_source=mine", "x", "c", true)).toBe("https://a.com/?utm_source=mine");
+  });
+});
+
+describe("scan history", () => {
+  const now = new Date(2026, 8, 18, 15, 0, 0);   // Sep 18 2026, 3pm local
+  const at = (d: number, h = 10) => new Date(2026, 8, d, h).toISOString();
+  it("buckets scans per day, oldest first, today last", () => {
+    const s = scansPerDay([at(18), at(18, 1), at(17), at(12), at(1)], 7, now);
+    expect(s).toEqual([1, 0, 0, 0, 0, 1, 2]);
+  });
+  it("counts scans in a window", () => {
+    expect(countSince([at(18), at(17), at(1)], 7, now)).toBe(2);
   });
 });
