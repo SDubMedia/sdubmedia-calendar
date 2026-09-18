@@ -45,6 +45,7 @@ import {
   DollarSign,
   Building2,
   QrCode,
+  ScanLine,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -99,6 +100,8 @@ const navStructure: NavEntry[] = [
   // buttons in the phone header — see quickNav below (2026-09-13).
   { label: "Galleries", href: "/deliveries", icon: ImageIcon, roles: ["owner", "staff"], feature: "deliveries" },
   { label: "Mini Sessions", href: "/mini-sessions", icon: QrCode, roles: ["owner", "staff"], feature: "miniSessions" },
+  // Dynamic QR codes: print once, re-point any time. Owner only (2026-09-18).
+  { label: "QR Codes", href: "/qr-codes", icon: ScanLine, roles: ["owner"] },
   { label: "My Listings", href: "/my-houses", icon: Home, roles: ["client"] },
 
   // Sales — owner and partner only

@@ -16,6 +16,10 @@
       "destination": "/api/gallery-preview?slug=:slug"
     },
     {
+      "source": "/q/:code",
+      "destination": "/api/q?code=:code"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

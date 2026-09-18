@@ -19,6 +19,7 @@ const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const BillingPage = lazy(() => import("./pages/BillingPage"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage"));
 const LocationsPage = lazy(() => import("./pages/LocationsPage"));
+const QrCodesPage = lazy(() => import("./pages/QrCodesPage"));
 const ManagePage = lazy(() => import("./pages/ManagePage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CrewReportPage = lazy(() => import("./pages/CrewReportPage"));
@@ -230,6 +231,7 @@ function Router() {
             here are sent to the request queue; everyone else to the calendar. */}
         <Route path="/my-houses">{() => role === "client" ? <MyHousesPage /> : <Redirect to={isOwner ? "/shoot-requests" : "/calendar"} />}</Route>
         {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
+        {isOwner && <Route path="/qr-codes" component={QrCodesPage} />}
         <Route path="/billing">{() => internal ? <BillingPage /> : <Redirect to="/" />}</Route>
         <Route path="/reports">{() => internal ? <ReportsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/crew-report" component={CrewReportPage} />}

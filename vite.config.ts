@@ -55,6 +55,7 @@ export default defineConfig({
           /^\/sign\//,       // contract signing
           /^\/deliver\//,    // gallery (token)
           /^\/g\//,          // gallery (slug)
+          /^\/q\//,          // dynamic QR redirect (printed codes)
           /^\/proposal\//,   // proposal viewing
           /^\/c\//,          // collection
           /^\/hub\//,        // client hub (every delivered gallery for one client)
