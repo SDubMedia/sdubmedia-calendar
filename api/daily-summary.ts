@@ -116,6 +116,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const funnel24h = await loadFunnel(since24h);
   const funnel7d = await loadFunnel(since7d);
 
+  // --- QR code scans (last 24h), one line per code that was scanned ---
+  async function qrScanBlock(): Promise<string> {
+    const { data: scans, error } = await supabase.from("qr_scans").select("qr_code_id").gte("scanned_at", since24h);
+    if (error) return `  (couldn't read: ${error.message})`;
+    if (!scans || scans.length === 0) return "  (none)";
+    const counts = new Map<string, number>();
+    for (const s of scans) counts.set(s.qr_code_id, (counts.get(s.qr_code_id) || 0) + 1);
+    const { data: codes } = await supabase.from("qr_codes").select("id, name, code").in("id", [...counts.keys()]);
+    const nameOf = new Map((codes || []).map(c => [c.id, c.name || c.code]));
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => `  ${String(n).padStart(3)}  ${nameOf.get(id) || id}`)
+      .join("\n");
+  }
+  const qrBlock = await qrScanBlock();
+
   // --- Compose email ---
   const totalMrr = (slateMrr + freelanceMrr).toFixed(2);
   const totalSubs = slateSubs + freelanceSubs;
@@ -154,6 +170,11 @@ Conversion funnel (viewed → started → completed)
   Slate       7d — ${funnel7d.slate.viewed} → ${stepFmt(funnel7d.slate.viewed, funnel7d.slate.started)} → ${stepFmt(funnel7d.slate.started, funnel7d.slate.completed)}
   Freelance  24h — ${funnel24h.freelance.viewed} → ${stepFmt(funnel24h.freelance.viewed, funnel24h.freelance.started)} → ${stepFmt(funnel24h.freelance.started, funnel24h.freelance.completed)}
   Freelance   7d — ${funnel7d.freelance.viewed} → ${stepFmt(funnel7d.freelance.viewed, funnel7d.freelance.started)} → ${stepFmt(funnel7d.freelance.started, funnel7d.freelance.completed)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QR code scans (24h)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${qrBlock}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Past due

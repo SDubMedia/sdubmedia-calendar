@@ -3,15 +3,18 @@
 //
 // The printed QR encodes this permanent Slate link, never the destination, so
 // Geoff can re-point a code that is already on flyers, signs and business
-// cards. Each scan is counted and logged (device, country, referer — never
-// the IP), and the forward carries utm tags so Google Analytics reports the
-// scan as its own traffic source. Wired up by the /q/:code rewrite in
-// vercel.json; the service worker leaves /q/ alone (vite.config.ts denylist).
+// cards. A code can also be a contact card (the scan offers "add to
+// contacts") or carry a scheduled switch-over to a second link. Each scan is
+// counted and logged (device, country, referer — never the IP), and link
+// forwards carry utm tags so Google Analytics reports the scan as its own
+// traffic source. Wired up by the /q/:code rewrite in vercel.json; the
+// service worker leaves /q/ alone (vite.config.ts denylist).
 // ============================================================
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { nanoid } from "nanoid";
+import { buildVCard, effectiveTarget, type QrContact } from "./_qr.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
@@ -60,7 +63,10 @@ function deviceFrom(ua: string): string {
   return "other";
 }
 
-interface Row { id: string; org_id: string; name: string; code: string; target_url: string; scan_count: number; utm_enabled: boolean }
+interface Row {
+  id: string; org_id: string; name: string; code: string; kind: string; contact: QrContact | null;
+  target_url: string; next_target_url: string | null; switch_at: string | null; scan_count: number; utm_enabled: boolean;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const raw = req.query.code;
@@ -70,22 +76,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: row } = await supabase
     .from("qr_codes")
-    .select("id, org_id, name, code, target_url, scan_count, utm_enabled")
+    .select("id, org_id, name, code, kind, contact, target_url, next_target_url, switch_at, scan_count, utm_enabled")
     .eq("code", code)
     .maybeSingle<Row>();
-
-  const target = row ? safeTarget(row.target_url) : null;
-  if (!row || !target) {
-    return res.status(404).send(page("Nothing here", "This QR code isn't pointing anywhere right now."));
-  }
-
-  const dest = row.utm_enabled === false ? target.toString() : withUtm(target, row.name, row.code);
+  if (!row) return res.status(404).send(page("Nothing here", "This QR code isn't pointing anywhere right now."));
 
   // Count and log the scan, but never make the visitor wait on it.
   const ua = String(req.headers["user-agent"] || "");
   const country = String(req.headers["x-vercel-ip-country"] || "");
   const referer = String(req.headers["referer"] || "").slice(0, 300);
-  void Promise.all([
+  const log = () => void Promise.all([
     supabase.from("qr_codes")
       .update({ scan_count: (row.scan_count || 0) + 1, last_scanned_at: new Date().toISOString() })
       .eq("id", row.id),
@@ -95,6 +95,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const r of results) if (r.error) console.error("[q] scan log failed", r.error.message);
   });
 
+  if (row.kind === "contact") {
+    const vcf = buildVCard(row.contact || {});
+    log();
+    const fname = (slug(row.name) || "contact") + ".vcf";
+    res.setHeader("Content-Type", "text/vcard; charset=utf-8");
+    // inline (not attachment): iPhones open it as a contact card to save.
+    res.setHeader("Content-Disposition", `inline; filename="${fname}"`);
+    return res.status(200).send(vcf);
+  }
+
+  const target = safeTarget(effectiveTarget(row));
+  if (!target) return res.status(404).send(page("Nothing here", "This QR code isn't pointing anywhere right now."));
+  const dest = row.utm_enabled === false ? target.toString() : withUtm(target, row.name, row.code);
+  log();
   res.setHeader("Location", dest);
   return res.status(302).end();
 }

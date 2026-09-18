@@ -83,3 +83,31 @@ export function countSince(scannedAt: string[], days: number, now: Date = new Da
   const cutoff = now.getTime() - days * 86_400_000;
   return scannedAt.reduce((n, iso) => n + (new Date(iso).getTime() >= cutoff ? 1 : 0), 0);
 }
+
+export interface QrContact {
+  firstName: string; lastName: string; org: string; title: string;
+  phone: string; email: string; website: string;
+  address: string; city: string; state: string; zip: string; note: string;
+}
+
+export const emptyContact: QrContact = { firstName: "", lastName: "", org: "", title: "", phone: "", email: "", website: "", address: "", city: "", state: "", zip: "", note: "" };
+
+export function contactDisplayName(c: Partial<QrContact> | null | undefined): string {
+  if (!c) return "Contact card";
+  return [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || c.org || "Contact card";
+}
+
+/** Which link a scan follows right now: the scheduled one once its time has come. */
+export function effectiveTarget(c: { targetUrl: string; nextTargetUrl: string; switchAt: string | null }, now: Date = new Date()): string {
+  if (c.nextTargetUrl && c.switchAt && new Date(c.switchAt).getTime() <= now.getTime()) return c.nextTargetUrl;
+  return c.targetUrl;
+}
+
+/** "2026-09-18T14:30" for a datetime-local input, in the viewer's own time zone. */
+export function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}

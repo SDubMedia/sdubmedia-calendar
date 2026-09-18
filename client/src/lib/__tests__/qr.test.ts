@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countSince, displayUrl, isValidCode, normalizeCode, normalizeTargetUrl, qrPath, scansPerDay, taggedTarget } from "../qr";
+import { contactDisplayName, countSince, displayUrl, effectiveTarget, isValidCode, normalizeCode, normalizeTargetUrl, qrPath, scansPerDay, taggedTarget } from "../qr";
 
 describe("normalizeTargetUrl", () => {
   it("adds https to a bare domain", () => {
@@ -67,5 +67,19 @@ describe("scan history", () => {
   });
   it("counts scans in a window", () => {
     expect(countSince([at(18), at(17), at(1)], 7, now)).toBe(2);
+  });
+});
+
+describe("scheduled switch-over", () => {
+  it("follows the next link only once its time has come", () => {
+    const c = { targetUrl: "https://a.com/", nextTargetUrl: "https://b.com/", switchAt: "2026-10-01T00:00:00Z" };
+    expect(effectiveTarget(c, new Date("2026-09-30T00:00:00Z"))).toBe("https://a.com/");
+    expect(effectiveTarget(c, new Date("2026-10-01T00:00:00Z"))).toBe("https://b.com/");
+    expect(effectiveTarget({ ...c, nextTargetUrl: "" }, new Date("2026-12-01T00:00:00Z"))).toBe("https://a.com/");
+  });
+  it("names a contact card sensibly", () => {
+    expect(contactDisplayName({ firstName: "Geoff", lastName: "Southworth" })).toBe("Geoff Southworth");
+    expect(contactDisplayName({ org: "SDub Media" })).toBe("SDub Media");
+    expect(contactDisplayName(null)).toBe("Contact card");
   });
 });
