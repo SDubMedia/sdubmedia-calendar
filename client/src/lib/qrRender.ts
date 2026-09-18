@@ -17,6 +17,8 @@ export interface QrBrand {
   /** Wide wordmark for the print sheet. */
   wordmark?: string;
   name?: string;
+  /** Module colour; defaults to the brand blue. Black scans best on print. */
+  dark?: string;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -44,7 +46,7 @@ export async function drawQr(canvas: HTMLCanvasElement, url: string, size: numbe
     errorCorrectionLevel: "H",
     width: size,
     margin: 2,
-    color: { dark: QR_DARK, light: "#ffffff" },
+    color: { dark: brand.dark || QR_DARK, light: "#ffffff" },
   });
   if (!brand.mark) return;
   const ctx = canvas.getContext("2d");
@@ -75,7 +77,7 @@ export async function qrSvg(url: string, brand: QrBrand = {}): Promise<string> {
     type: "svg",
     errorCorrectionLevel: "H",
     margin: 2,
-    color: { dark: QR_DARK, light: "#ffffff" },
+    color: { dark: brand.dark || QR_DARK, light: "#ffffff" },
   });
   if (!brand.mark) return svg;
   const m = svg.match(/viewBox="0 0 (\d+) (\d+)"/);

@@ -116,7 +116,10 @@ export default function QrCodesPage() {
   // "Choose from Slate": the org's own public pages, so no link ever gets pasted wrong.
   const slateLinks = useMemo(() => {
     const groups: { label: string; items: { label: string; url: string }[] }[] = [];
-    if (org?.slug) groups.push({ label: "Booking", items: [{ label: "Mini session booking page", url: publicUrl(`/book/${org.slug}`) }] });
+    if (org?.slug) groups.push({ label: "Booking", items: [
+      { label: "Check your date (wedding inquiry)", url: publicUrl(`/date/${org.slug}`) },
+      { label: "Mini session booking page", url: publicUrl(`/book/${org.slug}`) },
+    ] });
     const minis = data.miniSessions.filter(m => m.status === "published" && m.publicToken).map(m => ({ label: `${m.title}${m.date ? ` · ${m.date}` : ""}`, url: publicUrl(`/minis/${m.publicToken}`) }));
     if (minis.length) groups.push({ label: "Mini sessions", items: minis });
     const galleries = data.deliveries.filter(d => d.status !== "draft" && (d.slug || d.token)).slice(0, 25).map(d => ({ label: d.title || "Gallery", url: publicUrl(d.slug ? `/g/${d.slug}` : `/deliver/${d.token}`) }));

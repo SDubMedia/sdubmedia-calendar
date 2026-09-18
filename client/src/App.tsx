@@ -20,6 +20,8 @@ const BillingPage = lazy(() => import("./pages/BillingPage"));
 const ClientsPage = lazy(() => import("./pages/ClientsPage"));
 const LocationsPage = lazy(() => import("./pages/LocationsPage"));
 const QrCodesPage = lazy(() => import("./pages/QrCodesPage"));
+const CreativePage = lazy(() => import("./pages/CreativePage"));
+const DateCheckPage = lazy(() => import("./pages/DateCheckPage"));
 const ManagePage = lazy(() => import("./pages/ManagePage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CrewReportPage = lazy(() => import("./pages/CrewReportPage"));
@@ -232,6 +234,8 @@ function Router() {
         <Route path="/my-houses">{() => role === "client" ? <MyHousesPage /> : <Redirect to={isOwner ? "/shoot-requests" : "/calendar"} />}</Route>
         {isOwner && <Route path="/shoot-requests" component={ShootRequestsPage} />}
         {isOwner && <Route path="/qr-codes" component={QrCodesPage} />}
+        {isOwner && <Route path="/creative/:id" component={CreativePage} />}
+        {isOwner && <Route path="/creative" component={CreativePage} />}
         <Route path="/billing">{() => internal ? <BillingPage /> : <Redirect to="/" />}</Route>
         <Route path="/reports">{() => internal ? <ReportsPage /> : <Redirect to="/" />}</Route>
         {isOwner && <Route path="/crew-report" component={CrewReportPage} />}
@@ -341,6 +345,19 @@ function App() {
           <Toaster />
           <Switch>
             <Route path="/minis/:token" component={MiniSessionSignupPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // "Check your date": the flyer QR lands here. Public, one date box, one answer.
+  if (window.location.pathname.startsWith("/date/")) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Switch>
+            <Route path="/date/:slug" component={DateCheckPage} />
           </Switch>
         </Suspense>
       </ErrorBoundary>

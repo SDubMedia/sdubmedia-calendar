@@ -46,6 +46,7 @@ import {
   Building2,
   QrCode,
   ScanLine,
+  Palette,
 } from "lucide-react";
 import FeedbackDialog from "@/components/FeedbackDialog";
 import UpgradeDialog from "@/components/UpgradeDialog";
@@ -102,6 +103,8 @@ const navStructure: NavEntry[] = [
   { label: "Mini Sessions", href: "/mini-sessions", icon: QrCode, roles: ["owner", "staff"], feature: "miniSessions" },
   // Dynamic QR codes: print once, re-point any time. Owner only (2026-09-18).
   { label: "QR Codes", href: "/qr-codes", icon: ScanLine, roles: ["owner"] },
+  // Flyers built from gallery photos with a dynamic QR on them (2026-09-18).
+  { label: "Creative", href: "/creative", icon: Palette, roles: ["owner"] },
   { label: "My Listings", href: "/my-houses", icon: Home, roles: ["client"] },
 
   // Sales — owner and partner only

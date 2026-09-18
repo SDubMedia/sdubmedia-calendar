@@ -64,6 +64,7 @@ export default defineConfig({
           /^\/minis\//,      // mini session sign-up (scanned off a flyer)
           /^\/msb\//,        // a party's own booking page
           /^\/book\//,       // the org's public mini session schedule
+          /^\/date\//,       // public "check your date" (flyer QR)
           /^\/release\//,    // model release sign-up (client's shared link)
           /^\/api\//,        // never intercept API calls
         ],
