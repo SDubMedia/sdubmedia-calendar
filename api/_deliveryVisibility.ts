@@ -39,7 +39,12 @@ export function visibleGalleryRows<T extends StagedRow>(
    *  team still sees them until finals exist, so the owner can check what
    *  he loaded. */
   editorHandoff = false,
+  /** Whether the gallery has a picking round at all (a selection limit or
+   *  per-photo pricing). Without one, a "proof" stage means nothing to the
+   *  client: every file is a deliverable (Geoff, 2026-09-19). */
+  proofing = true,
 ): GalleryVisibility<T> {
+  if (!editorHandoff && !proofing) return { rows, previewingFinals: false };
   const proofs = rows.filter(r => r.stage === "proof");
   const finals = rows.filter(r => r.stage !== "proof");
   if (editorHandoff) {

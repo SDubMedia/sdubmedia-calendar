@@ -253,7 +253,9 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // until the owner presses Deliver. The owner's Preview is this same link,
   // so the team (verified above) gets the finals early; see
   // _deliveryVisibility.ts for the full table.
-  const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam, (delivery as unknown as { editor_handoff?: boolean }).editor_handoff === true);
+  const dx = delivery as unknown as { editor_handoff?: boolean; selection_limit?: number; per_extra_photo_cents?: number; buy_all_flat_cents?: number };
+  const proofing = (dx.selection_limit || 0) > 0 || (dx.per_extra_photo_cents || 0) > 0 || (dx.buy_all_flat_cents || 0) > 0;
+  const { rows: fileRows, previewingFinals } = visibleGalleryRows(allRows, delivery.status, viewerIsTeam, dx.editor_handoff === true, proofing);
 
   // (selections: so a returning client sees her picks. folderRows: named
   // folders like "Final Videos" / "B Roll" — empty for every gallery that
@@ -263,7 +265,7 @@ async function getDelivery(token: string, password: string | undefined, email: s
   // Sign GET URLs for each file (1 hour expiry — long enough to browse, short enough not to be hot-linkable)
   const filesWithUrls = fileRows.map((f) => {
     const isVideo = f.media_type === "video";
-    const isProof = (f as unknown as { stage?: string }).stage === "proof";
+    const isProof = proofing && (f as unknown as { stage?: string }).stage === "proof";
     // A download link that tells R2 to serve the file as an attachment. The
     // browser streams it straight to disk — critical for videos, which are far
     // too large to fetch into memory and ZIP client-side like photos.

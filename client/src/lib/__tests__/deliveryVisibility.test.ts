@@ -59,6 +59,12 @@ describe("visibleGalleryRows — what the public link serves", () => {
     expect(visibleGalleryRows([], "sent", false).rows).toEqual([]);
   });
 
+  it("treats every file as a deliverable when the gallery has no picking round", () => {
+    const rows = [{ stage: "proof" }, { stage: "final" }];
+    expect(visibleGalleryRows(rows, "draft", false, false, false)).toEqual({ rows, previewingFinals: false });
+    expect(visibleGalleryRows(rows, "draft", true, false, false)).toEqual({ rows, previewingFinals: false });
+  });
+
   describe("editor hand-off galleries", () => {
     it("never serves the owner's originals to a client, delivered or not", () => {
       const rows = [proof("o1"), proof("o2"), final("f1")];

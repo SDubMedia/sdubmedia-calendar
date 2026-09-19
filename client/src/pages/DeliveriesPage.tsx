@@ -663,6 +663,8 @@ function DeliveryDetail({ id }: { id: string }) {
   const [sendToEditorOpen, setSendToEditorOpen] = useState(false);
   const [sendingToEditor, setSendingToEditor] = useState(false);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  // Which named folder the grid is showing: "all", "none" (unfiled), or a folder id.
+  const [folderFilter, setFolderFilter] = useState<string>("all");
   const [queueOpen, setQueueOpen] = useState(true);
   const [savingToFolder, setSavingToFolder] = useState(false);
   // Staff default to their assigned subset when one exists — the whole point
@@ -1490,9 +1492,15 @@ function DeliveryDetail({ id }: { id: string }) {
   // A gallery with no client proofing but with both sets (an editor's
   // finals beside the owner's proofs) still gets the toggle — Geoff,
   // 2026-09-14: 65 finals were invisible in a flat 105-tile grid.
-  const gridFiles = !proofingEnabled && !hasBothStages && !handoff ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
+  const stageFiles = !proofingEnabled && !hasBothStages && !handoff ? (readOnly && hasAssigned && assignedOnly ? myAssignedProofs : files)
     : fileView === "proofs" ? visibleProofs
     : finals;
+  // Named folders ("Final Videos", "B Roll"): chips above the grid narrow it
+  // to one folder so you can check what the client will see where.
+  const galleryFolders = data.deliveryFolders.filter(f => f.deliveryId === id).sort((a, b) => a.position - b.position);
+  const folderCount = (fid: string) => stageFiles.filter(f => fid === "none" ? !f.folderId : f.folderId === fid).length;
+  const gridFiles = galleryFolders.length === 0 || folderFilter === "all" ? stageFiles
+    : stageFiles.filter(f => folderFilter === "none" ? !f.folderId : f.folderId === folderFilter);
   const project = data.projects.find(p => p.id === delivery.projectId);
   // Who can be sent a "send to editor" assignment: on-site crew AND post-
   // production (editors are usually assigned there, not the shooting crew —
@@ -2329,9 +2337,23 @@ function DeliveryDetail({ id }: { id: string }) {
         />
       )}
 
+      {galleryFolders.length > 0 && stageFiles.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <Folder className="w-3.5 h-3.5 text-[#0088ff] shrink-0" />
+          {[{ id: "all", name: "All", n: stageFiles.length }, ...galleryFolders.map(f => ({ id: f.id, name: f.name, n: folderCount(f.id) })), { id: "none", name: "Not in a folder", n: folderCount("none") }]
+            .filter(c => c.id === "all" || c.n > 0 || c.id === folderFilter)
+            .map(c => (
+              <button key={c.id} onClick={() => setFolderFilter(c.id)}
+                className={`text-xs px-2.5 py-1 rounded-full border ${folderFilter === c.id ? "bg-[#0088ff]/15 border-[#0088ff]/50 text-white" : "border-white/10 text-slate-400 hover:bg-white/[0.04]"}`}>
+                {c.name} <span className="opacity-70">({c.n})</span>
+              </button>
+            ))}
+        </div>
+      )}
       {gridFiles.length === 0 ? (
         <p className="text-center text-sm text-slate-500 py-8">
-          {!proofingEnabled ? "No photos or videos yet."
+          {galleryFolders.length > 0 && folderFilter !== "all" && stageFiles.length > 0 ? "Nothing in this folder yet."
+            : !proofingEnabled ? "No photos or videos yet."
             : fileView === "finals" ? "No finished files here yet."
             : readOnly ? "She hasn't submitted her picks yet."
             : "No proofs loaded yet."}

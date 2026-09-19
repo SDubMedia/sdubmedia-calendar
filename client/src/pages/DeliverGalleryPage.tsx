@@ -730,7 +730,9 @@ export default function DeliverGalleryPage() {
    *
    *  A view-only gallery (portfolio mode) kills the same routes for the same
    *  reason, permanently — it's work samples to browse, not files to keep. */
-  const showingProofs = files.some(f => f.isProof) || delivery?.viewOnly === true;
+  const showingProofs = files.some(f => f.isProof);
+  /** No download routes: proofs (not hers yet) or a view-only portfolio. Wording stays "your gallery" for view-only. */
+  const noDownloads = showingProofs || delivery?.viewOnly === true;
   const overage = Math.max(0, editedCount + picked.size - limit);
   const perExtraCents = delivery?.perExtraPhotoCents ?? 0;
   const flatCents = delivery?.buyAllFlatCents ?? 0;
@@ -1438,7 +1440,7 @@ export default function DeliverGalleryPage() {
             title={delivery.title}
             orgName={org?.name}
             onSlideshow={visibleFiles.length > 0 ? () => { setLightboxIdx(0); setSlideshowPlaying(true); } : undefined}
-            onDownload={!showingProofs && files.length > 0 ? downloadAll : undefined}
+            onDownload={!noDownloads && files.length > 0 ? downloadAll : undefined}
             onShare={shareGallery}
           />
           <EditorialIntro
@@ -1494,7 +1496,7 @@ export default function DeliverGalleryPage() {
               onShare: shareGallery,
             }}
           />
-          {!showingProofs && files.length > 0 && (
+          {!noDownloads && files.length > 0 && (
             <EditorialKeep
               headline={keepHeadline(allPhotos.length, allFilms.length)}
               business={business}
@@ -1571,7 +1573,7 @@ export default function DeliverGalleryPage() {
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             </button>
-            {!showingProofs && (
+            {!noDownloads && (
             <button onClick={downloadAll} disabled={zipping} title="Download all" className="p-2 hover:bg-slate-100 rounded-full text-slate-600 hover:text-black disabled:opacity-50">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
@@ -1608,7 +1610,7 @@ export default function DeliverGalleryPage() {
           `!proofingEnabled` also hid this after delivery: a proofing gallery
           keeps its pick limit forever, so the client could never download the
           finals she'd paid for. */}
-      {!showingProofs && files.length > 0 && (
+      {!noDownloads && files.length > 0 && (
         <div className="max-w-[1600px] mx-auto px-6 sm:px-10 pt-4">
           <button
             onClick={() => { setSelecting(v => !v); setDlPicked(new Set()); }}
@@ -1654,7 +1656,7 @@ export default function DeliverGalleryPage() {
               Thank you — we've got your picks and we'll take it from here.
             </p>
           )}
-          {delivery.status === "delivered" && !showingProofs && (
+          {delivery.status === "delivered" && !noDownloads && (
             <p className="text-slate-700 text-sm sm:text-base">
               Your photos are ready. Download the whole set, or tap <strong>Select photos</strong> to pick out a few — they're yours to keep, so grab them whenever suits you.
             </p>
