@@ -56,6 +56,25 @@ interface FileItem {
   folderId?: string | null;
 }
 
+/** Folder chips for the client: pick one folder or see everything. */
+function FolderChips({ choices, value, onChange, editorial }: { choices: { id: string; name: string; n: number }[]; value: string; onChange: (id: string) => void; editorial: boolean }) {
+  if (choices.length <= 1) return null;
+  return (
+    <div className={editorial ? "max-w-[1400px] mx-auto px-6 sm:px-10 pt-2 pb-6 flex flex-wrap gap-2" : "max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap gap-2"} role="tablist" aria-label="Folders">
+      {choices.map(c => {
+        const active = c.id === value;
+        return (
+          <button key={c.id} role="tab" aria-selected={active} onClick={() => onChange(c.id)}
+            className={`text-sm px-3.5 py-1.5 rounded-full border transition-colors ${active ? "bg-black text-white border-black" : "bg-white text-black/70 border-black/15 hover:border-black/40"}`}
+            style={editorial ? { letterSpacing: "0.02em" } : undefined}>
+            {c.name} <span className="opacity-60">{c.n}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface FolderItem {
   id: string;
   name: string;
@@ -449,10 +468,22 @@ export default function DeliverGalleryPage() {
   // Falls back to everything when nothing is picked — unhearting the last
   // photo while filtered would otherwise strand her on an empty grid with the
   // toggle gone (it lives in the picked-count bar).
-  const visibleFiles = useMemo(
-    () => (showPickedOnly && picked.size > 0 ? files.filter(f => picked.has(f.id)) : files),
-    [showPickedOnly, files, picked],
-  );
+  // Folder the viewer has chosen: "all", "none" (not in a folder), or a folder id.
+  const [folderView, setFolderView] = useState<string>("all");
+  const visibleFiles = useMemo(() => {
+    const base = showPickedOnly && picked.size > 0 ? files.filter(f => picked.has(f.id)) : files;
+    if (folders.length === 0 || folderView === "all") return base;
+    return base.filter(f => folderView === "none" ? !f.folderId : f.folderId === folderView);
+  }, [showPickedOnly, files, picked, folders, folderView]);
+  const folderChoices = useMemo(() => {
+    if (folders.length === 0) return [] as { id: string; name: string; n: number }[];
+    const count = (id: string) => files.filter(f => id === "none" ? !f.folderId : f.folderId === id).length;
+    return [
+      { id: "all", name: "All", n: files.length },
+      ...folders.slice().sort((a, b) => a.position - b.position).map(f => ({ id: f.id, name: f.name, n: count(f.id) })),
+      { id: "none", name: "Everything else", n: count("none") },
+    ].filter(c => c.id === "all" || c.n > 0);
+  }, [folders, files]);
 
   // Auto-advance lightbox when slideshow is on. ~4s per photo, loops at end.
   useEffect(() => {
@@ -1475,6 +1506,7 @@ export default function DeliverGalleryPage() {
               </p>
             )}
           </EditorialIntro>
+          <FolderChips choices={folderChoices} value={folderView} onChange={setFolderView} editorial />
           <EditorialFilms films={edFilms} onDownload={delivery.viewOnly ? undefined : (f) => downloadOne(f as FileItem)} />
           <EditorialPhotos
             photos={edPhotos}
@@ -1689,6 +1721,7 @@ export default function DeliverGalleryPage() {
       )}
 
       {/* PHOTO GRID — flush, full-bleed, no gaps */}
+      <FolderChips choices={folderChoices} value={folderView} onChange={setFolderView} editorial={false} />
       <div
         // Masonry, not a square grid. Every photo used to be cropped to a
         // square, which on portrait work cuts off heads and feet — the frame
